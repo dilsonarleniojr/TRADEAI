@@ -117,7 +117,7 @@ export function QuickTrade() {
               placeholder="0.00"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
-              className="flex-1 font-mono bg-background/80 backdrop-blur-sm border-white/10 focus-visible:ring-crypto-cyan/30"
+              className="flex-1 font-mono bg-background/80 backdrop-blur-sm border-border/50 input-glow focus-visible:ring-crypto-cyan/30"
             />
             <div className="flex gap-1">
               <Button
@@ -150,7 +150,7 @@ export function QuickTrade() {
           <Button
             onClick={() => handleTrade("BUY")}
             disabled={!quantity || parseFloat(quantity) <= 0}
-            className="bg-crypto-green hover:bg-crypto-green/90 text-white font-semibold h-10 gap-1.5"
+            className="bg-crypto-green hover:bg-crypto-green/90 text-white font-semibold h-10 gap-1.5 btn-gradient-green touch-target"
           >
             <TrendingUp className="w-4 h-4" />
             Buy
@@ -158,7 +158,7 @@ export function QuickTrade() {
           <Button
             onClick={() => handleTrade("SELL")}
             disabled={!quantity || parseFloat(quantity) <= 0}
-            className="bg-crypto-red hover:bg-crypto-red/90 text-white font-semibold h-10 gap-1.5"
+            className="bg-crypto-red hover:bg-crypto-red/90 text-white font-semibold h-10 gap-1.5 btn-gradient-red touch-target"
           >
             <TrendingDown className="w-4 h-4" />
             Sell

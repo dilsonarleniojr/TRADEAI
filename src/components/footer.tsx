@@ -19,10 +19,10 @@ export function Footer() {
     <motion.footer
       initial={{ y: 60 }}
       animate={{ y: 0 }}
-      className="sticky bottom-0 md:bottom-auto md:mt-auto z-40 h-12 flex items-center justify-between px-4 md:px-6 glass relative"
+      className="sticky bottom-0 md:bottom-auto md:mt-auto z-40 h-12 flex items-center justify-between px-4 md:px-6 glass relative safe-bottom"
     >
       {/* Gradient top border */}
-      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-crypto-cyan/30 to-transparent" />
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-crypto-cyan/40 to-transparent" />
 
       <div className="flex items-center gap-4 md:gap-6 text-xs md:text-sm">
         <div className="flex items-center gap-1.5">

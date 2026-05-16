@@ -264,7 +264,7 @@ export function PriceAlerts() {
                         "flex items-center justify-between p-2.5 rounded-lg border transition-colors",
                         alert.isTriggered
                           ? "bg-crypto-gold/10 border-crypto-gold/30"
-                          : "bg-secondary/30 border-white/5"
+                          : "bg-secondary/30 border-border/50"
                       )}
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">

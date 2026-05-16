@@ -68,7 +68,7 @@ export function AISignals() {
                   <div
                     key={signal.id}
                     className={cn(
-                      "flex items-center justify-between p-2.5 rounded-lg border-l-2 bg-secondary/30 hover:bg-secondary/50 transition-colors glass-hover",
+                      "flex items-center justify-between p-2.5 rounded-lg border-l-2 transition-colors hover:bg-secondary/40 glass-hover",
                       borderColor
                     )}
                   >

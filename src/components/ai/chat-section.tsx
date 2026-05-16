@@ -220,9 +220,9 @@ export function ChatSection() {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100vh-10rem)]">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100vh-10rem)] lg:h-[calc(100vh-10rem)] max-h-[calc(100dvh-10rem)]">
       {/* Chat Interface - Left side (2/3) */}
-      <Card className="lg:col-span-2 flex flex-col bg-card/60 backdrop-blur-md border border-white/5 overflow-hidden relative">
+      <Card className="lg:col-span-2 flex flex-col glass border border-border/50 overflow-hidden relative">
         {/* Gradient border glow */}
         <div className="absolute inset-0 rounded-xl p-[1px] bg-gradient-to-b from-crypto-cyan/20 to-transparent pointer-events-none" />
 
@@ -323,8 +323,8 @@ export function ChatSection() {
                     <div
                       className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
                         msg.role === 'user'
-                          ? 'bg-crypto-cyan/10 text-foreground rounded-tr-sm'
-                          : 'bg-card/80 backdrop-blur-sm border border-white/5 rounded-tl-sm'
+                          ? 'bg-gradient-to-br from-crypto-cyan/15 to-crypto-cyan/5 text-foreground rounded-tr-sm border border-crypto-cyan/10'
+                          : 'bg-card/90 backdrop-blur-sm border border-border/50 rounded-tl-sm'
                       }`}
                     >
                       {msg.role === 'assistant' ? (
@@ -372,7 +372,7 @@ export function ChatSection() {
         )}
 
         {/* Input Area */}
-        <div className="p-3 border-t border-border shrink-0">
+        <div className="p-3 border-t border-border shrink-0 safe-bottom">
           <div className="flex gap-2">
             <Input
               ref={inputRef}
@@ -381,7 +381,7 @@ export function ChatSection() {
               onKeyDown={handleKeyDown}
               placeholder="Ask about crypto markets, analysis, strategies..."
               disabled={isLoading}
-              className="flex-1 bg-background/80 backdrop-blur-sm border-white/10 focus-visible:ring-crypto-cyan/30"
+              className="flex-1 bg-background/80 backdrop-blur-sm border-border/50 input-glow focus-visible:ring-crypto-cyan/30"
             />
             <Button
               onClick={() => sendMessage(input)}
@@ -404,7 +404,7 @@ export function ChatSection() {
         <SignalGenerator />
 
         {/* AI Tips Card */}
-        <Card className="bg-card/60 backdrop-blur-md border border-white/5 relative overflow-hidden">
+        <Card className="bg-card/60 backdrop-blur-md gradient-border relative overflow-hidden">
           <div className="absolute inset-0 rounded-xl p-[1px] bg-gradient-to-b from-crypto-gold/20 to-transparent pointer-events-none" />
           <CardHeader className="pb-3 relative">
             <div className="flex items-center gap-2">

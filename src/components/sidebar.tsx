@@ -35,12 +35,16 @@ export function Sidebar() {
       <motion.aside
         initial={{ x: -80 }}
         animate={{ x: 0 }}
-        className="hidden md:flex flex-col items-center w-16 min-w-16 bg-gradient-to-b from-card to-card/80 border-r border-border py-4 gap-1"
+        className="hidden md:flex flex-col items-center w-16 min-w-16 glass border-r border-border/50 py-4 gap-1 relative"
       >
-        {/* Logo */}
-        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-crypto-cyan to-crypto-green flex items-center justify-center mb-2">
+        {/* Logo with subtle animation */}
+        <motion.div
+          whileHover={{ scale: 1.08, rotate: 2 }}
+          whileTap={{ scale: 0.95 }}
+          className="w-10 h-10 rounded-lg bg-gradient-to-br from-crypto-cyan to-crypto-green flex items-center justify-center mb-2 shadow-[0_0_16px_oklch(0.75_0.15_195/20%)] cursor-pointer"
+        >
           <span className="text-white font-bold text-sm">IA</span>
-        </div>
+        </motion.div>
 
         {/* Gradient line separator */}
         <div className="w-8 h-px bg-gradient-to-r from-transparent via-crypto-cyan/40 to-transparent mb-4" />
@@ -58,19 +62,23 @@ export function Sidebar() {
                       "relative w-11 h-11 rounded-lg flex items-center justify-center transition-all duration-200",
                       "hover:bg-accent hover:text-accent-foreground hover:scale-105",
                       isActive
-                        ? "bg-primary/15 text-primary glow-cyan"
+                        ? "bg-primary/15 text-primary glow-cyan-sm"
                         : "text-muted-foreground"
                     )}
                   >
+                    {/* Active background glow */}
+                    {isActive && (
+                      <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-primary/10 to-transparent" />
+                    )}
                     {isActive && (
                       <motion.div
                         layoutId="sidebar-active"
-                        className="absolute w-2 h-2 rounded-full bg-primary left-1.5 shadow-[0_0_8px_var(--crypto-cyan)]"
+                        className="absolute w-2 h-2 rounded-full bg-primary left-1.5 glow-cyan-sm"
                         style={{ boxShadow: "0 0 8px #06b6d4" }}
                         transition={{ type: "spring", stiffness: 500, damping: 30 }}
                       />
                     )}
-                    <item.icon className="w-5 h-5" />
+                    <item.icon className="w-5 h-5 relative z-10" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="right" sideOffset={8}>
@@ -81,14 +89,14 @@ export function Sidebar() {
           })}
         </nav>
 
-        {/* Bottom indicator */}
+        {/* Bottom indicator with glow */}
         <div className="mt-auto">
           <div className="w-2 h-2 rounded-full bg-crypto-green animate-pulse shadow-[0_0_8px_#22c55e]" />
         </div>
       </motion.aside>
 
-      {/* Mobile bottom nav - shows all 6 items */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 glass border-t border-border flex items-center justify-around py-1.5 px-1">
+      {/* Mobile bottom nav - shows all 6 items with safe area + backdrop blur */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 glass border-t border-border/50 flex items-center justify-around py-1.5 px-1 safe-bottom">
         {navItems.map((item) => {
           const isActive = activeSection === item.id;
           return (
@@ -96,7 +104,7 @@ export function Sidebar() {
               key={item.id}
               onClick={() => setActiveSection(item.id)}
               className={cn(
-                "flex flex-col items-center gap-0.5 px-1.5 py-1 rounded-lg transition-all duration-200 min-w-0",
+                "flex flex-col items-center gap-0.5 px-1.5 py-1 rounded-lg transition-all duration-200 min-w-0 touch-target",
                 isActive
                   ? "text-primary scale-105"
                   : "text-muted-foreground"

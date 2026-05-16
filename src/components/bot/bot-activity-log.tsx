@@ -203,7 +203,7 @@ export function BotActivityLog() {
   }, [botActive, botConfig.symbol]);
 
   return (
-    <Card className="bg-card/60 backdrop-blur-md border border-white/5 relative overflow-hidden">
+    <Card className="bg-card/60 backdrop-blur-md gradient-border relative overflow-hidden">
       {/* Gradient border glow */}
       <div className="absolute inset-0 rounded-xl p-[1px] bg-gradient-to-b from-crypto-cyan/20 to-transparent pointer-events-none" />
       <CardHeader className="pb-3 relative">
@@ -228,8 +228,11 @@ export function BotActivityLog() {
                   animate={{ opacity: 1, y: 0, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.2 }}
-                  className={`flex items-start gap-2 py-1.5 px-2 rounded-md border-l-2 ${getBorderColor(log.type)} hover:bg-secondary/20 transition-colors`}
+                  className={`flex items-start gap-2 py-1.5 px-2 rounded-md border-l-2 ${getBorderColor(log.type)} hover:bg-secondary/30 transition-colors`}
+                  style={{ position: 'relative' }}
                 >
+                  {/* Timeline dot */}
+                  <div className="absolute left-[-5px] top-2 w-1.5 h-1.5 rounded-full bg-card border border-current" style={{ color: log.type === 'buy' || log.type === 'profit' ? '#22c55e' : log.type === 'sell' || log.type === 'loss' ? '#ef4444' : log.type === 'system' ? '#06b6d4' : '#94a3b8' }} />
                   {getLogIcon(log.type)}
                   <div className="flex-1 min-w-0">
                     <span className={`text-xs ${getLogColor(log.type)}`}>

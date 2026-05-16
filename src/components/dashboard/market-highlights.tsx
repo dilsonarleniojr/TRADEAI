@@ -117,7 +117,7 @@ export function MarketHighlights() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3 + sIdx * 0.1, duration: 0.4 }}
                 className={cn(
-                  "rounded-lg border border-white/5 bg-gradient-to-r p-3",
+                  "rounded-lg border border-border/50 bg-gradient-to-r p-3 relative overflow-hidden",
                   section.accentGradient
                 )}
               >
@@ -131,6 +131,11 @@ export function MarketHighlights() {
                     {section.title}
                   </span>
                 </div>
+                {/* Accent line on left */}
+                <div className={cn(
+                  "absolute left-0 top-3 bottom-3 w-0.5 rounded-full",
+                  section.positive === true ? "bg-crypto-green/40" : section.positive === false ? "bg-crypto-red/40" : "bg-crypto-cyan/40"
+                )} />
 
                 {loading ? (
                   <div className="space-y-2.5">
@@ -168,7 +173,7 @@ export function MarketHighlights() {
                           initial={{ opacity: 0, y: 5 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: 0.4 + idx * 0.05, duration: 0.3 }}
-                          className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-white/5 transition-colors"
+                          className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-secondary/50 transition-colors"
                         >
                           <div className="flex items-center gap-2">
                             <div

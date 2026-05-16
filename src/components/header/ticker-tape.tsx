@@ -33,7 +33,12 @@ export function TickerTape() {
   const items = [...tickerList, ...tickerList];
 
   return (
-    <div className="w-full overflow-hidden bg-background/50 border-b border-border/50 h-7 flex items-center">
+    <div className="w-full overflow-hidden bg-background/50 border-b border-border/50 h-7 flex items-center relative">
+      {/* Gradient fade left edge */}
+      <div className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-background/80 to-transparent z-10 pointer-events-none" />
+      {/* Gradient fade right edge */}
+      <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background/80 to-transparent z-10 pointer-events-none" />
+
       <div className="ticker-tape flex items-center gap-6 whitespace-nowrap">
         {items.map((ticker, i) => {
           const isPositive = ticker.priceChangePercent >= 0;
@@ -65,6 +70,10 @@ export function TickerTape() {
                 )}
                 {formatPercent(ticker.priceChangePercent)}
               </span>
+              {/* Subtle separator dot */}
+              {i < items.length - 1 && (
+                <span className="text-muted-foreground/30 ml-3">·</span>
+              )}
             </div>
           );
         })}

@@ -45,7 +45,7 @@ export function BotConfigForm() {
   };
 
   return (
-    <Card className="bg-card border-border">
+    <Card className="bg-card border-border gradient-border">
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <Settings className="w-4 h-4 text-crypto-cyan" />

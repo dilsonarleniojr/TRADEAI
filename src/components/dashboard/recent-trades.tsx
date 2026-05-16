@@ -50,7 +50,7 @@ export function RecentTrades() {
                   <div
                     key={trade.id}
                     className={cn(
-                      "flex items-center gap-3 p-2.5 rounded-lg border-l-2 transition-colors hover:bg-secondary/50",
+                      "flex items-center gap-3 p-2.5 rounded-lg border-l-2 transition-colors hover:bg-secondary/40 hover:shadow-sm",
                       trade.side === "BUY" ? "border-l-crypto-green bg-crypto-green/[0.03]" : "border-l-crypto-red bg-crypto-red/[0.03]"
                     )}
                   >

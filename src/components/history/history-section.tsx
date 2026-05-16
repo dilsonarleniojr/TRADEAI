@@ -73,19 +73,19 @@ export function HistorySection() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: i * 0.05 }}
           >
-            <Card className="bg-card border-border">
+            <Card className="bg-card/60 backdrop-blur-md gradient-border overflow-hidden">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <div
-                    className={`w-7 h-7 rounded-lg ${card.bgColor} flex items-center justify-center`}
+                    className={`w-7 h-7 rounded-lg ${card.bgColor} flex items-center justify-center shadow-sm`}
                   >
                     <card.icon className={`w-3.5 h-3.5 ${card.color}`} />
                   </div>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-[11px] text-muted-foreground font-medium">
                     {card.label}
                   </span>
                 </div>
-                <div className={`text-lg font-bold ${card.color}`}>
+                <div className={`text-lg font-bold ${card.color} number-animate`}>
                   {card.value}
                 </div>
               </CardContent>
@@ -95,7 +95,7 @@ export function HistorySection() {
       </div>
 
       {/* Trade Table */}
-      <Card className="bg-card border-border">
+      <Card className="bg-card/60 backdrop-blur-md gradient-border overflow-hidden">
         <CardContent className="p-4">
           <h3 className="text-sm font-medium mb-3">All Trades</h3>
           <TradeTable trades={trades} />

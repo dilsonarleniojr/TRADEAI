@@ -161,10 +161,10 @@ export function PortfolioAllocation() {
           </div>
 
           {/* Total Value */}
-          <div className="mt-3 pt-3 border-t border-border">
+          <div className="mt-3 pt-3 border-t border-border/50">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Total Value</span>
-              <span className="text-sm font-bold font-mono">
+              <span className="text-sm font-bold font-mono pulse-soft">
                 ${formatPrice(portfolio.totalValue)}
               </span>
             </div>

@@ -233,14 +233,16 @@ export function BotSection() {
       className="space-y-4"
     >
       {/* Bot Control Panel */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-card/60 backdrop-blur-md border border-border rounded-xl p-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 glass rounded-xl p-4 border border-border/50 relative overflow-hidden">
+        {/* Gradient accent at top */}
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-crypto-cyan/40 to-transparent" />
         <Button
           onClick={toggleBot}
           size="lg"
-          className={`relative overflow-hidden h-12 px-8 text-base font-semibold transition-all ${
+          className={`relative overflow-hidden h-12 px-8 text-base font-semibold transition-all min-w-[160px] touch-target ${
             botActive
-              ? "bg-crypto-red hover:bg-crypto-red/90 text-white"
-              : "bg-crypto-green hover:bg-crypto-green/90 text-white"
+              ? "btn-gradient-red text-white shadow-lg shadow-crypto-red/20"
+              : "btn-gradient-green text-white shadow-lg shadow-crypto-green/20"
           }`}
         >
           <AnimatePresence mode="wait">
@@ -273,8 +275,9 @@ export function BotSection() {
             <div className="relative">
               <div
                 className={`w-2.5 h-2.5 rounded-full ${
-                  botActive ? "bg-crypto-green" : "bg-muted-foreground/50"
+                  botActive ? "bg-crypto-green glow-green-sm" : "bg-muted-foreground/50"
                 }`}
+                style={botActive ? { boxShadow: "0 0 8px #22c55e" } : undefined}
               />
               {botActive && (
                 <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-crypto-green animate-ping" />

@@ -34,6 +34,8 @@ interface ProcessedCandle {
   bbUpper?: number;
   bbMiddle?: number;
   bbLower?: number;
+  ema12?: number;
+  ema26?: number;
 }
 
 interface TooltipData {
@@ -48,9 +50,13 @@ interface CandlestickChartProps {
   showSMA20?: boolean;
   showSMA50?: boolean;
   showBollinger?: boolean;
+  showFibonacci?: boolean;
+  showEMA12?: boolean;
+  showEMA26?: boolean;
+  showVolumeProfile?: boolean;
 }
 
-const CHART_PADDING = { top: 20, right: 70, bottom: 30, left: 10 };
+const CHART_PADDING = { top: 20, right: 90, bottom: 30, left: 10 };
 const VOLUME_RATIO = 0.2; // Volume section takes 20% of chart height
 
 function calculateSMA(closes: number[], period: number): (number | undefined)[] {
@@ -66,7 +72,40 @@ function calculateSMA(closes: number[], period: number): (number | undefined)[] 
   return sma;
 }
 
-export function CandlestickChart({ symbol, interval, showSMA20 = true, showSMA50 = true, showBollinger = false }: CandlestickChartProps) {
+function calculateEMA(closes: number[], period: number): (number | undefined)[] {
+  const ema: (number | undefined)[] = [];
+  const multiplier = 2 / (period + 1);
+
+  for (let i = 0; i < closes.length; i++) {
+    if (i < period - 1) {
+      ema.push(undefined);
+    } else if (i === period - 1) {
+      // First EMA value is SMA of the period
+      const sum = closes.slice(0, period).reduce((a, b) => a + b, 0);
+      ema.push(sum / period);
+    } else {
+      const prevEMA = ema[i - 1];
+      if (prevEMA !== undefined) {
+        ema.push((closes[i] - prevEMA) * multiplier + prevEMA);
+      } else {
+        ema.push(undefined);
+      }
+    }
+  }
+  return ema;
+}
+
+export function CandlestickChart({
+  symbol,
+  interval,
+  showSMA20 = true,
+  showSMA50 = true,
+  showBollinger = false,
+  showFibonacci = false,
+  showEMA12 = false,
+  showEMA26 = false,
+  showVolumeProfile = false,
+}: CandlestickChartProps) {
   const [candles, setCandles] = useState<ProcessedCandle[]>([]);
   const [loading, setLoading] = useState(true);
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
@@ -116,6 +155,10 @@ export function CandlestickChart({ symbol, interval, showSMA20 = true, showSMA50
       const sma20 = calculateSMA(closes, 20);
       const sma50 = calculateSMA(closes, 50);
 
+      // Calculate EMA
+      const ema12 = calculateEMA(closes, 12);
+      const ema26 = calculateEMA(closes, 26);
+
       // Calculate Bollinger Bands (20-period SMA + 2 standard deviations)
       const bbPeriod = 20;
       const bbMultiplier = 2;
@@ -134,6 +177,8 @@ export function CandlestickChart({ symbol, interval, showSMA20 = true, showSMA50
       processed.forEach((c, i) => {
         c.sma20 = sma20[i];
         c.sma50 = sma50[i];
+        c.ema12 = ema12[i];
+        c.ema26 = ema26[i];
       });
 
       setCandles(processed);
@@ -174,6 +219,10 @@ export function CandlestickChart({ symbol, interval, showSMA20 = true, showSMA50
       if (c.sma50 !== undefined && c.sma50 > maxPrice) maxPrice = c.sma50;
       if (c.bbUpper !== undefined && c.bbUpper > maxPrice) maxPrice = c.bbUpper;
       if (c.bbLower !== undefined && c.bbLower < minPrice) minPrice = c.bbLower;
+      if (c.ema12 !== undefined && c.ema12 < minPrice) minPrice = c.ema12;
+      if (c.ema12 !== undefined && c.ema12 > maxPrice) maxPrice = c.ema12;
+      if (c.ema26 !== undefined && c.ema26 < minPrice) minPrice = c.ema26;
+      if (c.ema26 !== undefined && c.ema26 > maxPrice) maxPrice = c.ema26;
     }
 
     const padding = (maxPrice - minPrice) * 0.05;
@@ -262,6 +311,79 @@ export function CandlestickChart({ symbol, interval, showSMA20 = true, showSMA50
     return labels;
   }, [visibleCandles, indexToX]);
 
+  // Fibonacci levels
+  const fibonacciLevels = useMemo(() => {
+    if (!showFibonacci || visibleCandles.length === 0) return [];
+
+    let highestHigh = -Infinity;
+    let lowestLow = Infinity;
+    for (const c of visibleCandles) {
+      if (c.high > highestHigh) highestHigh = c.high;
+      if (c.low < lowestLow) lowestLow = c.low;
+    }
+
+    const diff = highestHigh - lowestLow;
+    const levels = [
+      { pct: 0, price: highestHigh, color: '#fbbf24', label: '0%' },
+      { pct: 23.6, price: highestHigh - diff * 0.236, color: '#f59e0b', label: '23.6%' },
+      { pct: 38.2, price: highestHigh - diff * 0.382, color: '#d97706', label: '38.2%' },
+      { pct: 50, price: highestHigh - diff * 0.5, color: '#b45309', label: '50%' },
+      { pct: 61.8, price: highestHigh - diff * 0.618, color: '#d97706', label: '61.8%' },
+      { pct: 78.6, price: highestHigh - diff * 0.786, color: '#f59e0b', label: '78.6%' },
+      { pct: 100, price: lowestLow, color: '#fbbf24', label: '100%' },
+    ];
+
+    return levels;
+  }, [showFibonacci, visibleCandles]);
+
+  // Volume profile data
+  const volumeProfileData = useMemo(() => {
+    if (!showVolumeProfile || visibleCandles.length === 0) return [];
+
+    const numZones = 12;
+    const zoneHeight = priceRange / numZones;
+    const zones: { priceLow: number; priceHigh: number; buyVol: number; sellVol: number; totalVol: number }[] = [];
+
+    for (let i = 0; i < numZones; i++) {
+      const priceLow = minPrice + i * zoneHeight;
+      const priceHigh = priceLow + zoneHeight;
+      let buyVol = 0;
+      let sellVol = 0;
+
+      for (const c of visibleCandles) {
+        // Check if candle overlaps this zone
+        if (c.high >= priceLow && c.low <= priceHigh) {
+          // Proportional allocation based on overlap
+          const overlapLow = Math.max(c.low, priceLow);
+          const overlapHigh = Math.min(c.high, priceHigh);
+          const overlapRatio = (overlapHigh - overlapLow) / (c.high - c.low || 1);
+
+          if (c.isBullish) {
+            buyVol += c.volume * overlapRatio;
+          } else {
+            sellVol += c.volume * overlapRatio;
+          }
+        }
+      }
+
+      zones.push({
+        priceLow,
+        priceHigh,
+        buyVol,
+        sellVol,
+        totalVol: buyVol + sellVol,
+      });
+    }
+
+    return zones;
+  }, [showVolumeProfile, visibleCandles, minPrice, priceRange]);
+
+  // Find POC (Point of Control) - zone with highest volume
+  const volumeProfileMaxVol = useMemo(() => {
+    if (volumeProfileData.length === 0) return 0;
+    return Math.max(...volumeProfileData.map((z) => z.totalVol));
+  }, [volumeProfileData]);
+
   if (loading) {
     return (
       <Card className="bg-card/50 border-border">
@@ -285,6 +407,14 @@ export function CandlestickChart({ symbol, interval, showSMA20 = true, showSMA50
       </Card>
     );
   }
+
+  // Compute legend items with sequential x positioning
+  const legendItems: { label: string; color: string; opacity: number; dashArray?: string }[] = [];
+  if (showSMA20) legendItems.push({ label: 'SMA 20', color: '#f59e0b', opacity: 0.7 });
+  if (showSMA50) legendItems.push({ label: 'SMA 50', color: '#8b5cf6', opacity: 0.7 });
+  if (showBollinger) legendItems.push({ label: 'BB (20,2)', color: '#06b6d4', opacity: 0.4, dashArray: '4,2' });
+  if (showEMA12) legendItems.push({ label: 'EMA 12', color: '#06b6d4', opacity: 0.7 });
+  if (showEMA26) legendItems.push({ label: 'EMA 26', color: '#f97316', opacity: 0.7 });
 
   return (
     <div ref={containerRef} className="w-full h-full min-h-[350px] relative">
@@ -370,6 +500,129 @@ export function CandlestickChart({ symbol, interval, showSMA20 = true, showSMA50
                 </g>
               );
             })}
+
+            {/* Fibonacci Retracement Overlay */}
+            {showFibonacci && fibonacciLevels.length > 0 && (
+              <>
+                {/* Golden zone fill between 38.2% and 61.8% */}
+                <rect
+                  x={CHART_PADDING.left}
+                  y={priceToY(fibonacciLevels[2].price)}
+                  width={chartWidth}
+                  height={Math.max(0, priceToY(fibonacciLevels[4].price) - priceToY(fibonacciLevels[2].price))}
+                  fill="#fbbf24"
+                  opacity={0.04}
+                />
+                {/* Fib level lines */}
+                {fibonacciLevels.map((level, i) => {
+                  const y = priceToY(level.price);
+                  const isPOC = level.pct === 38.2 || level.pct === 61.8;
+                  return (
+                    <g key={`fib-${i}`}>
+                      <line
+                        x1={CHART_PADDING.left}
+                        y1={y}
+                        x2={dimensions.width - CHART_PADDING.right}
+                        y2={y}
+                        stroke={level.color}
+                        strokeWidth={isPOC ? 1.2 : 0.8}
+                        strokeDasharray={isPOC ? '6,3' : '4,4'}
+                        opacity={isPOC ? 0.5 : 0.3}
+                      />
+                      <text
+                        x={dimensions.width - CHART_PADDING.right + 5}
+                        y={y - 3}
+                        fill={level.color}
+                        fontSize={8}
+                        fontFamily="monospace"
+                        opacity={0.8}
+                      >
+                        {level.label}
+                      </text>
+                      <text
+                        x={dimensions.width - CHART_PADDING.right + 5}
+                        y={y + 8}
+                        fill={level.color}
+                        fontSize={8}
+                        fontFamily="monospace"
+                        opacity={0.6}
+                      >
+                        {formatPrice(level.price)}
+                      </text>
+                    </g>
+                  );
+                })}
+              </>
+            )}
+
+            {/* Volume Profile Overlay (on right side) */}
+            {showVolumeProfile && volumeProfileData.length > 0 && (
+              <>
+                {volumeProfileData.map((zone, i) => {
+                  const yTop = priceToY(zone.priceHigh);
+                  const yBottom = priceToY(zone.priceLow);
+                  const barHeight = Math.max(1, yBottom - yTop - 1);
+                  const maxBarWidth = 55;
+                  const isPOC = zone.totalVol === volumeProfileMaxVol && volumeProfileMaxVol > 0;
+                  const barWidth = volumeProfileMaxVol > 0 ? (zone.totalVol / volumeProfileMaxVol) * maxBarWidth : 0;
+                  const barX = dimensions.width - CHART_PADDING.right + 2;
+
+                  const buyWidth = zone.totalVol > 0 ? (zone.buyVol / zone.totalVol) * barWidth : 0;
+                  const sellWidth = barWidth - buyWidth;
+
+                  return (
+                    <g key={`vprof-${i}`}>
+                      {/* Buy volume bar (green) */}
+                      <rect
+                        x={barX}
+                        y={yTop + 0.5}
+                        width={buyWidth}
+                        height={barHeight}
+                        fill={isPOC ? '#22c55e' : '#22c55e'}
+                        opacity={isPOC ? 0.5 : 0.25}
+                        rx={1}
+                      />
+                      {/* Sell volume bar (red) */}
+                      <rect
+                        x={barX + buyWidth}
+                        y={yTop + 0.5}
+                        width={sellWidth}
+                        height={barHeight}
+                        fill={isPOC ? '#ef4444' : '#ef4444'}
+                        opacity={isPOC ? 0.5 : 0.25}
+                        rx={1}
+                      />
+                      {/* POC indicator */}
+                      {isPOC && (
+                        <>
+                          <rect
+                            x={barX - 2}
+                            y={yTop + 0.5}
+                            width={barWidth + 4}
+                            height={barHeight}
+                            fill="none"
+                            stroke="#fbbf24"
+                            strokeWidth={1}
+                            opacity={0.6}
+                            rx={1}
+                          />
+                          <text
+                            x={barX + barWidth + 4}
+                            y={yTop + barHeight / 2 + 3}
+                            fill="#fbbf24"
+                            fontSize={7}
+                            fontFamily="monospace"
+                            opacity={0.8}
+                          >
+                            POC
+                          </text>
+                        </>
+                      )}
+                    </g>
+                  );
+                })}
+              </>
+            )}
 
             {/* Volume / Price separator line */}
             <line
@@ -468,6 +721,46 @@ export function CandlestickChart({ symbol, interval, showSMA20 = true, showSMA50
                     x2={indexToX(i)}
                     y2={priceToY(candle.sma50)}
                     stroke="#8b5cf6"
+                    strokeWidth={1.5}
+                    opacity={0.7}
+                  />
+                );
+              })}
+
+            {/* EMA 12 line */}
+            {showEMA12 &&
+              visibleCandles.map((candle, i) => {
+                if (candle.ema12 === undefined || i === 0) return null;
+                const prev = visibleCandles[i - 1];
+                if (prev.ema12 === undefined) return null;
+                return (
+                  <line
+                    key={`ema12-${i}`}
+                    x1={indexToX(i - 1)}
+                    y1={priceToY(prev.ema12)}
+                    x2={indexToX(i)}
+                    y2={priceToY(candle.ema12)}
+                    stroke="#06b6d4"
+                    strokeWidth={1.5}
+                    opacity={0.7}
+                  />
+                );
+              })}
+
+            {/* EMA 26 line */}
+            {showEMA26 &&
+              visibleCandles.map((candle, i) => {
+                if (candle.ema26 === undefined || i === 0) return null;
+                const prev = visibleCandles[i - 1];
+                if (prev.ema26 === undefined) return null;
+                return (
+                  <line
+                    key={`ema26-${i}`}
+                    x1={indexToX(i - 1)}
+                    y1={priceToY(prev.ema26)}
+                    x2={indexToX(i)}
+                    y2={priceToY(candle.ema26)}
+                    stroke="#f97316"
                     strokeWidth={1.5}
                     opacity={0.7}
                   />
@@ -627,49 +920,32 @@ export function CandlestickChart({ symbol, interval, showSMA20 = true, showSMA50
               </>
             )}
 
-            {/* Legend for moving averages */}
-            {showSMA20 && (
-              <g>
-                <line
-                  x1={CHART_PADDING.left + 10}
-                  y1={CHART_PADDING.top + 8}
-                  x2={CHART_PADDING.left + 30}
-                  y2={CHART_PADDING.top + 8}
-                  stroke="#f59e0b"
-                  strokeWidth={2}
-                  opacity={0.7}
-                />
-                <text
-                  x={CHART_PADDING.left + 34}
-                  y={CHART_PADDING.top + 11}
-                  fill="oklch(0.65 0 0)"
-                  fontSize={9}
-                >
-                  SMA 20
-                </text>
-              </g>
-            )}
-            {showSMA50 && (
-              <g>
-                <line
-                  x1={CHART_PADDING.left + 80}
-                  y1={CHART_PADDING.top + 8}
-                  x2={CHART_PADDING.left + 100}
-                  y2={CHART_PADDING.top + 8}
-                  stroke="#8b5cf6"
-                  strokeWidth={2}
-                  opacity={0.7}
-                />
-                <text
-                  x={CHART_PADDING.left + 104}
-                  y={CHART_PADDING.top + 11}
-                  fill="oklch(0.65 0 0)"
-                  fontSize={9}
-                >
-                  SMA 50
-                </text>
-              </g>
-            )}
+            {/* Legend for indicators */}
+            {legendItems.map((item, i) => {
+              const xBase = CHART_PADDING.left + 10 + i * 70;
+              return (
+                <g key={`legend-${i}`}>
+                  <line
+                    x1={xBase}
+                    y1={CHART_PADDING.top + 8}
+                    x2={xBase + 20}
+                    y2={CHART_PADDING.top + 8}
+                    stroke={item.color}
+                    strokeWidth={2}
+                    opacity={item.opacity}
+                    strokeDasharray={item.dashArray}
+                  />
+                  <text
+                    x={xBase + 24}
+                    y={CHART_PADDING.top + 11}
+                    fill="oklch(0.65 0 0)"
+                    fontSize={9}
+                  >
+                    {item.label}
+                  </text>
+                </g>
+              );
+            })}
           </svg>
         </motion.div>
       </AnimatePresence>
