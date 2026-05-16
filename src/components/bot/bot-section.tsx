@@ -49,6 +49,7 @@ export function BotSection() {
     trades,
     portfolio,
     tickers,
+    aiSignals,
   } = useCryptoStore();
 
   const { toast } = useToast();
@@ -121,6 +122,66 @@ export function BotSection() {
       pnlPercent: newPnlPercent,
     });
   }, []);
+
+  // Auto-trade from AI signals
+  const processedSignalIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!botActive || !botConfig.autoTradeSignals) return;
+
+    const threshold = botConfig.signalConfidenceThreshold / 100;
+
+    for (const signal of aiSignals) {
+      // Skip already processed signals
+      if (processedSignalIdsRef.current.has(signal.id)) continue;
+
+      // Skip HOLD signals
+      if (signal.action === "HOLD") continue;
+
+      // Check confidence threshold
+      if (signal.confidence < threshold) continue;
+
+      // Mark as processed
+      processedSignalIdsRef.current.add(signal.id);
+
+      // Generate trade from signal
+      const signalTicker = tickers[signal.symbol];
+      const price = signalTicker?.price ?? signal.priceAtSignal;
+      const quantity = parseFloat((0.001 + Math.random() * 0.03).toFixed(6));
+      const total = parseFloat((price * quantity).toFixed(2));
+      const pnl = signal.action === "SELL" ? parseFloat(((Math.random() - 0.3) * 40).toFixed(2)) : 0;
+
+      const trade: TradeData = {
+        id: `signal-trade-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        symbol: signal.symbol,
+        side: signal.action as "BUY" | "SELL",
+        price,
+        quantity,
+        total,
+        strategy: "AI-Signal",
+        mode: tradingMode,
+        pnl,
+        timestamp: new Date().toISOString(),
+      };
+
+      addTrade(trade);
+      updatePortfolioWithTrade(trade);
+
+      // Show toast for signal auto-trade
+      toast({
+        title: `⚡ Auto-Trade: ${trade.side === "BUY" ? "Bought" : "Sold"} ${trade.symbol.replace("USDT", "")}`,
+        description: `Signal confidence ${(signal.confidence * 100).toFixed(0)}% | ${quantity.toFixed(6)} @ $${formatPrice(price)}`,
+        variant: "default",
+      });
+
+      // Persist trade to database
+      fetch("/api/trades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(trade),
+      }).catch(() => {});
+    }
+  }, [aiSignals, botActive, botConfig.autoTradeSignals, botConfig.signalConfidenceThreshold, tickers, tradingMode, addTrade, updatePortfolioWithTrade, toast]);
 
   // Start/stop trade generation
   useEffect(() => {

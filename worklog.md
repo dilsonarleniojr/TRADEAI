@@ -295,3 +295,55 @@ Stage Summary:
 - Chart right padding increased to 90px for volume profile space
 - Legend refactored for clean sequential layout with all indicator types
 - Zero lint errors, dev server running normally
+
+---
+Task ID: 22-24-25
+Agent: pnl-signals-alerts-agent
+Task: Real-time P&L tracker, signal-to-trade pipeline, alert notifications
+
+Work Log:
+1. Read worklog.md and all relevant existing files (page.tsx, store.ts, stat-cards.tsx, bot-section.tsx, ai-signals.tsx, price-alerts.tsx, bot-config-form.tsx, toaster.tsx, toast.tsx, use-toast.ts, format.ts, bot-activity-log.tsx, globals.css)
+2. Task 22 - Created P&L Tracker Dashboard Widget (`pnl-tracker.tsx`):
+   - Recharts AreaChart showing 24-hour P&L timeline with green/red gradient fill
+   - Current P&L value prominently displayed with gradient text styling
+   - P&L Breakdown cards for Today, 7-day, and 30-day periods
+   - Win/Loss ratio bar with green/red gradient
+   - Asset Performance bar chart showing % gain/loss per symbol
+   - Used glass-card, card-accent-cyan, gradient-text-green styling
+   - Grid layout: P&L chart (2 cols) + P&L breakdown (1 col)
+3. Task 24 - Signal-to-Trade Pipeline:
+   - Extended BotConfigData interface with `autoTradeSignals: boolean` and `signalConfidenceThreshold: number`
+   - Updated default botConfig in store with autoTradeSignals=false, signalConfidenceThreshold=75
+   - Added Switch and Slider controls in bot-config-form.tsx for auto-trade toggle and confidence threshold
+   - Updated updateConfig type to accept boolean values
+   - Added useEffect in bot-section.tsx that watches aiSignals and auto-executes trades when:
+     - Bot is active
+     - autoTradeSignals is enabled
+     - Signal action is not HOLD
+     - Signal confidence >= threshold
+   - Uses processedSignalIdsRef to avoid duplicate trades
+   - Toast notification on each auto-trade with signal confidence details
+   - Updated ai-signals.tsx to show "Executed" badge with spring animation on signals that triggered trades
+   - Added ring highlight on executed signal cards
+4. Task 25 - Price Alert Notification System:
+   - Created alert-notification.tsx with floating notification card
+   - Web Audio API beep sound (800Hz sine wave, 200ms, 0.15 gain)
+   - Glowing border animation with gradient-shift keyframe
+   - Auto-dismiss after 8 seconds with progress bar
+   - Manual dismiss with X button
+   - Fixed-top-right positioning with z-[200]
+   - Shows: symbol, direction arrow, target price, current price, difference
+   - Used useRef for tracking processed alert IDs (lint-safe, no setState in effect)
+   - Queue system for showing notifications one at a time
+5. Integrated all components in page.tsx:
+   - PnlTracker placed below StatCards in dashboard section
+   - AlertNotification placed as fixed overlay at root level
+6. Ran lint - 0 errors, 0 warnings
+7. Dev server running normally, all API endpoints returning 200
+
+Stage Summary:
+- P&L Tracker widget with timeline chart, breakdown cards, win/loss ratio, and asset performance bars (Task 22)
+- Signal-to-Trade pipeline with auto-trade toggle, confidence threshold slider, and "Executed" badge on signals (Task 24)
+- Alert Notification popup with sound, glowing border, auto-dismiss, and queue system (Task 25)
+- All TypeScript types correct, existing functionality preserved
+- Zero lint errors

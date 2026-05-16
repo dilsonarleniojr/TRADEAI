@@ -225,13 +225,13 @@ export function PriceAlerts() {
         </CardHeader>
         <CardContent>
           {alerts.length === 0 ? (
-            <div className="text-center py-6">
-              <Bell className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-xs text-muted-foreground">
-                No alerts configured
-              </p>
-              <p className="text-[10px] text-muted-foreground/70">
-                Click &quot;Create Alert&quot; to set up a price notification
+            <div className="empty-state">
+              <div className="empty-state-icon bg-crypto-gold/10">
+                <Bell className="w-6 h-6 text-crypto-gold/60" />
+              </div>
+              <p className="empty-state-title">No alerts configured</p>
+              <p className="empty-state-desc">
+                Click &quot;Create Alert&quot; to set up price notifications for your favorite assets
               </p>
             </div>
           ) : (

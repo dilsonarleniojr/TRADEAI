@@ -4,7 +4,7 @@ import { useCryptoStore, AISignalData } from "@/lib/store";
 import { formatPrice } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Brain, Sparkles } from "lucide-react";
+import { Brain, Sparkles, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
@@ -36,7 +36,27 @@ function getConfidenceBars(confidence: number) {
 }
 
 export function AISignals() {
-  const { aiSignals } = useCryptoStore();
+  const { aiSignals, botConfig, botActive, trades } = useCryptoStore();
+
+  // Determine which signals have had trades executed via auto-trade
+  const executedSignalSymbols = new Set<string>();
+  if (botActive && botConfig.autoTradeSignals) {
+    const threshold = botConfig.signalConfidenceThreshold / 100;
+    for (const signal of aiSignals) {
+      if (signal.action === "HOLD") continue;
+      if (signal.confidence < threshold) continue;
+      // Check if there's a recent AI-Signal trade for this symbol
+      const hasTrade = trades.some(
+        (t) =>
+          t.strategy === "AI-Signal" &&
+          t.symbol === signal.symbol &&
+          Math.abs(new Date(t.timestamp).getTime() - new Date(signal.createdAt).getTime()) < 120000
+      );
+      if (hasTrade) {
+        executedSignalSymbols.add(signal.id);
+      }
+    }
+  }
 
   return (
     <motion.div
@@ -53,9 +73,14 @@ export function AISignals() {
         </CardHeader>
         <CardContent className="space-y-3">
           {aiSignals.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-xs">
-              <Sparkles className="w-6 h-6 mx-auto mb-2 opacity-50" />
-              No signals yet
+            <div className="empty-state">
+              <div className="empty-state-icon bg-crypto-cyan/10">
+                <Sparkles className="w-6 h-6 text-crypto-cyan/60" />
+              </div>
+              <p className="empty-state-title">No signals yet</p>
+              <p className="empty-state-desc">
+                AI signals will appear here as market patterns are detected
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-96 overflow-y-auto">
@@ -69,7 +94,8 @@ export function AISignals() {
                     key={signal.id}
                     className={cn(
                       "flex items-center justify-between p-2.5 rounded-lg border-l-2 transition-colors hover:bg-secondary/40 glass-hover",
-                      borderColor
+                      borderColor,
+                      executedSignalSymbols.has(signal.id) && "ring-1 ring-crypto-cyan/30"
                     )}
                   >
                     <div className="flex items-center gap-2 min-w-0">
@@ -83,15 +109,29 @@ export function AISignals() {
                         {signal.action}
                       </Badge>
                       <div className="min-w-0">
-                        <span className="text-xs font-medium">
-                          {signal.symbol.replace("USDT", "")}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground ml-1">
-                          @ ${formatPrice(signal.priceAtSignal)}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-medium">
+                            {signal.symbol.replace("USDT", "")}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            @ ${formatPrice(signal.priceAtSignal)}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0 ml-2">
+                      {executedSignalSymbols.has(signal.id) && (
+                        <motion.div
+                          initial={{ scale: 0, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                        >
+                          <Badge className="text-[8px] px-1 py-0 bg-crypto-cyan/20 text-crypto-cyan border-crypto-cyan/30 gap-0.5">
+                            <Zap className="w-2.5 h-2.5" />
+                            Executed
+                          </Badge>
+                        </motion.div>
+                      )}
                       {getConfidenceBars(signal.confidence).map((filled, i) => (
                         <div
                           key={i}

@@ -121,10 +121,10 @@ export function PriceInfo({ symbol, interval, rsiValue }: PriceInfoProps) {
 
   if (!tickerData) {
     return (
-      <div className="flex items-center gap-4 px-4 py-3 bg-card/50 rounded-lg border border-border animate-pulse">
-        <div className="h-8 w-32 bg-muted rounded" />
-        <div className="h-6 w-20 bg-muted rounded" />
-        <div className="h-6 w-16 bg-muted rounded" />
+      <div className="flex items-center gap-4 px-4 py-3 bg-card/50 rounded-lg border border-border">
+        <div className="skeleton-shimmer h-8 w-32 rounded" />
+        <div className="skeleton-shimmer h-6 w-20 rounded" />
+        <div className="skeleton-shimmer h-6 w-16 rounded" />
       </div>
     );
   }

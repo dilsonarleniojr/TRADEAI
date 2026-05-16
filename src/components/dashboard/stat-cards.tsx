@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import { useCountUp } from "@/hooks/use-count-up";
 
 const cardVariants = {
   hidden: { opacity: 0, y: 20 },
@@ -20,6 +21,20 @@ const cardVariants = {
     transition: { delay: i * 0.1, duration: 0.4, ease: "easeOut" },
   }),
 };
+
+function AnimatedValue({ value, prefix = "", suffix = "", decimals = 2 }: {
+  value: number;
+  prefix?: string;
+  suffix?: string;
+  decimals?: number;
+}) {
+  const animatedValue = useCountUp(value, 500, true);
+  return (
+    <span className="number-animate">
+      {prefix}{decimals > 0 ? animatedValue.toFixed(decimals) : Math.round(animatedValue)}{suffix}
+    </span>
+  );
+}
 
 export function StatCards() {
   const { portfolio, trades, botActive, tickers } = useCryptoStore();
@@ -40,7 +55,8 @@ export function StatCards() {
   const stats = [
     {
       title: "Portfolio Value",
-      value: `$${formatPrice(portfolio.totalValue)}`,
+      value: portfolio.totalValue,
+      displayValue: `$${formatPrice(portfolio.totalValue)}`,
       subValue: formatPercent(portfolio.pnlPercent),
       subPositive: portfolio.pnlPercent >= 0,
       icon: Wallet,
@@ -48,10 +64,12 @@ export function StatCards() {
       iconBg: "bg-gradient-to-br from-crypto-cyan/20 to-crypto-cyan/5",
       accentClass: "card-accent-cyan",
       hoverGlow: "hover:glow-cyan-sm",
+      animate: true,
     },
     {
       title: "Total Trades Today",
-      value: todayTrades.toString(),
+      value: todayTrades,
+      displayValue: todayTrades.toString(),
       subValue: `${trades.filter((t) => t.pnl > 0).length} profitable`,
       subPositive: true,
       icon: ArrowUpDown,
@@ -59,10 +77,12 @@ export function StatCards() {
       iconBg: "bg-gradient-to-br from-crypto-gold/20 to-crypto-gold/5",
       accentClass: "card-accent-gold",
       hoverGlow: "",
+      animate: false,
     },
     {
       title: "Bot Status",
-      value: botActive ? "Active" : "Inactive",
+      value: botActive ? 1 : 0,
+      displayValue: botActive ? "Active" : "Inactive",
       subValue: botActive ? "Running strategies" : "Paused",
       subPositive: botActive,
       icon: Bot,
@@ -72,10 +92,12 @@ export function StatCards() {
         : "bg-secondary",
       accentClass: botActive ? "card-accent-green" : "",
       hoverGlow: botActive ? "hover:glow-green-sm" : "",
+      animate: false,
     },
     {
       title: "Best Performer",
-      value: bestPerformer
+      value: bestPerformer?.priceChangePercent ?? 0,
+      displayValue: bestPerformer
         ? bestPerformer.symbol.replace("USDT", "")
         : "—",
       subValue: bestPerformer
@@ -89,6 +111,7 @@ export function StatCards() {
         : "bg-gradient-to-br from-crypto-red/20 to-crypto-red/5",
       accentClass: bestPerformer?.priceChangePercent >= 0 ? "card-accent-green" : "card-accent-red",
       hoverGlow: "hover:glow-green-sm",
+      animate: true,
     },
   ];
 
@@ -104,8 +127,7 @@ export function StatCards() {
         >
           <Card
             className={cn(
-              "bg-card/60 backdrop-blur-md gradient-border transition-all duration-300 overflow-hidden cursor-default",
-              "hover:translate-y-[-2px] hover:shadow-lg",
+              "bg-card/60 backdrop-blur-md gradient-border card-interactive overflow-hidden cursor-default",
               stat.hoverGlow,
               stat.accentClass
             )}
@@ -120,8 +142,12 @@ export function StatCards() {
                 </div>
               </div>
               <div className="space-y-1">
-                <p className="text-xl md:text-2xl font-bold tracking-tight number-animate leading-none">
-                  {stat.value}
+                <p className="text-xl md:text-2xl font-bold tracking-tight leading-none">
+                  {stat.animate && stat.title === "Portfolio Value" ? (
+                    <AnimatedValue value={stat.value} prefix="$" decimals={2} />
+                  ) : (
+                    <span className="number-animate">{stat.displayValue}</span>
+                  )}
                 </p>
                 <p
                   className={cn(

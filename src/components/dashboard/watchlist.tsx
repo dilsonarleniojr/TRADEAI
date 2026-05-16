@@ -51,13 +51,13 @@ export function Watchlist() {
         </CardHeader>
         <CardContent>
           {watchlistTickers.length === 0 ? (
-            <div className="text-center py-6">
-              <Star className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-xs text-muted-foreground">
-                No assets in watchlist
-              </p>
-              <p className="text-[10px] text-muted-foreground/70">
-                Click the star icon in the market table to add assets
+            <div className="empty-state">
+              <div className="empty-state-icon bg-crypto-gold/10">
+                <Star className="w-6 h-6 text-crypto-gold/60" />
+              </div>
+              <p className="empty-state-title">No assets in watchlist</p>
+              <p className="empty-state-desc">
+                Click the star icon in the market table to add symbols to your watchlist
               </p>
             </div>
           ) : (
