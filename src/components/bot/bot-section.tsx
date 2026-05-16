@@ -22,6 +22,7 @@ import {
   Clock,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
 
 interface TradeReport {
   totalTrades: number;
@@ -49,6 +50,8 @@ export function BotSection() {
     portfolio,
     tickers,
   } = useCryptoStore();
+
+  const { toast } = useToast();
 
   const [tradeReport, setTradeReport] = useState<TradeReport | null>(null);
   const tradeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -133,6 +136,19 @@ export function BotSection() {
           const trade = generateMockTrade();
           addTrade(trade);
           updatePortfolioWithTrade(trade);
+
+          // Show toast for bot trade
+          toast({
+            title: `🤖 Bot ${trade.side === "BUY" ? "Bought" : "Sold"} ${trade.symbol.replace("USDT", "")}`,
+            description: `${trade.quantity.toFixed(6)} @ $${formatPrice(trade.price)}`,
+          });
+
+          // Persist trade to database
+          fetch("/api/trades", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(trade),
+          }).catch(() => {});
 
           // Schedule next
           tradeIntervalRef.current = scheduleNextTrade() as unknown as ReturnType<typeof setInterval>;

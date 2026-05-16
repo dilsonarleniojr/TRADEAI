@@ -10,11 +10,13 @@ import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Zap, ShoppingCart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
 
 export function QuickTrade() {
   const { selectedSymbol, tickers, tradingMode, addTrade, portfolio, botConfig } = useCryptoStore();
   const [quantity, setQuantity] = useState("");
   const [lastTrade, setLastTrade] = useState<{ side: "BUY" | "SELL"; qty: number; price: number } | null>(null);
+  const { toast } = useToast();
 
   const ticker = tickers[selectedSymbol];
   const currentPrice = ticker?.price ?? 0;
@@ -43,9 +45,24 @@ export function QuickTrade() {
     setLastTrade({ side, qty, price: currentPrice });
     setQuantity("");
 
+    // Show toast notification
+    toast({
+      title: `${side === "BUY" ? "🟢 Buy" : "🔴 Sell"} Order Executed`,
+      description: `${qty} ${selectedSymbol.replace("USDT", "")} @ $${formatPrice(currentPrice)} — Total: $${formatPrice(total)}`,
+    });
+
+    // Persist trade to database
+    fetch("/api/trades", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(trade),
+    }).catch(() => {
+      // Silently fail - local state already updated
+    });
+
     // Clear the last trade notification after 3 seconds
     setTimeout(() => setLastTrade(null), 3000);
-  }, [quantity, currentPrice, selectedSymbol, tradingMode, addTrade]);
+  }, [quantity, currentPrice, selectedSymbol, tradingMode, addTrade, toast]);
 
   const totalCost = quantity ? parseFloat(quantity) * currentPrice : 0;
 

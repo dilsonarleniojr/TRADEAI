@@ -29,13 +29,13 @@ model BotConfig {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  trades    Trade[]
+  trades     Trade[]
   portfolios Portfolio[]
 }
 
 model Trade {
   id          String   @id @default(cuid())
-  botConfigId String
+  botConfigId String?
   symbol      String
   side        String   // "BUY" | "SELL"
   price       Float
@@ -46,7 +46,7 @@ model Trade {
   pnl         Float    @default(0)
   timestamp   DateTime @default(now())
 
-  botConfig BotConfig @relation(fields: [botConfigId], references: [id])
+  botConfig BotConfig? @relation(fields: [botConfigId], references: [id])
 }
 
 model AISignal {
@@ -87,4 +87,20 @@ model BacktestResult {
   pnl            Float
   pnlPercent     Float
   createdAt      DateTime @default(now())
+}
+
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  symbol    String   @unique
+  createdAt DateTime @default(now())
+}
+
+model PriceAlert {
+  id          String   @id @default(cuid())
+  symbol      String
+  targetPrice Float
+  direction   String   // "above" | "below"
+  isTriggered Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

@@ -64,6 +64,7 @@ export function ChartSection() {
   const [interval, setInterval] = useState('1h');
   const [showSMA20, setShowSMA20] = useState(true);
   const [showSMA50, setShowSMA50] = useState(true);
+  const [showBollinger, setShowBollinger] = useState(false);
   const [rsiValue, setRsiValue] = useState<number | null>(null);
   const rsiAbortRef = useRef<AbortController | null>(null);
 
@@ -174,6 +175,18 @@ export function ChartSection() {
           >
             SMA 50
           </Button>
+          <Button
+            variant={showBollinger ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-7 px-2 text-xs ${
+              showBollinger
+                ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30'
+                : 'text-muted-foreground'
+            }`}
+            onClick={() => setShowBollinger(!showBollinger)}
+          >
+            BB (20,2)
+          </Button>
         </div>
       </div>
 
@@ -195,6 +208,7 @@ export function ChartSection() {
                     interval={interval}
                     showSMA20={showSMA20}
                     showSMA50={showSMA50}
+                    showBollinger={showBollinger}
                   />
                 </motion.div>
               </AnimatePresence>
