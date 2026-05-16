@@ -79,7 +79,7 @@ export function BotPortfolio() {
   }, [botActive]);
 
   return (
-    <Card className="bg-card/60 backdrop-blur-md border border-white/5 relative overflow-hidden">
+    <Card className="bg-card/60 backdrop-blur-md gradient-border relative overflow-hidden">
       {/* Gradient border effect */}
       <div className="absolute inset-0 rounded-xl p-[1px] bg-gradient-to-r from-crypto-cyan/20 via-crypto-green/20 to-crypto-gold/20 pointer-events-none" />
       <CardHeader className="pb-3 relative">
@@ -132,7 +132,9 @@ export function BotPortfolio() {
 
         {/* Mini Line Chart */}
         {portfolioHistory.length > 1 && (
-          <div className="bg-secondary/20 rounded-lg p-2 h-[120px]">
+          <div className="bg-secondary/20 rounded-lg p-3 relative">
+          {/* Subtle gradient overlay */}
+          <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-crypto-cyan/5 to-transparent pointer-events-none" />
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={portfolioHistory}>
                 <XAxis dataKey="time" hide />
@@ -175,7 +177,7 @@ export function BotPortfolio() {
 
         {/* Cash & Assets */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
+          <div className="space-y-1 relative">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
               Cash
             </span>

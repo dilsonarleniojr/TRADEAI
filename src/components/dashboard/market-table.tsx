@@ -139,7 +139,7 @@ export function MarketTable() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3, duration: 0.4 }}
     >
-      <Card className="bg-card/60 backdrop-blur-md gradient-border">
+      <Card className="bg-card/60 backdrop-blur-md gradient-border overflow-hidden">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -179,21 +179,23 @@ export function MarketTable() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tickerList.map((ticker) => {
+                {tickerList.map((ticker, idx) => {
                   const isPositive = ticker.priceChangePercent >= 0;
                   const color =
                     symbolColors[ticker.symbol] || "#06b6d4";
                   const isWatched = watchlist.includes(ticker.symbol);
                   const sparkData = sparklineData[ticker.symbol];
                   const sparkColor = isPositive ? "#22c55e" : "#ef4444";
+                  const isAltRow = idx % 2 === 1;
 
                   return (
                     <TableRow
                       key={ticker.symbol}
                       className={cn(
                         "cursor-pointer transition-all duration-200 group",
-                        "hover:bg-gradient-to-r hover:from-primary/5 hover:to-transparent",
-                        isWatched && "bg-crypto-gold/[0.03]"
+                        "hover:bg-gradient-to-r hover:from-primary/5 hover:to-transparent hover:shadow-sm",
+                        isWatched && "bg-crypto-gold/[0.03]",
+                        isAltRow && !isWatched && "table-row-alt"
                       )}
                       style={{ borderLeft: `2px solid ${color}40` }}
                       onClick={() => {
@@ -225,7 +227,7 @@ export function MarketTable() {
                       <TableCell className="py-2.5">
                         <div className="flex items-center gap-2">
                           <div
-                            className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0"
+                            className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0 shadow-sm"
                             style={{ backgroundColor: color }}
                           >
                             {ticker.symbol.replace("USDT", "").slice(0, 2)}
@@ -248,8 +250,8 @@ export function MarketTable() {
                       <TableCell className="text-right py-2.5">
                         <span
                           className={cn(
-                            "text-sm font-mono font-medium",
-                            isPositive ? "text-crypto-green" : "text-crypto-red"
+                            "text-sm font-mono font-semibold px-1.5 py-0.5 rounded",
+                            isPositive ? "text-crypto-green bg-crypto-green/5" : "text-crypto-red bg-crypto-red/5"
                           )}
                         >
                           {formatPercent(ticker.priceChangePercent)}

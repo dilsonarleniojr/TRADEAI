@@ -20,15 +20,15 @@ export function TradeTable({ trades }: { trades: TradeData[] }) {
       <Table>
         <TableHeader>
           <TableRow className="border-border hover:bg-transparent">
-            <TableHead className="text-[11px] text-muted-foreground">Time</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground">Symbol</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground">Side</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground text-right">Price</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground text-right">Qty</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground text-right">Total</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground">Strategy</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground">Mode</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground text-right">PnL</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium">Time</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium">Symbol</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium">Side</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium text-right">Price</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium text-right">Qty</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium text-right">Total</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium">Strategy</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium">Mode</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium text-right">PnL</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -40,7 +40,7 @@ export function TradeTable({ trades }: { trades: TradeData[] }) {
             </TableRow>
           ) : (
             trades.map((trade) => (
-              <TableRow key={trade.id} className="border-border/50">
+              <TableRow key={trade.id} className="border-border/50 table-row-hover">
                 <TableCell className="text-xs font-mono text-muted-foreground">
                   {formatTime(new Date(trade.timestamp).getTime())}
                 </TableCell>
@@ -89,11 +89,11 @@ export function TradeTable({ trades }: { trades: TradeData[] }) {
                   </Badge>
                 </TableCell>
                 <TableCell
-                  className={`text-xs text-right font-mono font-medium ${
+                  className={`text-xs text-right font-mono font-semibold ${
                     trade.pnl > 0
-                      ? "text-crypto-green"
+                      ? "text-crypto-green bg-crypto-green/5"
                       : trade.pnl < 0
-                        ? "text-crypto-red"
+                        ? "text-crypto-red bg-crypto-red/5"
                         : "text-muted-foreground"
                   }`}
                 >

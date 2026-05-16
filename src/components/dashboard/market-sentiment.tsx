@@ -66,7 +66,7 @@ export function MarketSentiment() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.15, duration: 0.4 }}
     >
-      <Card className="bg-card/60 backdrop-blur-md border-white/5 h-full">
+      <Card className="bg-card/60 backdrop-blur-md gradient-border h-full">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Gauge className="w-4 h-4 text-crypto-cyan" />
@@ -81,7 +81,7 @@ export function MarketSentiment() {
               <path
                 d="M 20 85 A 60 60 0 0 1 140 85"
                 fill="none"
-                stroke="rgba(255,255,255,0.06)"
+                stroke="oklch(1 0 0 / 6%)"
                 strokeWidth={gaugeStroke}
                 strokeLinecap="round"
               />
@@ -111,21 +111,22 @@ export function MarketSentiment() {
               <motion.circle
                 cx={80 + 55 * Math.cos(Math.PI - (sentiment.score / 100) * Math.PI)}
                 cy={85 - 55 * Math.sin(Math.PI - (sentiment.score / 100) * Math.PI)}
-                r={5}
+                r={10}
                 fill={sentiment.color}
+                opacity={0.15}
                 initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
+                animate={{ opacity: 0.15 }}
                 transition={{ delay: 0.5, duration: 0.5 }}
               />
               <motion.circle
                 cx={80 + 55 * Math.cos(Math.PI - (sentiment.score / 100) * Math.PI)}
                 cy={85 - 55 * Math.sin(Math.PI - (sentiment.score / 100) * Math.PI)}
-                r={10}
+                r={5}
                 fill={sentiment.color}
-                opacity={0.2}
                 initial={{ opacity: 0 }}
-                animate={{ opacity: 0.2 }}
+                animate={{ opacity: 1 }}
                 transition={{ delay: 0.5, duration: 0.5 }}
+                style={{ filter: `drop-shadow(0 0 4px ${sentiment.color})` }}
               />
             </svg>
             {/* Center text */}
@@ -160,7 +161,7 @@ export function MarketSentiment() {
                 <span className="text-crypto-red font-medium">{losers} Losers</span>
               </div>
             </div>
-            <div className="w-full h-2 bg-secondary rounded-full overflow-hidden flex">
+            <div className="w-full h-2 bg-secondary/50 rounded-full overflow-hidden flex shadow-inner">
               <motion.div
                 className="h-full bg-crypto-green"
                 initial={{ width: 0 }}

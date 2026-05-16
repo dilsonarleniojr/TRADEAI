@@ -6,6 +6,7 @@ import { PriceInfo } from './price-info';
 import { CandlestickChart } from './candlestick-chart';
 import { IndicatorsPanel } from './indicators-panel';
 import { QuickTrade } from './quick-trade';
+import { OrderBook } from './order-book';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -65,6 +66,10 @@ export function ChartSection() {
   const [showSMA20, setShowSMA20] = useState(true);
   const [showSMA50, setShowSMA50] = useState(true);
   const [showBollinger, setShowBollinger] = useState(false);
+  const [showFibonacci, setShowFibonacci] = useState(false);
+  const [showEMA12, setShowEMA12] = useState(false);
+  const [showEMA26, setShowEMA26] = useState(false);
+  const [showVolumeProfile, setShowVolumeProfile] = useState(false);
   const [rsiValue, setRsiValue] = useState<number | null>(null);
   const rsiAbortRef = useRef<AbortController | null>(null);
 
@@ -149,8 +154,8 @@ export function ChartSection() {
           ))}
         </div>
 
-        {/* MA toggles */}
-        <div className="flex items-center gap-1 ml-auto">
+        {/* Indicator toggles */}
+        <div className="flex flex-wrap items-center gap-1 ml-auto">
           <Button
             variant={showSMA20 ? 'default' : 'ghost'}
             size="sm"
@@ -187,13 +192,61 @@ export function ChartSection() {
           >
             BB (20,2)
           </Button>
+          <Button
+            variant={showFibonacci ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-7 px-2 text-xs ${
+              showFibonacci
+                ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
+                : 'text-muted-foreground'
+            }`}
+            onClick={() => setShowFibonacci(!showFibonacci)}
+          >
+            Fib
+          </Button>
+          <Button
+            variant={showEMA12 ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-7 px-2 text-xs ${
+              showEMA12
+                ? 'bg-teal-500/20 text-teal-400 hover:bg-teal-500/30'
+                : 'text-muted-foreground'
+            }`}
+            onClick={() => setShowEMA12(!showEMA12)}
+          >
+            EMA 12
+          </Button>
+          <Button
+            variant={showEMA26 ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-7 px-2 text-xs ${
+              showEMA26
+                ? 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
+                : 'text-muted-foreground'
+            }`}
+            onClick={() => setShowEMA26(!showEMA26)}
+          >
+            EMA 26
+          </Button>
+          <Button
+            variant={showVolumeProfile ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-7 px-2 text-xs ${
+              showVolumeProfile
+                ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                : 'text-muted-foreground'
+            }`}
+            onClick={() => setShowVolumeProfile(!showVolumeProfile)}
+          >
+            Vol Profile
+          </Button>
         </div>
       </div>
 
       {/* Chart + Quick Trade Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-        <div className="lg:col-span-3">
-          <Card className="bg-card/30 border-border overflow-hidden">
+        <div className="lg:col-span-3 min-w-0">
+          <Card className="bg-card/30 backdrop-blur-sm border-border/50 overflow-hidden">
             <CardContent className="p-0">
               <AnimatePresence mode="wait">
                 <motion.div
@@ -209,14 +262,19 @@ export function ChartSection() {
                     showSMA20={showSMA20}
                     showSMA50={showSMA50}
                     showBollinger={showBollinger}
+                    showFibonacci={showFibonacci}
+                    showEMA12={showEMA12}
+                    showEMA26={showEMA26}
+                    showVolumeProfile={showVolumeProfile}
                   />
                 </motion.div>
               </AnimatePresence>
             </CardContent>
           </Card>
         </div>
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 flex flex-col gap-3">
           <QuickTrade />
+          <OrderBook />
         </div>
       </div>
 

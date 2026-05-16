@@ -37,7 +37,7 @@ export function Watchlist() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.15, duration: 0.4 }}
     >
-      <Card className="bg-card/60 backdrop-blur-md border-white/5 h-full">
+      <Card className="bg-card/60 backdrop-blur-md gradient-border h-full">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -74,7 +74,7 @@ export function Watchlist() {
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -10 }}
                       transition={{ duration: 0.2 }}
-                      className="flex items-center justify-between p-2.5 rounded-lg hover:bg-secondary/50 transition-colors group cursor-pointer"
+                      className="flex items-center justify-between p-2.5 rounded-lg hover:bg-secondary/40 transition-colors group cursor-pointer"
                       onClick={() => {
                         setSelectedSymbol(ticker.symbol);
                         setActiveSection("chart");

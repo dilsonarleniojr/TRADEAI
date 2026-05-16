@@ -17,7 +17,7 @@ const cardVariants = {
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: i * 0.1, duration: 0.4 },
+    transition: { delay: i * 0.1, duration: 0.4, ease: "easeOut" },
   }),
 };
 
@@ -46,8 +46,8 @@ export function StatCards() {
       icon: Wallet,
       iconColor: "text-crypto-cyan",
       iconBg: "bg-gradient-to-br from-crypto-cyan/20 to-crypto-cyan/5",
-      hoverGlow: "hover:glow-cyan",
-      accentLine: "from-crypto-cyan/40",
+      accentClass: "card-accent-cyan",
+      hoverGlow: "hover:glow-cyan-sm",
     },
     {
       title: "Total Trades Today",
@@ -57,8 +57,8 @@ export function StatCards() {
       icon: ArrowUpDown,
       iconColor: "text-crypto-gold",
       iconBg: "bg-gradient-to-br from-crypto-gold/20 to-crypto-gold/5",
+      accentClass: "card-accent-gold",
       hoverGlow: "",
-      accentLine: "from-crypto-gold/40",
     },
     {
       title: "Bot Status",
@@ -70,8 +70,8 @@ export function StatCards() {
       iconBg: botActive
         ? "bg-gradient-to-br from-crypto-green/20 to-crypto-green/5"
         : "bg-secondary",
-      hoverGlow: botActive ? "hover:glow-green" : "",
-      accentLine: botActive ? "from-crypto-green/40" : "from-muted-foreground/20",
+      accentClass: botActive ? "card-accent-green" : "",
+      hoverGlow: botActive ? "hover:glow-green-sm" : "",
     },
     {
       title: "Best Performer",
@@ -87,8 +87,8 @@ export function StatCards() {
       iconBg: bestPerformer?.priceChangePercent >= 0
         ? "bg-gradient-to-br from-crypto-green/20 to-crypto-green/5"
         : "bg-gradient-to-br from-crypto-red/20 to-crypto-red/5",
-      hoverGlow: "hover:glow-green",
-      accentLine: bestPerformer?.priceChangePercent >= 0 ? "from-crypto-green/40" : "from-crypto-red/40",
+      accentClass: bestPerformer?.priceChangePercent >= 0 ? "card-accent-green" : "card-accent-red",
+      hoverGlow: "hover:glow-green-sm",
     },
   ];
 
@@ -104,29 +104,28 @@ export function StatCards() {
         >
           <Card
             className={cn(
-              "bg-card/60 backdrop-blur-md gradient-border transition-all duration-300 overflow-hidden",
-              stat.hoverGlow
+              "bg-card/60 backdrop-blur-md gradient-border transition-all duration-300 overflow-hidden cursor-default",
+              "hover:translate-y-[-2px] hover:shadow-lg",
+              stat.hoverGlow,
+              stat.accentClass
             )}
           >
             <CardContent className="p-4 relative">
-              {/* Top accent line */}
-              <div className={cn("absolute top-0 left-3 right-3 h-0.5 bg-gradient-to-r to-transparent", stat.accentLine)} />
-
               <div className="flex items-start justify-between mb-3">
-                <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
                   {stat.title}
                 </span>
-                <div className={cn("p-1.5 rounded-md", stat.iconBg)}>
-                  <stat.icon className={cn("w-3.5 h-3.5", stat.iconColor)} />
+                <div className={cn("p-2 rounded-lg", stat.iconBg)}>
+                  <stat.icon className={cn("w-4 h-4", stat.iconColor)} />
                 </div>
               </div>
               <div className="space-y-1">
-                <p className="text-xl md:text-2xl font-bold tracking-tight number-animate">
+                <p className="text-xl md:text-2xl font-bold tracking-tight number-animate leading-none">
                   {stat.value}
                 </p>
                 <p
                   className={cn(
-                    "text-xs font-medium",
+                    "text-xs font-semibold",
                     stat.subPositive ? "text-crypto-green" : "text-crypto-red"
                   )}
                 >
@@ -134,7 +133,7 @@ export function StatCards() {
                 </p>
               </div>
               {/* Subtle gradient line at bottom */}
-              <div className="absolute bottom-0 left-2 right-2 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
+              <div className="absolute bottom-0 left-2 right-2 h-px bg-gradient-to-r from-transparent via-primary/15 to-transparent" />
             </CardContent>
           </Card>
         </motion.div>

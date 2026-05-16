@@ -131,6 +131,7 @@ function runStrategy(
   let assetQuantity = 0;
   let balance = initialBalance;
   const equityCurve: { date: string; value: number }[] = [];
+  const drawdownCurve: { date: string; drawdown: number }[] = [];
   const trades: BacktestResultData["trades"] = [];
   let maxBalance = initialBalance;
   let maxDrawdown = 0;
@@ -139,6 +140,15 @@ function runStrategy(
   let entryDate = "";
   let wins = 0;
   let totalClosedTrades = 0;
+
+  // Track per-trade PnLs for profit factor, best/worst trade
+  const tradePnls: number[] = [];
+  let bestTradePnl = -Infinity;
+  let bestTradeDate = "";
+  let bestTradeSide: "BUY" | "SELL" = "BUY";
+  let worstTradePnl = Infinity;
+  let worstTradeDate = "";
+  let worstTradeSide: "BUY" | "SELL" = "SELL";
 
   // Pre-calculate indicators
   const rsiValues =
@@ -227,6 +237,20 @@ function runStrategy(
       totalClosedTrades++;
       if (pnl > 0) wins++;
 
+      tradePnls.push(pnl);
+
+      // Track best/worst trade
+      if (pnl > bestTradePnl) {
+        bestTradePnl = pnl;
+        bestTradeDate = date;
+        bestTradeSide = "SELL";
+      }
+      if (pnl < worstTradePnl) {
+        worstTradePnl = pnl;
+        worstTradeDate = date;
+        worstTradeSide = "SELL";
+      }
+
       trades.push({
         date,
         side: "SELL",
@@ -251,8 +275,17 @@ function runStrategy(
 
     // Track max drawdown
     if (balance > maxBalance) maxBalance = balance;
-    const drawdown = ((maxBalance - balance) / maxBalance) * 100;
-    if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+    const dd = ((maxBalance - balance) / maxBalance) * 100;
+    if (dd > maxDrawdown) maxDrawdown = dd;
+
+    // Drawdown curve (store as positive percentages for easier charting)
+    drawdownCurve.push({
+      date: new Date(kline.time).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      }),
+      drawdown: Math.round(dd * 100) / 100,
+    });
   }
 
   // Close any open position at the end
@@ -264,6 +297,20 @@ function runStrategy(
     balance = cash;
     totalClosedTrades++;
     if (pnl > 0) wins++;
+
+    tradePnls.push(pnl);
+
+    if (pnl > bestTradePnl) {
+      bestTradePnl = pnl;
+      bestTradeDate = equityCurve[equityCurve.length - 1]?.date || "";
+      bestTradeSide = "SELL";
+    }
+    if (pnl < worstTradePnl) {
+      worstTradePnl = pnl;
+      worstTradeDate = equityCurve[equityCurve.length - 1]?.date || "";
+      worstTradeSide = "SELL";
+    }
+
     trades.push({
       date: equityCurve[equityCurve.length - 1]?.date || "",
       side: "SELL",
@@ -277,6 +324,76 @@ function runStrategy(
   const totalReturnPercent =
     ((balance - initialBalance) / initialBalance) * 100;
 
+  // ---- Calculate Enhanced Metrics ----
+
+  // Calculate daily returns from equity curve
+  const dailyReturns: number[] = [];
+  for (let i = 1; i < equityCurve.length; i++) {
+    const prevVal = equityCurve[i - 1].value;
+    if (prevVal > 0) {
+      dailyReturns.push((equityCurve[i].value - prevVal) / prevVal);
+    }
+  }
+
+  // Sharpe Ratio: (avgReturn - riskFreeRate) / stdDev
+  // Annual risk-free rate = 2% → daily risk-free rate ≈ 0.02/252
+  const annualRiskFreeRate = 0.02;
+  const dailyRiskFreeRate = annualRiskFreeRate / 252;
+
+  let sharpeRatio = 0;
+  if (dailyReturns.length > 1) {
+    const avgReturn = dailyReturns.reduce((sum, r) => sum + r, 0) / dailyReturns.length;
+    const variance = dailyReturns.reduce((sum, r) => sum + (r - avgReturn) ** 2, 0) / dailyReturns.length;
+    const stdDev = Math.sqrt(variance);
+
+    if (stdDev > 0) {
+      sharpeRatio = ((avgReturn - dailyRiskFreeRate) / stdDev) * Math.sqrt(252);
+    }
+  }
+
+  // Sortino Ratio: (avgReturn - riskFreeRate) / downsideDeviation
+  let sortinoRatio = 0;
+  if (dailyReturns.length > 1) {
+    const avgReturn = dailyReturns.reduce((sum, r) => sum + r, 0) / dailyReturns.length;
+    const downsideReturns = dailyReturns.filter((r) => r < 0);
+    if (downsideReturns.length > 0) {
+      const downsideVariance = downsideReturns.reduce((sum, r) => sum + r ** 2, 0) / downsideReturns.length;
+      const downsideDeviation = Math.sqrt(downsideVariance);
+      if (downsideDeviation > 0) {
+        sortinoRatio = ((avgReturn - dailyRiskFreeRate) / downsideDeviation) * Math.sqrt(252);
+      }
+    } else {
+      // No negative returns - Sortino is infinite
+      sortinoRatio = Infinity;
+    }
+  }
+
+  // Profit Factor: gross profits / gross losses
+  let profitFactor: number | null = null;
+  if (tradePnls.length > 0) {
+    const grossProfit = tradePnls.filter((p) => p > 0).reduce((sum, p) => sum + p, 0);
+    const grossLoss = tradePnls.filter((p) => p < 0).reduce((sum, p) => sum + Math.abs(p), 0);
+    if (grossLoss === 0) {
+      profitFactor = null; // Infinity - no losses
+    } else {
+      profitFactor = grossProfit / grossLoss;
+    }
+  }
+
+  // Average Trade P&L
+  let averageTradePnL = 0;
+  if (tradePnls.length > 0) {
+    averageTradePnL = tradePnls.reduce((sum, p) => sum + p, 0) / tradePnls.length;
+  }
+
+  // Best / Worst Trade
+  const bestTrade = bestTradePnl !== -Infinity
+    ? { pnl: bestTradePnl, date: bestTradeDate, side: bestTradeSide }
+    : null;
+  const worstTrade = worstTradePnl !== Infinity
+    ? { pnl: worstTradePnl, date: worstTradeDate, side: worstTradeSide }
+    : null;
+
   return {
     initialBalance,
     finalBalance: Math.round(balance * 100) / 100,
@@ -287,6 +404,14 @@ function runStrategy(
     totalTrades: trades.length,
     equityCurve,
     trades,
+    // Enhanced metrics
+    sharpeRatio: Math.round(sharpeRatio * 100) / 100,
+    sortinoRatio: isFinite(sortinoRatio) ? Math.round(sortinoRatio * 100) / 100 : 999.99,
+    profitFactor,
+    averageTradePnL: Math.round(averageTradePnL * 100) / 100,
+    bestTrade,
+    worstTrade,
+    drawdownCurve,
   };
 }
 

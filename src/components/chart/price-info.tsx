@@ -135,7 +135,7 @@ export function PriceInfo({ symbol, interval, rsiValue }: PriceInfoProps) {
     <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex flex-wrap items-center gap-3 md:gap-5 px-4 py-3 bg-card/50 rounded-lg border border-border"
+      className="flex flex-wrap items-center gap-3 md:gap-5 px-4 py-3 glass rounded-lg border border-border/50 relative"
     >
       {/* Symbol + Price */}
       <div className="flex items-center gap-2">

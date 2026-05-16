@@ -1,6 +1,6 @@
 "use client";
 
-import { formatPrice, formatDate } from "@/lib/format";
+import { formatPrice } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -13,15 +13,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Area,
-  AreaChart,
 } from "recharts";
 import {
   DollarSign,
@@ -31,6 +29,12 @@ import {
   Target,
   ArrowDownUp,
   Trophy,
+  Activity,
+  Shield,
+  Zap,
+  Star,
+  AlertTriangle,
+  Gauge,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -52,6 +56,14 @@ export interface BacktestResultData {
   totalTrades: number;
   equityCurve: { date: string; value: number }[];
   trades: BacktestTrade[];
+  // New enhanced metrics
+  sharpeRatio: number;
+  sortinoRatio: number;
+  profitFactor: number | null; // null means infinity (no losses)
+  averageTradePnL: number;
+  bestTrade: { pnl: number; date: string; side: "BUY" | "SELL" } | null;
+  worstTrade: { pnl: number; date: string; side: "BUY" | "SELL" } | null;
+  drawdownCurve: { date: string; drawdown: number }[];
 }
 
 interface BacktestResultsProps {
@@ -106,6 +118,87 @@ export function BacktestResults({ results }: BacktestResultsProps) {
     },
   ];
 
+  const advancedMetrics = [
+    {
+      label: "Sharpe Ratio",
+      value: isFinite(results.sharpeRatio) ? results.sharpeRatio.toFixed(2) : "N/A",
+      icon: Gauge,
+      color:
+        results.sharpeRatio > 1
+          ? "text-crypto-green"
+          : results.sharpeRatio > 0
+            ? "text-crypto-gold"
+            : "text-crypto-red",
+      bgColor:
+        results.sharpeRatio > 1
+          ? "bg-crypto-green/10"
+          : results.sharpeRatio > 0
+            ? "bg-crypto-gold/10"
+            : "bg-crypto-red/10",
+      description: "Risk-adjusted return (annualized)",
+    },
+    {
+      label: "Sortino Ratio",
+      value: isFinite(results.sortinoRatio) ? results.sortinoRatio.toFixed(2) : "N/A",
+      icon: Shield,
+      color:
+        results.sortinoRatio > 1
+          ? "text-crypto-green"
+          : results.sortinoRatio > 0
+            ? "text-crypto-gold"
+            : "text-crypto-red",
+      bgColor:
+        results.sortinoRatio > 1
+          ? "bg-crypto-green/10"
+          : results.sortinoRatio > 0
+            ? "bg-crypto-gold/10"
+            : "bg-crypto-red/10",
+      description: "Downside risk-adjusted return",
+    },
+    {
+      label: "Profit Factor",
+      value: results.profitFactor === null ? "∞" : results.profitFactor.toFixed(2),
+      icon: Zap,
+      color:
+        results.profitFactor === null || results.profitFactor > 1.5
+          ? "text-crypto-green"
+          : results.profitFactor > 1
+            ? "text-crypto-gold"
+            : "text-crypto-red",
+      bgColor:
+        results.profitFactor === null || results.profitFactor > 1.5
+          ? "bg-crypto-green/10"
+          : results.profitFactor > 1
+            ? "bg-crypto-gold/10"
+            : "bg-crypto-red/10",
+      description: "Gross profits / Gross losses",
+    },
+    {
+      label: "Avg Trade P&L",
+      value: `$${formatPrice(results.averageTradePnL)}`,
+      icon: Activity,
+      color: results.averageTradePnL >= 0 ? "text-crypto-green" : "text-crypto-red",
+      bgColor: results.averageTradePnL >= 0 ? "bg-crypto-green/10" : "bg-crypto-red/10",
+      description: "Average profit/loss per trade",
+    },
+    {
+      label: "Best Trade",
+      value: results.bestTrade ? `$${formatPrice(results.bestTrade.pnl)}` : "N/A",
+      icon: Star,
+      color: "text-crypto-green",
+      bgColor: "bg-crypto-green/10",
+      description: results.bestTrade ? `${results.bestTrade.date}` : "",
+    },
+    {
+      label: "Worst Trade",
+      value: results.worstTrade ? `-$${formatPrice(Math.abs(results.worstTrade.pnl))}` : "N/A",
+      icon: AlertTriangle,
+      color: "text-crypto-red",
+      bgColor: "bg-crypto-red/10",
+      description: results.worstTrade ? `${results.worstTrade.date}` : "",
+    },
+  ];
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -137,6 +230,41 @@ export function BacktestResults({ results }: BacktestResultsProps) {
                 <div className={`text-base font-bold ${card.color}`}>
                   {card.value}
                 </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Advanced Metrics */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {advancedMetrics.map((card, i) => (
+          <motion.div
+            key={card.label}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.2, delay: (i + 6) * 0.05 }}
+          >
+            <Card className="bg-card border-border">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <div
+                    className={`w-6 h-6 rounded-md ${card.bgColor} flex items-center justify-center`}
+                  >
+                    <card.icon className={`w-3 h-3 ${card.color}`} />
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">
+                    {card.label}
+                  </span>
+                </div>
+                <div className={`text-base font-bold ${card.color}`}>
+                  {card.value}
+                </div>
+                {card.description && (
+                  <div className="text-[9px] text-muted-foreground mt-0.5 truncate">
+                    {card.description}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </motion.div>
@@ -223,6 +351,86 @@ export function BacktestResults({ results }: BacktestResultsProps) {
         </CardContent>
       </Card>
 
+      {/* Drawdown Chart */}
+      <Card className="bg-card border-border">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-crypto-red" />
+            Drawdown
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[150px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={results.drawdownCurve}
+                margin={{ top: 5, right: 10, left: 0, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient
+                    id="drawdownGradient"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop
+                      offset="5%"
+                      stopColor="#ef4444"
+                      stopOpacity={0.4}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor="#ef4444"
+                      stopOpacity={0.05}
+                    />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="rgba(255,255,255,0.05)"
+                />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10, fill: "rgba(255,255,255,0.4)" }}
+                  tickLine={false}
+                  axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fill: "rgba(255,255,255,0.4)" }}
+                  tickLine={false}
+                  axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+                  tickFormatter={(val: number) => `${val.toFixed(1)}%`}
+                  domain={[0, "auto"]}
+                  allowDataOverflow
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "rgba(20, 20, 40, 0.95)",
+                    border: "1px solid rgba(239, 68, 68, 0.3)",
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                    color: "#fff",
+                  }}
+                  formatter={(value: number) => [
+                    `${value.toFixed(2)}%`,
+                    "Drawdown",
+                  ]}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="drawdown"
+                  stroke="#ef4444"
+                  strokeWidth={1.5}
+                  fill="url(#drawdownGradient)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Trade List */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
@@ -264,44 +472,67 @@ export function BacktestResults({ results }: BacktestResultsProps) {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  results.trades.map((trade, i) => (
-                    <TableRow key={i} className="border-border/50">
-                      <TableCell className="text-xs font-mono text-muted-foreground">
-                        {trade.date}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={`text-[10px] px-1.5 py-0 ${
-                            trade.side === "BUY"
-                              ? "bg-crypto-green/15 text-crypto-green border-crypto-green/30"
-                              : "bg-crypto-red/15 text-crypto-red border-crypto-red/30"
-                          }`}
-                        >
-                          {trade.side}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-right font-mono">
-                        ${formatPrice(trade.price)}
-                      </TableCell>
-                      <TableCell className="text-xs text-right font-mono">
-                        {trade.quantity.toFixed(6)}
-                      </TableCell>
-                      <TableCell
-                        className={`text-xs text-right font-mono font-medium ${
-                          trade.pnl > 0
-                            ? "text-crypto-green"
-                            : trade.pnl < 0
-                              ? "text-crypto-red"
-                              : "text-muted-foreground"
+                  results.trades.map((trade, i) => {
+                    const isBest = results.bestTrade && trade.pnl === results.bestTrade.pnl && trade.date === results.bestTrade.date;
+                    const isWorst = results.worstTrade && trade.pnl === results.worstTrade.pnl && trade.date === results.worstTrade.date;
+                    return (
+                      <TableRow
+                        key={i}
+                        className={`border-border/50 ${
+                          isBest
+                            ? "bg-crypto-green/5"
+                            : isWorst
+                              ? "bg-crypto-red/5"
+                              : ""
                         }`}
                       >
-                        {trade.pnl > 0 ? "+" : ""}
-                        {trade.pnl !== 0
-                          ? `$${formatPrice(Math.abs(trade.pnl))}`
-                          : "—"}
-                      </TableCell>
-                    </TableRow>
-                  ))
+                        <TableCell className="text-xs font-mono text-muted-foreground">
+                          {trade.date}
+                          {isBest && (
+                            <Badge className="ml-1 text-[8px] px-1 py-0 bg-crypto-green/15 text-crypto-green border-crypto-green/30">
+                              BEST
+                            </Badge>
+                          )}
+                          {isWorst && (
+                            <Badge className="ml-1 text-[8px] px-1 py-0 bg-crypto-red/15 text-crypto-red border-crypto-red/30">
+                              WORST
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            className={`text-[10px] px-1.5 py-0 ${
+                              trade.side === "BUY"
+                                ? "bg-crypto-green/15 text-crypto-green border-crypto-green/30"
+                                : "bg-crypto-red/15 text-crypto-red border-crypto-red/30"
+                            }`}
+                          >
+                            {trade.side}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono">
+                          ${formatPrice(trade.price)}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono">
+                          {trade.quantity.toFixed(6)}
+                        </TableCell>
+                        <TableCell
+                          className={`text-xs text-right font-mono font-medium ${
+                            trade.pnl > 0
+                              ? "text-crypto-green"
+                              : trade.pnl < 0
+                                ? "text-crypto-red"
+                                : "text-muted-foreground"
+                          }`}
+                        >
+                          {trade.pnl > 0 ? "+" : ""}
+                          {trade.pnl !== 0
+                            ? `$${formatPrice(Math.abs(trade.pnl))}`
+                            : "—"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
