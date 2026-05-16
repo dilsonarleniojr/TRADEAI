@@ -96,7 +96,7 @@ export function MarketHighlights() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2, duration: 0.4 }}
     >
-      <Card className="bg-card/60 backdrop-blur-md border-white/5">
+      <Card className="bg-card/60 backdrop-blur-md gradient-border">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">

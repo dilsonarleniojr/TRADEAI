@@ -58,50 +58,59 @@ export function AISignals() {
               No signals yet
             </div>
           ) : (
-            <div className="space-y-2 max-h-72 overflow-y-auto">
-              {aiSignals.slice(0, 8).map((signal) => (
-                <div
-                  key={signal.id}
-                  className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors glass-hover"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-[10px] font-bold px-1.5 py-0.5 shrink-0",
-                        getActionColor(signal.action)
-                      )}
-                    >
-                      {signal.action}
-                    </Badge>
-                    <div className="min-w-0">
-                      <span className="text-xs font-medium">
-                        {signal.symbol.replace("USDT", "")}
-                      </span>
-                      <span className="text-xs text-muted-foreground ml-1">
-                        @ ${formatPrice(signal.priceAtSignal)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0 ml-2">
-                    {getConfidenceBars(signal.confidence).map((filled, i) => (
-                      <div
-                        key={i}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-96 overflow-y-auto">
+              {aiSignals.slice(0, 8).map((signal) => {
+                const isPositive = signal.action === "BUY";
+                const isNegative = signal.action === "SELL";
+                const borderColor = isPositive ? "border-l-crypto-green" : isNegative ? "border-l-crypto-red" : "border-l-amber-400";
+
+                return (
+                  <div
+                    key={signal.id}
+                    className={cn(
+                      "flex items-center justify-between p-2.5 rounded-lg border-l-2 bg-secondary/30 hover:bg-secondary/50 transition-colors glass-hover",
+                      borderColor
+                    )}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Badge
+                        variant="outline"
                         className={cn(
-                          "w-1 h-3 rounded-full relative overflow-hidden",
-                          filled
-                            ? getConfidenceBarColor(signal.action)
-                            : "bg-secondary"
+                          "text-[10px] font-bold px-1.5 py-0.5 shrink-0",
+                          getActionColor(signal.action)
                         )}
                       >
-                        {filled && i === Math.round(signal.confidence * 5) - 1 && (
-                          <div className="absolute inset-0 shimmer" />
-                        )}
+                        {signal.action}
+                      </Badge>
+                      <div className="min-w-0">
+                        <span className="text-xs font-medium">
+                          {signal.symbol.replace("USDT", "")}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground ml-1">
+                          @ ${formatPrice(signal.priceAtSignal)}
+                        </span>
                       </div>
-                    ))}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                      {getConfidenceBars(signal.confidence).map((filled, i) => (
+                        <div
+                          key={i}
+                          className={cn(
+                            "w-1 h-3 rounded-full relative overflow-hidden",
+                            filled
+                              ? getConfidenceBarColor(signal.action)
+                              : "bg-secondary"
+                          )}
+                        >
+                          {filled && i === Math.round(signal.confidence * 5) - 1 && (
+                            <div className="absolute inset-0 shimmer" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>

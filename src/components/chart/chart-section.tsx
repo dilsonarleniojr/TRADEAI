@@ -5,6 +5,7 @@ import { useCryptoStore } from '@/lib/store';
 import { PriceInfo } from './price-info';
 import { CandlestickChart } from './candlestick-chart';
 import { IndicatorsPanel } from './indicators-panel';
+import { QuickTrade } from './quick-trade';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -176,27 +177,34 @@ export function ChartSection() {
         </div>
       </div>
 
-      {/* Main Chart Area */}
-      <Card className="bg-card/30 border-border overflow-hidden">
-        <CardContent className="p-0">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={`${selectedSymbol}-${interval}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <CandlestickChart
-                symbol={selectedSymbol}
-                interval={interval}
-                showSMA20={showSMA20}
-                showSMA50={showSMA50}
-              />
-            </motion.div>
-          </AnimatePresence>
-        </CardContent>
-      </Card>
+      {/* Chart + Quick Trade Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+        <div className="lg:col-span-3">
+          <Card className="bg-card/30 border-border overflow-hidden">
+            <CardContent className="p-0">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={`${selectedSymbol}-${interval}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <CandlestickChart
+                    symbol={selectedSymbol}
+                    interval={interval}
+                    showSMA20={showSMA20}
+                    showSMA50={showSMA50}
+                  />
+                </motion.div>
+              </AnimatePresence>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="lg:col-span-1">
+          <QuickTrade />
+        </div>
+      </div>
 
       {/* Technical Indicators Panel */}
       <IndicatorsPanel symbol={selectedSymbol} interval={interval} />

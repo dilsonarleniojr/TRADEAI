@@ -7,8 +7,11 @@ import { useBinanceStream } from "@/hooks/use-binance-stream";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
+import { TickerTape } from "@/components/header/ticker-tape";
 import { StatCards } from "@/components/dashboard/stat-cards";
 import { MarketHighlights } from "@/components/dashboard/market-highlights";
+import { MarketSentiment } from "@/components/dashboard/market-sentiment";
+import { Watchlist } from "@/components/dashboard/watchlist";
 import { PriceAlerts } from "@/components/dashboard/price-alerts";
 import { MarketTable } from "@/components/dashboard/market-table";
 import { AISignals } from "@/components/dashboard/ai-signals";
@@ -97,16 +100,24 @@ export default function HomePage() {
             className="space-y-4"
           >
             <StatCards />
-            <MarketHighlights />
-            <PriceAlerts />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <MarketSentiment />
+              <MarketHighlights />
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="lg:col-span-2">
                 <MarketTable />
               </div>
               <div className="space-y-4">
-                <AISignals />
-                <RecentTrades />
+                <Watchlist />
+                <PriceAlerts />
               </div>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2">
+                <AISignals />
+              </div>
+              <RecentTrades />
             </div>
           </motion.div>
         );
@@ -131,6 +142,7 @@ export default function HomePage() {
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <Header />
+          <TickerTape />
           <main className="flex-1 p-3 md:p-5 overflow-y-auto pb-16 md:pb-5">
             {renderContent()}
           </main>
