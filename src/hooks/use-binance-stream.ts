@@ -12,12 +12,20 @@ export function useBinanceStream() {
   const setConnectionStatus = useCryptoStore((s) => s.setConnectionStatus);
 
   useEffect(() => {
-    // Connect to the Binance Socket.IO service
-    const socket = io("/?XTransformPort=3002", {
-      transports: ["websocket", "polling"],
+    // Connect to the Binance Socket.IO service through Caddy gateway
+    // The XTransformPort query parameter tells Caddy to forward to port 3002
+    const socket = io({
+      transports: ["polling", "websocket"],
+      upgrade: true,
       reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 3000,
+      reconnectionAttempts: 20,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 15000,
+      timeout: 20000,
+      // Force the connection URL to include the port transform for Caddy
+      query: { XTransformPort: "3002" },
+      // Important: Socket.IO path must match server config
+      path: "/socket.io",
     });
 
     socketRef.current = socket;
@@ -62,17 +70,23 @@ export function useBinanceStream() {
       console.log("[BinanceStream] Unsubscribed from", data.symbol);
     });
 
-    socket.on("disconnect", () => {
-      console.log("[BinanceStream] Disconnected");
+    socket.on("disconnect", (reason) => {
+      console.log("[BinanceStream] Disconnected:", reason);
       setConnectionStatus("disconnected");
     });
 
-    socket.on("reconnect_attempt", () => {
+    socket.on("reconnect_attempt", (attempt) => {
+      console.log("[BinanceStream] Reconnect attempt:", attempt);
       setConnectionStatus("connecting");
     });
 
     socket.on("reconnect_failed", () => {
+      console.log("[BinanceStream] Reconnect failed");
       setConnectionStatus("disconnected");
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("[BinanceStream] Connection error:", err.message);
     });
 
     return () => {

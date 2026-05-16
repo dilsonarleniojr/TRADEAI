@@ -11,6 +11,7 @@ import { TickerTape } from "@/components/header/ticker-tape";
 import { StatCards } from "@/components/dashboard/stat-cards";
 import { MarketHighlights } from "@/components/dashboard/market-highlights";
 import { MarketSentiment } from "@/components/dashboard/market-sentiment";
+import { PortfolioAllocation } from "@/components/dashboard/portfolio-allocation";
 import { Watchlist } from "@/components/dashboard/watchlist";
 import { PriceAlerts } from "@/components/dashboard/price-alerts";
 import { MarketTable } from "@/components/dashboard/market-table";
@@ -100,9 +101,10 @@ export default function HomePage() {
             className="space-y-4"
           >
             <StatCards />
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <MarketSentiment />
               <MarketHighlights />
+              <PortfolioAllocation />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="lg:col-span-2">

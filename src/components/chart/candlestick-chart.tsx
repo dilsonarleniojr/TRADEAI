@@ -31,6 +31,9 @@ interface ProcessedCandle {
   isBullish: boolean;
   sma20?: number;
   sma50?: number;
+  bbUpper?: number;
+  bbMiddle?: number;
+  bbLower?: number;
 }
 
 interface TooltipData {
@@ -44,6 +47,7 @@ interface CandlestickChartProps {
   interval: string;
   showSMA20?: boolean;
   showSMA50?: boolean;
+  showBollinger?: boolean;
 }
 
 const CHART_PADDING = { top: 20, right: 70, bottom: 30, left: 10 };
@@ -62,7 +66,7 @@ function calculateSMA(closes: number[], period: number): (number | undefined)[] 
   return sma;
 }
 
-export function CandlestickChart({ symbol, interval, showSMA20 = true, showSMA50 = true }: CandlestickChartProps) {
+export function CandlestickChart({ symbol, interval, showSMA20 = true, showSMA50 = true, showBollinger = false }: CandlestickChartProps) {
   const [candles, setCandles] = useState<ProcessedCandle[]>([]);
   const [loading, setLoading] = useState(true);
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
@@ -112,6 +116,21 @@ export function CandlestickChart({ symbol, interval, showSMA20 = true, showSMA50
       const sma20 = calculateSMA(closes, 20);
       const sma50 = calculateSMA(closes, 50);
 
+      // Calculate Bollinger Bands (20-period SMA + 2 standard deviations)
+      const bbPeriod = 20;
+      const bbMultiplier = 2;
+      for (let i = 0; i < processed.length; i++) {
+        if (i >= bbPeriod - 1) {
+          const slice = closes.slice(i - bbPeriod + 1, i + 1);
+          const mean = slice.reduce((a, b) => a + b, 0) / bbPeriod;
+          const variance = slice.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / bbPeriod;
+          const stdDev = Math.sqrt(variance);
+          processed[i].bbUpper = mean + bbMultiplier * stdDev;
+          processed[i].bbMiddle = mean;
+          processed[i].bbLower = mean - bbMultiplier * stdDev;
+        }
+      }
+
       processed.forEach((c, i) => {
         c.sma20 = sma20[i];
         c.sma50 = sma50[i];
@@ -153,6 +172,8 @@ export function CandlestickChart({ symbol, interval, showSMA20 = true, showSMA50
       if (c.sma20 !== undefined && c.sma20 > maxPrice) maxPrice = c.sma20;
       if (c.sma50 !== undefined && c.sma50 < minPrice) minPrice = c.sma50;
       if (c.sma50 !== undefined && c.sma50 > maxPrice) maxPrice = c.sma50;
+      if (c.bbUpper !== undefined && c.bbUpper > maxPrice) maxPrice = c.bbUpper;
+      if (c.bbLower !== undefined && c.bbLower < minPrice) minPrice = c.bbLower;
     }
 
     const padding = (maxPrice - minPrice) * 0.05;
@@ -452,6 +473,68 @@ export function CandlestickChart({ symbol, interval, showSMA20 = true, showSMA50
                   />
                 );
               })}
+
+            {/* Bollinger Bands */}
+            {showBollinger && (
+              <>
+                {/* Fill area between bands */}
+                <path
+                  d={(() => {
+                    const upperPoints: string[] = [];
+                    const lowerPoints: string[] = []
+                    for (let i = 0; i < visibleCandles.length; i++) {
+                      const c = visibleCandles[i];
+                      if (c.bbUpper === undefined || c.bbLower === undefined) continue;
+                      const x = indexToX(i);
+                      upperPoints.push(`${x},${priceToY(c.bbUpper)}`);
+                      lowerPoints.push(`${x},${priceToY(c.bbLower)}`);
+                    }
+                    if (upperPoints.length < 2) return '';
+                    return `M ${upperPoints.join(' L ')} L ${lowerPoints.reverse().join(' L ')} Z`;
+                  })()}
+                  fill="oklch(0.75 0.15 195 / 5%)"
+                  stroke="none"
+                />
+                {/* Upper band */}
+                {visibleCandles.map((candle, i) => {
+                  if (candle.bbUpper === undefined || i === 0) return null;
+                  const prev = visibleCandles[i - 1];
+                  if (prev.bbUpper === undefined) return null;
+                  return (
+                    <line
+                      key={`bb-upper-${i}`}
+                      x1={indexToX(i - 1)}
+                      y1={priceToY(prev.bbUpper)}
+                      x2={indexToX(i)}
+                      y2={priceToY(candle.bbUpper)}
+                      stroke="#06b6d4"
+                      strokeWidth={1}
+                      opacity={0.4}
+                      strokeDasharray="4,2"
+                    />
+                  );
+                })}
+                {/* Lower band */}
+                {visibleCandles.map((candle, i) => {
+                  if (candle.bbLower === undefined || i === 0) return null;
+                  const prev = visibleCandles[i - 1];
+                  if (prev.bbLower === undefined) return null;
+                  return (
+                    <line
+                      key={`bb-lower-${i}`}
+                      x1={indexToX(i - 1)}
+                      y1={priceToY(prev.bbLower)}
+                      x2={indexToX(i)}
+                      y2={priceToY(candle.bbLower)}
+                      stroke="#06b6d4"
+                      strokeWidth={1}
+                      opacity={0.4}
+                      strokeDasharray="4,2"
+                    />
+                  );
+                })}
+              </>
+            )}
 
             {/* Time labels */}
             {timeLabels.map((label, i) => (
