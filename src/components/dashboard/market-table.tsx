@@ -43,7 +43,7 @@ export function MarketTable() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3, duration: 0.4 }}
     >
-      <Card className="bg-card border-border">
+      <Card className="bg-card/60 backdrop-blur-md gradient-border">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -81,7 +81,7 @@ export function MarketTable() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tickerList.map((ticker) => {
+                {tickerList.map((ticker, idx) => {
                   const isPositive = ticker.priceChangePercent >= 0;
                   const color =
                     symbolColors[ticker.symbol] || "#06b6d4";
@@ -93,7 +93,11 @@ export function MarketTable() {
                   return (
                     <TableRow
                       key={ticker.symbol}
-                      className="border-border cursor-pointer hover:bg-accent/50 transition-colors"
+                      className={cn(
+                        "cursor-pointer transition-all duration-200 group",
+                        "hover:bg-gradient-to-r hover:from-primary/5 hover:to-transparent"
+                      )}
+                      style={{ borderLeft: `2px solid ${color}40` }}
                       onClick={() => {
                         setSelectedSymbol(ticker.symbol);
                         setActiveSection("chart");
@@ -102,8 +106,8 @@ export function MarketTable() {
                       <TableCell className="py-2.5">
                         <div className="flex items-center gap-2">
                           <div
-                            className="w-2 h-2 rounded-full shrink-0"
-                            style={{ backgroundColor: color }}
+                            className="w-2 h-2 rounded-full shrink-0 shadow-sm"
+                            style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}60` }}
                           />
                           <div>
                             <span className="text-sm font-medium">
@@ -116,7 +120,7 @@ export function MarketTable() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right py-2.5">
-                        <span className="text-sm font-mono font-medium">
+                        <span className="text-sm font-mono font-medium number-animate">
                           ${formatPrice(ticker.price)}
                         </span>
                       </TableCell>

@@ -70,6 +70,16 @@ export interface ChatMessage {
   timestamp: string;
 }
 
+export interface PriceAlert {
+  id: string;
+  symbol: string;
+  targetPrice: number;
+  direction: "above" | "below";
+  currentPrice: number;
+  isTriggered: boolean;
+  createdAt: string;
+}
+
 interface CryptoStore {
   // Active section/tab
   activeSection: "dashboard" | "chart" | "ai" | "bot" | "backtest" | "history";
@@ -91,6 +101,10 @@ interface CryptoStore {
   // Kline data
   klines: KlineData[];
   setKlines: (klines: KlineData[]) => void;
+
+  // Socket.IO connection status
+  connectionStatus: "connected" | "disconnected" | "connecting";
+  setConnectionStatus: (status: "connected" | "disconnected" | "connecting") => void;
 
   // Bot status
   botActive: boolean;
@@ -116,6 +130,12 @@ interface CryptoStore {
   chatMessages: ChatMessage[];
   addChatMessage: (message: ChatMessage) => void;
   clearChat: () => void;
+
+  // Price alerts
+  alerts: PriceAlert[];
+  addAlert: (alert: PriceAlert) => void;
+  removeAlert: (id: string) => void;
+  updateAlertPrices: (tickers: Record<string, TickerData>) => void;
 
   // Loading states
   isLoading: boolean;
@@ -146,6 +166,10 @@ export const useCryptoStore = create<CryptoStore>((set) => ({
   // Kline data
   klines: [],
   setKlines: (klines) => set({ klines }),
+
+  // Socket.IO connection status
+  connectionStatus: "disconnected" as const,
+  setConnectionStatus: (status) => set({ connectionStatus: status }),
 
   // Bot status
   botActive: false,
@@ -196,6 +220,34 @@ export const useCryptoStore = create<CryptoStore>((set) => ({
       chatMessages: [...state.chatMessages, message],
     })),
   clearChat: () => set({ chatMessages: [] }),
+
+  // Price alerts
+  alerts: [],
+  addAlert: (alert) =>
+    set((state) => ({
+      alerts: [...state.alerts, alert],
+    })),
+  removeAlert: (id) =>
+    set((state) => ({
+      alerts: state.alerts.filter((a) => a.id !== id),
+    })),
+  updateAlertPrices: (tickers) =>
+    set((state) => ({
+      alerts: state.alerts.map((alert) => {
+        const ticker = tickers[alert.symbol];
+        if (!ticker) return alert;
+        const newPrice = ticker.price;
+        const triggered =
+          alert.direction === "above"
+            ? newPrice >= alert.targetPrice
+            : newPrice <= alert.targetPrice;
+        return {
+          ...alert,
+          currentPrice: newPrice,
+          isTriggered: triggered,
+        };
+      }),
+    })),
 
   // Loading states
   isLoading: false,

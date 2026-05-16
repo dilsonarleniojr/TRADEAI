@@ -39,12 +39,15 @@ export function Sidebar() {
       <motion.aside
         initial={{ x: -80 }}
         animate={{ x: 0 }}
-        className="hidden md:flex flex-col items-center w-16 min-w-16 bg-card border-r border-border py-4 gap-1"
+        className="hidden md:flex flex-col items-center w-16 min-w-16 bg-gradient-to-b from-card to-card/80 border-r border-border py-4 gap-1"
       >
         {/* Logo */}
-        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-crypto-cyan to-crypto-green flex items-center justify-center mb-6">
+        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-crypto-cyan to-crypto-green flex items-center justify-center mb-2">
           <span className="text-white font-bold text-sm">IA</span>
         </div>
+
+        {/* Gradient line separator */}
+        <div className="w-8 h-px bg-gradient-to-r from-transparent via-crypto-cyan/40 to-transparent mb-4" />
 
         {/* Nav Items */}
         <nav className="flex flex-col gap-1 flex-1">
@@ -57,16 +60,17 @@ export function Sidebar() {
                     onClick={() => setActiveSection(item.id)}
                     className={cn(
                       "relative w-11 h-11 rounded-lg flex items-center justify-center transition-all duration-200",
-                      "hover:bg-accent hover:text-accent-foreground",
+                      "hover:bg-accent hover:text-accent-foreground hover:scale-105",
                       isActive
-                        ? "bg-primary/15 text-primary"
+                        ? "bg-primary/15 text-primary glow-cyan"
                         : "text-muted-foreground"
                     )}
                   >
                     {isActive && (
                       <motion.div
                         layoutId="sidebar-active"
-                        className="absolute left-0 w-0.5 h-6 bg-primary rounded-r-full"
+                        className="absolute w-2 h-2 rounded-full bg-primary left-1.5 shadow-[0_0_8px_var(--crypto-cyan)]"
+                        style={{ boxShadow: "0 0 8px #06b6d4" }}
                         transition={{ type: "spring", stiffness: 500, damping: 30 }}
                       />
                     )}
@@ -83,12 +87,12 @@ export function Sidebar() {
 
         {/* Bottom indicator */}
         <div className="mt-auto">
-          <div className="w-2 h-2 rounded-full bg-crypto-green animate-pulse" />
+          <div className="w-2 h-2 rounded-full bg-crypto-green animate-pulse shadow-[0_0_8px_#22c55e]" />
         </div>
       </motion.aside>
 
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border flex items-center justify-around py-2 px-1">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 glass border-t border-border flex items-center justify-around py-2 px-1">
         {navItems.slice(0, 5).map((item) => {
           const isActive = activeSection === item.id;
           return (
@@ -96,13 +100,18 @@ export function Sidebar() {
               key={item.id}
               onClick={() => setActiveSection(item.id)}
               className={cn(
-                "flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg transition-colors",
+                "flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg transition-all duration-200",
                 isActive
-                  ? "text-primary"
+                  ? "text-primary scale-105"
                   : "text-muted-foreground"
               )}
             >
-              <item.icon className="w-4 h-4" />
+              <div className="relative">
+                {isActive && (
+                  <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary shadow-[0_0_6px_#06b6d4]" />
+                )}
+                <item.icon className="w-4 h-4" />
+              </div>
               <span className="text-[10px]">{item.label.split(" ")[0]}</span>
             </button>
           );

@@ -11,11 +11,22 @@ import { motion } from "framer-motion";
 function getActionColor(action: AISignalData["action"]) {
   switch (action) {
     case "BUY":
-      return "bg-crypto-green/15 text-crypto-green border-crypto-green/30";
+      return "bg-crypto-green/15 text-crypto-green border-crypto-green/30 glow-green";
     case "SELL":
-      return "bg-crypto-red/15 text-crypto-red border-crypto-red/30";
+      return "bg-crypto-red/15 text-crypto-red border-crypto-red/30 glow-red";
     case "HOLD":
-      return "bg-crypto-gold/15 text-crypto-gold border-crypto-gold/30";
+      return "bg-amber-500/15 text-amber-400 border-amber-500/30";
+  }
+}
+
+function getConfidenceBarColor(action: AISignalData["action"]) {
+  switch (action) {
+    case "BUY":
+      return "bg-crypto-green";
+    case "SELL":
+      return "bg-crypto-red";
+    case "HOLD":
+      return "bg-amber-400";
   }
 }
 
@@ -33,7 +44,7 @@ export function AISignals() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.4, duration: 0.4 }}
     >
-      <Card className="bg-card border-border h-full">
+      <Card className="bg-card/60 backdrop-blur-md gradient-border h-full">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Brain className="w-4 h-4 text-crypto-cyan" />
@@ -51,7 +62,7 @@ export function AISignals() {
               {aiSignals.slice(0, 8).map((signal) => (
                 <div
                   key={signal.id}
-                  className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
+                  className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors glass-hover"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <Badge
@@ -77,10 +88,16 @@ export function AISignals() {
                       <div
                         key={i}
                         className={cn(
-                          "w-1 h-3 rounded-full",
-                          filled ? "bg-crypto-cyan" : "bg-secondary"
+                          "w-1 h-3 rounded-full relative overflow-hidden",
+                          filled
+                            ? getConfidenceBarColor(signal.action)
+                            : "bg-secondary"
                         )}
-                      />
+                      >
+                        {filled && i === Math.round(signal.confidence * 5) - 1 && (
+                          <div className="absolute inset-0 shimmer" />
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>

@@ -150,3 +150,129 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Glass morphism utilities */
+.glass {
+  background: oklch(0.17 0.015 260 / 60%);
+  backdrop-filter: blur(12px);
+  border: 1px solid oklch(1 0 0 / 6%);
+}
+
+.glass-hover:hover {
+  background: oklch(0.2 0.015 260 / 70%);
+  border-color: oklch(1 0 0 / 12%);
+}
+
+/* Glow effects */
+.glow-cyan {
+  box-shadow: 0 0 20px oklch(0.75 0.15 195 / 15%), 0 0 40px oklch(0.75 0.15 195 / 5%);
+}
+.glow-green {
+  box-shadow: 0 0 20px oklch(0.65 0.2 145 / 15%), 0 0 40px oklch(0.65 0.2 145 / 5%);
+}
+.glow-red {
+  box-shadow: 0 0 20px oklch(0.65 0.22 25 / 15%), 0 0 40px oklch(0.65 0.22 25 / 5%);
+}
+
+/* Animated gradient border */
+.gradient-border {
+  position: relative;
+  border: none;
+}
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    oklch(0.75 0.15 195 / 30%),
+    oklch(0.65 0.2 145 / 30%),
+    oklch(0.75 0.15 45 / 30%)
+  );
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  pointer-events: none;
+}
+
+/* Animated background grid */
+.crypto-grid {
+  background-image: linear-gradient(oklch(1 0 0 / 3%) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(1 0 0 / 3%) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Pulse ring animation */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+.pulse-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid currentColor;
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+
+/* Shimmer animation for loading */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    oklch(1 0 0 / 5%) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+/* Number transition */
+@keyframes count-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.number-animate {
+  animation: count-up 0.3s ease-out;
+}
+
+/* Ticker tape animation */
+@keyframes ticker-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+.ticker-tape {
+  animation: ticker-scroll 30s linear infinite;
+}
+.ticker-tape:hover {
+  animation-play-state: paused;
+}
