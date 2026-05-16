@@ -29,6 +29,8 @@ export interface BotConfigData {
   buyThreshold: number;
   sellThreshold: number;
   initialBalance: number;
+  autoTradeSignals: boolean;
+  signalConfidenceThreshold: number;
 }
 
 export interface PortfolioData {
@@ -188,6 +190,8 @@ export const useCryptoStore = create<CryptoStore>((set) => ({
     buyThreshold: 30,
     sellThreshold: 70,
     initialBalance: 10000,
+    autoTradeSignals: false,
+    signalConfidenceThreshold: 75,
   },
   setBotConfig: (config) => set({ botConfig: config }),
 

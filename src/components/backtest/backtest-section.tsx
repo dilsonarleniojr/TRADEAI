@@ -2,8 +2,9 @@
 
 import { useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { BacktestConfig, BacktestConfig as BacktestConfigType } from "./backtest-config";
+import { BacktestConfig, BacktestConfig as BacktestConfigType, StrategyKey } from "./backtest-config";
 import { BacktestResults, BacktestResultData } from "./backtest-results";
+import { BacktestComparison } from "./backtest-comparison";
 import { motion } from "framer-motion";
 import { History, AlertCircle } from "lucide-react";
 
@@ -420,11 +421,15 @@ export function BacktestSection() {
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<BacktestResultData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [compareMode, setCompareMode] = useState(false);
+  const [selectedStrategies, setSelectedStrategies] = useState<StrategyKey[]>(["RSI", "MACD"]);
+  const [comparisonResults, setComparisonResults] = useState<Record<StrategyKey, BacktestResultData> | null>(null);
 
   const runBacktest = useCallback(async () => {
     setIsRunning(true);
     setError(null);
     setResults(null);
+    setComparisonResults(null);
 
     try {
       // Fetch historical klines from Binance API
@@ -468,10 +473,18 @@ export function BacktestSection() {
         );
       }
 
-      // Run the strategy
-      const strategyResult = runStrategy(filteredKlines, config.strategy, config);
-
-      setResults(strategyResult);
+      if (compareMode) {
+        // Run comparison - run each selected strategy
+        const compResults: Partial<Record<StrategyKey, BacktestResultData>> = {};
+        for (const strategy of selectedStrategies) {
+          compResults[strategy] = runStrategy(filteredKlines, strategy, config);
+        }
+        setComparisonResults(compResults as Record<StrategyKey, BacktestResultData>);
+      } else {
+        // Single strategy mode
+        const strategyResult = runStrategy(filteredKlines, config.strategy, config);
+        setResults(strategyResult);
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "An unknown error occurred"
@@ -479,7 +492,7 @@ export function BacktestSection() {
     } finally {
       setIsRunning(false);
     }
-  }, [config]);
+  }, [config, compareMode, selectedStrategies]);
 
   return (
     <motion.div
@@ -510,6 +523,10 @@ export function BacktestSection() {
             setConfig={setConfig}
             onRun={runBacktest}
             isRunning={isRunning}
+            compareMode={compareMode}
+            setCompareMode={setCompareMode}
+            selectedStrategies={selectedStrategies}
+            setSelectedStrategies={setSelectedStrategies}
           />
         </div>
 
@@ -524,7 +541,12 @@ export function BacktestSection() {
             </Card>
           )}
 
-          {results ? (
+          {compareMode && comparisonResults ? (
+            <BacktestComparison
+              results={comparisonResults}
+              strategies={selectedStrategies}
+            />
+          ) : !compareMode && results ? (
             <BacktestResults results={results} />
           ) : (
             <Card className="bg-card border-border">
@@ -534,8 +556,10 @@ export function BacktestSection() {
                 </div>
                 <h3 className="text-sm font-medium mb-1">No Results Yet</h3>
                 <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                  Configure your backtest parameters and click &quot;Run
-                  Backtest&quot; to see strategy performance results.
+                  {compareMode
+                    ? "Select 2-3 strategies and click \"Compare Strategies\" to see side-by-side results."
+                    : "Configure your backtest parameters and click \"Run Backtest\" to see strategy performance results."
+                  }
                 </p>
               </CardContent>
             </Card>

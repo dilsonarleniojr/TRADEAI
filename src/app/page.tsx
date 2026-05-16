@@ -17,12 +17,15 @@ import { PriceAlerts } from "@/components/dashboard/price-alerts";
 import { MarketTable } from "@/components/dashboard/market-table";
 import { AISignals } from "@/components/dashboard/ai-signals";
 import { RecentTrades } from "@/components/dashboard/recent-trades";
+import { PnlTracker } from "@/components/dashboard/pnl-tracker";
+import { AlertNotification } from "@/components/dashboard/alert-notification";
+import { CorrelationHeatmap } from "@/components/dashboard/correlation-heatmap";
 import { ChatSection } from "@/components/ai/chat-section";
 import { ChartSection } from "@/components/chart/chart-section";
 import { BotSection } from "@/components/bot/bot-section";
 import { HistorySection } from "@/components/history/history-section";
 import { BacktestSection } from "@/components/backtest/backtest-section";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 // Fallback mock data (used when Binance API is not available)
 const FALLBACK_TICKERS: Record<string, import("@/lib/store").TickerData> = {
@@ -66,6 +69,26 @@ const MOCK_PORTFOLIO: import("@/lib/store").PortfolioData = {
   pnlPercent: 4.13,
 };
 
+// Stagger animation container for dashboard cards
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.06,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.3, ease: "easeOut" },
+  },
+};
+
 export default function HomePage() {
   const {
     activeSection,
@@ -95,18 +118,23 @@ export default function HomePage() {
         return (
           <motion.div
             key="dashboard"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.3 }}
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
             className="space-y-4"
           >
-            <StatCards />
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <motion.div variants={itemVariants}>
+              <StatCards />
+            </motion.div>
+            <motion.div variants={itemVariants}>
+              <PnlTracker />
+            </motion.div>
+            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <MarketSentiment />
               <MarketHighlights />
               <PortfolioAllocation />
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            </motion.div>
+            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="lg:col-span-2">
                 <MarketTable />
               </div>
@@ -114,25 +142,73 @@ export default function HomePage() {
                 <Watchlist />
                 <PriceAlerts />
               </div>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            </motion.div>
+            <motion.div variants={itemVariants}>
+              <CorrelationHeatmap />
+            </motion.div>
+            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="lg:col-span-2">
                 <AISignals />
               </div>
               <RecentTrades />
-            </div>
+            </motion.div>
           </motion.div>
         );
       case "chart":
-        return <ChartSection key="chart" />;
+        return (
+          <motion.div
+            key="chart"
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <ChartSection />
+          </motion.div>
+        );
       case "ai":
-        return <ChatSection key="ai" />;
+        return (
+          <motion.div
+            key="ai"
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <ChatSection />
+          </motion.div>
+        );
       case "bot":
-        return <BotSection key="bot" />;
+        return (
+          <motion.div
+            key="bot"
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <BotSection />
+          </motion.div>
+        );
       case "backtest":
-        return <BacktestSection key="backtest" />;
+        return (
+          <motion.div
+            key="backtest"
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <BacktestSection />
+          </motion.div>
+        );
       case "history":
-        return <HistorySection key="history" />;
+        return (
+          <motion.div
+            key="history"
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <HistorySection />
+          </motion.div>
+        );
       default:
         return null;
     }
@@ -140,13 +216,16 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background crypto-dot-grid">
+      <AlertNotification />
       <div className="flex flex-1">
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <Header />
           <TickerTape />
-          <main className="flex-1 p-3 md:p-5 overflow-y-auto pb-20 md:pb-5">
-            {renderContent()}
+          <main className="flex-1 p-3 md:p-5 overflow-y-auto pb-20 md:pb-5 cyan-scrollbar scroll-smooth">
+            <AnimatePresence mode="wait">
+              {renderContent()}
+            </AnimatePresence>
           </main>
           <Footer />
         </div>

@@ -13,8 +13,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Settings, AlertTriangle, Brain, TrendingUp, BarChart3 } from "lucide-react";
+import { Settings, AlertTriangle, Brain, TrendingUp, BarChart3, Zap } from "lucide-react";
 
 const SYMBOLS = [
   "BTCUSDT",
@@ -40,7 +41,7 @@ const STRATEGY_ICONS: Record<string, React.ElementType> = {
 export function BotConfigForm() {
   const { botConfig, setBotConfig, tradingMode, botActive } = useCryptoStore();
 
-  const updateConfig = (key: string, value: number | string) => {
+  const updateConfig = (key: string, value: number | string | boolean) => {
     setBotConfig({ ...botConfig, [key]: value });
   };
 
@@ -266,6 +267,52 @@ export function BotConfigForm() {
             disabled={botActive}
             className="h-8 text-xs"
           />
+        </div>
+
+        {/* Auto-Trade from Signals */}
+        <div className="space-y-3 pt-3 border-t border-border">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Zap className="w-3.5 h-3.5 text-crypto-cyan" />
+              <Label className="text-xs text-muted-foreground">Auto-Trade from Signals</Label>
+            </div>
+            <Switch
+              checked={botConfig.autoTradeSignals}
+              onCheckedChange={(checked) =>
+                updateConfig("autoTradeSignals", checked)
+              }
+              disabled={botActive}
+              className="data-[state=checked]:bg-crypto-cyan"
+            />
+          </div>
+          {botConfig.autoTradeSignals && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs text-muted-foreground">
+                  Signal Confidence Threshold
+                </Label>
+                <span className="text-xs font-medium text-crypto-cyan">
+                  {botConfig.signalConfidenceThreshold}%
+                </span>
+              </div>
+              <Slider
+                value={[botConfig.signalConfidenceThreshold]}
+                onValueChange={([val]) => updateConfig("signalConfidenceThreshold", val)}
+                min={50}
+                max={100}
+                step={5}
+                disabled={botActive}
+                className="[&_[data-slot=slider-range]]:bg-crypto-cyan"
+              />
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>50%</span>
+                <span>100%</span>
+              </div>
+              <div className="text-[10px] text-crypto-cyan/70 bg-crypto-cyan/5 border border-crypto-cyan/10 rounded-md p-2">
+                Signals with confidence ≥ {botConfig.signalConfidenceThreshold}% will automatically trigger trades when the bot is active.
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Live Trading API Keys */}

@@ -84,22 +84,72 @@ function calculateMACD(closes: number[]): {
   return { macd, signal, histogram };
 }
 
+function calculateStochRSI(closes: number[], rsiPeriod = 14, stochPeriod = 14, smoothK = 3, smoothD = 3): {
+  k: number[];
+  d: number[];
+} {
+  const rsiValues = calculateRSI(closes, rsiPeriod);
+  if (rsiValues.length < stochPeriod) return { k: [], d: [] };
+
+  const rawK: number[] = [];
+  for (let i = stochPeriod - 1; i < rsiValues.length; i++) {
+    const slice = rsiValues.slice(i - stochPeriod + 1, i + 1);
+    const minRSI = Math.min(...slice);
+    const maxRSI = Math.max(...slice);
+    const diff = maxRSI - minRSI;
+    if (diff === 0) {
+      rawK.push(50);
+    } else {
+      rawK.push(((rsiValues[i] - minRSI) / diff) * 100);
+    }
+  }
+
+  // Smooth %K with SMA(smoothK)
+  const smoothedK: number[] = [];
+  for (let i = 0; i < rawK.length; i++) {
+    if (i < smoothK - 1) {
+      smoothedK.push(rawK[i]); // Not enough data for smoothing, use raw value
+    } else {
+      const sum = rawK.slice(i - smoothK + 1, i + 1).reduce((a, b) => a + b, 0);
+      smoothedK.push(sum / smoothK);
+    }
+  }
+
+  // %D = SMA of %K over smoothD period
+  const dLine: number[] = [];
+  for (let i = 0; i < smoothedK.length; i++) {
+    if (i < smoothD - 1) {
+      dLine.push(smoothedK[i]);
+    } else {
+      const sum = smoothedK.slice(i - smoothD + 1, i + 1).reduce((a, b) => a + b, 0);
+      dLine.push(sum / smoothD);
+    }
+  }
+
+  return { k: smoothedK, d: dLine };
+}
+
 interface IndicatorsPanelProps {
   symbol: string;
   interval: string;
 }
 
+type ActiveTab = 'rsi' | 'macd' | 'stochrsi';
+
 export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
   const [closes, setCloses] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(true);
-  const [activeTab, setActiveTab] = useState<'rsi' | 'macd'>('rsi');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('rsi');
   const rsiSvgRef = useRef<SVGSVGElement>(null);
   const macdSvgRef = useRef<SVGSVGElement>(null);
+  const stochrsiSvgRef = useRef<SVGSVGElement>(null);
   const rsiContainerRef = useRef<HTMLDivElement>(null);
   const macdContainerRef = useRef<HTMLDivElement>(null);
+  const stochrsiContainerRef = useRef<HTMLDivElement>(null);
   const [rsiDimensions, setRsiDimensions] = useState({ width: 800, height: 160 });
   const [macdDimensions, setMacdDimensions] = useState({ width: 800, height: 160 });
+  const [stochrsiDimensions, setStochrsiDimensions] = useState({ width: 800, height: 120 });
 
   // Resize observers
   useEffect(() => {
@@ -122,6 +172,19 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
         setMacdDimensions({ width: Math.max(width, 300), height: Math.max(height, 100) });
+      }
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const container = stochrsiContainerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        setStochrsiDimensions({ width: Math.max(width, 300), height: Math.max(height, 80) });
       }
     });
     observer.observe(container);
@@ -155,12 +218,15 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
   // Calculate indicators
   const rsiValues = useMemo(() => calculateRSI(closes), [closes]);
   const macdData = useMemo(() => calculateMACD(closes), [closes]);
+  const stochrsiData = useMemo(() => calculateStochRSI(closes), [closes]);
 
   // Current indicator values
   const currentRSI = rsiValues.length > 0 ? rsiValues[rsiValues.length - 1] : null;
   const currentMACD = macdData.macd.length > 0 ? macdData.macd[macdData.macd.length - 1] : null;
   const currentSignal = macdData.signal.length > 0 ? macdData.signal[macdData.signal.length - 1] : null;
   const currentHistogram = macdData.histogram.length > 0 ? macdData.histogram[macdData.histogram.length - 1] : null;
+  const currentStochK = stochrsiData.k.length > 0 ? stochrsiData.k[stochrsiData.k.length - 1] : null;
+  const currentStochD = stochrsiData.d.length > 0 ? stochrsiData.d[stochrsiData.d.length - 1] : null;
 
   // RSI chart
   const renderRSIChart = () => {
@@ -313,6 +379,107 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
     );
   };
 
+  // Stochastic RSI chart
+  const renderStochRSIChart = () => {
+    const pad = { top: 15, right: 60, bottom: 20, left: 10 };
+    const chartW = stochrsiDimensions.width - pad.left - pad.right;
+    const chartH = stochrsiDimensions.height - pad.top - pad.bottom;
+
+    if (stochrsiData.k.length === 0) {
+      return (
+        <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+          Insufficient data for Stochastic RSI calculation
+        </div>
+      );
+    }
+
+    const barWidth = chartW / stochrsiData.k.length;
+    const yScale = (val: number) => pad.top + chartH - (val / 100) * chartH;
+    const xScale = (i: number) => pad.left + i * barWidth + barWidth / 2;
+
+    // %K path
+    let kPath = '';
+    stochrsiData.k.forEach((val, i) => {
+      const x = xScale(i);
+      const y = yScale(val);
+      kPath += i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`;
+    });
+
+    // %D path
+    let dPath = '';
+    stochrsiData.d.forEach((val, i) => {
+      const x = xScale(i);
+      const y = yScale(val);
+      dPath += i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`;
+    });
+
+    return (
+      <svg width={stochrsiDimensions.width} height={stochrsiDimensions.height}>
+        <rect x={0} y={0} width={stochrsiDimensions.width} height={stochrsiDimensions.height} fill="oklch(0.14 0.012 260)" rx={6} />
+
+        {/* Overbought zone (above 80) */}
+        <rect x={pad.left} y={yScale(100)} width={chartW} height={yScale(80) - yScale(100)} fill="#ef4444" opacity={0.05} />
+
+        {/* Oversold zone (below 20) */}
+        <rect x={pad.left} y={yScale(20)} width={chartW} height={yScale(0) - yScale(20)} fill="#22c55e" opacity={0.05} />
+
+        {/* Reference lines at 20 and 80 */}
+        <line x1={pad.left} y1={yScale(80)} x2={pad.left + chartW} y2={yScale(80)} stroke="#ef4444" strokeDasharray="4,4" opacity={0.4} />
+        <line x1={pad.left} y1={yScale(20)} x2={pad.left + chartW} y2={yScale(20)} stroke="#22c55e" strokeDasharray="4,4" opacity={0.4} />
+        <line x1={pad.left} y1={yScale(50)} x2={pad.left + chartW} y2={yScale(50)} stroke="oklch(1 0 0 / 5%)" strokeDasharray="2,2" />
+
+        {/* Labels */}
+        <text x={pad.left + chartW + 5} y={yScale(80) + 4} fill="oklch(0.55 0 0)" fontSize={9} fontFamily="monospace">80</text>
+        <text x={pad.left + chartW + 5} y={yScale(50) + 4} fill="oklch(0.45 0 0)" fontSize={9} fontFamily="monospace">50</text>
+        <text x={pad.left + chartW + 5} y={yScale(20) + 4} fill="oklch(0.55 0 0)" fontSize={9} fontFamily="monospace">20</text>
+
+        {/* Legend */}
+        <line x1={pad.left + 10} y1={pad.top + 5} x2={pad.left + 25} y2={pad.top + 5} stroke="#06b6d4" strokeWidth={2} />
+        <text x={pad.left + 30} y={pad.top + 8} fill="oklch(0.65 0 0)" fontSize={9}>%K</text>
+        <line x1={pad.left + 55} y1={pad.top + 5} x2={pad.left + 70} y2={pad.top + 5} stroke="#f97316" strokeWidth={2} />
+        <text x={pad.left + 75} y={pad.top + 8} fill="oklch(0.65 0 0)" fontSize={9}>%D</text>
+
+        {/* %K line (cyan) */}
+        <path d={kPath} fill="none" stroke="#06b6d4" strokeWidth={1.8} />
+
+        {/* %D line (orange) */}
+        <path d={dPath} fill="none" stroke="#f97316" strokeWidth={1.5} />
+
+        {/* Current %K dot */}
+        {stochrsiData.k.length > 0 && (
+          <circle
+            cx={xScale(stochrsiData.k.length - 1)}
+            cy={yScale(stochrsiData.k[stochrsiData.k.length - 1])}
+            r={3}
+            fill="#06b6d4"
+          />
+        )}
+
+        {/* Current %D dot */}
+        {stochrsiData.d.length > 0 && (
+          <circle
+            cx={xScale(stochrsiData.d.length - 1)}
+            cy={yScale(stochrsiData.d[stochrsiData.d.length - 1])}
+            r={3}
+            fill="#f97316"
+          />
+        )}
+
+        {/* Current values on right */}
+        {currentStochK !== null && (
+          <text x={pad.left + chartW + 5} y={yScale(currentStochK) + 4} fill="#06b6d4" fontSize={9} fontFamily="monospace">
+            {currentStochK.toFixed(1)}
+          </text>
+        )}
+        {currentStochD !== null && (
+          <text x={pad.left + chartW + 5} y={yScale(currentStochD) + 4} fill="#f97316" fontSize={9} fontFamily="monospace">
+            {currentStochD.toFixed(1)}
+          </text>
+        )}
+      </svg>
+    );
+  };
+
   const getRSILabel = (val: number | null) => {
     if (val === null) return { text: 'N/A', color: 'text-muted-foreground' };
     if (val >= 70) return { text: 'Overbought', color: 'text-crypto-red' };
@@ -320,15 +487,23 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
     return { text: 'Neutral', color: 'text-crypto-cyan' };
   };
 
+  const getStochRSILabel = (val: number | null) => {
+    if (val === null) return { text: 'N/A', color: 'text-muted-foreground' };
+    if (val >= 80) return { text: 'Overbought', color: 'text-crypto-red' };
+    if (val <= 20) return { text: 'Oversold', color: 'text-crypto-green' };
+    return { text: 'Neutral', color: 'text-crypto-cyan' };
+  };
+
   const rsiLabel = getRSILabel(currentRSI);
+  const stochLabel = getStochRSILabel(currentStochK);
 
   if (loading) {
     return (
       <Card className="bg-card/50 border-border">
         <CardContent className="p-4 space-y-3">
-          <Skeleton className="h-6 w-32" />
-          <Skeleton className="h-[160px] w-full" />
-          <Skeleton className="h-[160px] w-full" />
+          <div className="skeleton-shimmer h-6 w-32 rounded" />
+          <div className="skeleton-shimmer h-[160px] w-full rounded" />
+          <div className="skeleton-shimmer h-[160px] w-full rounded" />
         </CardContent>
       </Card>
     );
@@ -363,6 +538,15 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
                 }`}
               >
                 MACD: {currentMACD > currentSignal ? 'Bullish' : 'Bearish'}
+              </Badge>
+            )}
+            {/* StochRSI badge */}
+            {currentStochK !== null && (
+              <Badge
+                variant="outline"
+                className={`text-xs border-border ${stochLabel.color}`}
+              >
+                StochRSI: {currentStochK.toFixed(1)} ({stochLabel.text})
               </Badge>
             )}
             {expanded ? (
@@ -400,6 +584,14 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
                 >
                   MACD (12,26,9)
                 </Button>
+                <Button
+                  variant={activeTab === 'stochrsi' ? 'default' : 'ghost'}
+                  size="sm"
+                  className={`text-xs h-7 ${activeTab === 'stochrsi' ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30' : ''}`}
+                  onClick={() => setActiveTab('stochrsi')}
+                >
+                  StochRSI (14,3,3)
+                </Button>
               </div>
 
               {/* Charts */}
@@ -416,7 +608,7 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
                   >
                     {renderRSIChart()}
                   </motion.div>
-                ) : (
+                ) : activeTab === 'macd' ? (
                   <motion.div
                     key="macd"
                     initial={{ opacity: 0, x: 10 }}
@@ -427,6 +619,18 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
                     className="px-2 pb-2"
                   >
                     {renderMACDChart()}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="stochrsi"
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -10 }}
+                    transition={{ duration: 0.15 }}
+                    ref={stochrsiContainerRef}
+                    className="px-2 pb-2"
+                  >
+                    {renderStochRSIChart()}
                   </motion.div>
                 )}
               </AnimatePresence>

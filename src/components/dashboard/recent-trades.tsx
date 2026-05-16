@@ -38,9 +38,14 @@ export function RecentTrades() {
         </CardHeader>
         <CardContent>
           {trades.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-xs">
-              <FileText className="w-6 h-6 mx-auto mb-2 opacity-50" />
-              No trades yet
+            <div className="empty-state">
+              <div className="empty-state-icon bg-crypto-gold/10">
+                <FileText className="w-6 h-6 text-crypto-gold/60" />
+              </div>
+              <p className="empty-state-title">No trades yet</p>
+              <p className="empty-state-desc">
+                Start trading with the Quick Trade panel or activate the trading bot
+              </p>
             </div>
           ) : (
             <div className="space-y-2 max-h-72 overflow-y-auto">

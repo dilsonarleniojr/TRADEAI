@@ -70,6 +70,7 @@ export function ChartSection() {
   const [showEMA12, setShowEMA12] = useState(false);
   const [showEMA26, setShowEMA26] = useState(false);
   const [showVolumeProfile, setShowVolumeProfile] = useState(false);
+  const [showIchimoku, setShowIchimoku] = useState(false);
   const [rsiValue, setRsiValue] = useState<number | null>(null);
   const rsiAbortRef = useRef<AbortController | null>(null);
 
@@ -240,6 +241,18 @@ export function ChartSection() {
           >
             Vol Profile
           </Button>
+          <Button
+            variant={showIchimoku ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-7 px-2 text-xs ${
+              showIchimoku
+                ? 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/30'
+                : 'text-muted-foreground'
+            }`}
+            onClick={() => setShowIchimoku(!showIchimoku)}
+          >
+            Ichimoku
+          </Button>
         </div>
       </div>
 
@@ -266,6 +279,7 @@ export function ChartSection() {
                     showEMA12={showEMA12}
                     showEMA26={showEMA26}
                     showVolumeProfile={showVolumeProfile}
+                    showIchimoku={showIchimoku}
                   />
                 </motion.div>
               </AnimatePresence>

@@ -36,6 +36,10 @@ interface ProcessedCandle {
   bbLower?: number;
   ema12?: number;
   ema26?: number;
+  tenkanSen?: number;
+  kijunSen?: number;
+  senkouSpanA?: number;
+  senkouSpanB?: number;
 }
 
 interface TooltipData {
@@ -54,6 +58,7 @@ interface CandlestickChartProps {
   showEMA12?: boolean;
   showEMA26?: boolean;
   showVolumeProfile?: boolean;
+  showIchimoku?: boolean;
 }
 
 const CHART_PADDING = { top: 20, right: 90, bottom: 30, left: 10 };
@@ -95,6 +100,23 @@ function calculateEMA(closes: number[], period: number): (number | undefined)[] 
   return ema;
 }
 
+// Ichimoku helper: calculate the midpoint of (period-high + period-low) / 2
+function calculateMidpointHL(highs: number[], lows: number[], period: number): (number | undefined)[] {
+  const result: (number | undefined)[] = [];
+  for (let i = 0; i < highs.length; i++) {
+    if (i < period - 1) {
+      result.push(undefined);
+    } else {
+      const highSlice = highs.slice(i - period + 1, i + 1);
+      const lowSlice = lows.slice(i - period + 1, i + 1);
+      const periodHigh = Math.max(...highSlice);
+      const periodLow = Math.min(...lowSlice);
+      result.push((periodHigh + periodLow) / 2);
+    }
+  }
+  return result;
+}
+
 export function CandlestickChart({
   symbol,
   interval,
@@ -105,6 +127,7 @@ export function CandlestickChart({
   showEMA12 = false,
   showEMA26 = false,
   showVolumeProfile = false,
+  showIchimoku = false,
 }: CandlestickChartProps) {
   const [candles, setCandles] = useState<ProcessedCandle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -152,6 +175,8 @@ export function CandlestickChart({
 
       // Calculate moving averages
       const closes = processed.map((c) => c.close);
+      const highs = processed.map((c) => c.high);
+      const lows = processed.map((c) => c.low);
       const sma20 = calculateSMA(closes, 20);
       const sma50 = calculateSMA(closes, 50);
 
@@ -172,6 +197,24 @@ export function CandlestickChart({
           processed[i].bbMiddle = mean;
           processed[i].bbLower = mean - bbMultiplier * stdDev;
         }
+      }
+
+      // Calculate Ichimoku Cloud
+      const tenkanSen = calculateMidpointHL(highs, lows, 9);   // Conversion Line
+      const kijunSen = calculateMidpointHL(highs, lows, 26);   // Base Line
+      const senkouSpanB = calculateMidpointHL(highs, lows, 52); // Leading Span B
+
+      for (let i = 0; i < processed.length; i++) {
+        processed[i].tenkanSen = tenkanSen[i];
+        processed[i].kijunSen = kijunSen[i];
+
+        // Senkou Span A = (Tenkan + Kijun) / 2, plotted 26 periods ahead
+        if (tenkanSen[i] !== undefined && kijunSen[i] !== undefined) {
+          processed[i].senkouSpanA = (tenkanSen[i]! + kijunSen[i]!) / 2;
+        }
+
+        // Senkou Span B = (52-period high + 52-period low) / 2, plotted 26 periods ahead
+        processed[i].senkouSpanB = senkouSpanB[i];
       }
 
       processed.forEach((c, i) => {
@@ -225,13 +268,31 @@ export function CandlestickChart({
       if (c.ema26 !== undefined && c.ema26 > maxPrice) maxPrice = c.ema26;
     }
 
+    // Include Ichimoku Senkou Span values in price range (shifted: at position i, cloud comes from candle[i-26])
+    if (showIchimoku) {
+      for (let i = 0; i < visibleCandles.length; i++) {
+        const srcIdx = i - 26;
+        if (srcIdx >= 0 && srcIdx < visibleCandles.length) {
+          const srcCandle = visibleCandles[srcIdx];
+          if (srcCandle.senkouSpanA !== undefined) {
+            if (srcCandle.senkouSpanA < minPrice) minPrice = srcCandle.senkouSpanA;
+            if (srcCandle.senkouSpanA > maxPrice) maxPrice = srcCandle.senkouSpanA;
+          }
+          if (srcCandle.senkouSpanB !== undefined) {
+            if (srcCandle.senkouSpanB < minPrice) minPrice = srcCandle.senkouSpanB;
+            if (srcCandle.senkouSpanB > maxPrice) maxPrice = srcCandle.senkouSpanB;
+          }
+        }
+      }
+    }
+
     const padding = (maxPrice - minPrice) * 0.05;
     minPrice -= padding;
     maxPrice += padding;
     const priceRange = maxPrice - minPrice || 1;
 
     return { minPrice, maxPrice, maxVolume, priceRange };
-  }, [visibleCandles]);
+  }, [visibleCandles, showIchimoku]);
 
   const { minPrice, maxPrice, maxVolume, priceRange } = chartMetrics;
 
@@ -415,6 +476,12 @@ export function CandlestickChart({
   if (showBollinger) legendItems.push({ label: 'BB (20,2)', color: '#06b6d4', opacity: 0.4, dashArray: '4,2' });
   if (showEMA12) legendItems.push({ label: 'EMA 12', color: '#06b6d4', opacity: 0.7 });
   if (showEMA26) legendItems.push({ label: 'EMA 26', color: '#f97316', opacity: 0.7 });
+  if (showIchimoku) {
+    legendItems.push({ label: 'Tenkan', color: '#3b82f6', opacity: 0.8 });
+    legendItems.push({ label: 'Kijun', color: '#dc2626', opacity: 0.8 });
+    legendItems.push({ label: 'Cloud A', color: '#22c55e', opacity: 0.5 });
+    legendItems.push({ label: 'Cloud B', color: '#ef4444', opacity: 0.5 });
+  }
 
   return (
     <div ref={containerRef} className="w-full h-full min-h-[350px] relative">
@@ -500,6 +567,141 @@ export function CandlestickChart({
                 </g>
               );
             })}
+
+            {/* Ichimoku Cloud - rendered FIRST (behind everything else) */}
+            {showIchimoku && (
+              <>
+                {/* Cloud fill - rendered as individual polygon segments for proper color */}
+                {(() => {
+                  const segments: React.ReactNode[] = [];
+                  for (let i = 1; i < visibleCandles.length; i++) {
+                    // At position i, the cloud values come from candle[i-26] (shifted forward 26 periods)
+                    const srcIdxA = i - 26;
+                    const srcIdxPrevA = (i - 1) - 26;
+                    
+                    if (srcIdxA < 0 || srcIdxPrevA < 0) continue;
+                    if (srcIdxA >= visibleCandles.length || srcIdxPrevA >= visibleCandles.length) continue;
+                    
+                    const srcA = visibleCandles[srcIdxA];
+                    const srcPrevA = visibleCandles[srcIdxPrevA];
+                    
+                    if (srcA.senkouSpanA === undefined || srcA.senkouSpanB === undefined) continue;
+                    if (srcPrevA.senkouSpanA === undefined || srcPrevA.senkouSpanB === undefined) continue;
+                    
+                    const spanA = srcA.senkouSpanA;
+                    const spanB = srcA.senkouSpanB;
+                    const prevSpanA = srcPrevA.senkouSpanA;
+                    const prevSpanB = srcPrevA.senkouSpanB;
+                    
+                    const isBullish = spanA >= spanB;
+                    const fillColor = isBullish ? '#22c55e' : '#ef4444';
+                    
+                    const x1 = indexToX(i - 1);
+                    const x2 = indexToX(i);
+                    
+                    segments.push(
+                      <polygon
+                        key={`ichimoku-cloud-${i}`}
+                        points={`${x1},${priceToY(prevSpanA)} ${x2},${priceToY(spanA)} ${x2},${priceToY(spanB)} ${x1},${priceToY(prevSpanB)}`}
+                        fill={fillColor}
+                        opacity={0.1}
+                      />
+                    );
+                  }
+                  return segments;
+                })()}
+
+                {/* Senkou Span A line (green border) */}
+                {visibleCandles.map((_, i) => {
+                  const srcIdx = i - 26;
+                  if (srcIdx < 0 || srcIdx >= visibleCandles.length) return null;
+                  const src = visibleCandles[srcIdx];
+                  if (src.senkouSpanA === undefined || i === 0) return null;
+                  
+                  const prevSrcIdx = (i - 1) - 26;
+                  if (prevSrcIdx < 0 || prevSrcIdx >= visibleCandles.length) return null;
+                  const prevSrc = visibleCandles[prevSrcIdx];
+                  if (prevSrc.senkouSpanA === undefined) return null;
+                  
+                  return (
+                    <line
+                      key={`senkou-a-${i}`}
+                      x1={indexToX(i - 1)}
+                      y1={priceToY(prevSrc.senkouSpanA)}
+                      x2={indexToX(i)}
+                      y2={priceToY(src.senkouSpanA)}
+                      stroke="#22c55e"
+                      strokeWidth={1}
+                      opacity={0.5}
+                    />
+                  );
+                })}
+
+                {/* Senkou Span B line (red border) */}
+                {visibleCandles.map((_, i) => {
+                  const srcIdx = i - 26;
+                  if (srcIdx < 0 || srcIdx >= visibleCandles.length) return null;
+                  const src = visibleCandles[srcIdx];
+                  if (src.senkouSpanB === undefined || i === 0) return null;
+                  
+                  const prevSrcIdx = (i - 1) - 26;
+                  if (prevSrcIdx < 0 || prevSrcIdx >= visibleCandles.length) return null;
+                  const prevSrc = visibleCandles[prevSrcIdx];
+                  if (prevSrc.senkouSpanB === undefined) return null;
+                  
+                  return (
+                    <line
+                      key={`senkou-b-${i}`}
+                      x1={indexToX(i - 1)}
+                      y1={priceToY(prevSrc.senkouSpanB)}
+                      x2={indexToX(i)}
+                      y2={priceToY(src.senkouSpanB)}
+                      stroke="#ef4444"
+                      strokeWidth={1}
+                      opacity={0.5}
+                    />
+                  );
+                })}
+
+                {/* Tenkan-sen (Conversion Line) - blue */}
+                {visibleCandles.map((candle, i) => {
+                  if (candle.tenkanSen === undefined || i === 0) return null;
+                  const prev = visibleCandles[i - 1];
+                  if (prev.tenkanSen === undefined) return null;
+                  return (
+                    <line
+                      key={`tenkan-${i}`}
+                      x1={indexToX(i - 1)}
+                      y1={priceToY(prev.tenkanSen)}
+                      x2={indexToX(i)}
+                      y2={priceToY(candle.tenkanSen)}
+                      stroke="#3b82f6"
+                      strokeWidth={1.5}
+                      opacity={0.8}
+                    />
+                  );
+                })}
+
+                {/* Kijun-sen (Base Line) - red/maroon */}
+                {visibleCandles.map((candle, i) => {
+                  if (candle.kijunSen === undefined || i === 0) return null;
+                  const prev = visibleCandles[i - 1];
+                  if (prev.kijunSen === undefined) return null;
+                  return (
+                    <line
+                      key={`kijun-${i}`}
+                      x1={indexToX(i - 1)}
+                      y1={priceToY(prev.kijunSen)}
+                      x2={indexToX(i)}
+                      y2={priceToY(candle.kijunSen)}
+                      stroke="#dc2626"
+                      strokeWidth={1.5}
+                      opacity={0.8}
+                    />
+                  );
+                })}
+              </>
+            )}
 
             {/* Fibonacci Retracement Overlay */}
             {showFibonacci && fibonacciLevels.length > 0 && (
