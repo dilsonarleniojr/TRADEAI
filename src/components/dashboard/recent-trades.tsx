@@ -1,0 +1,116 @@
+"use client";
+
+import { useCryptoStore, TradeData } from "@/lib/store";
+import { formatPrice, formatTime } from "@/lib/format";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ArrowUpRight, ArrowDownRight, FileText } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
+
+function getSideIcon(side: TradeData["side"]) {
+  return side === "BUY" ? ArrowUpRight : ArrowDownRight;
+}
+
+function getSideColor(side: TradeData["side"]) {
+  return side === "BUY" ? "text-crypto-green" : "text-crypto-red";
+}
+
+function getSideBg(side: TradeData["side"]) {
+  return side === "BUY" ? "bg-crypto-green/10" : "bg-crypto-red/10";
+}
+
+export function RecentTrades() {
+  const { trades } = useCryptoStore();
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.5, duration: 0.4 }}
+    >
+      <Card className="bg-card border-border h-full">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <FileText className="w-4 h-4 text-crypto-gold" />
+            Recent Trades
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {trades.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-xs">
+              <FileText className="w-6 h-6 mx-auto mb-2 opacity-50" />
+              No trades yet
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {trades.slice(0, 5).map((trade) => {
+                const SideIcon = getSideIcon(trade.side);
+                return (
+                  <div
+                    key={trade.id}
+                    className="flex items-center gap-3 p-2.5 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
+                  >
+                    <div
+                      className={cn(
+                        "p-1.5 rounded-md",
+                        getSideBg(trade.side)
+                      )}
+                    >
+                      <SideIcon
+                        className={cn("w-3.5 h-3.5", getSideColor(trade.side))}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-medium">
+                          {trade.symbol.replace("USDT", "")}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[10px] px-1 py-0",
+                            trade.side === "BUY"
+                              ? "border-crypto-green/30 text-crypto-green"
+                              : "border-crypto-red/30 text-crypto-red"
+                          )}
+                        >
+                          {trade.side}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span className="font-mono">
+                          ${formatPrice(trade.price)}
+                        </span>
+                        <span>·</span>
+                        <span>{formatTime(new Date(trade.timestamp).getTime())}</span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-xs font-mono font-medium">
+                        ${formatPrice(trade.total)}
+                      </span>
+                      {trade.pnl !== 0 && (
+                        <p
+                          className={cn(
+                            "text-[10px] font-mono",
+                            trade.pnl >= 0
+                              ? "text-crypto-green"
+                              : "text-crypto-red"
+                          )}
+                        >
+                          {trade.pnl >= 0 ? "+" : ""}
+                          {formatPrice(trade.pnl)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}

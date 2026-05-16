@@ -1,0 +1,421 @@
+"use client";
+
+import { useState, useCallback } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { BacktestConfig, BacktestConfig as BacktestConfigType } from "./backtest-config";
+import { BacktestResults, BacktestResultData } from "./backtest-results";
+import { motion } from "framer-motion";
+import { History, AlertCircle } from "lucide-react";
+
+const DEFAULT_CONFIG: BacktestConfigType = {
+  symbol: "BTCUSDT",
+  strategy: "RSI",
+  startDate: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split("T")[0],
+  endDate: new Date().toISOString().split("T")[0],
+  initialBalance: 10000,
+  rsiPeriod: 14,
+  rsiBuyThreshold: 30,
+  rsiSellThreshold: 70,
+  macdFast: 12,
+  macdSlow: 26,
+  macdSignal: 9,
+};
+
+interface KlinePoint {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+// Calculate RSI from close prices
+function calculateRSI(closes: number[], period: number): number[] {
+  const rsi: number[] = [];
+  if (closes.length < period + 1) {
+    return new Array(closes.length).fill(50);
+  }
+
+  let gains = 0;
+  let losses = 0;
+
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) {
+      gains += diff;
+    } else {
+      losses += Math.abs(diff);
+    }
+  }
+
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+
+  rsi.push(
+    avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss)
+  );
+
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    const currentGain = diff >= 0 ? diff : 0;
+    const currentLoss = diff < 0 ? Math.abs(diff) : 0;
+
+    const newAvgGain = (avgGain * (period - 1) + currentGain) / period;
+    const newAvgLoss = (avgLoss * (period - 1) + currentLoss) / period;
+
+    rsi.push(
+      newAvgLoss === 0
+        ? 100
+        : 100 - 100 / (1 + newAvgGain / newAvgLoss)
+    );
+  }
+
+  // Pad the beginning with 50s
+  while (rsi.length < closes.length) {
+    rsi.unshift(50);
+  }
+
+  return rsi;
+}
+
+// Calculate EMA
+function calculateEMA(data: number[], period: number): number[] {
+  const ema: number[] = [];
+  const multiplier = 2 / (period + 1);
+
+  if (data.length === 0) return ema;
+
+  // First EMA value is the simple average
+  let sum = 0;
+  for (let i = 0; i < Math.min(period, data.length); i++) {
+    sum += data[i];
+  }
+  ema.push(sum / Math.min(period, data.length));
+
+  for (let i = 1; i < data.length; i++) {
+    const prevEma = ema[ema.length - 1];
+    ema.push((data[i] - prevEma) * multiplier + prevEma);
+  }
+
+  return ema;
+}
+
+// Calculate MACD
+function calculateMACD(
+  closes: number[],
+  fast: number,
+  slow: number,
+  signal: number
+): { macdLine: number[]; signalLine: number[]; histogram: number[] } {
+  const emaFast = calculateEMA(closes, fast);
+  const emaSlow = calculateEMA(closes, slow);
+
+  const macdLine = emaFast.map((val, i) => val - emaSlow[i]);
+  const signalLine = calculateEMA(macdLine, signal);
+  const histogram = macdLine.map((val, i) => val - signalLine[i]);
+
+  return { macdLine, signalLine, histogram };
+}
+
+function runStrategy(
+  klines: KlinePoint[],
+  strategy: "RSI" | "MACD" | "AI",
+  config: BacktestConfigType
+): BacktestResultData {
+  const closes = klines.map((k) => k.close);
+  const initialBalance = config.initialBalance;
+  let cash = initialBalance;
+  let assetQuantity = 0;
+  let balance = initialBalance;
+  const equityCurve: { date: string; value: number }[] = [];
+  const trades: BacktestResultData["trades"] = [];
+  let maxBalance = initialBalance;
+  let maxDrawdown = 0;
+  let positionOpen = false;
+  let entryPrice = 0;
+  let entryDate = "";
+  let wins = 0;
+  let totalClosedTrades = 0;
+
+  // Pre-calculate indicators
+  const rsiValues =
+    strategy === "RSI" ? calculateRSI(closes, config.rsiPeriod) : [];
+  const macdResult =
+    strategy === "MACD"
+      ? calculateMACD(closes, config.macdFast, config.macdSlow, config.macdSignal)
+      : null;
+
+  // For AI strategy, pre-generate deterministic signals
+  const aiSignals: ("BUY" | "SELL" | "HOLD")[] = [];
+  if (strategy === "AI") {
+    // Simple pseudo-random based on price movements
+    for (let i = 0; i < closes.length; i++) {
+      if (i < 5) {
+        aiSignals.push("HOLD");
+        continue;
+      }
+      const momentum =
+        (closes[i] - closes[i - 5]) / closes[i - 5];
+      const shortMomentum =
+        (closes[i] - closes[i - 2]) / closes[i - 2];
+
+      if (momentum < -0.03 && shortMomentum < -0.01) {
+        aiSignals.push("BUY");
+      } else if (momentum > 0.03 && shortMomentum > 0.01) {
+        aiSignals.push("SELL");
+      } else {
+        aiSignals.push("HOLD");
+      }
+    }
+  }
+
+  for (let i = 0; i < klines.length; i++) {
+    const kline = klines[i];
+    const date = new Date(kline.time).toISOString().split("T")[0];
+
+    let signal: "BUY" | "SELL" | "HOLD" = "HOLD";
+
+    if (strategy === "RSI" && i > 0) {
+      const rsi = rsiValues[i];
+      const prevRsi = rsiValues[i - 1];
+      if (rsi < config.rsiBuyThreshold && prevRsi >= config.rsiBuyThreshold) {
+        signal = "BUY";
+      } else if (
+        rsi > config.rsiSellThreshold &&
+        prevRsi <= config.rsiSellThreshold
+      ) {
+        signal = "SELL";
+      }
+    } else if (strategy === "MACD" && i > 0 && macdResult) {
+      const histogram = macdResult.histogram[i];
+      const prevHistogram = macdResult.histogram[i - 1];
+      if (histogram > 0 && prevHistogram <= 0) {
+        signal = "BUY";
+      } else if (histogram < 0 && prevHistogram >= 0) {
+        signal = "SELL";
+      }
+    } else if (strategy === "AI") {
+      signal = aiSignals[i];
+    }
+
+    // Execute trades
+    if (signal === "BUY" && !positionOpen && cash > 0) {
+      // Buy with 95% of cash
+      const buyAmount = cash * 0.95;
+      const qty = buyAmount / kline.close;
+      assetQuantity = qty;
+      entryPrice = kline.close;
+      entryDate = date;
+      cash -= buyAmount;
+      positionOpen = true;
+      trades.push({
+        date,
+        side: "BUY",
+        price: kline.close,
+        quantity: qty,
+        pnl: 0,
+      });
+    } else if (signal === "SELL" && positionOpen) {
+      // Sell all
+      const sellValue = assetQuantity * kline.close;
+      const pnl = sellValue - assetQuantity * entryPrice;
+      cash += sellValue;
+
+      totalClosedTrades++;
+      if (pnl > 0) wins++;
+
+      trades.push({
+        date,
+        side: "SELL",
+        price: kline.close,
+        quantity: assetQuantity,
+        pnl,
+      });
+
+      assetQuantity = 0;
+      positionOpen = false;
+    }
+
+    // Calculate current balance
+    balance = cash + assetQuantity * kline.close;
+    equityCurve.push({
+      date: new Date(kline.time).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      }),
+      value: Math.round(balance * 100) / 100,
+    });
+
+    // Track max drawdown
+    if (balance > maxBalance) maxBalance = balance;
+    const drawdown = ((maxBalance - balance) / maxBalance) * 100;
+    if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+  }
+
+  // Close any open position at the end
+  if (positionOpen && klines.length > 0) {
+    const lastPrice = klines[klines.length - 1].close;
+    const sellValue = assetQuantity * lastPrice;
+    const pnl = sellValue - assetQuantity * entryPrice;
+    cash += sellValue;
+    balance = cash;
+    totalClosedTrades++;
+    if (pnl > 0) wins++;
+    trades.push({
+      date: equityCurve[equityCurve.length - 1]?.date || "",
+      side: "SELL",
+      price: lastPrice,
+      quantity: assetQuantity,
+      pnl,
+    });
+  }
+
+  const totalReturn = balance - initialBalance;
+  const totalReturnPercent =
+    ((balance - initialBalance) / initialBalance) * 100;
+
+  return {
+    initialBalance,
+    finalBalance: Math.round(balance * 100) / 100,
+    totalReturn: Math.round(totalReturn * 100) / 100,
+    totalReturnPercent: Math.round(totalReturnPercent * 100) / 100,
+    maxDrawdown: Math.round(maxDrawdown * 100) / 100,
+    winRate: totalClosedTrades > 0 ? (wins / totalClosedTrades) * 100 : 0,
+    totalTrades: trades.length,
+    equityCurve,
+    trades,
+  };
+}
+
+export function BacktestSection() {
+  const [config, setConfig] = useState<BacktestConfigType>(DEFAULT_CONFIG);
+  const [isRunning, setIsRunning] = useState(false);
+  const [results, setResults] = useState<BacktestResultData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const runBacktest = useCallback(async () => {
+    setIsRunning(true);
+    setError(null);
+    setResults(null);
+
+    try {
+      // Fetch historical klines from Binance API
+      const response = await fetch(
+        `/api/market/klines?symbol=${config.symbol}&interval=1d&limit=365`
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch historical data");
+      }
+
+      const data = await response.json();
+
+      if (!Array.isArray(data) || data.length === 0) {
+        throw new Error("No historical data available");
+      }
+
+      // Parse klines - API returns strings
+      const klines: KlinePoint[] = data.map(
+        (k: { time: number; open: string; high: string; low: string; close: string; volume: string }) => ({
+          time: k.time,
+          open: parseFloat(k.open),
+          high: parseFloat(k.high),
+          low: parseFloat(k.low),
+          close: parseFloat(k.close),
+          volume: parseFloat(k.volume),
+        })
+      );
+
+      // Filter by date range
+      const startTime = new Date(config.startDate).getTime();
+      const endTime = new Date(config.endDate).getTime();
+      const filteredKlines = klines.filter(
+        (k) => k.time >= startTime && k.time <= endTime
+      );
+
+      if (filteredKlines.length < 30) {
+        throw new Error(
+          "Not enough data for the selected date range. Please choose a wider range."
+        );
+      }
+
+      // Run the strategy
+      const result = runStrategy(filteredKlines, config.strategy, config);
+
+      setResults(result);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "An unknown error occurred"
+      );
+    } finally {
+      setIsRunning(false);
+    }
+  }, [config]);
+
+  return (
+    <motion.div
+      key="backtest"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-4"
+    >
+      {/* Section Header */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-crypto-cyan/10 flex items-center justify-center">
+          <History className="w-5 h-5 text-crypto-cyan" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold">Strategy Backtesting</h2>
+          <p className="text-xs text-muted-foreground">
+            Test your trading strategies against historical data
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Config Panel */}
+        <div className="lg:col-span-1">
+          <BacktestConfig
+            config={config}
+            setConfig={setConfig}
+            onRun={runBacktest}
+            isRunning={isRunning}
+          />
+        </div>
+
+        {/* Results */}
+        <div className="lg:col-span-2">
+          {error && (
+            <Card className="bg-crypto-red/5 border-crypto-red/20 mb-4">
+              <CardContent className="p-4 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-crypto-red shrink-0" />
+                <span className="text-sm text-crypto-red">{error}</span>
+              </CardContent>
+            </Card>
+          )}
+
+          {results ? (
+            <BacktestResults results={results} />
+          ) : (
+            <Card className="bg-card border-border">
+              <CardContent className="p-8 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-crypto-cyan/10 flex items-center justify-center mx-auto mb-4">
+                  <History className="w-7 h-7 text-crypto-cyan" />
+                </div>
+                <h3 className="text-sm font-medium mb-1">No Results Yet</h3>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                  Configure your backtest parameters and click &quot;Run
+                  Backtest&quot; to see strategy performance results.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}

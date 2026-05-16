@@ -1,0 +1,12 @@
+{
+  "name": "binance-service",
+  "version": "1.0.0",
+  "description": "Binance WebSocket mini-service for real-time crypto market data",
+  "scripts": {
+    "dev": "bun --hot index.ts"
+  },
+  "dependencies": {
+    "socket.io": "^4.7.4",
+    "z-ai-web-dev-sdk": "^0.0.18"
+  }
+}

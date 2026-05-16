@@ -1,0 +1,90 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model BotConfig {
+  id             String   @id @default(cuid())
+  name           String
+  strategy       String   // "RSI" | "MACD" | "AI"
+  symbol         String   // e.g. "BTCUSDT"
+  stopLoss       Float
+  takeProfit     Float
+  maxDailyTrades Int
+  buyThreshold   Float
+  sellThreshold  Float
+  isActive       Boolean  @default(false)
+  mode           String   @default("paper") // "paper" | "live"
+  initialBalance Float    @default(10000)
+  currentBalance Float    @default(10000)
+  apiKey         String?
+  apiSecret      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  trades    Trade[]
+  portfolios Portfolio[]
+}
+
+model Trade {
+  id          String   @id @default(cuid())
+  botConfigId String
+  symbol      String
+  side        String   // "BUY" | "SELL"
+  price       Float
+  quantity    Float
+  total       Float
+  strategy    String
+  mode        String   // "paper" | "live"
+  pnl         Float    @default(0)
+  timestamp   DateTime @default(now())
+
+  botConfig BotConfig @relation(fields: [botConfigId], references: [id])
+}
+
+model AISignal {
+  id            String   @id @default(cuid())
+  symbol        String
+  action        String   // "BUY" | "SELL" | "HOLD"
+  confidence    Float    // 0-1
+  reasoning     String
+  priceAtSignal Float
+  createdAt     DateTime @default(now())
+}
+
+model Portfolio {
+  id            String   @id @default(cuid())
+  botConfigId   String
+  totalValue    Float
+  cashBalance   Float
+  assetBalance  Float
+  assetQuantity Float
+  pnl           Float    @default(0)
+  pnlPercent    Float    @default(0)
+  timestamp     DateTime @default(now())
+
+  botConfig BotConfig @relation(fields: [botConfigId], references: [id])
+}
+
+model BacktestResult {
+  id             String   @id @default(cuid())
+  symbol         String
+  strategy       String
+  startDate      DateTime
+  endDate        DateTime
+  initialBalance Float
+  finalBalance   Float
+  totalTrades    Int
+  winRate        Float
+  maxDrawdown    Float
+  pnl            Float
+  pnlPercent     Float
+  createdAt      DateTime @default(now())
+}
