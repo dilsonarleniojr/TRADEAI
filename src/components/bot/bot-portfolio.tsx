@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState, useMemo } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { formatPrice } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,11 +12,36 @@ import {
   TrendingUp,
   TrendingDown,
   BarChart3,
+  ArrowUpRight,
+  ArrowDownRight,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+} from "recharts";
+
+interface PortfolioHistoryPoint {
+  time: string;
+  value: number;
+}
 
 export function BotPortfolio() {
-  const { portfolio, botConfig, trades } = useCryptoStore();
+  const { portfolio, botConfig, trades, botActive, tickers } = useCryptoStore();
+  const [portfolioHistory, setPortfolioHistory] = useState<PortfolioHistoryPoint[]>([]);
+
+  const dailyChange = useMemo(() => {
+    const initial = botConfig.initialBalance;
+    const current = portfolio.totalValue;
+    const change = current - initial;
+    const changePercent = initial > 0 ? (change / initial) * 100 : 0;
+    return { value: change, percent: changePercent };
+  }, [portfolio.totalValue, botConfig.initialBalance]);
 
   const todayTrades = trades.filter((t) => {
     const tradeDate = new Date(t.timestamp).toDateString();
@@ -25,30 +51,127 @@ export function BotPortfolio() {
 
   const pnlIsPositive = portfolio.pnl >= 0;
 
+  // Track portfolio history (last 20 data points)
+  useEffect(() => {
+    if (!botActive) return;
+
+    const interval = setInterval(() => {
+      const currentPortfolio = useCryptoStore.getState().portfolio;
+      const now = new Date();
+      const timeLabel = now.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+
+      setPortfolioHistory((prev) => {
+        const newHistory = [
+          ...prev,
+          { time: timeLabel, value: currentPortfolio.totalValue },
+        ];
+        // Keep last 20 data points
+        return newHistory.slice(-20);
+      });
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [botActive]);
+
   return (
-    <Card className="bg-card border-border">
-      <CardHeader className="pb-3">
+    <Card className="bg-card/60 backdrop-blur-md border border-white/5 relative overflow-hidden">
+      {/* Gradient border effect */}
+      <div className="absolute inset-0 rounded-xl p-[1px] bg-gradient-to-r from-crypto-cyan/20 via-crypto-green/20 to-crypto-gold/20 pointer-events-none" />
+      <CardHeader className="pb-3 relative">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <Wallet className="w-4 h-4 text-crypto-cyan" />
           Portfolio Status
+          {botActive && (
+            <span className="w-1.5 h-1.5 rounded-full bg-crypto-green animate-pulse ml-1" />
+          )}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 relative">
         {/* Total Balance */}
         <div className="bg-secondary/30 rounded-lg p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <DollarSign className="w-4 h-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Current Balance</span>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Current Balance</span>
+            </div>
+            {/* Daily Change Indicator */}
+            <div
+              className={`flex items-center gap-1 text-xs font-medium ${
+                dailyChange.value >= 0 ? "text-crypto-green" : "text-crypto-red"
+              }`}
+            >
+              {dailyChange.value >= 0 ? (
+                <ArrowUpRight className="w-3 h-3" />
+              ) : (
+                <ArrowDownRight className="w-3 h-3" />
+              )}
+              <span>
+                {dailyChange.value >= 0 ? "+" : ""}${formatPrice(Math.abs(dailyChange.value))}
+              </span>
+              <span className="opacity-75">
+                ({dailyChange.percent >= 0 ? "+" : ""}
+                {dailyChange.percent.toFixed(2)}%)
+              </span>
+            </div>
           </div>
           <motion.div
             key={portfolio.totalValue}
-            initial={{ scale: 1.02 }}
+            initial={{ scale: 1.03 }}
             animate={{ scale: 1 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
             className="text-2xl font-bold tracking-tight"
           >
             ${formatPrice(portfolio.totalValue)}
           </motion.div>
         </div>
+
+        {/* Mini Line Chart */}
+        {portfolioHistory.length > 1 && (
+          <div className="bg-secondary/20 rounded-lg p-2 h-[120px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={portfolioHistory}>
+                <XAxis dataKey="time" hide />
+                <YAxis
+                  domain={["dataMin - 10", "dataMax + 10"]}
+                  hide
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "rgba(20, 20, 30, 0.9)",
+                    border: "1px solid rgba(6, 182, 212, 0.3)",
+                    borderRadius: "8px",
+                    fontSize: "11px",
+                    color: "#e2e8f0",
+                  }}
+                  formatter={(value: number) => [`$${formatPrice(value)}`, "Portfolio"]}
+                  labelFormatter={(label: string) => `Time: ${label}`}
+                />
+                <ReferenceLine
+                  y={botConfig.initialBalance}
+                  stroke="rgba(100, 116, 139, 0.4)"
+                  strokeDasharray="3 3"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke={pnlIsPositive ? "#22c55e" : "#ef4444"}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{
+                    r: 3,
+                    fill: pnlIsPositive ? "#22c55e" : "#ef4444",
+                    stroke: "none",
+                  }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
 
         {/* Cash & Assets */}
         <div className="grid grid-cols-2 gap-3">
@@ -56,17 +179,27 @@ export function BotPortfolio() {
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
               Cash
             </span>
-            <div className="text-sm font-medium">
+            <motion.div
+              key={portfolio.cashBalance}
+              initial={{ opacity: 0.5 }}
+              animate={{ opacity: 1 }}
+              className="text-sm font-medium"
+            >
               ${formatPrice(portfolio.cashBalance)}
-            </div>
+            </motion.div>
           </div>
           <div className="space-y-1">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
               Assets
             </span>
-            <div className="text-sm font-medium">
+            <motion.div
+              key={portfolio.assetBalance}
+              initial={{ opacity: 0.5 }}
+              animate={{ opacity: 1 }}
+              className="text-sm font-medium"
+            >
               ${formatPrice(portfolio.assetBalance)}
-            </div>
+            </motion.div>
           </div>
         </div>
 
@@ -81,13 +214,17 @@ export function BotPortfolio() {
             <span className="text-xs text-muted-foreground">Unrealized PnL</span>
           </div>
           <div className="flex items-center gap-2">
-            <span
+            <motion.span
+              key={portfolio.pnl}
+              initial={{ scale: 1.1 }}
+              animate={{ scale: 1 }}
+              transition={{ duration: 0.2 }}
               className={`text-sm font-semibold ${
                 pnlIsPositive ? "text-crypto-green" : "text-crypto-red"
               }`}
             >
               {pnlIsPositive ? "+" : ""}${formatPrice(Math.abs(portfolio.pnl))}
-            </span>
+            </motion.span>
             <Badge
               className={`text-[10px] ${
                 pnlIsPositive

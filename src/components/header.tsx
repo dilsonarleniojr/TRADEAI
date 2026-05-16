@@ -1,15 +1,20 @@
 "use client";
 
 import { useCryptoStore } from "@/lib/store";
-import { Activity, Wifi, WifiOff } from "lucide-react";
+import { Activity, Wifi, WifiOff, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 
 export function Header() {
-  const { tradingMode, setTradingMode, selectedSymbol, botActive } =
-    useCryptoStore();
+  const {
+    tradingMode,
+    setTradingMode,
+    selectedSymbol,
+    botActive,
+    connectionStatus,
+  } = useCryptoStore();
 
   return (
     <motion.header
@@ -77,12 +82,34 @@ export function Header() {
         )}
         <Button
           variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          aria-label="Connection status"
+          size="sm"
+          className="h-8 gap-1.5 px-2"
+          aria-label={`Connection status: ${connectionStatus}`}
         >
-          <Wifi className="w-4 h-4 text-crypto-green" />
-          <WifiOff className="w-4 h-4 text-crypto-red hidden" />
+          {connectionStatus === "connected" && (
+            <>
+              <Wifi className="w-4 h-4 text-crypto-green" />
+              <span className="hidden sm:inline text-xs text-crypto-green font-medium">
+                Connected
+              </span>
+            </>
+          )}
+          {connectionStatus === "disconnected" && (
+            <>
+              <WifiOff className="w-4 h-4 text-crypto-red" />
+              <span className="hidden sm:inline text-xs text-crypto-red font-medium">
+                Disconnected
+              </span>
+            </>
+          )}
+          {connectionStatus === "connecting" && (
+            <>
+              <Loader2 className="w-4 h-4 text-crypto-gold animate-spin" />
+              <span className="hidden sm:inline text-xs text-crypto-gold font-medium">
+                Connecting...
+              </span>
+            </>
+          )}
         </Button>
       </div>
     </motion.header>

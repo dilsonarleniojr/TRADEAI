@@ -92,8 +92,8 @@ export function useBinanceData() {
   useEffect(() => {
     fetchTickers(); // Initial fetch
 
-    // Refresh tickers every 15 seconds
-    intervalRef.current = setInterval(fetchTickers, 15000);
+    // Refresh tickers every 60 seconds as fallback (Socket.IO provides real-time updates)
+    intervalRef.current = setInterval(fetchTickers, 60000);
 
     return () => {
       if (intervalRef.current) {

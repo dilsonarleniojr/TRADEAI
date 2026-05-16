@@ -178,7 +178,7 @@ function runStrategy(
 
     let signal: "BUY" | "SELL" | "HOLD" = "HOLD";
 
-    if (strategy === "RSI" && i > 0) {
+    if (strategy === "RSI" && i > 0 && rsiValues[i] !== undefined && rsiValues[i - 1] !== undefined) {
       const rsi = rsiValues[i];
       const prevRsi = rsiValues[i - 1];
       if (rsi < config.rsiBuyThreshold && prevRsi >= config.rsiBuyThreshold) {
@@ -189,7 +189,7 @@ function runStrategy(
       ) {
         signal = "SELL";
       }
-    } else if (strategy === "MACD" && i > 0 && macdResult) {
+    } else if (strategy === "MACD" && i > 0 && macdResult && macdResult.histogram[i] !== undefined && macdResult.histogram[i - 1] !== undefined) {
       const histogram = macdResult.histogram[i];
       const prevHistogram = macdResult.histogram[i - 1];
       if (histogram > 0 && prevHistogram <= 0) {
@@ -197,7 +197,7 @@ function runStrategy(
       } else if (histogram < 0 && prevHistogram >= 0) {
         signal = "SELL";
       }
-    } else if (strategy === "AI") {
+    } else if (strategy === "AI" && aiSignals[i]) {
       signal = aiSignals[i];
     }
 
@@ -311,16 +311,17 @@ export function BacktestSection() {
         throw new Error("Failed to fetch historical data");
       }
 
-      const data = await response.json();
+      const apiResult = await response.json();
 
-      if (!Array.isArray(data) || data.length === 0) {
+      const klinesRaw = apiResult.data || [];
+      if (!Array.isArray(klinesRaw) || klinesRaw.length === 0) {
         throw new Error("No historical data available");
       }
 
       // Parse klines - API returns strings
-      const klines: KlinePoint[] = data.map(
-        (k: { time: number; open: string; high: string; low: string; close: string; volume: string }) => ({
-          time: k.time,
+      const klines: KlinePoint[] = klinesRaw.map(
+        (k: { openTime: number; open: string; high: string; low: string; close: string; volume: string }) => ({
+          time: k.openTime,
           open: parseFloat(k.open),
           high: parseFloat(k.high),
           low: parseFloat(k.low),
@@ -343,9 +344,9 @@ export function BacktestSection() {
       }
 
       // Run the strategy
-      const result = runStrategy(filteredKlines, config.strategy, config);
+      const strategyResult = runStrategy(filteredKlines, config.strategy, config);
 
-      setResults(result);
+      setResults(strategyResult);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "An unknown error occurred"

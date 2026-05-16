@@ -42,7 +42,8 @@ export function StatCards() {
       subPositive: portfolio.pnlPercent >= 0,
       icon: Wallet,
       iconColor: "text-crypto-cyan",
-      iconBg: "bg-crypto-cyan/10",
+      iconBg: "bg-gradient-to-br from-crypto-cyan/20 to-crypto-cyan/5",
+      hoverGlow: "hover:glow-cyan",
     },
     {
       title: "Total Trades Today",
@@ -51,7 +52,8 @@ export function StatCards() {
       subPositive: true,
       icon: ArrowUpDown,
       iconColor: "text-crypto-gold",
-      iconBg: "bg-crypto-gold/10",
+      iconBg: "bg-gradient-to-br from-crypto-gold/20 to-crypto-gold/5",
+      hoverGlow: "",
     },
     {
       title: "Bot Status",
@@ -60,7 +62,10 @@ export function StatCards() {
       subPositive: botActive,
       icon: Bot,
       iconColor: botActive ? "text-crypto-green" : "text-muted-foreground",
-      iconBg: botActive ? "bg-crypto-green/10" : "bg-secondary",
+      iconBg: botActive
+        ? "bg-gradient-to-br from-crypto-green/20 to-crypto-green/5"
+        : "bg-secondary",
+      hoverGlow: botActive ? "hover:glow-green" : "",
     },
     {
       title: "Best Performer",
@@ -73,7 +78,8 @@ export function StatCards() {
       subPositive: bestPerformer ? bestPerformer.priceChangePercent >= 0 : true,
       icon: TrendingUp,
       iconColor: "text-crypto-green",
-      iconBg: "bg-crypto-green/10",
+      iconBg: "bg-gradient-to-br from-crypto-green/20 to-crypto-green/5",
+      hoverGlow: "hover:glow-green",
     },
   ];
 
@@ -87,10 +93,15 @@ export function StatCards() {
           animate="visible"
           variants={cardVariants}
         >
-          <Card className="bg-card border-border hover:border-primary/30 transition-colors">
-            <CardContent className="p-4">
+          <Card
+            className={cn(
+              "bg-card/60 backdrop-blur-md gradient-border transition-all duration-300",
+              stat.hoverGlow
+            )}
+          >
+            <CardContent className="p-4 relative">
               <div className="flex items-start justify-between mb-3">
-                <span className="text-xs text-muted-foreground font-medium">
+                <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
                   {stat.title}
                 </span>
                 <div className={cn("p-1.5 rounded-md", stat.iconBg)}>
@@ -98,7 +109,7 @@ export function StatCards() {
                 </div>
               </div>
               <div className="space-y-1">
-                <p className="text-lg md:text-xl font-bold tracking-tight">
+                <p className="text-xl md:text-2xl font-bold tracking-tight number-animate">
                   {stat.value}
                 </p>
                 <p
@@ -110,6 +121,8 @@ export function StatCards() {
                   {stat.subValue}
                 </p>
               </div>
+              {/* Subtle gradient line at bottom */}
+              <div className="absolute bottom-0 left-2 right-2 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
             </CardContent>
           </Card>
         </motion.div>

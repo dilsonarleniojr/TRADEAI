@@ -3,10 +3,13 @@
 import { useEffect } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { useBinanceData } from "@/hooks/use-binance-data";
+import { useBinanceStream } from "@/hooks/use-binance-stream";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { StatCards } from "@/components/dashboard/stat-cards";
+import { MarketHighlights } from "@/components/dashboard/market-highlights";
+import { PriceAlerts } from "@/components/dashboard/price-alerts";
 import { MarketTable } from "@/components/dashboard/market-table";
 import { AISignals } from "@/components/dashboard/ai-signals";
 import { RecentTrades } from "@/components/dashboard/recent-trades";
@@ -70,7 +73,8 @@ export default function HomePage() {
   } = useCryptoStore();
 
   // Connect to real Binance data
-  useBinanceData();
+  useBinanceData(); // Fetches initial data + periodic refresh (60s fallback)
+  useBinanceStream(); // Real-time Socket.IO updates
 
   // Initialize with fallback data, then real data will replace it
   useEffect(() => {
@@ -93,6 +97,8 @@ export default function HomePage() {
             className="space-y-4"
           >
             <StatCards />
+            <MarketHighlights />
+            <PriceAlerts />
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="lg:col-span-2">
                 <MarketTable />
