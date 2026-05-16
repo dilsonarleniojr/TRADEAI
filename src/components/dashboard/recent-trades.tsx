@@ -29,7 +29,7 @@ export function RecentTrades() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.5, duration: 0.4 }}
     >
-      <Card className="bg-card border-border h-full">
+      <Card className="bg-card/60 backdrop-blur-md gradient-border h-full">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <FileText className="w-4 h-4 text-crypto-gold" />
@@ -44,12 +44,15 @@ export function RecentTrades() {
             </div>
           ) : (
             <div className="space-y-2 max-h-72 overflow-y-auto">
-              {trades.slice(0, 5).map((trade) => {
+              {trades.slice(0, 6).map((trade) => {
                 const SideIcon = getSideIcon(trade.side);
                 return (
                   <div
                     key={trade.id}
-                    className="flex items-center gap-3 p-2.5 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
+                    className={cn(
+                      "flex items-center gap-3 p-2.5 rounded-lg border-l-2 transition-colors hover:bg-secondary/50",
+                      trade.side === "BUY" ? "border-l-crypto-green bg-crypto-green/[0.03]" : "border-l-crypto-red bg-crypto-red/[0.03]"
+                    )}
                   >
                     <div
                       className={cn(
@@ -76,6 +79,9 @@ export function RecentTrades() {
                           )}
                         >
                           {trade.side}
+                        </Badge>
+                        <Badge variant="outline" className="text-[9px] px-1 py-0 text-muted-foreground border-border">
+                          {trade.strategy}
                         </Badge>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">

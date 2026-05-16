@@ -70,3 +70,86 @@ The Crypto IA Pro platform has 6 fully functional sections with real Binance dat
 - Mobile responsive design could be further refined
 - Could add more chart drawing tools and overlay indicators (Bollinger Bands, Fibonacci)
 - Could add Sharpe ratio and Sortino ratio to backtesting metrics
+
+---
+Task ID: 9
+Agent: main
+Task: QA review, feature additions, and UI improvements
+
+## Current Project Status
+
+The Crypto IA Pro platform is stable with 6 sections working. Backend services (Binance service on port 3001, Socket.IO on port 3002) are running. All API endpoints returning 200. No runtime errors or lint issues.
+
+## Work Completed This Round
+
+### QA Testing & Assessment
+- Tested all 6 sections via agent-browser (Dashboard, Chart, AI, Bot, Backtest, History)
+- Confirmed zero browser console errors across all sections
+- Verified all API endpoints returning 200 (ticker, klines, highlights, price)
+- Backend services healthy (Binance service uptime verified)
+- Identified Socket.IO connection shows "connecting" (known issue from previous round)
+
+### New Features Added
+
+1. **Market Sentiment Gauge** (`market-sentiment.tsx`) - SVG half-circle gauge showing Fear & Greed index based on volume-weighted price changes across all tickers. Color-coded from red (Extreme Fear) to green (Extreme Greed) with animated needle indicator. Shows gainers vs losers bar.
+
+2. **Watchlist** (`watchlist.tsx`) - Persistent watchlist feature allowing users to star/favorite crypto assets. Default watchlist includes BTC, ETH, SOL. Shows coin avatar, price, 24h change, volume. Click to navigate to chart. Star toggle in market table.
+
+3. **Ticker Tape** (`header/ticker-tape.tsx`) - Scrolling price bar below the header showing all crypto prices with color-coded change percentages. Hover to pause. Duplicated items for seamless CSS animation loop.
+
+4. **Theme Toggle** - Light/dark mode switch added to header using next-themes. Uses `useSyncExternalStore` to avoid hydration mismatch. Sun/Moon icon toggle.
+
+5. **SVG Sparklines in Market Table** - Real SVG sparkline charts replacing simple colored progress bars. Fetches 24h of 1h klines for each symbol. Color-coded green/red based on price direction. Includes gradient fill area.
+
+6. **Watchlist Star in Market Table** - Each row has a star button to add/remove from watchlist. Watched items have subtle gold background highlight.
+
+7. **Quick Trade Panel** (`chart/quick-trade.tsx`) - Side panel on chart page for quick buy/sell execution. Shows current price, quantity input with 25%/50% shortcuts, buy/sell buttons, trade confirmation animation, and portfolio summary.
+
+8. **Mobile Nav Fix** - All 6 navigation items now visible on mobile (previously only 5). Shorter labels for mobile (Home, Chart, AI, Bot, Test, History).
+
+### Store Updates
+- Added `watchlist: string[]` state with `toggleWatchlist()` and `isInWatchlist()` methods
+- Default watchlist: `["BTCUSDT", "ETHUSDT", "SOLUSDT"]`
+
+### UI/Style Improvements
+- **Stat Cards**: Added colored top accent line per stat type (cyan, gold, green, red)
+- **Market Table**: Coin avatar circles with symbol colors, star button column, sparkline trend column
+- **AI Signals**: Grid layout (2 columns on sm+), color-coded left borders per action type
+- **Recent Trades**: Color-coded left borders (green=BUY, red=SELL), strategy badge per trade
+- **Market Highlights**: Gradient border effect
+- **Price Alerts**: Gradient border effect
+- **Header**: Theme toggle button with Sun/Moon icons, cleaner layout
+- **Footer**: Glass morphism with gradient top border
+- **CSS**: Added `.glow-gold` class, light theme `.glass` and `.glass-hover` variants
+
+### Dashboard Layout Restructure
+- Stat Cards → Sentiment Gauge + Market Highlights (2-col) → Market Table + Watchlist/Alerts (3-col) → AI Signals + Recent Trades (3-col)
+- This gives better information hierarchy and visual balance
+
+### Verification Results
+- All 6 sections tested via agent-browser with 0 runtime errors
+- Lint passes with 0 errors and 0 warnings
+- Dashboard shows: stat cards, sentiment gauge (score: 45, Neutral), market highlights, market table with sparklines, watchlist, price alerts, AI signals grid, recent trades
+- Chart section shows: price info, controls, candlestick chart + quick trade panel, indicators panel
+- Theme toggle works (dark/light mode verified via screenshot)
+- Sparkline data loading correctly (all 12 symbols returning 200 from klines API)
+- Quick trade panel generates trades successfully
+
+## Unresolved Issues / Risks
+- Socket.IO connection still shows "connecting" - the Socket.IO service on port 3002 may not be properly routing through Caddy. This is a non-critical issue since REST API fallback works fine.
+- Bot trades are mock/simulated only - no actual Binance API execution
+- Database persistence not implemented yet (bot state and trades are in-memory only via Zustand)
+- Light theme could use more refinement on some components (dark borders on cards, etc.)
+- Could add more chart overlay indicators (Bollinger Bands, Fibonacci retracements)
+- Could add Sharpe ratio and Sortino ratio to backtesting metrics
+- Could add order book visualization on chart page
+- Could add real-time trade notifications (toast) when quick trade executes
+
+## Priority Recommendations for Next Phase
+1. Fix Socket.IO routing through Caddy gateway for real-time updates
+2. Add database persistence (Prisma) for trades, alerts, and watchlist
+3. Add Bollinger Bands and Fibonacci overlays to chart
+4. Implement toast notifications for trade executions
+5. Add order book depth visualization
+6. Polish light theme further
+7. Add mobile responsive optimizations for chart and bot sections

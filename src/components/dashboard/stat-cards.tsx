@@ -32,6 +32,9 @@ export function StatCards() {
       )
     : null;
 
+  // Calculate total volume
+  const totalVolume = tickerValues.reduce((sum, t) => sum + t.quoteVolume, 0);
+
   const todayTrades = trades.length;
 
   const stats = [
@@ -44,6 +47,7 @@ export function StatCards() {
       iconColor: "text-crypto-cyan",
       iconBg: "bg-gradient-to-br from-crypto-cyan/20 to-crypto-cyan/5",
       hoverGlow: "hover:glow-cyan",
+      accentLine: "from-crypto-cyan/40",
     },
     {
       title: "Total Trades Today",
@@ -54,6 +58,7 @@ export function StatCards() {
       iconColor: "text-crypto-gold",
       iconBg: "bg-gradient-to-br from-crypto-gold/20 to-crypto-gold/5",
       hoverGlow: "",
+      accentLine: "from-crypto-gold/40",
     },
     {
       title: "Bot Status",
@@ -66,6 +71,7 @@ export function StatCards() {
         ? "bg-gradient-to-br from-crypto-green/20 to-crypto-green/5"
         : "bg-secondary",
       hoverGlow: botActive ? "hover:glow-green" : "",
+      accentLine: botActive ? "from-crypto-green/40" : "from-muted-foreground/20",
     },
     {
       title: "Best Performer",
@@ -77,9 +83,12 @@ export function StatCards() {
         : "No data",
       subPositive: bestPerformer ? bestPerformer.priceChangePercent >= 0 : true,
       icon: TrendingUp,
-      iconColor: "text-crypto-green",
-      iconBg: "bg-gradient-to-br from-crypto-green/20 to-crypto-green/5",
+      iconColor: bestPerformer?.priceChangePercent >= 0 ? "text-crypto-green" : "text-crypto-red",
+      iconBg: bestPerformer?.priceChangePercent >= 0
+        ? "bg-gradient-to-br from-crypto-green/20 to-crypto-green/5"
+        : "bg-gradient-to-br from-crypto-red/20 to-crypto-red/5",
       hoverGlow: "hover:glow-green",
+      accentLine: bestPerformer?.priceChangePercent >= 0 ? "from-crypto-green/40" : "from-crypto-red/40",
     },
   ];
 
@@ -95,11 +104,14 @@ export function StatCards() {
         >
           <Card
             className={cn(
-              "bg-card/60 backdrop-blur-md gradient-border transition-all duration-300",
+              "bg-card/60 backdrop-blur-md gradient-border transition-all duration-300 overflow-hidden",
               stat.hoverGlow
             )}
           >
             <CardContent className="p-4 relative">
+              {/* Top accent line */}
+              <div className={cn("absolute top-0 left-3 right-3 h-0.5 bg-gradient-to-r to-transparent", stat.accentLine)} />
+
               <div className="flex items-start justify-between mb-3">
                 <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
                   {stat.title}

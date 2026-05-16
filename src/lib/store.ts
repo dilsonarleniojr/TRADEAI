@@ -137,6 +137,11 @@ interface CryptoStore {
   removeAlert: (id: string) => void;
   updateAlertPrices: (tickers: Record<string, TickerData>) => void;
 
+  // Watchlist
+  watchlist: string[];
+  toggleWatchlist: (symbol: string) => void;
+  isInWatchlist: (symbol: string) => boolean;
+
   // Loading states
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
@@ -248,6 +253,18 @@ export const useCryptoStore = create<CryptoStore>((set) => ({
         };
       }),
     })),
+
+  // Watchlist
+  watchlist: ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+  toggleWatchlist: (symbol) =>
+    set((state) => ({
+      watchlist: state.watchlist.includes(symbol)
+        ? state.watchlist.filter((s) => s !== symbol)
+        : [...state.watchlist, symbol],
+    })),
+  isInWatchlist: (symbol) => {
+    return useCryptoStore.getState().watchlist.includes(symbol);
+  },
 
   // Loading states
   isLoading: false,

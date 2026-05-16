@@ -19,16 +19,12 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
 const navItems = [
-  { id: "dashboard" as const, icon: LayoutDashboard, label: "Dashboard" },
-  {
-    id: "chart" as const,
-    icon: BarChart3,
-    label: "Chart & Analysis",
-  },
-  { id: "ai" as const, icon: Brain, label: "AI Assistant" },
-  { id: "bot" as const, icon: Bot, label: "Trading Bot" },
-  { id: "backtest" as const, icon: History, label: "Backtesting" },
-  { id: "history" as const, icon: FileText, label: "Trade History" },
+  { id: "dashboard" as const, icon: LayoutDashboard, label: "Dashboard", shortLabel: "Home" },
+  { id: "chart" as const, icon: BarChart3, label: "Chart & Analysis", shortLabel: "Chart" },
+  { id: "ai" as const, icon: Brain, label: "AI Assistant", shortLabel: "AI" },
+  { id: "bot" as const, icon: Bot, label: "Trading Bot", shortLabel: "Bot" },
+  { id: "backtest" as const, icon: History, label: "Backtesting", shortLabel: "Test" },
+  { id: "history" as const, icon: FileText, label: "Trade History", shortLabel: "History" },
 ];
 
 export function Sidebar() {
@@ -91,16 +87,16 @@ export function Sidebar() {
         </div>
       </motion.aside>
 
-      {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 glass border-t border-border flex items-center justify-around py-2 px-1">
-        {navItems.slice(0, 5).map((item) => {
+      {/* Mobile bottom nav - shows all 6 items */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 glass border-t border-border flex items-center justify-around py-1.5 px-1">
+        {navItems.map((item) => {
           const isActive = activeSection === item.id;
           return (
             <button
               key={item.id}
               onClick={() => setActiveSection(item.id)}
               className={cn(
-                "flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg transition-all duration-200",
+                "flex flex-col items-center gap-0.5 px-1.5 py-1 rounded-lg transition-all duration-200 min-w-0",
                 isActive
                   ? "text-primary scale-105"
                   : "text-muted-foreground"
@@ -112,7 +108,7 @@ export function Sidebar() {
                 )}
                 <item.icon className="w-4 h-4" />
               </div>
-              <span className="text-[10px]">{item.label.split(" ")[0]}</span>
+              <span className="text-[9px] leading-tight">{item.shortLabel}</span>
             </button>
           );
         })}
