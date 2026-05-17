@@ -11,7 +11,7 @@ import { History, AlertCircle } from "lucide-react";
 const DEFAULT_CONFIG: BacktestConfigType = {
   symbol: "BTCUSDT",
   strategy: "RSI",
-  startDate: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
+  startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     .toISOString()
     .split("T")[0],
   endDate: new Date().toISOString().split("T")[0],

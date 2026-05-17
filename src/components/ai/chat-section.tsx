@@ -389,6 +389,7 @@ export function ChatSection() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask about crypto markets, analysis, strategies..."
+              aria-label="Type your message"
               disabled={isLoading}
               className="flex-1 bg-background/80 backdrop-blur-sm border-border/50 input-glow peer focus-visible:ring-crypto-cyan/30 focus-visible:border-crypto-cyan/30 transition-all duration-300"
             />

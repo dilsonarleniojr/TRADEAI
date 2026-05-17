@@ -25,6 +25,7 @@ export function Footer() {
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-crypto-cyan/40 to-transparent" />
 
       <div className="flex items-center gap-4 md:gap-6 text-xs md:text-sm">
+        <span className="hidden md:inline text-xs font-semibold gradient-text-cyan">Crypto IA Pro</span>
         <div className="flex items-center gap-1.5">
           <Wallet className="w-3.5 h-3.5 text-muted-foreground" />
           <span className="text-muted-foreground">Value:</span>

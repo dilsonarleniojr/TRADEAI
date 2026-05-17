@@ -273,6 +273,7 @@ export function FearGreedIndex() {
                   stroke={fearGreed.color}
                   strokeWidth={2.5}
                   strokeLinecap="round"
+                  style={{ filter: "drop-shadow(0 0 6px rgba(6,182,212,0.5))" }}
                   initial={{ pathLength: 0 }}
                   animate={{ pathLength: 1 }}
                   transition={{ delay: 0.5, duration: 1, ease: "easeOut" }}

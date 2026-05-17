@@ -337,7 +337,7 @@ export function BotSection() {
             <div className="relative">
               <div
                 className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
-                  botActive ? "bg-crypto-green glow-green-sm pulse-soft" : "bg-muted-foreground/50"
+                  botActive ? "bg-crypto-green glow-green-sm pulse-glow-green" : "bg-muted-foreground/50"
                 }`}
                 style={botActive ? { boxShadow: "0 0 8px #22c55e" } : undefined}
               />
