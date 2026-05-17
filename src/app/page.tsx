@@ -28,6 +28,7 @@ import { CryptoNews } from "@/components/dashboard/crypto-news";
 import { MarketOverview } from "@/components/dashboard/market-overview";
 import { FundingRates } from "@/components/dashboard/funding-rates";
 import { ShortcutsHint } from "@/components/dashboard/shortcuts-hint";
+import { PortfolioRebalancing } from "@/components/dashboard/portfolio-rebalancing";
 import { ChatSection } from "@/components/ai/chat-section";
 import { ChartSection } from "@/components/chart/chart-section";
 import { BotSection } from "@/components/bot/bot-section";
@@ -141,6 +142,9 @@ export default function HomePage() {
             </motion.div>
             <motion.div variants={itemVariants}>
               <PnlTracker />
+            </motion.div>
+            <motion.div variants={itemVariants}>
+              <PortfolioRebalancing />
             </motion.div>
             <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <MarketOverview />

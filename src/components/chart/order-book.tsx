@@ -187,7 +187,7 @@ export function OrderBook() {
       </CardHeader>
       <CardContent className="p-3 pt-0">
         {/* Spread Info */}
-        <div className="flex items-center justify-between mb-3 px-1">
+        <div className="flex items-center justify-between mb-3 px-1 py-1 rounded-md bg-gradient-to-r from-crypto-green/5 via-crypto-cyan/5 to-crypto-red/5">
           <div className="text-[10px] text-muted-foreground">
             Spread:{" "}
             <span className="text-foreground font-medium">
@@ -252,11 +252,15 @@ export function OrderBook() {
         </div>
 
         {/* Current Price Divider */}
-        <div className="flex items-center gap-2 py-1.5 px-1 my-1 bg-crypto-cyan/5 border-y border-crypto-cyan/20 rounded-sm">
+        <div className="flex items-center gap-2 py-1.5 px-1 my-1 bg-crypto-cyan/5 border-y border-crypto-cyan/20 rounded-sm mid-price-pulse">
           <span className="text-sm font-bold text-crypto-cyan">
             ${formatBookPrice(currentPrice)}
           </span>
           <span className="text-[9px] text-muted-foreground">Current Price</span>
+          <span className="ml-auto flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-crypto-cyan animate-pulse" />
+            <span className="text-[8px] text-crypto-cyan font-medium">LIVE</span>
+          </span>
         </div>
 
         {/* Bids (buys) - closest to center at top */}
@@ -304,9 +308,9 @@ export function OrderBook() {
               Buy vs Sell Pressure
             </span>
           </div>
-          <div className="h-2 rounded-full overflow-hidden flex bg-secondary/30">
+          <div className="h-2.5 rounded-full overflow-hidden flex bg-secondary/30 relative">
             <motion.div
-              className="h-full rounded-l-full"
+              className="h-full rounded-l-full relative"
               style={{
                 background: "linear-gradient(90deg, #10b981, #06b6d4)",
               }}
@@ -314,9 +318,11 @@ export function OrderBook() {
                 width: `${(orderBook.totalBidVolume / (orderBook.totalBidVolume + orderBook.totalAskVolume)) * 100}%`,
               }}
               transition={{ duration: 0.5, ease: "easeOut" }}
-            />
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse" />
+            </motion.div>
             <motion.div
-              className="h-full rounded-r-full"
+              className="h-full rounded-r-full relative"
               style={{
                 background: "linear-gradient(90deg, #06b6d4, #ef4444)",
               }}
@@ -324,7 +330,9 @@ export function OrderBook() {
                 width: `${(orderBook.totalAskVolume / (orderBook.totalBidVolume + orderBook.totalAskVolume)) * 100}%`,
               }}
               transition={{ duration: 0.5, ease: "easeOut" }}
-            />
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse" />
+            </motion.div>
           </div>
           <div className="flex justify-between text-[9px] mt-0.5">
             <span className="text-crypto-green">

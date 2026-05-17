@@ -510,7 +510,7 @@
   }
 }
 .ticker-tape {
-  animation: ticker-scroll 30s linear infinite;
+  animation: ticker-scroll 45s linear infinite;
   will-change: transform;
 }
 .ticker-tape:hover {
@@ -916,4 +916,252 @@
   font-size: 11px;
   color: oklch(0.5 0 0);
   max-width: 200px;
+}
+
+/* ========================
+   Shimmer Text Animation
+   ======================== */
+@keyframes shimmer-text {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    oklch(0.75 0.15 195) 0%,
+    oklch(0.65 0.2 145) 25%,
+    oklch(0.75 0.17 75) 50%,
+    oklch(0.65 0.2 145) 75%,
+    oklch(0.75 0.15 195) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer-text 4s linear infinite;
+}
+
+:root .shimmer-text {
+  background: linear-gradient(
+    90deg,
+    oklch(0.5 0.18 195) 0%,
+    oklch(0.4 0.2 145) 25%,
+    oklch(0.55 0.17 75) 50%,
+    oklch(0.4 0.2 145) 75%,
+    oklch(0.5 0.18 195) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ========================
+   Pulse Glow Animation
+   ======================== */
+@keyframes pulse-glow-key {
+  0%, 100% {
+    box-shadow: 0 0 4px oklch(0.75 0.15 195 / 20%);
+  }
+  50% {
+    box-shadow: 0 0 12px oklch(0.75 0.15 195 / 40%), 0 0 20px oklch(0.75 0.15 195 / 10%);
+  }
+}
+.pulse-glow {
+  animation: pulse-glow-key 2s ease-in-out infinite;
+}
+
+:root .pulse-glow {
+  animation: pulse-glow-key-light 2s ease-in-out infinite;
+}
+@keyframes pulse-glow-key-light {
+  0%, 100% {
+    box-shadow: 0 1px 3px oklch(0.55 0.15 195 / 10%);
+  }
+  50% {
+    box-shadow: 0 2px 8px oklch(0.55 0.15 195 / 20%);
+  }
+}
+
+/* ========================
+   Slide Up Animation
+   ======================== */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.slide-up {
+  animation: slide-up 0.3s ease-out forwards;
+}
+
+/* ========================
+   Card Shimmer Effect (Hover)
+   ======================== */
+@keyframes card-shimmer-key {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.card-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.card-shimmer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    oklch(0.75 0.15 195 / 4%) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+.card-shimmer:hover::before {
+  opacity: 1;
+  animation: card-shimmer-key 1.5s ease-in-out infinite;
+}
+
+:root .card-shimmer::before {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    oklch(0.55 0.15 195 / 6%) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+}
+
+/* ========================
+   Icon Breathing Glow
+   ======================== */
+@keyframes icon-breathe {
+  0%, 100% {
+    box-shadow: 0 0 6px oklch(0.75 0.15 195 / 8%);
+  }
+  50% {
+    box-shadow: 0 0 14px oklch(0.75 0.15 195 / 18%);
+  }
+}
+.icon-breathe {
+  animation: icon-breathe 3s ease-in-out infinite;
+}
+
+:root .icon-breathe {
+  animation: icon-breathe-light 3s ease-in-out infinite;
+}
+@keyframes icon-breathe-light {
+  0%, 100% {
+    box-shadow: 0 1px 3px oklch(0.55 0.15 195 / 8%);
+  }
+  50% {
+    box-shadow: 0 2px 6px oklch(0.55 0.15 195 / 15%);
+  }
+}
+
+/* ========================
+   Mid Price Pulse
+   ======================== */
+@keyframes mid-price-pulse {
+  0%, 100% {
+    background-color: oklch(0.75 0.15 195 / 5%);
+    border-color: oklch(0.75 0.15 195 / 20%);
+  }
+  50% {
+    background-color: oklch(0.75 0.15 195 / 12%);
+    border-color: oklch(0.75 0.15 195 / 40%);
+  }
+}
+.mid-price-pulse {
+  animation: mid-price-pulse 2s ease-in-out infinite;
+}
+
+/* ========================
+   Animated Gradient Button
+   ======================== */
+@keyframes gradient-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.btn-gradient-animated {
+  background: linear-gradient(270deg, oklch(0.65 0.2 145), oklch(0.55 0.18 160), oklch(0.65 0.15 195), oklch(0.55 0.18 160));
+  background-size: 300% 300%;
+  animation: gradient-flow 4s ease infinite;
+  transition: all 0.2s ease;
+}
+.btn-gradient-animated:hover {
+  box-shadow: 0 4px 20px oklch(0.65 0.2 145 / 30%);
+}
+.btn-gradient-animated-red {
+  background: linear-gradient(270deg, oklch(0.65 0.22 25), oklch(0.55 0.2 15), oklch(0.65 0.15 195), oklch(0.55 0.2 15));
+  background-size: 300% 300%;
+  animation: gradient-flow 4s ease infinite;
+  transition: all 0.2s ease;
+}
+.btn-gradient-animated-red:hover {
+  box-shadow: 0 4px 20px oklch(0.65 0.22 25 / 30%);
+}
+
+/* ========================
+   Timeline Connector Line
+   ======================== */
+.timeline-connector {
+  position: relative;
+}
+.timeline-connector::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(to bottom, oklch(0.75 0.15 195 / 20%), oklch(0.75 0.15 195 / 5%));
+}
+
+/* ========================
+   News Category Left Border
+   ======================== */
+.news-border-market { border-left: 3px solid oklch(0.75 0.15 195 / 50%); }
+.news-border-defi { border-left: 3px solid oklch(0.6 0.15 280 / 50%); }
+.news-border-regulation { border-left: 3px solid oklch(0.75 0.17 75 / 50%); }
+.news-border-tech { border-left: 3px solid oklch(0.65 0.2 145 / 50%); }
+.news-border-trading { border-left: 3px solid oklch(0.65 0.22 25 / 50%); }
+
+/* ========================
+   Gradient Fill for Equity Chart
+   ======================== */
+.equity-gradient-fill {
+  background: linear-gradient(180deg, oklch(0.75 0.15 195 / 15%) 0%, transparent 100%);
+}
+
+/* ========================
+   Value Bounce Micro-interaction
+   ======================== */
+@keyframes value-bounce {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.04); }
+  70% { transform: scale(0.98); }
+  100% { transform: scale(1); }
+}
+.value-bounce {
+  animation: value-bounce 0.4s ease-out;
 }
