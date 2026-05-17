@@ -187,7 +187,7 @@ export function OrderBook() {
       </CardHeader>
       <CardContent className="p-3 pt-0">
         {/* Spread Info */}
-        <div className="flex items-center justify-between mb-3 px-1 py-1 rounded-md bg-gradient-to-r from-crypto-green/5 via-crypto-cyan/5 to-crypto-red/5">
+        <div className="flex items-center justify-between mb-3 px-1 py-1.5 rounded-md bg-gradient-to-r from-crypto-green/8 via-crypto-cyan/8 to-crypto-red/8 border border-border/30">
           <div className="text-[10px] text-muted-foreground">
             Spread:{" "}
             <span className="text-foreground font-medium">
@@ -226,11 +226,11 @@ export function OrderBook() {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -10 }}
                   transition={{ duration: 0.2, delay: i * 0.015 }}
-                  className="relative grid grid-cols-3 gap-1 px-1 py-0.5 rounded-sm text-[11px] font-mono hover:bg-crypto-red/5 cursor-default"
+                  className="relative grid grid-cols-3 gap-1 px-1 py-0.5 rounded-sm text-[11px] font-mono hover:bg-crypto-red/5 cursor-default card-shimmer"
                 >
                   {/* Background bar */}
                   <div
-                    className="absolute inset-y-0 right-0 rounded-sm"
+                    className="absolute inset-y-0 right-0 rounded-sm transition-all duration-500"
                     style={{
                       width: `${barWidth}%`,
                       background: "linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.08))",
@@ -275,11 +275,11 @@ export function OrderBook() {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 10 }}
                   transition={{ duration: 0.2, delay: i * 0.015 }}
-                  className="relative grid grid-cols-3 gap-1 px-1 py-0.5 rounded-sm text-[11px] font-mono hover:bg-crypto-green/5 cursor-default"
+                  className="relative grid grid-cols-3 gap-1 px-1 py-0.5 rounded-sm text-[11px] font-mono hover:bg-crypto-green/5 cursor-default card-shimmer"
                 >
                   {/* Background bar */}
                   <div
-                    className="absolute inset-y-0 right-0 rounded-sm"
+                    className="absolute inset-y-0 right-0 rounded-sm transition-all duration-500"
                     style={{
                       width: `${barWidth}%`,
                       background: "linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.08))",

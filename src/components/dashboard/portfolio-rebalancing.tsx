@@ -173,7 +173,7 @@ export function PortfolioRebalancing() {
                   <motion.circle cx="40" cy="40" r="34" fill="none" stroke={divColor} strokeWidth={6}
                     strokeLinecap="round" initial={{ strokeDasharray: "0 213.6" }} animate={{ strokeDasharray: divDash }}
                     transition={{ duration: 1, ease: "easeOut" }}
-                    className="pulse-soft" />
+                    className="pulse-soft" style={{ filter: `drop-shadow(0 0 4px ${divColor}40)` }} />
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span className="text-lg font-bold number-animate gradient-text-cyan">{risk.diversificationScore}%</span>
@@ -233,8 +233,8 @@ export function PortfolioRebalancing() {
                       <span>{a.currentPercent}%</span>
                       <motion.div
                         initial={{ x: -4, opacity: 0 }}
-                        animate={{ x: 0, opacity: 1 }}
-                        transition={{ delay: 0.15 * i + 0.3 }}
+                        animate={{ x: [0, 3, 0], opacity: 1 }}
+                        transition={{ delay: 0.15 * i + 0.3, duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
                       >
                         <ArrowRight className="w-3 h-3 text-crypto-cyan" />
                       </motion.div>

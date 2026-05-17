@@ -100,6 +100,44 @@ The Crypto IA Pro platform is mature with 6 fully functional sections, real Bina
 - New `BB (20,2)` toggle button in chart controls (next to SMA 50)
 - `ProcessedCandle` interface extended with `bbUpper`, `bbMiddle`, `bbLower` fields
 
+---
+Task ID: 34
+Agent: whale-tracker-agent
+Task: Create Whale Transaction Tracker and Liquidation Heatmap widgets
+
+Work Log:
+- Read worklog.md, store.ts, existing dashboard components (pnl-tracker.tsx, correlation-heatmap.tsx), globals.css, and page.tsx to understand project patterns
+- Created `/home/z/my-project/src/components/dashboard/whale-tracker.tsx` - Whale Transaction Tracker widget with:
+  - Summary Stats Row: 3 cards (Total Whale Volume $2.4B, Buy/Sell Ratio 55%/45% visual bar, Largest Transaction)
+  - Transaction Feed: scrollable list with max-h-96 overflow-y-auto cyan-scrollbar, 15 mock transactions with seeded random
+  - Color coding: BUY = green accent, SELL = red accent
+  - Badge system: 🔥 for >$1M, 💎 for >$5M, "Whale Alert" badge on all
+  - Animated slide-in for new items using framer-motion AnimatePresence
+  - Auto-refresh every 8 seconds with spinning RefreshCw indicator
+  - Volume by Symbol horizontal bar chart using Recharts BarChart with gold theme
+  - Uses glass-card card-accent-gold styling
+- Created `/home/z/my-project/src/components/dashboard/liquidation-heatmap.tsx` - Liquidation Heatmap widget with:
+  - SVG heatmap grid: Y-axis price levels (-5% to +5%), X-axis leverage tiers (10x-100x)
+  - Cell color intensity based on estimated liquidation volume (green=longs, red=shorts)
+  - Current price line with cyan dashed highlight
+  - Simulated data using seeded random with realistic proximity+leverage distribution
+  - Color legend bar with Long Liq / Short Liq / Current Price indicators
+  - Liquidation Summary: 2 cards showing Est. Long Liquidations ($156M) and Short Liquidations ($89M)
+  - Uses glass-card card-accent-red styling
+- Updated `/home/z/my-project/src/app/page.tsx`:
+  - Added imports for WhaleTracker and LiquidationHeatmap
+  - Placed them in a new 2-column grid row AFTER the CorrelationHeatmap row
+  - Wrapped in `<motion.div variants={itemVariants}>`
+- Ran `bun run lint` - zero errors
+
+Stage Summary:
+- Two new dashboard widgets fully implemented and integrated
+- WhaleTracker: gold-themed widget with transaction feed, summary stats, volume chart, auto-refresh
+- LiquidationHeatmap: red-themed widget with SVG heatmap grid, color legend, liquidation summary
+- Both components use consistent styling patterns (glass-card, card-accent-*, gradient-text, number-animate, cyan-scrollbar)
+- Responsive layout: stacks to single column on mobile
+- Zero lint errors, dev server compiling successfully
+
 ### Styling Improvements
 - Dashboard layout: 3-column row for top analysis panels (Sentiment + Highlights + Allocation)
 - Toast variants: success (green), warning (gold), default (glass blur)

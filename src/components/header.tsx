@@ -93,7 +93,7 @@ export function Header() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 w-8 p-0 hover:bg-secondary/80 transition-transform duration-500"
+              className="h-8 w-8 p-0 hover:bg-secondary/80 transition-transform duration-300"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
             >
@@ -139,7 +139,7 @@ export function Header() {
               <>
                 <div className="relative flex items-center justify-center">
                   <Wifi className="w-4 h-4 text-crypto-cyan" />
-                  <div className="absolute w-1.5 h-1.5 rounded-full bg-crypto-cyan animate-pulse" />
+                  <div className="absolute w-2 h-2 rounded-full bg-crypto-cyan animate-ping opacity-50" />
                 </div>
                 <span className="hidden sm:inline text-xs text-crypto-cyan font-medium">
                   REST API
