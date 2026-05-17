@@ -9,7 +9,11 @@ import {
   ArrowUpDown,
   Bot,
   TrendingUp,
+  TrendingDown,
   Info,
+  ArrowUpRight,
+  ArrowDownRight,
+  Minus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -68,6 +72,7 @@ export function StatCards() {
       accentClass: "card-accent-cyan",
       hoverGlow: "hover:glow-cyan-sm",
       animate: true,
+      trendDir: portfolio.pnlPercent >= 0 ? "up" : portfolio.pnlPercent < 0 ? "down" : "neutral" as const,
     },
     {
       title: "Total Trades Today",
@@ -82,6 +87,7 @@ export function StatCards() {
       accentClass: "card-accent-gold",
       hoverGlow: "",
       animate: false,
+      trendDir: "neutral" as const,
     },
     {
       title: "Bot Status",
@@ -98,6 +104,7 @@ export function StatCards() {
       accentClass: botActive ? "card-accent-green" : "",
       hoverGlow: botActive ? "hover:glow-green-sm" : "",
       animate: false,
+      trendDir: botActive ? "up" : "neutral" as const,
     },
     {
       title: "Best Performer",
@@ -118,6 +125,7 @@ export function StatCards() {
       accentClass: bestPerformer?.priceChangePercent >= 0 ? "card-accent-green" : "card-accent-red",
       hoverGlow: "hover:glow-green-sm",
       animate: true,
+      trendDir: bestPerformer?.priceChangePercent >= 0 ? "up" : "down" as const,
     },
   ];
 
@@ -133,7 +141,7 @@ export function StatCards() {
         >
           <Card
             className={cn(
-              "bg-card/60 backdrop-blur-md gradient-border overflow-hidden cursor-default transition-all duration-200 hover:scale-[1.02]",
+              "bg-card/60 backdrop-blur-md gradient-border overflow-hidden cursor-default transition-all duration-200 hover:scale-[1.02] card-shimmer",
               stat.hoverGlow,
               stat.accentClass
             )}
@@ -151,7 +159,7 @@ export function StatCards() {
                     <p className="text-xs">{stat.tooltip}</p>
                   </TooltipContent>
                 </Tooltip>
-                <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", stat.iconBg)}>
+                <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center icon-breathe", stat.iconBg)}>
                   <stat.icon className={cn("w-5 h-5", stat.iconColor)} />
                 </div>
               </div>
@@ -160,12 +168,17 @@ export function StatCards() {
                   {stat.animate && stat.title === "Portfolio Value" ? (
                     <AnimatedValue value={stat.value} prefix="$" decimals={2} />
                   ) : (
-                    <span>{stat.displayValue}</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      {stat.displayValue}
+                      {stat.trendDir === "up" && <ArrowUpRight className="w-3.5 h-3.5 text-crypto-green" />}
+                      {stat.trendDir === "down" && <ArrowDownRight className="w-3.5 h-3.5 text-crypto-red" />}
+                      {stat.trendDir === "neutral" && stat.title !== "Bot Status" && <Minus className="w-3 h-3 text-muted-foreground/50" />}
+                    </span>
                   )}
                 </p>
                 <p
                   className={cn(
-                    "text-xs font-semibold",
+                    "text-xs font-semibold value-bounce",
                     stat.subPositive ? "text-crypto-green" : "text-crypto-red"
                   )}
                 >

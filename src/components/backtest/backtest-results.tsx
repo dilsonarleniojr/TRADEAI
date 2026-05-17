@@ -215,7 +215,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.2, delay: i * 0.05 }}
           >
-            <Card className="bg-card border-border">
+            <Card className="bg-card border-border hover:border-border/80 transition-all duration-200 hover:shadow-md cursor-default">
               <CardContent className="p-3">
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <div
@@ -227,7 +227,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
                     {card.label}
                   </span>
                 </div>
-                <div className={`text-base font-bold ${card.color}`}>
+                <div className={`text-base font-bold ${card.color} number-animate`}>
                   {card.value}
                 </div>
               </CardContent>
@@ -245,7 +245,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.2, delay: (i + 6) * 0.05 }}
           >
-            <Card className="bg-card border-border">
+            <Card className="bg-card border-border hover:border-border/80 transition-all duration-200 hover:shadow-md cursor-default">
               <CardContent className="p-3">
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <div
@@ -257,7 +257,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
                     {card.label}
                   </span>
                 </div>
-                <div className={`text-base font-bold ${card.color}`}>
+                <div className={`text-base font-bold ${card.color} number-animate`}>
                   {card.value}
                 </div>
                 {card.description && (
@@ -296,13 +296,13 @@ export function BacktestResults({ results }: BacktestResultsProps) {
                   >
                     <stop
                       offset="5%"
-                      stopColor="#06b6d4"
-                      stopOpacity={0.3}
+                      stopColor={isPositive ? "#22c55e" : "#ef4444"}
+                      stopOpacity={0.35}
                     />
                     <stop
                       offset="95%"
-                      stopColor="#06b6d4"
-                      stopOpacity={0}
+                      stopColor={isPositive ? "#22c55e" : "#ef4444"}
+                      stopOpacity={0.02}
                     />
                   </linearGradient>
                 </defs>
@@ -341,7 +341,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
                 <Area
                   type="monotone"
                   dataKey="value"
-                  stroke="#06b6d4"
+                  stroke={isPositive ? "#22c55e" : "#ef4444"}
                   strokeWidth={2}
                   fill="url(#equityGradient)"
                 />
@@ -478,7 +478,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
                     return (
                       <TableRow
                         key={i}
-                        className={`border-border/50 ${
+                        className={`border-border/50 transition-colors hover:bg-secondary/30 ${
                           isBest
                             ? "bg-crypto-green/5"
                             : isWorst

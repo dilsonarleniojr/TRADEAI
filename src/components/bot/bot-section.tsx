@@ -303,8 +303,8 @@ export function BotSection() {
           size="lg"
           className={`relative overflow-hidden h-12 px-8 text-base font-semibold transition-all min-w-[160px] touch-target ${
             botActive
-              ? "btn-gradient-red text-white shadow-lg shadow-crypto-red/20"
-              : "btn-gradient-green text-white shadow-lg shadow-crypto-green/20"
+              ? "btn-gradient-animated-red text-white shadow-lg shadow-crypto-red/20"
+              : "btn-gradient-animated text-white shadow-lg shadow-crypto-green/20"
           }`}
         >
           <AnimatePresence mode="wait">
@@ -336,8 +336,8 @@ export function BotSection() {
           <div className="flex items-center gap-2">
             <div className="relative">
               <div
-                className={`w-2.5 h-2.5 rounded-full ${
-                  botActive ? "bg-crypto-green glow-green-sm" : "bg-muted-foreground/50"
+                className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
+                  botActive ? "bg-crypto-green glow-green-sm pulse-soft" : "bg-muted-foreground/50"
                 }`}
                 style={botActive ? { boxShadow: "0 0 8px #22c55e" } : undefined}
               />

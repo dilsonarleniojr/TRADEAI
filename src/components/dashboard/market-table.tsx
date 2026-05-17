@@ -158,6 +158,9 @@ export function MarketTable() {
                 <TableRow className="border-border hover:bg-transparent">
                   <TableHead className="text-xs font-medium text-muted-foreground h-8 w-8">
                   </TableHead>
+                  <TableHead className="text-xs font-medium text-muted-foreground h-8 w-8">
+                    #
+                  </TableHead>
                   <TableHead className="text-xs font-medium text-muted-foreground h-8">
                     Asset
                   </TableHead>
@@ -224,6 +227,10 @@ export function MarketTable() {
                           />
                         </Button>
                       </TableCell>
+                      {/* Rank Number */}
+                      <TableCell className="py-2.5 w-8 pr-0">
+                        <span className="text-[10px] font-mono text-muted-foreground/50 font-medium">{idx + 1}</span>
+                      </TableCell>
                       <TableCell className="py-2.5">
                         <div className="flex items-center gap-2">
                           <div
@@ -243,19 +250,31 @@ export function MarketTable() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right py-2.5">
-                        <span className="text-sm font-mono font-medium number-animate">
+                        <span className="text-sm font-mono font-medium number-animate price-flash-up">
                           ${formatPrice(ticker.price)}
                         </span>
                       </TableCell>
                       <TableCell className="text-right py-2.5">
-                        <span
-                          className={cn(
-                            "text-sm font-mono font-semibold px-2 py-0.5 rounded-md",
-                            isPositive ? "text-crypto-green bg-crypto-green/10" : "text-crypto-red bg-crypto-red/10"
-                          )}
-                        >
-                          {formatPercent(ticker.priceChangePercent)}
-                        </span>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span
+                            className={cn(
+                              "text-sm font-mono font-semibold px-2 py-0.5 rounded-md",
+                              isPositive ? "text-crypto-green bg-crypto-green/10" : "text-crypto-red bg-crypto-red/10"
+                            )}
+                          >
+                            {formatPercent(ticker.priceChangePercent)}
+                          </span>
+                          {/* Mini range bar showing 24h range */}
+                          <div className="w-8 h-1.5 rounded-full bg-secondary/50 overflow-hidden hidden sm:block">
+                            <div
+                              className={cn("h-full rounded-full transition-all duration-500", isPositive ? "bg-crypto-green/60" : "bg-crypto-red/60")}
+                              style={{
+                                width: `${Math.min(100, Math.abs(ticker.priceChangePercent) * 5)}%`,
+                                marginLeft: isPositive ? "auto" : "0",
+                              }}
+                            />
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell className="text-right py-2.5 hidden sm:table-cell">
                         <div className="text-xs text-muted-foreground font-mono">

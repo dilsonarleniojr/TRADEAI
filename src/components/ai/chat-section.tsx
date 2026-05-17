@@ -97,15 +97,17 @@ function GradientBorderButton({
   disabled: boolean;
 }) {
   return (
-    <button
+    <motion.button
       onClick={onClick}
       disabled={disabled}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
       className="relative group rounded-md p-[1px] bg-gradient-to-r from-crypto-cyan/40 via-crypto-green/40 to-crypto-gold/40 hover:from-crypto-cyan/60 hover:via-crypto-green/60 hover:to-crypto-gold/60 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
     >
       <span className="flex items-center justify-center rounded-[5px] bg-card px-3 py-1.5 text-xs text-foreground group-hover:bg-card/80 transition-colors">
         {children}
       </span>
-    </button>
+    </motion.button>
   );
 }
 
@@ -377,7 +379,9 @@ export function ChatSection() {
         )}
 
         {/* Input Area */}
-        <div className="p-3 border-t border-border shrink-0 safe-bottom">
+        <div className="p-3 border-t border-border shrink-0 safe-bottom relative">
+          {/* Gradient border on focus */}
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-crypto-cyan/0 to-transparent transition-all duration-300 peer-focus:via-crypto-cyan/40" />
           <div className="flex gap-2">
             <Input
               ref={inputRef}
@@ -386,13 +390,13 @@ export function ChatSection() {
               onKeyDown={handleKeyDown}
               placeholder="Ask about crypto markets, analysis, strategies..."
               disabled={isLoading}
-              className="flex-1 bg-background/80 backdrop-blur-sm border-border/50 input-glow focus-visible:ring-crypto-cyan/30 glow-breathe"
+              className="flex-1 bg-background/80 backdrop-blur-sm border-border/50 input-glow focus-visible:ring-crypto-cyan/30 focus-visible:border-crypto-cyan/30 transition-all duration-300"
             />
             <Button
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || isLoading}
               size="icon"
-              className="shrink-0 bg-crypto-cyan hover:bg-crypto-cyan/90"
+              className="shrink-0 bg-crypto-cyan hover:bg-crypto-cyan/90 transition-transform duration-200 hover:scale-105 active:scale-95"
             >
               <Send className="w-4 h-4" />
             </Button>

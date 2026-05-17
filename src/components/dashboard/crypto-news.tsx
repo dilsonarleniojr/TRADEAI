@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Newspaper, RefreshCw, Clock, ExternalLink } from "lucide-react";
+import { Newspaper, RefreshCw, Clock, ExternalLink, Loader2, Wifi } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -14,13 +14,23 @@ interface NewsItem {
   id: string;
   title: string;
   source: string;
-  timeAgo: string;
+  timeAgo?: string;
   category: NewsCategory;
   summary: string;
-  fullSummary: string;
+  fullSummary?: string;
+  timestamp?: string;
+  url?: string;
 }
 
-const NEWS_DATA: NewsItem[] = [
+interface ApiResponse {
+  success: boolean;
+  data: NewsItem[];
+  cached?: boolean;
+  lastUpdated?: string;
+  error?: string;
+}
+
+const FALLBACK_NEWS_DATA: NewsItem[] = [
   {
     id: "n1",
     title: "Bitcoin Surges Past Key Resistance Level Amid Institutional Buying",
@@ -28,7 +38,8 @@ const NEWS_DATA: NewsItem[] = [
     timeAgo: "12m ago",
     category: "Market",
     summary: "BTC breaks through the $80K resistance as institutional inflows accelerate, signaling renewed bullish momentum.",
-    fullSummary: "Bitcoin has surged past the critical $80,000 resistance level, driven by significant institutional buying pressure. On-chain data shows large wallet accumulations exceeding 1,200 BTC per day over the past week. Major players including MicroStrategy and sovereign wealth funds have been increasing their positions. The breakout above this key level suggests a potential move toward the next resistance at $85,000, with analysts pointing to the upcoming halving cycle as a catalyst for further upside.",
+    fullSummary: "Bitcoin has surged past the critical $80,000 resistance level, driven by significant institutional buying pressure. On-chain data shows large wallet accumulations exceeding 1,200 BTC per day over the past week. Major players including MicroStrategy and sovereign wealth funds have been increasing their positions.",
+    url: "#",
   },
   {
     id: "n2",
@@ -37,7 +48,8 @@ const NEWS_DATA: NewsItem[] = [
     timeAgo: "28m ago",
     category: "Tech",
     summary: "L2 networks process over 12M daily transactions as gas fees on mainnet remain elevated.",
-    fullSummary: "Ethereum Layer 2 scaling solutions including Arbitrum, Optimism, and Base have collectively processed a record 12.4 million daily transactions, a 340% increase from the same period last year. The surge coincides with elevated mainnet gas fees averaging 45 gwei, pushing users toward cheaper alternatives. Base alone accounted for 4.2M transactions, driven by social media and gaming dApps. Developers cite improved blob space utilization from EIP-4844 as a key enabler of the growth.",
+    fullSummary: "Ethereum Layer 2 scaling solutions including Arbitrum, Optimism, and Base have collectively processed a record 12.4 million daily transactions, a 340% increase from the same period last year. The surge coincides with elevated mainnet gas fees averaging 45 gwei.",
+    url: "#",
   },
   {
     id: "n3",
@@ -46,7 +58,8 @@ const NEWS_DATA: NewsItem[] = [
     timeAgo: "1h ago",
     category: "Regulation",
     summary: "Fed signals potential rate cuts in Q2, historically positive for risk assets including crypto.",
-    fullSummary: "Federal Reserve Chair Jerome Powell indicated the central bank is nearing a pivot point, with potential rate cuts possible as early as Q2 2025. Historically, loose monetary policy has been bullish for risk assets including cryptocurrencies. The crypto market cap surged 3.2% within hours of the announcement. Analysts note that Bitcoin has rallied an average of 45% in the 90 days following the first rate cut in previous cycles. However, inflation data remains mixed, and the Fed maintains a data-dependent approach.",
+    fullSummary: "Federal Reserve Chair Jerome Powell indicated the central bank is nearing a pivot point, with potential rate cuts possible as early as Q2 2025. Historically, loose monetary policy has been bullish for risk assets including cryptocurrencies.",
+    url: "#",
   },
   {
     id: "n4",
@@ -55,7 +68,8 @@ const NEWS_DATA: NewsItem[] = [
     timeAgo: "1h ago",
     category: "DeFi",
     summary: "TVL across all DeFi protocols hits $185B as yield farming and restaking gain traction.",
-    fullSummary: "The total value locked (TVL) across decentralized finance protocols has reached $185 billion, a new monthly high and the highest level since May 2022. Liquid staking derivatives (LSDs) and restaking protocols like EigenLayer have been primary drivers, accounting for $42B of the total. Lido remains the dominant player with a 32% market share. Yield farming on newer chains including Solana and Avalanche has also contributed to growth, with APYs ranging from 8-25% attracting fresh capital.",
+    fullSummary: "The total value locked (TVL) across decentralized finance protocols has reached $185 billion, a new monthly high and the highest level since May 2022. Liquid staking derivatives and restaking protocols have been primary drivers.",
+    url: "#",
   },
   {
     id: "n5",
@@ -64,7 +78,8 @@ const NEWS_DATA: NewsItem[] = [
     timeAgo: "2h ago",
     category: "Trading",
     summary: "SOL-based DEXs process $14.2B weekly volume as memecoin trading and airdrop farming surge.",
-    fullSummary: "Solana decentralized exchanges have processed $14.2 billion in weekly trading volume, surpassing Ethereum's $11.8 billion for the third consecutive week. Jupiter, the dominant Solana DEX aggregator, handled 68% of the volume. The surge is attributed to memecoin trading, with tokens like BONK and WIF generating billions in daily volume. Airdrop farming on protocols like Jito and Pyth Network continues to attract users. Despite the volume lead, Ethereum maintains higher TVL and larger average trade sizes.",
+    fullSummary: "Solana decentralized exchanges have processed $14.2 billion in weekly trading volume, surpassing Ethereum's $11.8 billion for the third consecutive week. Jupiter, the dominant Solana DEX aggregator, handled 68% of the volume.",
+    url: "#",
   },
   {
     id: "n6",
@@ -73,7 +88,8 @@ const NEWS_DATA: NewsItem[] = [
     timeAgo: "3h ago",
     category: "Regulation",
     summary: "Regulatory green light for additional spot crypto ETFs expands institutional access to digital assets.",
-    fullSummary: "The U.S. Securities and Exchange Commission has approved applications for several new spot cryptocurrency ETFs, including those tracking Solana and Litecoin. The approvals follow the successful launch of Bitcoin and Ethereum spot ETFs in 2024. The new ETFs are expected to begin trading within 60 days and could attract $15-25 billion in inflows within the first year, according to JPMorgan estimates. The move signals a broader regulatory shift toward accommodating digital assets within traditional financial infrastructure.",
+    fullSummary: "The U.S. Securities and Exchange Commission has approved applications for several new spot cryptocurrency ETFs, including those tracking Solana and Litecoin. The approvals follow the successful launch of Bitcoin and Ethereum spot ETFs in 2024.",
+    url: "#",
   },
   {
     id: "n7",
@@ -82,7 +98,8 @@ const NEWS_DATA: NewsItem[] = [
     timeAgo: "4h ago",
     category: "Trading",
     summary: "Machine learning trading systems deliver 23% average returns versus 8% for rule-based strategies.",
-    fullSummary: "AI-powered cryptocurrency trading bots have significantly outperformed traditional rule-based strategies in Q1 2025, delivering average returns of 23.4% compared to 8.1% for conventional algorithmic approaches. The top-performing models utilized transformer-based architectures trained on multi-modal data including on-chain metrics, social sentiment, and order book dynamics. Key advantages included faster adaptation to regime changes and better risk management during high-volatility events. However, researchers caution that overfitting remains a concern and that past performance may not guarantee future results.",
+    fullSummary: "AI-powered cryptocurrency trading bots have significantly outperformed traditional rule-based strategies in Q1 2025, delivering average returns of 23.4% compared to 8.1% for conventional algorithmic approaches.",
+    url: "#",
   },
   {
     id: "n8",
@@ -91,7 +108,8 @@ const NEWS_DATA: NewsItem[] = [
     timeAgo: "5h ago",
     category: "Tech",
     summary: "Interoperability infrastructure continues to attract major venture capital investment.",
-    fullSummary: "Cross-chain bridge protocol Nexus has closed a $120 million Series B funding round led by Paradigm and Andreessen Horowitz, valuing the company at $2.4 billion. The protocol enables trustless asset transfers across 15 blockchains with an average settlement time of 12 seconds. The funding will be used to expand to 25 additional chains and develop zero-knowledge proof-based verification for enhanced security. The raise highlights continued venture capital confidence in cross-chain infrastructure despite the sector's history of security incidents.",
+    fullSummary: "Cross-chain bridge protocol Nexus has closed a $120 million Series B funding round led by Paradigm and Andreessen Horowitz, valuing the company at $2.4 billion. The protocol enables trustless asset transfers across 15 blockchains.",
+    url: "#",
   },
   {
     id: "n9",
@@ -100,7 +118,8 @@ const NEWS_DATA: NewsItem[] = [
     timeAgo: "6h ago",
     category: "Market",
     summary: "Network security strengthens as miners deploy next-gen hardware to maintain profitability post-reward reduction.",
-    fullSummary: "Bitcoin mining difficulty has reached an all-time high following the latest adjustment, increasing by 4.2% to 86.39T. Despite the block reward halving, miners have rapidly deployed next-generation ASIC hardware including the Bitmain S21 XP and MicroBT M60, which offer 30-40% better energy efficiency. The network hashrate has recovered to 620 EH/s, just 8% below pre-halving levels. Mining pools report that operations with electricity costs below $0.05/kWh remain profitable, while marginal miners have been forced to consolidate or exit.",
+    fullSummary: "Bitcoin mining difficulty has reached an all-time high following the latest adjustment, increasing by 4.2% to 86.39T. Despite the block reward halving, miners have rapidly deployed next-generation ASIC hardware.",
+    url: "#",
   },
   {
     id: "n10",
@@ -109,7 +128,8 @@ const NEWS_DATA: NewsItem[] = [
     timeAgo: "8h ago",
     category: "DeFi",
     summary: "Major lending platforms adopt AI-driven risk models to automatically adjust collateral ratios and liquidation thresholds.",
-    fullSummary: "Leading DeFi lending protocols Aave v4 and Compound v3 have implemented dynamic risk parameters powered by machine learning models developed by Gauntlet and Chaos Labs. The systems automatically adjust collateral ratios, borrow caps, and liquidation thresholds based on real-time market volatility, correlation data, and liquidity depth. During a recent 15% market dip, the dynamic system reduced collateral ratios by 8% pre-emptively, preventing $340M in liquidations that would have occurred under static parameters. The approach marks a significant evolution in decentralized risk management.",
+    fullSummary: "Leading DeFi lending protocols Aave v4 and Compound v3 have implemented dynamic risk parameters powered by machine learning models developed by Gauntlet and Chaos Labs.",
+    url: "#",
   },
 ];
 
@@ -123,14 +143,98 @@ const CATEGORY_COLORS: Record<NewsCategory, string> = {
   Trading: "bg-crypto-red/15 text-crypto-red border-crypto-red/30",
 };
 
+const CATEGORY_BORDER: Record<NewsCategory, string> = {
+  Market: "news-border-market",
+  DeFi: "news-border-defi",
+  Regulation: "news-border-regulation",
+  Tech: "news-border-tech",
+  Trading: "news-border-trading",
+};
+
+function formatTimestamp(timestamp?: string, timeAgo?: string): string {
+  if (timeAgo) return timeAgo;
+  if (!timestamp || timestamp === 'N/A') return 'Recently';
+  try {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch {
+    return 'Recently';
+  }
+}
+
+function NewsSkeleton() {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="glass-card p-2.5 animate-pulse">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <div className="h-4 w-14 rounded bg-secondary/50" />
+            <div className="h-3 w-16 rounded bg-secondary/30" />
+          </div>
+          <div className="h-3 w-full rounded bg-secondary/40 mb-1" />
+          <div className="h-3 w-3/4 rounded bg-secondary/30" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function CryptoNews() {
   const [selectedCategory, setSelectedCategory] = useState<NewsCategory | "All">("All");
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [newsItems, setNewsItems] = useState<NewsItem[]>(NEWS_DATA);
+  const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isLiveData, setIsLiveData] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string>(
     new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
   );
+
+  const fetchNews = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+
+    try {
+      const response = await fetch('/api/news');
+      const result: ApiResponse = await response.json();
+
+      if (result.success && result.data && result.data.length > 0) {
+        setNewsItems(result.data);
+        setIsLiveData(true);
+        setLastUpdated(
+          new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
+        );
+      } else {
+        // Fall back to mock data
+        setNewsItems(FALLBACK_NEWS_DATA);
+        setIsLiveData(false);
+      }
+    } catch {
+      // Fall back to mock data on error
+      setNewsItems(FALLBACK_NEWS_DATA);
+      setIsLiveData(false);
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNews();
+  }, [fetchNews]);
 
   const filteredNews = useMemo(() => {
     if (selectedCategory === "All") return newsItems;
@@ -138,22 +242,9 @@ export function CryptoNews() {
   }, [newsItems, selectedCategory]);
 
   const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    // Shuffle the news items
-    setNewsItems((prev) => {
-      const shuffled = [...prev];
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-      return shuffled;
-    });
-    setLastUpdated(
-      new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
-    );
     setExpandedId(null);
-    setTimeout(() => setRefreshing(false), 600);
-  }, []);
+    fetchNews(true);
+  }, [fetchNews]);
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
@@ -171,6 +262,12 @@ export function CryptoNews() {
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Newspaper className="w-4 h-4 text-crypto-cyan" />
               Crypto News Feed
+              {isLiveData && (
+                <Badge className="bg-crypto-green/20 text-crypto-green border-crypto-green/30 text-[9px] px-1.5 py-0 flex items-center gap-1">
+                  <Wifi className="w-2.5 h-2.5" />
+                  Live
+                </Badge>
+              )}
             </CardTitle>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-muted-foreground flex items-center gap-1">
@@ -182,10 +279,13 @@ export function CryptoNews() {
                 size="sm"
                 className="h-6 w-6 p-0"
                 onClick={handleRefresh}
+                disabled={refreshing}
               >
-                <RefreshCw
-                  className={cn("w-3 h-3 text-crypto-cyan", refreshing && "animate-spin")}
-                />
+                {refreshing ? (
+                  <Loader2 className="w-3 h-3 text-crypto-cyan animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3 h-3 text-crypto-cyan" />
+                )}
               </Button>
             </div>
           </div>
@@ -193,110 +293,136 @@ export function CryptoNews() {
         <CardContent className="space-y-3">
           {/* Category Filters */}
           <div className="flex flex-wrap gap-1.5">
-            <Badge
-              variant="outline"
+            <button
               className={cn(
-                "text-[10px] cursor-pointer transition-colors",
+                "text-[10px] cursor-pointer transition-all duration-200 px-2.5 py-1 rounded-full border",
                 selectedCategory === "All"
-                  ? "bg-crypto-cyan/15 text-crypto-cyan border-crypto-cyan/30"
-                  : "hover:bg-secondary/50"
+                  ? "bg-crypto-cyan/15 text-crypto-cyan border-crypto-cyan/30 shadow-sm shadow-crypto-cyan/10"
+                  : "bg-secondary/30 text-muted-foreground border-border/50 hover:bg-secondary/60 hover:border-border"
               )}
               onClick={() => setSelectedCategory("All")}
             >
               All
-            </Badge>
+            </button>
             {CATEGORIES.map((cat) => (
-              <Badge
+              <button
                 key={cat}
-                variant="outline"
                 className={cn(
-                  "text-[10px] cursor-pointer transition-colors",
+                  "text-[10px] cursor-pointer transition-all duration-200 px-2.5 py-1 rounded-full border",
                   selectedCategory === cat
-                    ? CATEGORY_COLORS[cat]
-                    : "hover:bg-secondary/50"
+                    ? `${CATEGORY_COLORS[cat]} shadow-sm`
+                    : "bg-secondary/30 text-muted-foreground border-border/50 hover:bg-secondary/60 hover:border-border"
                 )}
                 onClick={() => setSelectedCategory(cat)}
               >
                 {cat}
-              </Badge>
+              </button>
             ))}
           </div>
 
           {/* News List */}
           <div className="space-y-2 max-h-96 overflow-y-auto cyan-scrollbar">
-            <AnimatePresence mode="popLayout">
-              {filteredNews.map((item) => {
-                const isExpanded = expandedId === item.id;
+            {isLoading ? (
+              <NewsSkeleton />
+            ) : (
+              <AnimatePresence mode="popLayout">
+                {filteredNews.map((item) => {
+                  const isExpanded = expandedId === item.id;
+                  const displayTime = formatTimestamp(item.timestamp, item.timeAgo);
+                  const displaySource = item.source.replace(/^www\./, '');
+                  const hasRealUrl = item.url && item.url !== '#';
 
-                return (
-                  <motion.div
-                    key={item.id}
-                    layout
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ duration: 0.2 }}
-                    className={cn(
-                      "glass-card p-2.5 cursor-pointer transition-colors hover:bg-secondary/30",
-                      isExpanded && "ring-1 ring-crypto-cyan/20"
-                    )}
-                    onClick={() => toggleExpand(item.id)}
-                  >
-                    <div className="flex items-start gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <Badge
-                            variant="outline"
-                            className={cn("text-[9px] px-1.5 py-0 shrink-0", CATEGORY_COLORS[item.category])}
-                          >
-                            {item.category}
-                          </Badge>
-                          <span className="text-[9px] text-muted-foreground shrink-0">
-                            {item.source}
-                          </span>
-                          <span className="text-[9px] text-muted-foreground shrink-0">
-                            · {item.timeAgo}
-                          </span>
-                        </div>
-                        <h4 className="text-xs font-medium leading-tight line-clamp-2">
-                          {item.title}
-                        </h4>
-                        <AnimatePresence>
-                          {isExpanded && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: "auto", opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.25 }}
-                              className="overflow-hidden"
+                  return (
+                    <motion.div
+                      key={item.id}
+                      layout
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.2 }}
+                      className={cn(
+                        "glass-card p-2.5 cursor-pointer transition-all duration-200 hover:bg-secondary/30 hover:-translate-y-0.5 hover:shadow-md slide-up",
+                        CATEGORY_BORDER[item.category],
+                        isExpanded && "ring-1 ring-crypto-cyan/20"
+                      )}
+                      onClick={() => toggleExpand(item.id)}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <Badge
+                              variant="outline"
+                              className={cn("text-[9px] px-1.5 py-0 shrink-0", CATEGORY_COLORS[item.category])}
                             >
-                              <p className="text-[11px] text-muted-foreground leading-relaxed mt-1.5">
-                                {item.fullSummary}
-                              </p>
-                              <div className="flex items-center gap-1 mt-1.5 text-crypto-cyan">
-                                <ExternalLink className="w-3 h-3" />
-                                <span className="text-[10px]">Read full article</span>
-                              </div>
-                            </motion.div>
+                              {item.category}
+                            </Badge>
+                            <span className="text-[9px] text-muted-foreground shrink-0 truncate max-w-[100px]">
+                              {displaySource}
+                            </span>
+                            <span className="text-[9px] text-muted-foreground shrink-0">
+                              · {displayTime}
+                            </span>
+                          </div>
+                          <h4 className="text-xs font-medium leading-tight line-clamp-2">
+                            {item.title}
+                          </h4>
+                          <AnimatePresence>
+                            {isExpanded && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.25 }}
+                                className="overflow-hidden"
+                              >
+                                <p className="text-[11px] text-muted-foreground leading-relaxed mt-1.5">
+                                  {item.fullSummary || item.summary}
+                                </p>
+                                {hasRealUrl && (
+                                  <a
+                                    href={item.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1 mt-1.5 text-crypto-cyan hover:text-crypto-cyan/80 transition-colors"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                    <span className="text-[10px]">Read full article</span>
+                                  </a>
+                                )}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                          {!isExpanded && (
+                            <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">
+                              {item.summary}
+                            </p>
                           )}
-                        </AnimatePresence>
-                        {!isExpanded && (
-                          <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">
-                            {item.summary}
-                          </p>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            )}
           </div>
 
-          {filteredNews.length === 0 && (
+          {!isLoading && filteredNews.length === 0 && (
             <div className="empty-state py-6">
               <p className="empty-state-title">No news found</p>
               <p className="empty-state-desc">Try selecting a different category</p>
+            </div>
+          )}
+
+          {/* Data source indicator */}
+          {!isLoading && (
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[9px] text-muted-foreground">
+                {isLiveData ? 'Source: Web Search API' : 'Source: Fallback Data'}
+              </span>
+              <span className="text-[9px] text-muted-foreground">
+                {newsItems.length} articles
+              </span>
             </div>
           )}
         </CardContent>

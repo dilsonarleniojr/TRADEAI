@@ -9,6 +9,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
+export type DrawingTool = 'crosshair' | 'trendline' | 'horizontal';
+
+export interface Drawing {
+  id: string;
+  type: 'trendline' | 'horizontal';
+  // Trendline points
+  startTime?: number;
+  startPrice?: number;
+  endTime?: number;
+  endPrice?: number;
+  // Horizontal line price
+  price?: number;
+  color: string;
+}
+
 interface KlineRaw {
   openTime: number;
   open: string;
@@ -59,6 +74,9 @@ interface CandlestickChartProps {
   showEMA26?: boolean;
   showVolumeProfile?: boolean;
   showIchimoku?: boolean;
+  drawingTool?: DrawingTool;
+  drawings?: Drawing[];
+  onDrawingAdd?: (drawing: Drawing) => void;
 }
 
 const CHART_PADDING = { top: 20, right: 90, bottom: 30, left: 10 };
@@ -128,6 +146,9 @@ export function CandlestickChart({
   showEMA26 = false,
   showVolumeProfile = false,
   showIchimoku = false,
+  drawingTool = 'crosshair',
+  drawings = [],
+  onDrawingAdd,
 }: CandlestickChartProps) {
   const [candles, setCandles] = useState<ProcessedCandle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,6 +157,10 @@ export function CandlestickChart({
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 400 });
+
+  // Drawing state
+  const [pendingDrawPoint, setPendingDrawPoint] = useState<{ time: number; price: number } | null>(null);
+  const [drawMousePos, setDrawMousePos] = useState<{ x: number; y: number } | null>(null);
 
   // Resize observer
   useEffect(() => {
@@ -322,6 +347,73 @@ export function CandlestickChart({
     [candleWidth]
   );
 
+  // Convert candle time to X position (works even for off-screen candles)
+  const timeToX = useCallback(
+    (time: number) => {
+      const startOfVisible = candles.length - visibleCandles.length;
+      const fullIndex = candles.findIndex((c) => c.time === time);
+      if (fullIndex === -1) return -100; // Off-screen
+      const relIndex = fullIndex - startOfVisible;
+      return CHART_PADDING.left + relIndex * candleWidth + candleWidth / 2;
+    },
+    [candles, visibleCandles, candleWidth]
+  );
+
+  // Convert pixel Y to price
+  const yToPrice = useCallback(
+    (y: number) => {
+      const price = minPrice + ((CHART_PADDING.top + priceChartHeight - y) / priceChartHeight) * priceRange;
+      return price;
+    },
+    [minPrice, priceRange, priceChartHeight]
+  );
+
+  // Chart click handler for drawing
+  const handleChartClick = useCallback(
+    (e: React.MouseEvent<SVGSVGElement>) => {
+      if (drawingTool === 'crosshair' || !onDrawingAdd) return;
+      if (visibleCandles.length === 0) return;
+
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const candleIndex = Math.floor((mouseX - CHART_PADDING.left) / candleWidth);
+
+      if (candleIndex < 0 || candleIndex >= visibleCandles.length) return;
+
+      const clickedPrice = yToPrice(mouseY);
+      const clickedTime = visibleCandles[candleIndex].time;
+
+      if (drawingTool === 'horizontal') {
+        onDrawingAdd({
+          id: `hline-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          type: 'horizontal',
+          price: clickedPrice,
+          color: '#fbbf24',
+        });
+        setPendingDrawPoint(null);
+      } else if (drawingTool === 'trendline') {
+        if (!pendingDrawPoint) {
+          setPendingDrawPoint({ time: clickedTime, price: clickedPrice });
+        } else {
+          onDrawingAdd({
+            id: `trend-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            type: 'trendline',
+            startTime: pendingDrawPoint.time,
+            startPrice: pendingDrawPoint.price,
+            endTime: clickedTime,
+            endPrice: clickedPrice,
+            color: '#06b6d4',
+          });
+          setPendingDrawPoint(null);
+        }
+      }
+    },
+    [drawingTool, onDrawingAdd, visibleCandles, candleWidth, yToPrice, pendingDrawPoint]
+  );
+
   // Mouse handlers
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
@@ -330,6 +422,13 @@ export function CandlestickChart({
       if (!rect) return;
 
       const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Track mouse position for drawing preview
+      if (drawingTool !== 'crosshair') {
+        setDrawMousePos({ x: mouseX, y: mouseY });
+      }
+
       const candleIndex = Math.floor((mouseX - CHART_PADDING.left) / candleWidth);
 
       if (candleIndex >= 0 && candleIndex < visibleCandles.length) {
@@ -343,10 +442,19 @@ export function CandlestickChart({
         setTooltip(null);
       }
     },
-    [visibleCandles, candleWidth, indexToX, priceToY]
+    [visibleCandles, candleWidth, indexToX, priceToY, drawingTool, pendingDrawPoint]
   );
 
-  const handleMouseLeave = useCallback(() => setTooltip(null), []);
+  const handleMouseLeave = useCallback(() => {
+    setTooltip(null);
+    setDrawMousePos(null);
+  }, []);
+
+  // Clear pending drawing when tool changes
+  useEffect(() => {
+    setPendingDrawPoint(null);
+    setDrawMousePos(null);
+  }, [drawingTool]);
 
   // Price grid lines
   const priceGridLines = useMemo(() => {
@@ -529,9 +637,32 @@ export function CandlestickChart({
             width={dimensions.width}
             height={dimensions.height}
             className="select-none"
+            style={{ cursor: drawingTool !== 'crosshair' ? 'crosshair' : 'default' }}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
+            onClick={handleChartClick}
           >
+            {/* Glow filter for drawing lines */}
+            <defs>
+              <filter id="drawing-glow-cyan" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="3" result="blur" />
+                <feFlood floodColor="#06b6d4" floodOpacity="0.6" result="color" />
+                <feComposite in="color" in2="blur" operator="in" result="glow" />
+                <feMerge>
+                  <feMergeNode in="glow" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+              <filter id="drawing-glow-gold" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="3" result="blur" />
+                <feFlood floodColor="#fbbf24" floodOpacity="0.6" result="color" />
+                <feComposite in="color" in2="blur" operator="in" result="glow" />
+                <feMerge>
+                  <feMergeNode in="glow" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
             {/* Background */}
             <rect
               x={0}
@@ -1148,6 +1279,114 @@ export function CandlestickChart({
                 </g>
               );
             })}
+
+            {/* Drawing: Horizontal Lines */}
+            {drawings.filter((d) => d.type === 'horizontal' && d.price !== undefined).map((drawing) => {
+              const y = priceToY(drawing.price!);
+              return (
+                <g key={drawing.id}>
+                  <line
+                    x1={CHART_PADDING.left}
+                    y1={y}
+                    x2={dimensions.width - CHART_PADDING.right}
+                    y2={y}
+                    stroke="#fbbf24"
+                    strokeWidth={1.5}
+                    strokeDasharray="8,4"
+                    opacity={0.8}
+                    filter="url(#drawing-glow-gold)"
+                  />
+                  {/* Price label on right side */}
+                  <rect
+                    x={dimensions.width - CHART_PADDING.right + 1}
+                    y={y - 8}
+                    width={CHART_PADDING.right - 2}
+                    height={16}
+                    fill="#fbbf24"
+                    opacity={0.2}
+                    rx={3}
+                  />
+                  <text
+                    x={dimensions.width - CHART_PADDING.right + 5}
+                    y={y + 3}
+                    fill="#fbbf24"
+                    fontSize={9}
+                    fontFamily="monospace"
+                    fontWeight={600}
+                  >
+                    {formatPrice(drawing.price!)}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Drawing: Trendlines */}
+            {drawings.filter((d) => d.type === 'trendline' && d.startTime !== undefined && d.endTime !== undefined).map((drawing) => {
+              const x1 = timeToX(drawing.startTime!);
+              const y1 = priceToY(drawing.startPrice!);
+              const x2 = timeToX(drawing.endTime!);
+              const y2 = priceToY(drawing.endPrice!);
+              return (
+                <g key={drawing.id}>
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke="#06b6d4"
+                    strokeWidth={1.5}
+                    strokeDasharray="6,3"
+                    opacity={0.8}
+                    filter="url(#drawing-glow-cyan)"
+                  />
+                  {/* Start point dot */}
+                  <circle cx={x1} cy={y1} r={3} fill="#06b6d4" opacity={0.8} />
+                  {/* End point dot */}
+                  <circle cx={x2} cy={y2} r={3} fill="#06b6d4" opacity={0.8} />
+                </g>
+              );
+            })}
+
+            {/* Drawing Preview: Pending trendline */}
+            {pendingDrawPoint && drawingTool === 'trendline' && drawMousePos && (
+              <line
+                x1={timeToX(pendingDrawPoint.time)}
+                y1={priceToY(pendingDrawPoint.price)}
+                x2={drawMousePos.x}
+                y2={drawMousePos.y}
+                stroke="#06b6d4"
+                strokeWidth={1.5}
+                strokeDasharray="6,3"
+                opacity={0.5}
+              />
+            )}
+
+            {/* Drawing Preview: Pending start point indicator */}
+            {pendingDrawPoint && drawingTool === 'trendline' && (
+              <circle
+                cx={timeToX(pendingDrawPoint.time)}
+                cy={priceToY(pendingDrawPoint.price)}
+                r={4}
+                fill="#06b6d4"
+                opacity={0.6}
+                stroke="#06b6d4"
+                strokeWidth={1}
+              />
+            )}
+
+            {/* Drawing Preview: Horizontal line preview */}
+            {drawingTool === 'horizontal' && drawMousePos && (
+              <line
+                x1={CHART_PADDING.left}
+                y1={drawMousePos.y}
+                x2={dimensions.width - CHART_PADDING.right}
+                y2={drawMousePos.y}
+                stroke="#fbbf24"
+                strokeWidth={1}
+                strokeDasharray="8,4"
+                opacity={0.4}
+              />
+            )}
           </svg>
         </motion.div>
       </AnimatePresence>
