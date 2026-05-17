@@ -1352,3 +1352,54 @@ The Crypto IA Pro platform is mature with 6 sections, real Binance data, 27+ das
 5. Optimize FearGreedIndex to avoid hydration mismatch
 6. Add haptic feedback using Vibration API for trade confirmations
 7. Create progressive web app (PWA) manifest for home screen installation
+---
+Task ID: 40
+Agent: main
+Task: Implement ML Pipeline with Feature Engineering, Model Training, and Signal Generation
+
+Work Log:
+- Read worklog.md and current project state (page.tsx, store.ts, backtest-section.tsx, indicators-panel.tsx, sltp-calculator.tsx)
+- Created ML Engine library (`src/lib/ml/engine.ts`) with complete ML pipeline:
+  - Feature Engineering: 11 features (RSI, EMA_9, EMA_21, MACD line/signal/histogram, Volume change, Price change, H-L range, Close position, EMA spread)
+  - Target definition: y = 1 if Close[t+1] > Close[t], else 0
+  - Z-Score Standardization (replaced Min-Max for better gradient descent convergence)
+  - Logistic Regression with Adam optimizer, Xavier initialization, class-balanced weights, L2 regularization
+  - Decision Tree (CART) with Gini impurity criterion
+  - Random Forest (15 trees) with bootstrap sampling and random feature subsampling
+  - Evaluation metrics: Accuracy, Precision, Recall, F1, AUC-ROC, Confusion Matrix
+  - Feature importance per model (weights for LR, split frequency for trees)
+  - F1-weighted ensemble for final signal generation
+- Created ML Pipeline dashboard component (`src/components/dashboard/ml-pipeline.tsx`):
+  - Collapsible configuration panel with sliders (learning rate, epochs, max depth, train/test split)
+  - Feature selection buttons (11 toggleable features with labels in Portuguese)
+  - Target formula explanation card
+  - Training progress indicator (4 steps)
+  - Current signal banner with COMPRA/VENDA/NEUTRO and confidence
+  - 3-model tab view (Reg. Logística, Árvore Decisão, Random Forest)
+  - Each tab shows: 5 metrics cards, model-specific info
+  - Feature importance horizontal bar chart (Recharts)
+  - Confusion matrix visualization
+  - Target distribution pie chart
+  - Model comparison table with "Melhor" badge
+  - Current feature values display
+  - Pipeline summary with formula
+  - Empty state with model icons
+- Integrated ML Pipeline into page.tsx as new "Machine Learning" MobileSection
+- Fixed Logistic Regression bug: model was predicting all one class (0% precision/recall)
+  - Root cause: zero initialization + SGD without momentum on noisy financial data
+  - Fix: Xavier initialization + Adam optimizer + class-balanced sample weights + L2 regularization + higher learning rate (0.05)
+  - Result: Precision 50%, Recall 7.9% (was 0%/0%), AUC 59.1%
+- Added Random Forest as third model (15 trees, bootstrap, feature subsampling)
+  - Best performing model: 57.4% accuracy, 55.4% F1, 65.5% AUC
+- Ran lint: 0 errors, 0 warnings
+- Dev server running normally
+
+Stage Summary:
+- Complete ML Pipeline implemented from scratch in pure TypeScript (no Python/scikit-learn dependency)
+- 3 models: Logistic Regression (Adam optimizer), Decision Tree (CART), Random Forest (15 trees)
+- Feature Engineering with 11 technical indicators as inputs (X)
+- Target: direction of next candle (y = 1 if up, 0 if down)
+- Full evaluation dashboard with confusion matrix, feature importance, loss curve, model comparison
+- Ensemble signal generation weighted by F1 scores
+- Random Forest is best model (55.4% F1, 65.5% AUC) — reasonable for noisy crypto prediction
+- Zero lint errors, zero runtime errors, all features working

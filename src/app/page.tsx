@@ -35,6 +35,7 @@ import { StrategyComparison } from "@/components/dashboard/strategy-comparison";
 import { SocialSentiment } from "@/components/dashboard/social-sentiment";
 import { OnChainAnalytics } from "@/components/dashboard/on-chain-analytics";
 import { SLTPCalculator } from "@/components/dashboard/sltp-calculator";
+import { MLPipeline } from "@/components/dashboard/ml-pipeline";
 import { MobileSection } from "@/components/dashboard/mobile-section";
 import { ChatSection } from "@/components/ai/chat-section";
 import { ChartSection } from "@/components/chart/chart-section";
@@ -205,6 +206,13 @@ export default function HomePage() {
               <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
                 <SocialSentiment />
                 <OnChainAnalytics />
+              </motion.div>
+            </MobileSection>
+
+            {/* Section: ML Pipeline (collapsed by default) */}
+            <MobileSection title="Machine Learning" icon="🧠" itemCount={1} defaultOpen={false}>
+              <motion.div variants={itemVariants}>
+                <MLPipeline />
               </motion.div>
             </MobileSection>
 
