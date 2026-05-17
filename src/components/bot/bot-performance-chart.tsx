@@ -108,12 +108,12 @@ export function BotPerformanceChart() {
     const losses = trades.filter((t) => t.pnl < 0).length;
     const neutral = trades.filter((t) => t.pnl === 0).length;
     const winLossArr = [
-      { name: "Wins", value: wins, color: "#22c55e" },
-      { name: "Losses", value: losses, color: "#ef4444" },
+      { name: "Vitórias", value: wins, color: "#22c55e" },
+      { name: "Derrotas", value: losses, color: "#ef4444" },
     ];
     // Only add neutral if there are any
     if (neutral > 0) {
-      winLossArr.push({ name: "Neutral", value: neutral, color: "#6b7280" });
+      winLossArr.push({ name: "Neutro", value: neutral, color: "#6b7280" });
     }
 
     // Trade Volume by Hour
@@ -175,9 +175,9 @@ export function BotPerformanceChart() {
               <div className="w-14 h-14 rounded-2xl bg-crypto-cyan/10 flex items-center justify-center mb-4">
                 <BarChart3 className="w-7 h-7 text-crypto-cyan" />
               </div>
-              <h3 className="text-sm font-semibold mb-1">No Performance Data</h3>
+              <h3 className="text-sm font-semibold mb-1">Nenhum Dado de Performance</h3>
               <p className="text-xs text-muted-foreground max-w-[260px]">
-                Start the bot to generate performance data. Charts and analytics will appear here as trades are executed.
+                Inicie o bot para gerar dados de performance. Gráficos e análises aparecerão aqui conforme trades forem executados.
               </p>
             </div>
           </CardContent>
@@ -200,7 +200,7 @@ export function BotPerformanceChart() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-crypto-cyan" />
-              Performance Analytics
+              Análise de Performance
             </CardTitle>
             <span className="text-xs text-muted-foreground">
               {trades.length} trades
@@ -214,7 +214,7 @@ export function BotPerformanceChart() {
               <div className="p-3 rounded-lg bg-secondary/30 border border-border/50 card-accent-cyan">
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <DollarSign className="w-3.5 h-3.5 text-crypto-cyan" />
-                  <span className="text-[10px] text-muted-foreground font-medium">Total P&L</span>
+                  <span className="text-[10px] text-muted-foreground font-medium">L/P Total</span>
                 </div>
                 <div className={cn(
                   "text-lg font-bold number-animate",
@@ -227,7 +227,7 @@ export function BotPerformanceChart() {
               <div className="p-3 rounded-lg bg-secondary/30 border border-border/50 card-accent-green">
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <Target className="w-3.5 h-3.5 text-crypto-green" />
-                  <span className="text-[10px] text-muted-foreground font-medium">Win Rate</span>
+                  <span className="text-[10px] text-muted-foreground font-medium">Taxa de Acerto</span>
                 </div>
                 <div className={cn(
                   "text-lg font-bold number-animate",
@@ -240,7 +240,7 @@ export function BotPerformanceChart() {
               <div className="p-3 rounded-lg bg-secondary/30 border border-border/50 card-accent-gold">
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <Activity className="w-3.5 h-3.5 text-crypto-gold" />
-                  <span className="text-[10px] text-muted-foreground font-medium">Avg P&L/Trade</span>
+                  <span className="text-[10px] text-muted-foreground font-medium">L/P Médio/Trade</span>
                 </div>
                 <div className={cn(
                   "text-lg font-bold number-animate",
@@ -253,7 +253,7 @@ export function BotPerformanceChart() {
               <div className="p-3 rounded-lg bg-secondary/30 border border-border/50 card-accent-red">
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <Trophy className="w-3.5 h-3.5 text-crypto-gold" />
-                  <span className="text-[10px] text-muted-foreground font-medium">Best / Worst</span>
+                  <span className="text-[10px] text-muted-foreground font-medium">Melhor / Pior</span>
                 </div>
                 <div className="text-sm font-bold">
                   <span className="text-crypto-green number-animate">+${formatPrice(Math.abs(stats.bestTrade))}</span>
@@ -270,7 +270,7 @@ export function BotPerformanceChart() {
             <div className="p-3 rounded-lg bg-secondary/20 border border-border/50">
               <h4 className="text-xs font-semibold text-muted-foreground mb-3 flex items-center gap-1.5">
                 <TrendingUp className="w-3.5 h-3.5 text-crypto-cyan" />
-                P&L Over Time
+                L/P ao Longo do Tempo
               </h4>
               <div className="h-[200px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -326,7 +326,7 @@ export function BotPerformanceChart() {
             <div className="p-3 rounded-lg bg-secondary/20 border border-border/50">
               <h4 className="text-xs font-semibold text-muted-foreground mb-3 flex items-center gap-1.5">
                 <Target className="w-3.5 h-3.5 text-crypto-green" />
-                Win/Loss Distribution
+                Distribuição Vitória/Derrota
               </h4>
               <div className="h-[200px] w-full flex items-center justify-center">
                 {winLossData.length > 0 && winLossData.some((d) => d.value > 0) ? (
@@ -361,7 +361,7 @@ export function BotPerformanceChart() {
                 ) : (
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <AlertTriangle className="w-8 h-8 opacity-40" />
-                    <span className="text-xs">No closed trades yet</span>
+                    <span className="text-xs">Nenhum trade fechado ainda</span>
                   </div>
                 )}
               </div>
@@ -371,13 +371,13 @@ export function BotPerformanceChart() {
                   <div className="flex items-center gap-1.5">
                     <div className="w-2.5 h-2.5 rounded-full bg-crypto-green" />
                     <span className="text-[10px] text-muted-foreground">
-                      Wins: {stats.wins} ({stats.winRate.toFixed(0)}%)
+                      Vitórias: {stats.wins} ({stats.winRate.toFixed(0)}%)
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <div className="w-2.5 h-2.5 rounded-full bg-crypto-red" />
                     <span className="text-[10px] text-muted-foreground">
-                      Losses: {stats.losses} ({(100 - stats.winRate).toFixed(0)}%)
+                      Derrotas: {stats.losses} ({(100 - stats.winRate).toFixed(0)}%)
                     </span>
                   </div>
                 </div>
@@ -390,7 +390,7 @@ export function BotPerformanceChart() {
             <div className="p-3 rounded-lg bg-secondary/20 border border-border/50">
               <h4 className="text-xs font-semibold text-muted-foreground mb-3 flex items-center gap-1.5">
                 <Activity className="w-3.5 h-3.5 text-crypto-gold" />
-                Trade Volume by Hour
+                Volume de Trades por Hora
               </h4>
               <div className="h-[140px] w-full">
                 <ResponsiveContainer width="100%" height="100%">

@@ -35,7 +35,7 @@ export function RecentTrades() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <FileText className="w-4 h-4 text-crypto-gold" />
-              Recent Trades
+              Trades Recentes
             </CardTitle>
             <ExportTrades />
           </div>
@@ -46,9 +46,9 @@ export function RecentTrades() {
               <div className="empty-state-icon bg-crypto-gold/10">
                 <FileText className="w-6 h-6 text-crypto-gold/60" />
               </div>
-              <p className="empty-state-title">No trades yet</p>
+              <p className="empty-state-title">Nenhum trade ainda</p>
               <p className="empty-state-desc">
-                Start trading with the Quick Trade panel or activate the trading bot
+                Comece a operar com o Quick Trade ou ative o robô de trading
               </p>
             </div>
           ) : (

@@ -85,7 +85,7 @@ export function BotPortfolio() {
       <CardHeader className="pb-3 relative">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <Wallet className="w-4 h-4 text-crypto-cyan" />
-          Portfolio Status
+          Status do Portfólio
           {botActive && (
             <span className="w-1.5 h-1.5 rounded-full bg-crypto-green animate-pulse ml-1" />
           )}
@@ -97,7 +97,7 @@ export function BotPortfolio() {
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Current Balance</span>
+              <span className="text-xs text-muted-foreground">Saldo Atual</span>
             </div>
             {/* Daily Change Indicator */}
             <div
@@ -150,8 +150,8 @@ export function BotPortfolio() {
                     fontSize: "11px",
                     color: "#e2e8f0",
                   }}
-                  formatter={(value: number) => [`$${formatPrice(value)}`, "Portfolio"]}
-                  labelFormatter={(label: string) => `Time: ${label}`}
+                  formatter={(value: number) => [`$${formatPrice(value)}`, "Portfólio"]}
+                  labelFormatter={(label: string) => `Hora: ${label}`}
                 />
                 <ReferenceLine
                   y={botConfig.initialBalance}
@@ -179,7 +179,7 @@ export function BotPortfolio() {
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1 relative">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              Cash
+              Caixa
             </span>
             <motion.div
               key={portfolio.cashBalance}
@@ -192,7 +192,7 @@ export function BotPortfolio() {
           </div>
           <div className="space-y-1">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              Assets
+              Ativos
             </span>
             <motion.div
               key={portfolio.assetBalance}
@@ -213,7 +213,7 @@ export function BotPortfolio() {
             ) : (
               <TrendingDown className="w-4 h-4 text-crypto-red" />
             )}
-            <span className="text-xs text-muted-foreground">Unrealized PnL</span>
+            <span className="text-xs text-muted-foreground">L/P Não Realizado</span>
           </div>
           <div className="flex items-center gap-2">
             <motion.span
@@ -245,7 +245,7 @@ export function BotPortfolio() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Daily Trades</span>
+              <span className="text-xs text-muted-foreground">Trades Diários</span>
             </div>
             <span className="text-xs font-medium">
               {todayTrades.length}/{botConfig.maxDailyTrades}
@@ -261,7 +261,7 @@ export function BotPortfolio() {
         {portfolio.assetQuantity > 0 && (
           <div className="bg-secondary/30 rounded-lg p-3 space-y-2">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              Asset Holdings
+              Posição em Ativos
             </span>
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">

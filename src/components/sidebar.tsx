@@ -19,12 +19,12 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
 const navItems = [
-  { id: "dashboard" as const, icon: LayoutDashboard, label: "Dashboard", shortLabel: "Home" },
-  { id: "chart" as const, icon: BarChart3, label: "Chart & Analysis", shortLabel: "Chart" },
-  { id: "ai" as const, icon: Brain, label: "AI Assistant", shortLabel: "AI" },
-  { id: "bot" as const, icon: Bot, label: "Trading Bot", shortLabel: "Bot" },
-  { id: "backtest" as const, icon: History, label: "Backtesting", shortLabel: "Test" },
-  { id: "history" as const, icon: FileText, label: "Trade History", shortLabel: "History" },
+  { id: "dashboard" as const, icon: LayoutDashboard, label: "Painel", shortLabel: "Início" },
+  { id: "chart" as const, icon: BarChart3, label: "Gráfico & Análise", shortLabel: "Gráfico" },
+  { id: "ai" as const, icon: Brain, label: "Assistente IA", shortLabel: "IA" },
+  { id: "bot" as const, icon: Bot, label: "Robô de Trading", shortLabel: "Bot" },
+  { id: "backtest" as const, icon: History, label: "Backtesting", shortLabel: "Teste" },
+  { id: "history" as const, icon: FileText, label: "Histórico", shortLabel: "Histórico" },
 ];
 
 export function Sidebar() {

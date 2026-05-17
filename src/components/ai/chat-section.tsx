@@ -22,17 +22,17 @@ import ReactMarkdown from 'react-markdown';
 import { SignalGenerator } from './signal-generator';
 
 const SUGGESTED_QUESTIONS = [
-  'Analyze BTC trend',
-  'What is RSI?',
-  'Best strategy for beginners',
-  'Explain stop loss',
-  'Market outlook today',
+  'Analisar tendência BTC',
+  'O que é RSI?',
+  'Melhor estratégia para iniciantes',
+  'Explique stop loss',
+  'Perspectiva do mercado hoje',
 ];
 
 const WELCOME_MESSAGE = {
   id: 'welcome-msg',
   role: 'assistant' as const,
-  content: `👋 **Welcome to Crypto IA Pro!**\n\nI'm your AI-powered trading assistant. I can help you with:\n\n- 📊 **Technical Analysis** — RSI, MACD, support/resistance levels\n- 🤖 **Trading Strategies** — Get personalized strategy recommendations\n- 📈 **Market Insights** — Real-time market analysis and trends\n- ⚡ **Signal Generation** — AI-driven buy/sell signals\n\nAsk me anything about crypto markets, or try one of the suggested questions below!`,
+  content: `👋 **Bem-vindo ao Crypto IA Pro!**\n\nSou seu assistente de trading com IA. Posso ajudar com:\n\n- 📊 **Análise Técnica** — RSI, MACD, níveis de suporte/resistência\n- 🤖 **Estratégias de Trading** — Recomendações personalizadas de estratégia\n- 📈 **Insights de Mercado** — Análise e tendências em tempo real\n- ⚡ **Geração de Sinais** — Sinais de compra/venda com IA\n\nPergunte qualquer coisa sobre mercados crypto, ou experimente uma das perguntas sugeridas abaixo!`,
   timestamp: new Date().toISOString(),
 };
 
@@ -73,7 +73,7 @@ function ThinkingIndicator() {
       <div className='bg-card/80 backdrop-blur-sm border border-border/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm'>
         <div className='flex items-center gap-2 mb-1.5'>
           <Sparkles className='w-3 h-3 text-crypto-cyan' />
-          <span className='text-[10px] text-crypto-cyan font-medium'>AI is thinking...</span>
+          <span className='text-[10px] text-crypto-cyan font-medium'>IA está pensando...</span>
         </div>
         <div className='flex items-center gap-1.5'>
           <span className='sr-only'>Loading...</span>
@@ -179,7 +179,7 @@ export function ChatSection() {
             id: `msg-${Date.now()}-error`,
             role: 'assistant' as const,
             content:
-              'Sorry, I encountered an error. Please try again. ⚠️',
+              'Desculpe, ocorreu um erro. Por favor, tente novamente. ⚠️',
             timestamp: new Date().toISOString(),
           };
           addChatMessage(errorMessage);
@@ -189,7 +189,7 @@ export function ChatSection() {
           id: `msg-${Date.now()}-error`,
           role: 'assistant' as const,
           content:
-            'Network error. Please check your connection and try again. ⚠️',
+            'Erro de rede. Verifique sua conexão e tente novamente. ⚠️',
           timestamp: new Date().toISOString(),
         };
         addChatMessage(errorMessage);
@@ -242,7 +242,7 @@ export function ChatSection() {
               </div>
               <div>
                 <CardTitle className="text-base font-semibold">
-                  AI Trading Assistant
+                  Assistente de Trading IA
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">
                   Powered by AI • {selectedSymbol}
@@ -252,14 +252,14 @@ export function ChatSection() {
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="text-xs gap-1">
                 <MessageSquare className="w-3 h-3" />
-                {chatMessages.length} messages
+                {chatMessages.length} mensagens
               </Badge>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={handleClearChat}
                 className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                title="Clear chat"
+                title="Limpar chat"
               >
                 <Trash2 className="w-4 h-4" />
               </Button>
@@ -277,11 +277,11 @@ export function ChatSection() {
                     <Bot className="w-8 h-8 text-crypto-cyan" />
                   </div>
                   <h3 className="text-lg font-semibold mb-1">
-                    Welcome to Crypto IA Pro
+                    Bem-vindo ao Crypto IA Pro
                   </h3>
                   <p className="text-sm text-muted-foreground max-w-sm mb-6">
-                    Ask me anything about crypto markets, technical analysis,
-                    trading strategies, or get real-time insights.
+                    Pergunte qualquer coisa sobre mercados crypto, análise técnica,
+                    estratégias de trading, ou obtenha insights em tempo real.
                   </p>
 
                   {/* Suggested Questions with gradient borders */}
@@ -388,7 +388,7 @@ export function ChatSection() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask about crypto markets, analysis, strategies..."
+              placeholder="Pergunte sobre mercados crypto, análise, estratégias..."
               aria-label="Type your message"
               disabled={isLoading}
               className="flex-1 bg-background/80 backdrop-blur-sm border-border/50 input-glow peer focus-visible:ring-crypto-cyan/30 focus-visible:border-crypto-cyan/30 transition-all duration-300"
@@ -403,8 +403,8 @@ export function ChatSection() {
             </Button>
           </div>
           <p className="text-[10px] text-muted-foreground mt-1.5 text-center">
-            AI responses are for informational purposes only. Not financial
-            advice.
+            Respostas da IA são apenas informativas. Não é recomendação
+            financeira.
           </p>
         </div>
       </Card>
@@ -419,28 +419,28 @@ export function ChatSection() {
           <CardHeader className="pb-3 relative">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-crypto-gold" />
-              <CardTitle className="text-sm">AI Tips</CardTitle>
+              <CardTitle className="text-sm">Dicas da IA</CardTitle>
             </div>
           </CardHeader>
           <CardContent className="space-y-3 relative">
             <TipItem
-              title="RSI Strategy"
-              description="Buy when RSI drops below 30 (oversold), sell when RSI rises above 70 (overbought)."
+              title="Estratégia RSI"
+              description="Compre quando RSI cair abaixo de 30 (sobrevendido), venda quando RSI subir acima de 70 (sobrecomprado)."
             />
             <Separator className="bg-border" />
             <TipItem
               title="Stop Loss"
-              description="Always set a stop loss 2-5% below your entry price to limit potential losses."
+              description="Sempre defina um stop loss 2-5% abaixo do preço de entrada para limitar perdas potenciais."
             />
             <Separator className="bg-border" />
             <TipItem
-              title="Diversification"
-              description="Don't put all your capital in one coin. Spread across 3-5 different assets."
+              title="Diversificação"
+              description="Não coloque todo seu capital em uma moeda. Distribua entre 3-5 ativos diferentes."
             />
             <Separator className="bg-border" />
             <TipItem
-              title="Volume Confirmation"
-              description="Confirm breakouts with above-average volume to avoid false signals."
+              title="Confirmação por Volume"
+              description="Confirme rompimentos com volume acima da média para evitar sinais falsos."
             />
           </CardContent>
         </Card>

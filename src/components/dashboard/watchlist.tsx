@@ -42,7 +42,7 @@ export function Watchlist() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Star className="w-4 h-4 text-crypto-gold" />
-              Watchlist
+              Lista de Observação
               <span className="text-[10px] text-muted-foreground font-normal">
                 ({watchlistTickers.length})
               </span>
@@ -55,9 +55,9 @@ export function Watchlist() {
               <div className="empty-state-icon bg-crypto-gold/10">
                 <Star className="w-6 h-6 text-crypto-gold/60" />
               </div>
-              <p className="empty-state-title">No assets in watchlist</p>
+              <p className="empty-state-title">Nenhum ativo na lista</p>
               <p className="empty-state-desc">
-                Click the star icon in the market table to add symbols to your watchlist
+                Clique no ícone de estrela na tabela de mercado para adicionar símbolos à sua lista
               </p>
             </div>
           ) : (

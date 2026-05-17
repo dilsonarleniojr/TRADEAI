@@ -34,6 +34,7 @@ import { PortfolioRebalancing } from "@/components/dashboard/portfolio-rebalanci
 import { StrategyComparison } from "@/components/dashboard/strategy-comparison";
 import { SocialSentiment } from "@/components/dashboard/social-sentiment";
 import { OnChainAnalytics } from "@/components/dashboard/on-chain-analytics";
+import { SLTPCalculator } from "@/components/dashboard/sltp-calculator";
 import { ChatSection } from "@/components/ai/chat-section";
 import { ChartSection } from "@/components/chart/chart-section";
 import { BotSection } from "@/components/bot/bot-section";
@@ -66,12 +67,12 @@ const MOCK_TRADES: import("@/lib/store").TradeData[] = [
 ];
 
 const MOCK_AI_SIGNALS: import("@/lib/store").AISignalData[] = [
-  { id: "s1", symbol: "BTCUSDT", action: "BUY", confidence: 0.85, reasoning: "Strong bullish momentum with RSI oversold bounce. Volume increasing.", priceAtSignal: 78301.49, createdAt: new Date(Date.now() - 60000).toISOString() },
-  { id: "s2", symbol: "ETHUSDT", action: "HOLD", confidence: 0.6, reasoning: "Consolidating near support. Wait for breakout confirmation.", priceAtSignal: 2182.68, createdAt: new Date(Date.now() - 180000).toISOString() },
-  { id: "s3", symbol: "SOLUSDT", action: "BUY", confidence: 0.72, reasoning: "Approaching key support with increasing buying volume.", priceAtSignal: 86.69, createdAt: new Date(Date.now() - 300000).toISOString() },
-  { id: "s4", symbol: "BNBUSDT", action: "SELL", confidence: 0.7, reasoning: "Bearish divergence on RSI. Support level at risk.", priceAtSignal: 656.82, createdAt: new Date(Date.now() - 420000).toISOString() },
-  { id: "s5", symbol: "ADAUSDT", action: "SELL", confidence: 0.65, reasoning: "Failed to hold support. Downward momentum increasing.", priceAtSignal: 0.2554, createdAt: new Date(Date.now() - 540000).toISOString() },
-  { id: "s6", symbol: "ATOMUSDT", action: "BUY", confidence: 0.88, reasoning: "Strong breakout above resistance with volume confirmation.", priceAtSignal: 2.043, createdAt: new Date(Date.now() - 660000).toISOString() },
+  { id: "s1", symbol: "BTCUSDT", action: "BUY", confidence: 0.85, reasoning: "Forte momento de alta com recuperação do RSI em sobrevenda. Volume crescente.", priceAtSignal: 78301.49, stopLoss: 76735, takeProfit: 82216, createdAt: new Date(Date.now() - 60000).toISOString() },
+  { id: "s2", symbol: "ETHUSDT", action: "HOLD", confidence: 0.6, reasoning: "Consolidando próximo ao suporte. Aguardar confirmação de rompimento.", priceAtSignal: 2182.68, stopLoss: 21391, takeProfit: 22918, createdAt: new Date(Date.now() - 180000).toISOString() },
+  { id: "s3", symbol: "SOLUSDT", action: "BUY", confidence: 0.72, reasoning: "Aproximando-se de suporte chave com volume de compra crescente.", priceAtSignal: 86.69, stopLoss: 84.96, takeProfit: 91.02, createdAt: new Date(Date.now() - 300000).toISOString() },
+  { id: "s4", symbol: "BNBUSDT", action: "SELL", confidence: 0.7, reasoning: "Divergência baixista no RSI. Nível de suporte em risco.", priceAtSignal: 656.82, stopLoss: 669.96, takeProfit: 623.98, createdAt: new Date(Date.now() - 420000).toISOString() },
+  { id: "s5", symbol: "ADAUSDT", action: "SELL", confidence: 0.65, reasoning: "Falhou em manter suporte. Momento baixista aumentando.", priceAtSignal: 0.2554, stopLoss: 0.2605, takeProfit: 0.2426, createdAt: new Date(Date.now() - 540000).toISOString() },
+  { id: "s6", symbol: "ATOMUSDT", action: "BUY", confidence: 0.88, reasoning: "Forte rompimento acima da resistência com confirmação de volume.", priceAtSignal: 2.043, stopLoss: 2.002, takeProfit: 2.145, createdAt: new Date(Date.now() - 660000).toISOString() },
 ];
 
 const MOCK_PORTFOLIO: import("@/lib/store").PortfolioData = {
@@ -144,6 +145,9 @@ export default function HomePage() {
             <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <FearGreedIndex />
               <MultiTimeframeAnalysis />
+            </motion.div>
+            <motion.div variants={itemVariants}>
+              <SLTPCalculator />
             </motion.div>
             <motion.div variants={itemVariants}>
               <PnlTracker />

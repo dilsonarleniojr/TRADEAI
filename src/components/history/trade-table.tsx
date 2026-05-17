@@ -21,22 +21,22 @@ export function TradeTable({ trades }: { trades: TradeData[] }) {
       <Table>
         <TableHeader>
           <TableRow className="border-border hover:bg-transparent">
-            <TableHead className="text-[11px] text-muted-foreground font-medium">Time</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground font-medium">Symbol</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground font-medium">Side</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground font-medium text-right">Price</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground font-medium text-right">Qty</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium">Hora</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium">Símbolo</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium">Lado</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium text-right">Preço</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium text-right">Qtd</TableHead>
             <TableHead className="text-[11px] text-muted-foreground font-medium text-right">Total</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground font-medium">Strategy</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground font-medium">Mode</TableHead>
-            <TableHead className="text-[11px] text-muted-foreground font-medium text-right">PnL</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium">Estratégia</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium">Modo</TableHead>
+            <TableHead className="text-[11px] text-muted-foreground font-medium text-right">L/P</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {trades.length === 0 ? (
             <TableRow>
               <TableCell colSpan={9} className="text-center text-muted-foreground text-xs py-8">
-                No trades yet. Start the bot to begin trading.
+                Nenhum trade ainda. Inicie o bot para começar a operar.
               </TableCell>
             </TableRow>
           ) : (

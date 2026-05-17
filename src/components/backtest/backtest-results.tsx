@@ -75,42 +75,42 @@ export function BacktestResults({ results }: BacktestResultsProps) {
 
   const summaryCards = [
     {
-      label: "Initial Balance",
+      label: "Capital Inicial",
       value: `$${formatPrice(results.initialBalance)}`,
       icon: DollarSign,
       color: "text-muted-foreground",
       bgColor: "bg-secondary/30",
     },
     {
-      label: "Final Balance",
+      label: "Saldo Final",
       value: `$${formatPrice(results.finalBalance)}`,
       icon: DollarSign,
       color: isPositive ? "text-crypto-green" : "text-crypto-red",
       bgColor: isPositive ? "bg-crypto-green/10" : "bg-crypto-red/10",
     },
     {
-      label: "Total Return",
+      label: "Retorno Total",
       value: `${isPositive ? "+" : ""}${results.totalReturnPercent.toFixed(2)}%`,
       icon: isPositive ? TrendingUp : TrendingDown,
       color: isPositive ? "text-crypto-green" : "text-crypto-red",
       bgColor: isPositive ? "bg-crypto-green/10" : "bg-crypto-red/10",
     },
     {
-      label: "Max Drawdown",
+      label: "Drawdown Máx.",
       value: `-${results.maxDrawdown.toFixed(2)}%`,
       icon: ArrowDownUp,
       color: "text-crypto-red",
       bgColor: "bg-crypto-red/10",
     },
     {
-      label: "Win Rate",
+      label: "Taxa de Acerto",
       value: `${results.winRate.toFixed(1)}%`,
       icon: Target,
       color: results.winRate >= 50 ? "text-crypto-green" : "text-crypto-gold",
       bgColor: results.winRate >= 50 ? "bg-crypto-green/10" : "bg-crypto-gold/10",
     },
     {
-      label: "Total Trades",
+      label: "Total de Trades",
       value: results.totalTrades.toString(),
       icon: BarChart3,
       color: "text-crypto-cyan",
@@ -120,7 +120,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
 
   const advancedMetrics = [
     {
-      label: "Sharpe Ratio",
+      label: "Índice Sharpe",
       value: isFinite(results.sharpeRatio) ? results.sharpeRatio.toFixed(2) : "N/A",
       icon: Gauge,
       color:
@@ -135,10 +135,10 @@ export function BacktestResults({ results }: BacktestResultsProps) {
           : results.sharpeRatio > 0
             ? "bg-crypto-gold/10"
             : "bg-crypto-red/10",
-      description: "Risk-adjusted return (annualized)",
+      description: "Retorno ajustado ao risco (anualizado)",
     },
     {
-      label: "Sortino Ratio",
+      label: "Índice Sortino",
       value: isFinite(results.sortinoRatio) ? results.sortinoRatio.toFixed(2) : "N/A",
       icon: Shield,
       color:
@@ -153,10 +153,10 @@ export function BacktestResults({ results }: BacktestResultsProps) {
           : results.sortinoRatio > 0
             ? "bg-crypto-gold/10"
             : "bg-crypto-red/10",
-      description: "Downside risk-adjusted return",
+      description: "Retorno ajustado ao risco de baixa",
     },
     {
-      label: "Profit Factor",
+      label: "Fator de Lucro",
       value: results.profitFactor === null ? "∞" : results.profitFactor.toFixed(2),
       icon: Zap,
       color:
@@ -171,18 +171,18 @@ export function BacktestResults({ results }: BacktestResultsProps) {
           : results.profitFactor > 1
             ? "bg-crypto-gold/10"
             : "bg-crypto-red/10",
-      description: "Gross profits / Gross losses",
+      description: "Lucros brutos / Perdas brutas",
     },
     {
-      label: "Avg Trade P&L",
+      label: "L/P Médio/Trade",
       value: `$${formatPrice(results.averageTradePnL)}`,
       icon: Activity,
       color: results.averageTradePnL >= 0 ? "text-crypto-green" : "text-crypto-red",
       bgColor: results.averageTradePnL >= 0 ? "bg-crypto-green/10" : "bg-crypto-red/10",
-      description: "Average profit/loss per trade",
+      description: "Lucro/perda médio por trade",
     },
     {
-      label: "Best Trade",
+      label: "Melhor Trade",
       value: results.bestTrade ? `$${formatPrice(results.bestTrade.pnl)}` : "N/A",
       icon: Star,
       color: "text-crypto-green",
@@ -190,7 +190,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
       description: results.bestTrade ? `${results.bestTrade.date}` : "",
     },
     {
-      label: "Worst Trade",
+      label: "Pior Trade",
       value: results.worstTrade ? `-$${formatPrice(Math.abs(results.worstTrade.pnl))}` : "N/A",
       icon: AlertTriangle,
       color: "text-crypto-red",
@@ -276,7 +276,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Trophy className="w-4 h-4 text-crypto-cyan" />
-            Equity Curve
+            Curva de Capital
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -335,7 +335,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
                   }}
                   formatter={(value: number) => [
                     `$${formatPrice(value)}`,
-                    "Portfolio",
+                    "Portfólio",
                   ]}
                 />
                 <Area
@@ -436,7 +436,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <BarChart3 className="w-4 h-4 text-crypto-cyan" />
-            Backtest Trades ({results.trades.length})
+            Trades do Backtest ({results.trades.length})
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -445,19 +445,19 @@ export function BacktestResults({ results }: BacktestResultsProps) {
               <TableHeader>
                 <TableRow className="border-border hover:bg-transparent">
                   <TableHead className="text-[11px] text-muted-foreground">
-                    Date
+                    Data
                   </TableHead>
                   <TableHead className="text-[11px] text-muted-foreground">
-                    Side
+                    Lado
                   </TableHead>
                   <TableHead className="text-[11px] text-muted-foreground text-right">
-                    Price
+                    Preço
                   </TableHead>
                   <TableHead className="text-[11px] text-muted-foreground text-right">
-                    Qty
+                    Qtd
                   </TableHead>
                   <TableHead className="text-[11px] text-muted-foreground text-right">
-                    PnL
+                    L/P
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -468,7 +468,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
                       colSpan={5}
                       className="text-center text-muted-foreground text-xs py-8"
                     >
-                      No trades generated during backtest.
+                      Nenhum trade gerado durante o backtest.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -490,12 +490,12 @@ export function BacktestResults({ results }: BacktestResultsProps) {
                           {trade.date}
                           {isBest && (
                             <Badge className="ml-1 text-[8px] px-1 py-0 bg-crypto-green/15 text-crypto-green border-crypto-green/30">
-                              BEST
+                              MELHOR
                             </Badge>
                           )}
                           {isWorst && (
                             <Badge className="ml-1 text-[8px] px-1 py-0 bg-crypto-red/15 text-crypto-red border-crypto-red/30">
-                              WORST
+                              PIOR
                             </Badge>
                           )}
                         </TableCell>

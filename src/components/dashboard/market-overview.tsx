@@ -106,7 +106,7 @@ export function MarketOverview() {
 
   const donutData = useMemo(() => [
     { name: "BTC", value: marketData.btcDominance, percent: marketData.btcDominance, color: "#f7931a" },
-    { name: "Others", value: marketData.othersDominance, percent: marketData.othersDominance, color: "#475569" },
+    { name: "Outros", value: marketData.othersDominance, percent: marketData.othersDominance, color: "#475569" },
   ], [marketData.btcDominance, marketData.othersDominance]);
 
   return (
@@ -119,7 +119,7 @@ export function MarketOverview() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Globe className="w-4 h-4 text-crypto-cyan" />
-            Market Overview
+            Visão do Mercado
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -152,7 +152,7 @@ export function MarketOverview() {
                 {/* Center label */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                   <span className="text-lg font-bold font-mono number-animate">{marketData.btcDominance}%</span>
-                  <span className="text-[9px] text-muted-foreground">BTC Dom</span>
+                  <span className="text-[9px] text-muted-foreground">Dom BTC</span>
                 </div>
               </div>
               <div className="flex items-center gap-3 mt-2">
@@ -164,12 +164,12 @@ export function MarketOverview() {
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top" sideOffset={4}>
-                    <p className="text-xs">Bitcoin&apos;s share of total crypto market cap</p>
+                    <p className="text-xs">Participação do Bitcoin na capitalização total de criptomoedas</p>
                   </TooltipContent>
                 </UITooltip>
                 <div className="flex items-center gap-1">
                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#475569" }} />
-                  <span className="text-[10px] text-muted-foreground">Others</span>
+                  <span className="text-[10px] text-muted-foreground">Outros</span>
                 </div>
               </div>
             </div>
@@ -182,12 +182,12 @@ export function MarketOverview() {
                   <UITooltip>
                     <TooltipTrigger asChild>
                       <span className="text-[10px] text-muted-foreground uppercase tracking-wider cursor-help flex items-center gap-1">
-                        Total Market Cap
+                        Capitalização Total
                         <Info className="w-3 h-3 opacity-40" />
                       </span>
                     </TooltipTrigger>
                     <TooltipContent side="top" sideOffset={4}>
-                      <p className="text-xs">Total value of all cryptocurrencies</p>
+                      <p className="text-xs">Valor total de todas as criptomoedas</p>
                     </TooltipContent>
                   </UITooltip>
                 </div>
@@ -204,26 +204,26 @@ export function MarketOverview() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <MetricCard
               icon={<BarChart3 className="w-4 h-4 text-crypto-cyan" />}
-              label="24h Volume"
+              label="Volume 24h"
               value={formatVolume(marketData.totalVolume)}
               delay={0.1}
-              tooltip="Total trading volume across all tracked assets in the last 24 hours"
+              tooltip="Volume total de negociação de todos os ativos monitorados nas últimas 24 horas"
             />
             <MetricCard
               icon={<Coins className="w-4 h-4 text-crypto-gold" />}
-              label="DeFi TVL"
+              label="DeFi VTL"
               value="$85.2B"
               change={2.34}
               delay={0.2}
-              tooltip="Total Value Locked in DeFi protocols"
+              tooltip="Valor Total Travado em protocolos DeFi"
             />
             <MetricCard
               icon={<TrendingUp className="w-4 h-4 text-crypto-green" />}
-              label="Stablecoin MCap"
+              label="Cap. de Stablecoins"
               value="$160.4B"
               change={0.52}
               delay={0.3}
-              tooltip="Combined market cap of major stablecoins"
+              tooltip="Capitalização combinada das principais stablecoins"
             />
           </div>
         </CardContent>

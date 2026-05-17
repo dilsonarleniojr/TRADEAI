@@ -163,7 +163,7 @@ export function MultiTimeframeAnalysis() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Clock className="w-4 h-4 text-crypto-cyan" />
-              Multi-Timeframe Analysis
+              Análise Multi-Timeframe
             </CardTitle>
             <div className="flex items-center gap-1.5">
               <BarChart2 className="w-3.5 h-3.5 text-crypto-cyan" />
@@ -182,7 +182,7 @@ export function MultiTimeframeAnalysis() {
             <span className="col-span-2 text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">TF</span>
             <span className="col-span-3 text-[9px] uppercase tracking-wider text-muted-foreground font-semibold text-center">RSI</span>
             <span className="col-span-3 text-[9px] uppercase tracking-wider text-muted-foreground font-semibold text-center">MACD</span>
-            <span className="col-span-4 text-[9px] uppercase tracking-wider text-muted-foreground font-semibold text-center">Signal</span>
+            <span className="col-span-4 text-[9px] uppercase tracking-wider text-muted-foreground font-semibold text-center">Sinal</span>
           </div>
 
           {/* Timeframe rows */}
@@ -282,19 +282,19 @@ export function MultiTimeframeAnalysis() {
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 rounded-full bg-crypto-green" />
-                <span className="text-[10px] text-crypto-green font-semibold">{buyCount} Buy</span>
+                <span className="text-[10px] text-crypto-green font-semibold">{buyCount} Comprar</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 rounded-full bg-muted-foreground" />
-                <span className="text-[10px] text-muted-foreground font-semibold">{holdCount} Hold</span>
+                <span className="text-[10px] text-muted-foreground font-semibold">{holdCount} Manter</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 rounded-full bg-crypto-red" />
-                <span className="text-[10px] text-crypto-red font-semibold">{sellCount} Sell</span>
+                <span className="text-[10px] text-crypto-red font-semibold">{sellCount} Vender</span>
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-[9px] text-muted-foreground">Consensus:</span>
+              <span className="text-[9px] text-muted-foreground">Consenso:</span>
               <span className={cn("text-[11px] font-bold", consensusColor)}>
                 {consensus}
               </span>
@@ -304,13 +304,13 @@ export function MultiTimeframeAnalysis() {
           {/* RSI Legend */}
           <div className="mt-2 flex items-center justify-center gap-4 text-[8px] text-muted-foreground">
             <div className="flex items-center gap-1">
-              <span className="text-crypto-green">●</span> OS &lt;30 (Buy zone)
+              <span className="text-crypto-green">●</span> OS &lt;30 (Zona de compra)
             </div>
             <div className="flex items-center gap-1">
               <span className="text-muted-foreground">●</span> Neutral 30-70
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-crypto-red">●</span> OB &gt;70 (Sell zone)
+              <span className="text-crypto-red">●</span> OB &gt;70 (Zona de venda)
             </div>
           </div>
         </CardContent>

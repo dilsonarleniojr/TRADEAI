@@ -17,7 +17,7 @@ function seededRandom(seed: number) {
 // Generate Fear & Greed Index based on market data
 function computeFearGreedIndex(tickers: Record<string, import("@/lib/store").TickerData>) {
   const tickerValues = Object.values(tickers);
-  if (tickerValues.length === 0) return { value: 50, label: "Neutral", color: "#f59e0b" };
+  if (tickerValues.length === 0) return { value: 50, label: "Neutro", color: "#f59e0b" };
 
   const totalVolume = tickerValues.reduce((sum, t) => sum + t.quoteVolume, 0);
   let weightedScore = 0;
@@ -38,19 +38,19 @@ function computeFearGreedIndex(tickers: Record<string, import("@/lib/store").Tic
   let color: string;
 
   if (score >= 75) {
-    label = "Extreme Greed";
+    label = "Ganância Extrema";
     color = "#22c55e";
   } else if (score >= 55) {
-    label = "Greed";
+    label = "Ganância";
     color = "#4ade80";
   } else if (score >= 45) {
-    label = "Neutral";
+    label = "Neutro";
     color = "#f59e0b";
   } else if (score >= 25) {
-    label = "Fear";
+    label = "Medo";
     color = "#fb923c";
   } else {
-    label = "Extreme Fear";
+    label = "Medo Extremo";
     color = "#ef4444";
   }
 
@@ -76,7 +76,7 @@ function generateHistory(currentValue: number) {
     else { histLabel = "EF"; histColor = "#ef4444"; }
 
     const date = new Date(Date.now() - i * 86400000);
-    const dayLabel = date.toLocaleDateString("en-US", { weekday: "short" });
+    const dayLabel = date.toLocaleDateString("pt-BR", { weekday: "short" });
 
     history.push({ day: dayLabel, value, label: histLabel, color: histColor });
   }
@@ -125,7 +125,7 @@ export function FearGreedIndex() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Gauge className="w-4 h-4 text-crypto-cyan" />
-              Fear &amp; Greed Index
+              Índice Medo &amp; Ganância
             </CardTitle>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -134,7 +134,7 @@ export function FearGreedIndex() {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="left" sideOffset={4} className="max-w-[250px]">
-                <p className="text-xs leading-relaxed">The Fear &amp; Greed Index measures market sentiment. Extreme Fear often signals buying opportunities, while Extreme Greed may indicate a market top.</p>
+                <p className="text-xs leading-relaxed">O Índice Medo &amp; Ganância mede o sentimento do mercado. Medo Extremo frequentemente sinaliza oportunidades de compra, enquanto Ganância Extrema pode indicar um topo de mercado.</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -219,11 +219,11 @@ export function FearGreedIndex() {
 
               {/* Zone labels on outer edge */}
               {[
-                { pos: 12, label: "EF" },
-                { pos: 35, label: "F" },
+                { pos: 12, label: "ME" },
+                { pos: 35, label: "M" },
                 { pos: 50, label: "N" },
                 { pos: 65, label: "G" },
-                { pos: 87, label: "EG" },
+                { pos: 87, label: "GE" },
               ].map(({ pos, label }) => {
                 const labelAngle = 180 - (pos / 100) * 180;
                 const labelRad = (labelAngle * Math.PI) / 180;
@@ -312,11 +312,11 @@ export function FearGreedIndex() {
           {/* Zone legend */}
           <div className="w-full mt-2 flex items-center justify-between px-1">
             {[
-              { label: "Extreme Fear", range: "0-25", color: "#ef4444" },
-              { label: "Fear", range: "25-45", color: "#fb923c" },
-              { label: "Neutral", range: "45-55", color: "#f59e0b" },
-              { label: "Greed", range: "55-75", color: "#4ade80" },
-              { label: "Extreme Greed", range: "75-100", color: "#22c55e" },
+              { label: "Medo Extremo", range: "0-25", color: "#ef4444" },
+              { label: "Medo", range: "25-45", color: "#fb923c" },
+              { label: "Neutro", range: "45-55", color: "#f59e0b" },
+              { label: "Ganância", range: "55-75", color: "4ade80" },
+              { label: "Ganância Extrema", range: "75-100", color: "#22c55e" },
             ].map((zone) => (
               <div key={zone.label} className="flex flex-col items-center gap-0.5">
                 <div
@@ -334,7 +334,7 @@ export function FearGreedIndex() {
           <div className="w-full mt-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                7-Day History
+                Histórico 7 Dias
               </span>
               <div className="flex items-center gap-1">
                 {fearGreed.value >= 55 ? (
@@ -352,7 +352,7 @@ export function FearGreedIndex() {
                   )}
                 >
                   {fearGreed.value > (history[0]?.value ?? 0) ? "↑" : fearGreed.value < (history[0]?.value ?? 0) ? "↓" : "→"}
-                  {" "}vs yesterday
+                  {" "}vs ontem
                 </span>
               </div>
             </div>

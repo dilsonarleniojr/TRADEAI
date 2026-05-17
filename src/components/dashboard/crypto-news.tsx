@@ -261,7 +261,7 @@ export function CryptoNews() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Newspaper className="w-4 h-4 text-crypto-cyan" />
-              Crypto News Feed
+              Feed de Notícias Crypto
               {isLiveData && (
                 <Badge className="bg-crypto-green/20 text-crypto-green border-crypto-green/30 text-[9px] px-1.5 py-0 flex items-center gap-1">
                   <Wifi className="w-2.5 h-2.5" />
@@ -302,7 +302,7 @@ export function CryptoNews() {
               )}
               onClick={() => setSelectedCategory("All")}
             >
-              All
+              Todos
             </button>
             {CATEGORIES.map((cat) => (
               <button
@@ -387,7 +387,7 @@ export function CryptoNews() {
                                     onClick={(e) => e.stopPropagation()}
                                   >
                                     <ExternalLink className="w-3 h-3" />
-                                    <span className="text-[10px]">Read full article</span>
+                                    <span className="text-[10px]">Ler artigo completo</span>
                                   </a>
                                 )}
                               </motion.div>
@@ -409,8 +409,8 @@ export function CryptoNews() {
 
           {!isLoading && filteredNews.length === 0 && (
             <div className="empty-state py-6">
-              <p className="empty-state-title">No news found</p>
-              <p className="empty-state-desc">Try selecting a different category</p>
+              <p className="empty-state-title">Nenhuma notícia encontrada</p>
+              <p className="empty-state-desc">Tente selecionar uma categoria diferente</p>
             </div>
           )}
 
@@ -418,10 +418,10 @@ export function CryptoNews() {
           {!isLoading && (
             <div className="flex items-center justify-between pt-1">
               <span className="text-[9px] text-muted-foreground">
-                {isLiveData ? 'Source: Web Search API' : 'Source: Fallback Data'}
+                {isLiveData ? 'Fonte: API de Busca Web' : 'Fonte: Dados Locais'}
               </span>
               <span className="text-[9px] text-muted-foreground">
-                {newsItems.length} articles
+                {newsItems.length} artigos
               </span>
             </div>
           )}

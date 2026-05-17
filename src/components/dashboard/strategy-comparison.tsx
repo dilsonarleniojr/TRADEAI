@@ -35,12 +35,12 @@ const STRATEGY_STYLES: Record<StrategyKey, { color: string; badge: string; dash:
 };
 
 const METRIC_ROWS: { key: keyof StrategyMetrics; label: string; higherBetter: boolean; fmt: (v: StrategyMetrics[keyof StrategyMetrics]) => string }[] = [
-  { key: "winRate",      label: "Win Rate",       higherBetter: true,  fmt: (v) => `${v}%` },
-  { key: "avgReturn",    label: "Avg Return",     higherBetter: true,  fmt: (v) => `+${v}%` },
+  { key: "winRate",      label: "Taxa de Acerto",    higherBetter: true,  fmt: (v) => `${v}%` },
+  { key: "avgReturn",    label: "Retorno Médio",   higherBetter: true,  fmt: (v) => `+${v}%` },
   { key: "maxDrawdown",  label: "Max Drawdown",   higherBetter: false, fmt: (v) => `-${v}%` },
-  { key: "sharpeRatio",  label: "Sharpe Ratio",   higherBetter: true,  fmt: (v) => String(v) },
-  { key: "totalTrades",  label: "Total Trades",   higherBetter: true,  fmt: (v) => String(v) },
-  { key: "avgHoldTime",  label: "Avg Hold Time",  higherBetter: false, fmt: (v) => String(v) },
+  { key: "sharpeRatio",  label: "Índice Sharpe",   higherBetter: true,  fmt: (v) => String(v) },
+  { key: "totalTrades",  label: "Total de Trades",   higherBetter: true,  fmt: (v) => String(v) },
+  { key: "avgHoldTime",  label: "Tempo Médio",  higherBetter: false, fmt: (v) => String(v) },
 ];
 
 function generateEquityCurve(strategy: StrategyKey, days: number) {
@@ -90,7 +90,7 @@ export function StrategyComparison() {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <GitCompare className="w-4 h-4 text-crypto-cyan" />
-            Strategy Performance Comparison
+            Comparação de Desempenho de Estratégias
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -99,7 +99,7 @@ export function StrategyComparison() {
             <div className="grid grid-cols-4 gap-0 min-w-[400px]">
               {/* Header row */}
               <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider p-2">
-                Metric
+                Métrica
               </div>
               {strategies.map((s) => (
                 <div key={s} className="flex items-center justify-center p-2">
@@ -140,7 +140,7 @@ export function StrategyComparison() {
             <CardHeader className="pb-1">
               <CardTitle className="text-xs font-medium flex items-center gap-2">
                 <Trophy className="w-3.5 h-3.5 text-crypto-cyan" />
-                Equity Curve Comparison (30 Days)
+                Curva de Capital (30 Dias)
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -172,19 +172,17 @@ export function StrategyComparison() {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm font-bold">AI Strategy Recommended</span>
+                <span className="text-sm font-bold">Estratégia IA Recomendada</span>
                 <Badge className="bg-purple-500/15 text-purple-400 border-purple-500/30 text-[9px] px-1.5 py-0">
-                  Confidence: 87%
+                  Confiança: 87%
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                The AI strategy outperforms both RSI and MACD across all key metrics — highest win rate (65%), 
-                best average return (+18%), lowest max drawdown (-11%), and superior risk-adjusted returns (Sharpe 1.75).
-                Recommended as the primary strategy for current market conditions.
+                A estratégia IA supera tanto RSI quanto MACD em todas as métricas chave — maior taxa de acerto (65%), melhor retorno médio (+18%), menor max drawdown (-11%) e retornos ajustados ao risco superiores (Sharpe 1.75). Recomendada como estratégia principal para as condições atuais de mercado.
               </p>
               <div className="flex items-center gap-1 mt-2 text-crypto-green">
                 <CheckCircle2 className="w-3 h-3" />
-                <span className="text-[10px] font-medium">Best overall performance</span>
+                <span className="text-[10px] font-medium">Melhor desempenho geral</span>
               </div>
             </div>
           </div>

@@ -60,8 +60,8 @@ export function StatCards() {
 
   const stats = [
     {
-      title: "Portfolio Value",
-      tooltip: "Total portfolio value including cash and assets",
+      title: "Valor da Carteira",
+      tooltip: "Valor total da carteira incluindo caixa e ativos",
       value: portfolio.totalValue,
       displayValue: `$${formatPrice(portfolio.totalValue)}`,
       subValue: formatPercent(portfolio.pnlPercent),
@@ -75,11 +75,11 @@ export function StatCards() {
       trendDir: portfolio.pnlPercent >= 0 ? "up" : portfolio.pnlPercent < 0 ? "down" : "neutral" as const,
     },
     {
-      title: "Total Trades Today",
-      tooltip: "Number of trades executed today",
+      title: "Total de Trades Hoje",
+      tooltip: "Número de trades executados hoje",
       value: todayTrades,
       displayValue: todayTrades.toString(),
-      subValue: `${trades.filter((t) => t.pnl > 0).length} profitable`,
+      subValue: `${trades.filter((t) => t.pnl > 0).length} lucrativos`,
       subPositive: true,
       icon: ArrowUpDown,
       iconColor: "text-crypto-gold",
@@ -90,11 +90,11 @@ export function StatCards() {
       trendDir: "neutral" as const,
     },
     {
-      title: "Bot Status",
-      tooltip: "Current bot operational status",
+      title: "Status do Bot",
+      tooltip: "Status operacional atual do bot",
       value: botActive ? 1 : 0,
-      displayValue: botActive ? "Active" : "Inactive",
-      subValue: botActive ? "Running strategies" : "Paused",
+      displayValue: botActive ? "Ativo" : "Inativo",
+      subValue: botActive ? "Executando estratégias" : "Pausado",
       subPositive: botActive,
       icon: Bot,
       iconColor: botActive ? "text-crypto-green" : "text-muted-foreground",
@@ -107,15 +107,15 @@ export function StatCards() {
       trendDir: botActive ? "up" : "neutral" as const,
     },
     {
-      title: "Best Performer",
-      tooltip: "Best performing asset in the last 24h",
+      title: "Melhor Desempenho",
+      tooltip: "Melhor ativo em desempenho nas últimas 24h",
       value: bestPerformer?.priceChangePercent ?? 0,
       displayValue: bestPerformer
         ? bestPerformer.symbol.replace("USDT", "")
         : "—",
       subValue: bestPerformer
         ? formatPercent(bestPerformer.priceChangePercent)
-        : "No data",
+        : "Sem dados",
       subPositive: bestPerformer ? bestPerformer.priceChangePercent >= 0 : true,
       icon: TrendingUp,
       iconColor: bestPerformer?.priceChangePercent >= 0 ? "text-crypto-green" : "text-crypto-red",
@@ -165,14 +165,14 @@ export function StatCards() {
               </div>
               <div className="space-y-1">
                 <p className="text-xl md:text-2xl font-bold tracking-tight leading-none number-animate">
-                  {stat.animate && stat.title === "Portfolio Value" ? (
+                  {stat.animate && stat.title === "Valor da Carteira" ? (
                     <AnimatedValue value={stat.value} prefix="$" decimals={2} />
                   ) : (
                     <span className="inline-flex items-center gap-1.5">
                       {stat.displayValue}
                       {stat.trendDir === "up" && <ArrowUpRight className="w-3.5 h-3.5 text-crypto-green" />}
                       {stat.trendDir === "down" && <ArrowDownRight className="w-3.5 h-3.5 text-crypto-red" />}
-                      {stat.trendDir === "neutral" && stat.title !== "Bot Status" && <Minus className="w-3 h-3 text-muted-foreground/50" />}
+                      {stat.trendDir === "neutral" && stat.title !== "Status do Bot" && <Minus className="w-3 h-3 text-muted-foreground/50" />}
                     </span>
                   )}
                 </p>

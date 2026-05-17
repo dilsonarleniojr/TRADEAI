@@ -152,7 +152,7 @@ export function FundingRates() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Flame className="w-4 h-4 text-crypto-gold" />
-              Funding &amp; Open Interest
+              Taxas de Financiamento &amp; Open Interest
             </CardTitle>
             <FundingCountdown />
           </div>
@@ -169,7 +169,7 @@ export function FundingRates() {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" sideOffset={4} className="max-w-[220px]">
-                <p className="text-xs leading-relaxed">Perpetual futures funding rate. Positive = longs pay shorts, Negative = shorts pay longs</p>
+                <p className="text-xs leading-relaxed">Taxa de financiamento de futuros perpétuos. Positiva = longs pagam shorts, Negativa = shorts pagam longs</p>
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -180,7 +180,7 @@ export function FundingRates() {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" sideOffset={4} className="max-w-[220px]">
-                <p className="text-xs leading-relaxed">Open Interest - total value of outstanding derivative contracts</p>
+                <p className="text-xs leading-relaxed">Open Interest - valor total de contratos derivativos em aberto</p>
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -191,7 +191,7 @@ export function FundingRates() {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" sideOffset={4}>
-                <p className="text-xs leading-relaxed">Long/Short ratio showing the balance of positions</p>
+                <p className="text-xs leading-relaxed">Proporção Long/Short mostrando o equilíbrio de posições</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -269,11 +269,11 @@ export function FundingRates() {
           <div className="mt-3 pt-2 border-t border-border/30 flex items-center gap-4 text-[10px] text-muted-foreground">
             <div className="flex items-center gap-1">
               <div className="w-2 h-2 rounded-full bg-crypto-green" />
-              <span>Longs pay shorts</span>
+              <span>Longs pagam shorts</span>
             </div>
             <div className="flex items-center gap-1">
               <div className="w-2 h-2 rounded-full bg-crypto-red" />
-              <span>Shorts pay longs</span>
+              <span>Shorts pagam longs</span>
             </div>
           </div>
         </CardContent>

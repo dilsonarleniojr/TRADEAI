@@ -170,8 +170,8 @@ export function BotSection() {
 
       // Show toast for signal auto-trade
       toast({
-        title: `⚡ Auto-Trade: ${trade.side === "BUY" ? "Bought" : "Sold"} ${trade.symbol.replace("USDT", "")}`,
-        description: `Signal confidence ${(signal.confidence * 100).toFixed(0)}% | ${quantity.toFixed(6)} @ $${formatPrice(price)}`,
+        title: `\u26a1 Auto-Trade: ${trade.side === "BUY" ? "Comprou" : "Vendeu"} ${trade.symbol.replace("USDT", "")}`,
+        description: `Confiança do sinal ${(signal.confidence * 100).toFixed(0)}% | ${quantity.toFixed(6)} @ $${formatPrice(price)}`,
         variant: "default",
       });
 
@@ -201,7 +201,7 @@ export function BotSection() {
 
           // Show toast for bot trade
           toast({
-            title: `🤖 Bot ${trade.side === "BUY" ? "Bought" : "Sold"} ${trade.symbol.replace("USDT", "")}`,
+            title: `\ud83e\udd16 Bot ${trade.side === "BUY" ? "Comprou" : "Vendeu"} ${trade.symbol.replace("USDT", "")}`,
             description: `${trade.quantity.toFixed(6)} @ $${formatPrice(trade.price)}`,
           });
 
@@ -319,12 +319,12 @@ export function BotSection() {
               {botActive ? (
                 <>
                   <Square className="w-5 h-5" />
-                  STOP BOT
+                  PARAR BOT
                 </>
               ) : (
                 <>
                   <Play className="w-5 h-5" />
-                  START BOT
+                  INICIAR BOT
                 </>
               )}
             </motion.div>
@@ -346,7 +346,7 @@ export function BotSection() {
               )}
             </div>
             <span className="text-sm font-medium">
-              {botActive ? "Active" : "Inactive"}
+              {botActive ? "Ativo" : "Inativo"}
             </span>
           </div>
 
@@ -368,7 +368,7 @@ export function BotSection() {
             }`}
           >
             <Zap className="w-3 h-3 mr-1" />
-            {tradingMode === "paper" ? "Paper" : "Live"}
+            {tradingMode === "paper" ? "Simulado" : "Real"}
           </Badge>
 
           {/* Symbol Badge */}
@@ -424,7 +424,7 @@ export function BotSection() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <FileText className="w-4 h-4 text-crypto-cyan" />
-                  Trade Report
+                  Relatório de Trades
                   <Badge variant="outline" className="text-[10px] border-border ml-1">
                     <Clock className="w-2.5 h-2.5 mr-1" />
                     {tradeReport.duration}
@@ -437,7 +437,7 @@ export function BotSection() {
                   <div className="bg-secondary/30 rounded-lg p-3 text-center">
                     <BarChart3 className="w-4 h-4 mx-auto mb-1 text-crypto-cyan" />
                     <div className="text-lg font-bold">{tradeReport.totalTrades}</div>
-                    <div className="text-[10px] text-muted-foreground">Total Trades</div>
+                    <div className="text-[10px] text-muted-foreground">Total de Trades</div>
                   </div>
 
                   {/* Win Rate */}
@@ -447,7 +447,7 @@ export function BotSection() {
                       {tradeReport.winRate.toFixed(1)}%
                     </div>
                     <div className="text-[10px] text-muted-foreground">
-                      Win Rate ({tradeReport.winTrades}W / {tradeReport.lossTrades}L)
+                      Taxa de Acerto ({tradeReport.winTrades}V / {tradeReport.lossTrades}D)
                     </div>
                   </div>
 
@@ -466,7 +466,7 @@ export function BotSection() {
                       {tradeReport.totalPnl >= 0 ? "+" : ""}$
                       {formatPrice(Math.abs(tradeReport.totalPnl))}
                     </div>
-                    <div className="text-[10px] text-muted-foreground">Total PnL</div>
+                    <div className="text-[10px] text-muted-foreground">L/P Total</div>
                   </div>
 
                   {/* Buy/Sell */}
@@ -480,26 +480,26 @@ export function BotSection() {
                       {" / "}
                       <span className="text-crypto-red">{tradeReport.sellTrades}</span>
                     </div>
-                    <div className="text-[10px] text-muted-foreground">Buy / Sell</div>
+                    <div className="text-[10px] text-muted-foreground">Compra / Venda</div>
                   </div>
                 </div>
 
                 {/* Additional Stats */}
                 <div className="mt-3 grid grid-cols-3 gap-3">
                   <div className="text-center">
-                    <div className="text-xs text-muted-foreground">Best Trade</div>
+                    <div className="text-xs text-muted-foreground">Melhor Trade</div>
                     <div className="text-sm font-semibold text-crypto-green">
                       +${formatPrice(Math.abs(tradeReport.bestTrade))}
                     </div>
                   </div>
                   <div className="text-center">
-                    <div className="text-xs text-muted-foreground">Worst Trade</div>
+                    <div className="text-xs text-muted-foreground">Pior Trade</div>
                     <div className="text-sm font-semibold text-crypto-red">
                       -${formatPrice(Math.abs(tradeReport.worstTrade))}
                     </div>
                   </div>
                   <div className="text-center">
-                    <div className="text-xs text-muted-foreground">Avg PnL/Trade</div>
+                    <div className="text-xs text-muted-foreground">L/P Médio/Trade</div>
                     <div
                       className={`text-sm font-semibold ${
                         tradeReport.avgPnlPerTrade >= 0 ? "text-crypto-green" : "text-crypto-red"

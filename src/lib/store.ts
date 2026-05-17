@@ -62,6 +62,8 @@ export interface AISignalData {
   confidence: number;
   reasoning: string;
   priceAtSignal: number;
+  stopLoss: number;
+  takeProfit: number;
   createdAt: string;
 }
 

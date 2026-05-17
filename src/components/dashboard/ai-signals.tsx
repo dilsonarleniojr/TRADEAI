@@ -68,7 +68,7 @@ export function AISignals() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Brain className="w-4 h-4 text-crypto-cyan" />
-            AI Quick Signals
+            Sinais Rápidos da IA
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -77,9 +77,9 @@ export function AISignals() {
               <div className="empty-state-icon bg-crypto-cyan/10">
                 <Sparkles className="w-6 h-6 text-crypto-cyan/60" />
               </div>
-              <p className="empty-state-title">No signals yet</p>
+              <p className="empty-state-title">Nenhum sinal ainda</p>
               <p className="empty-state-desc">
-                AI signals will appear here as market patterns are detected
+                Sinais da IA aparecerão aqui conforme padrões de mercado são detectados
               </p>
             </div>
           ) : (
@@ -117,6 +117,16 @@ export function AISignals() {
                             @ ${formatPrice(signal.priceAtSignal)}
                           </span>
                         </div>
+                        {(signal.stopLoss > 0 || signal.takeProfit > 0) && (
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[9px] text-crypto-red flex items-center gap-0.5">
+                              🛑 SL: ${formatPrice(signal.stopLoss)}
+                            </span>
+                            <span className="text-[9px] text-crypto-green flex items-center gap-0.5">
+                              ✅ TP: ${formatPrice(signal.takeProfit)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0 ml-2">
@@ -128,7 +138,7 @@ export function AISignals() {
                         >
                           <Badge className="text-[8px] px-1 py-0 bg-crypto-cyan/20 text-crypto-cyan border-crypto-cyan/30 gap-0.5">
                             <Zap className="w-2.5 h-2.5" />
-                            Executed
+                            Executado
                           </Badge>
                         </motion.div>
                       )}

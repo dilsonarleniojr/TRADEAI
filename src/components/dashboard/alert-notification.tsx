@@ -121,7 +121,7 @@ function AlertNotificationCard({ alert, onDismiss }: AlertNotificationProps) {
 
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-[10px] text-muted-foreground block">Current Price</span>
+              <span className="text-[10px] text-muted-foreground block">Preço Atual</span>
               <span className="text-base font-bold font-mono">
                 ${formatPrice(alert.currentPrice)}
               </span>

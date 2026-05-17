@@ -974,3 +974,147 @@ The Crypto IA Pro platform was found with a CRITICAL bug causing 500 errors on a
 6. Add trade export to CSV functionality
 7. Further mobile responsive optimization for complex dashboard grids
 8. Consider adding AI-powered price prediction widget
+---
+Task ID: 40
+Agent: ai-sltp-backend-agent
+Task: AI SL/TP feature and backend/API Portuguese translation
+
+## Work Log:
+
+1. Read worklog.md and all relevant files (store.ts, ai/signal/route.ts, ai/chat/route.ts, ai-signals.tsx, signal-generator.tsx, page.tsx)
+
+2. Updated `src/lib/store.ts` - AISignalData interface:
+   - Added `stopLoss: number` field
+   - Added `takeProfit: number` field
+
+3. Updated `src/app/api/ai/signal/route.ts`:
+   - Translated the prompt to Portuguese (Símbolo, Preço Atual, Variação 24h, Volume 24h, Máxima 24h, Mínima 24h)
+   - Added stopLoss and takeProfit to the JSON response requirements in the prompt
+   - Added IMPORTANT instruction for realistic SL/TP values based on support/resistance and volatility
+   - Updated assistant system message to Portuguese: "Você é um analista de trading de criptomoedas..."
+   - Updated fallback signal to include stopLoss and takeProfit (both default to price or 0)
+   - Translated fallback reasoning to Portuguese: "Não foi possível gerar análise no momento."
+   - Translated error message: "Falha ao gerar sinal"
+
+4. Updated `src/app/api/ai/chat/route.ts`:
+   - Completely rewrote SYSTEM_PROMPT in Portuguese with SL/TP instructions
+   - Added REGRAS IMPORTANTES section requiring SL/TP suggestions for BUY/SELL recommendations
+   - Added formatting example for SL/TP: "🎯 Entrada: $78.000 | 🛑 Stop Loss: $76.500 (-1.9%) | ✅ Take Profit: $82.000 (+5.1%)"
+   - Added rule: "RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO"
+   - Translated error messages: "Mensagem é obrigatória", "Falha ao gerar resposta", "Desculpe, não foi possível gerar uma resposta."
+
+5. Updated `src/components/dashboard/ai-signals.tsx`:
+   - Translated "AI Quick Signals" → "Sinais Rápidos da IA"
+   - Translated "No signals yet" → "Nenhum sinal ainda"
+   - Translated "AI signals will appear here as market patterns are detected" → "Sinais da IA aparecerão aqui conforme padrões de mercado são detectados"
+   - Translated "Executed" → "Executado"
+   - Added SL/TP display below price in each signal card with 🛑 SL and ✅ TP icons
+   - Color-coded: SL in text-crypto-red, TP in text-crypto-green
+   - Only shows SL/TP when stopLoss > 0 or takeProfit > 0
+
+6. Updated `src/components/ai/signal-generator.tsx`:
+   - Updated SignalResult interface with stopLoss and takeProfit fields
+   - Translated ACTION_CONFIG labels: "Buy Signal" → "Sinal de Compra", "Sell Signal" → "Sinal de Venda", "Hold Signal" → "Sinal de Espera"
+   - Translated "AI Signal Generator" → "Gerador de Sinais IA"
+   - Translated "Generate AI-powered signal for {symbol}" → "Gerar sinal com IA para {symbol}"
+   - Translated "Generate Signal" → "Gerar Sinal"
+   - Translated "Analyzing..." → "Analisando..."
+   - Translated "Confidence" → "Confiança"
+   - Translated "Reasoning" → "Justificativa"
+   - Translated "No data" → "Sem dados"
+   - Translated "Click generate to get an AI trading signal" → "Clique em gerar para obter um sinal de trading com IA"
+   - Translated error messages to Portuguese
+   - Added SL/TP parsing from API response with fallback to ticker price
+   - Added dedicated SL/TP display section with two cards (Stop Loss in red, Take Profit in green)
+   - Each card shows price and percentage difference from entry price
+   - Added formatSlTpPercent helper function
+
+7. Updated `src/app/page.tsx` mock data:
+   - Added stopLoss and takeProfit to all 6 mock AI signals
+   - BUY signals: SL ~2% below, TP ~5% above entry price
+   - SELL signals: SL ~2% above, TP ~5% below entry price
+   - HOLD signals: SL ~2% below, TP ~5% above entry price
+   - Translated all reasoning texts to Portuguese
+
+8. Fixed pre-existing lint error in `src/components/dashboard/stat-cards.tsx`:
+   - Line 82 had mismatched quotes: backtick opening with double-quote closing
+   - Fixed: `${trades.filter((t) => t.pnl > 0).length} lucrativos"`
+
+9. Ran `bun run lint` - 0 errors, 0 warnings
+10. Checked dev.log - no compilation errors, all endpoints returning 200
+
+## Stage Summary:
+- AISignalData interface extended with stopLoss and takeProfit fields
+- AI Signal API route fully translated to Portuguese with SL/TP prompt and response
+- AI Chat API route fully translated to Portuguese with SL/TP instructions in system prompt
+- AI Signals dashboard component shows SL/TP values per signal with color-coded display
+- Signal Generator component shows detailed SL/TP cards with price and percentage
+- All mock data updated with realistic SL/TP values and Portuguese reasoning
+- Zero lint errors, dev server compiling successfully
+
+---
+Task ID: 39
+Agent: main
+Task: AI SL/TP Calculator feature + Brazilian Portuguese translation
+
+## Current Project Status
+
+The Crypto IA Pro platform is mature and stable with 6 fully functional sections, real Binance data, database persistence, advanced charting, and 25+ dashboard widgets. All REST APIs returning 200. Zero lint errors.
+
+## Work Completed This Round
+
+### 1. AI SL/TP Calculator API Endpoint (`/api/ai/sltp`)
+- Created `src/app/api/ai/sltp/route.ts` with comprehensive technical analysis
+- Calculates ATR (Average True Range) 14-period for volatility-based SL/TP
+- Finds Support/Resistance levels using pivot points
+- Calculates Bollinger Bands (20,2) for range-based SL/TP
+- Calculates RSI (14) for market bias detection
+- Combines technical analysis with AI reasoning via z-ai-web-dev-sdk
+- Returns: stopLoss, takeProfit, slPercent, tpPercent, riskRewardRatio, atr, support, resistance, rsi, bollingerLower, bollingerUpper, recommendation (COMPRA/VENDA/NEUTRO), reasoning
+- SL/TP values based on real technical levels, not random percentages
+
+### 2. SL/TP Calculator Dashboard Widget (`sltp-calculator.tsx`)
+- Visual price level bar showing SL, Support, Entry, Resistance, TP with markers
+- SL/TP value cards with color coding (red/green)
+- Risk/Reward ratio bar visualization
+- Technical metrics grid: ATR(14), Suporte, Resistência
+- Extra indicators: RSI, BB Inferior, BB Superior
+- AI Recommendation badge (COMPRA/VENDA/NEUTRO)
+- AI reasoning text explanation
+- Auto-refresh every 60 seconds
+- Loading skeleton and error state
+- All text in Brazilian Portuguese
+
+### 3. SL/TP Integration in Quick Trade (`quick-trade.tsx`)
+- Added "SL/TP sugerido pela IA" section below buy/sell buttons
+- Shows compact SL, TP values and R:R ratio from AI
+- Shows recommendation badge (COMPRA/VENDA/NEUTRO)
+- Auto-fetches on symbol change, manual refresh button
+
+### 4. AI Suggest Button in Bot Config (`bot-config-form.tsx`)
+- Added "IA" (Sparkles icon) button next to Stop Loss slider
+- Clicking fetches /api/ai/sltp and auto-fills SL/TP percentages
+- Shows toast notification with AI-adjusted values
+- Disabled when bot is active
+
+### 5. Brazilian Portuguese Translation
+- Header: "Live" → "Ao Vivo", "Offline" → "Desconectado"
+- Trade Table: "Time" → "Hora", "Symbol" → "Símbolo", "Side" → "Lado", "Price" → "Preço", "Qty" → "Qtd", "Strategy" → "Estratégia", "Mode" → "Modo", "PnL" → "L/P"
+- Trade Table empty state: "No trades yet..." → "Nenhum trade ainda..."
+- Multi-Timeframe: "Signal" → "Sinal"
+- Chart Section: "Vol Profile" → "Perfil Vol"
+- Backtest Config: "Fast" → "Rápido", "Slow" → "Lento", "Signal" → "Sinal"
+- Indicators Panel SVG: "Signal" → "Sinal"
+- Alert Notification: "Current Price" → "Preço Atual"
+
+### Verification
+- Lint: 0 errors, 0 warnings
+- Dev server: running normally, all API endpoints returning 200
+- All new features integrated and functional
+
+## Unresolved Issues / Next Phase Recommendations
+- Socket.IO WebSocket upgrade through Caddy gateway still uses polling fallback
+- Could add more advanced SL/TP strategies (trailing stop, partial TP)
+- Could add multi-timeframe SL/TP analysis
+- Could add backtesting for SL/TP optimization
+- Some remaining English strings in crypto news mock data titles (intentional - news titles in English)

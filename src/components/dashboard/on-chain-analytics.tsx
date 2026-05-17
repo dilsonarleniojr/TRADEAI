@@ -49,10 +49,10 @@ interface MetricCard {
 }
 
 const KEY_METRICS: MetricCard[] = [
-  { label: "Active Addresses (24h)", value: "847K", change: 3.2, icon: Activity, accent: "card-accent-green" },
-  { label: "Transaction Volume", value: "$32.4B", change: -1.8, icon: DollarSign, accent: "card-accent-green" },
-  { label: "Avg Tx Fee", value: "$2.45", change: -5.1, icon: Fuel, accent: "card-accent-green" },
-  { label: "Hash Rate", value: "650 EH/s", change: 2.4, icon: Cpu, accent: "card-accent-green" },
+  { label: "Endereços Ativos (24h)", value: "847K", change: 3.2, icon: Activity, accent: "card-accent-green" },
+  { label: "Volume de Transações", value: "$32.4B", change: -1.8, icon: DollarSign, accent: "card-accent-green" },
+  { label: "Taxa Média Tx", value: "$2.45", change: -5.1, icon: Fuel, accent: "card-accent-green" },
+  { label: "Taxa de Hash", value: "650 EH/s", change: 2.4, icon: Cpu, accent: "card-accent-green" },
 ];
 
 // Generate 14-day network activity data
@@ -192,8 +192,8 @@ export function OnChainAnalytics() {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Activity className="w-4 h-4 text-crypto-green" />
-            Network Activity
-            <span className="text-[10px] text-muted-foreground font-normal">(14 Days)</span>
+            Atividade da Rede
+            <span className="text-[10px] text-muted-foreground font-normal">(14 Dias)</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -279,15 +279,15 @@ export function OnChainAnalytics() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Fish className="w-4 h-4 text-crypto-green" />
-              Whale Accumulation
+              Acumulação de Baleias
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Accumulation/Distribution Bar */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] text-muted-foreground">Distribution</span>
-                <span className="text-[10px] text-muted-foreground">Accumulation</span>
+                <span className="text-[10px] text-muted-foreground">Distribuição</span>
+                <span className="text-[10px] text-muted-foreground">Acumulação</span>
               </div>
               <div className="relative h-4 rounded-full bg-crypto-red/15 overflow-hidden">
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -314,7 +314,7 @@ export function OnChainAnalytics() {
                       : "bg-crypto-red/15 text-crypto-red"
                   )}
                 >
-                  {isAccumulating ? "Accumulating" : "Distributing"}
+                  {isAccumulating ? "Acumulando" : "Distribuindo"}
                 </span>
                 <span className="text-[10px] text-muted-foreground">
                   Score: {isAccumulating ? "+" : ""}{ACCUMULATION_SCORE}
@@ -370,7 +370,7 @@ export function OnChainAnalytics() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <ArrowRightLeft className="w-4 h-4 text-crypto-green" />
-              Exchange Flows
+              Fluxos de Exchange
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -379,7 +379,7 @@ export function OnChainAnalytics() {
               <div className="p-2.5 rounded-lg bg-crypto-red/10 border border-crypto-red/15 text-center">
                 <div className="flex items-center justify-center gap-1 mb-1">
                   <ArrowDownToLine className="w-3 h-3 text-crypto-red" />
-                  <span className="text-[10px] text-muted-foreground">Inflow</span>
+                  <span className="text-[10px] text-muted-foreground">Entrada</span>
                 </div>
                 <div className="text-sm font-bold text-crypto-red number-animate">
                   {totalInflow.toLocaleString()} BTC
@@ -388,7 +388,7 @@ export function OnChainAnalytics() {
               <div className="p-2.5 rounded-lg bg-crypto-green/10 border border-crypto-green/15 text-center">
                 <div className="flex items-center justify-center gap-1 mb-1">
                   <ArrowUpFromLine className="w-3 h-3 text-crypto-green" />
-                  <span className="text-[10px] text-muted-foreground">Outflow</span>
+                  <span className="text-[10px] text-muted-foreground">Saída</span>
                 </div>
                 <div className="text-sm font-bold text-crypto-green number-animate">
                   {totalOutflow.toLocaleString()} BTC
@@ -404,7 +404,7 @@ export function OnChainAnalytics() {
               >
                 <div className="flex items-center justify-center gap-1 mb-1">
                   <ArrowRightLeft className="w-3 h-3 text-muted-foreground" />
-                  <span className="text-[10px] text-muted-foreground">Net Flow</span>
+                  <span className="text-[10px] text-muted-foreground">Fluxo Líquido</span>
                 </div>
                 <div
                   className={cn(

@@ -4,23 +4,27 @@ import ZAI from 'z-ai-web-dev-sdk';
 // Store conversations in memory
 const conversations = new Map<string, { role: string; content: string }[]>();
 
-const SYSTEM_PROMPT = `You are Crypto IA Pro, an advanced AI assistant specialized in cryptocurrency trading and analysis. You have deep knowledge of:
+const SYSTEM_PROMPT = `Você é o Crypto IA Pro, um assistente de IA avançado especializado em trading e análise de criptomoedas. Você tem conhecimento profundo de:
 
-1. Technical Analysis: RSI, MACD, Moving Averages, Bollinger Bands, Fibonacci retracements, support/resistance levels
-2. Fundamental Analysis: On-chain metrics, market sentiment, regulatory developments, adoption trends
-3. Trading Strategies: Day trading, swing trading, position trading, risk management
-4. Cryptocurrency Markets: Major coins (BTC, ETH, SOL, etc.), DeFi, NFTs, Layer 2 solutions
-5. Risk Management: Position sizing, stop-loss strategies, portfolio diversification
+1. Análise Técnica: RSI, MACD, Médias Móveis, Bandas de Bollinger, retrações de Fibonacci, níveis de suporte/resistência
+2. Análise Fundamental: Métricas on-chain, sentimento de mercado, desenvolvimentos regulatórios, tendências de adoção
+3. Estratégias de Trading: Day trading, swing trading, position trading, gerenciamento de risco
+4. Mercados de Criptomoedas: Principais moedas (BTC, ETH, SOL, etc.), DeFi, NFTs, soluções Layer 2
+5. Gerenciamento de Risco: Dimensionamento de posição, estratégias de stop loss, diversificação de portfólio
 
-When answering questions:
-- Be concise but informative
-- Provide specific numbers and data when relevant
-- Include risk warnings when discussing trading strategies
-- Use proper crypto terminology
-- If asked about specific coins, provide balanced analysis (bull and bear cases)
-- Always remind users that this is not financial advice
-
-Respond in the same language the user uses (Portuguese, English, Spanish, etc.).`;
+REGRAS IMPORTANTES:
+- Sempre sugira valores de STOP LOSS e TAKE PROFIT quando recomendar uma operação de compra ou venda
+- Os valores de SL/TP devem ser realistas, baseados em suportes/resistência e volatilidade do ativo
+- Para BUY: Stop Loss abaixo do preço de entrada, Take Profit acima
+- Para SELL: Stop Loss acima do preço de entrada, Take Profit abaixo
+- Formate os valores de SL/TP claramente, ex: "🎯 Entrada: $78.000 | 🛑 Stop Loss: $76.500 (-1.9%) | ✅ Take Profit: $82.000 (+5.1%)"
+- Seja conciso mas informativo
+- Forneça números e dados específicos quando relevante
+- Inclua avisos de risco ao discutir estratégias de trading
+- Use terminologia crypto adequada
+- Se perguntarem sobre moedas específicas, forneça análise equilibrada (cenários de alta e baixa)
+- Sempre lembre os usuários que isso não é recomendação financeira
+- RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO`;
 
 let zaiInstance: InstanceType<typeof ZAI> | null = null;
 
@@ -36,7 +40,7 @@ export async function POST(request: NextRequest) {
     const { sessionId, message } = await request.json();
 
     if (!message || typeof message !== 'string') {
-      return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Mensagem é obrigatória' }, { status: 400 });
     }
 
     const zai = await getZAI();
@@ -59,7 +63,7 @@ export async function POST(request: NextRequest) {
       thinking: { type: 'disabled' }
     });
 
-    const aiResponse = completion.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
+    const aiResponse = completion.choices[0]?.message?.content || 'Desculpe, não foi possível gerar uma resposta.';
 
     // Add AI response to history
     history.push({ role: 'assistant', content: aiResponse });
@@ -74,7 +78,7 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('AI Chat error:', error);
     return NextResponse.json(
-      { error: 'Failed to generate response', details: message },
+      { error: 'Falha ao gerar resposta', details: message },
       { status: 500 }
     );
   }

@@ -94,10 +94,10 @@ export function PriceAlerts() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Bell className="w-4 h-4 text-crypto-gold" />
-              Price Alerts
+              Alertas de Preço
               {triggeredCount > 0 && (
                 <Badge className="bg-crypto-gold/20 text-crypto-gold border-crypto-gold/30 text-[10px] px-1.5">
-                  {triggeredCount} triggered
+                  {triggeredCount} ativados
                 </Badge>
               )}
             </CardTitle>
@@ -109,23 +109,23 @@ export function PriceAlerts() {
                   className="h-7 text-xs gap-1 border-crypto-gold/30 text-crypto-gold hover:bg-crypto-gold/10"
                 >
                   <Plus className="w-3 h-3" />
-                  Create Alert
+                  Criar Alerta
                 </Button>
               </DialogTrigger>
               <DialogContent className="bg-background border-border sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
                     <BellRing className="w-5 h-5 text-crypto-gold" />
-                    Create Price Alert
+                    Criar Alerta de Preço
                   </DialogTitle>
                   <DialogDescription>
-                    Get notified when a price crosses your target threshold.
+                    Seja notificado quando o preço ultrapassar seu limite definido.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-2">
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-muted-foreground">
-                      Symbol
+                      Símbolo
                     </label>
                     <Select
                       value={newSymbol}
@@ -142,7 +142,7 @@ export function PriceAlerts() {
                       }}
                     >
                       <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select symbol" />
+                        <SelectValue placeholder="Selecionar símbolo" />
                       </SelectTrigger>
                       <SelectContent>
                         {SYMBOLS.map((sym) => (
@@ -155,7 +155,7 @@ export function PriceAlerts() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-muted-foreground">
-                      Direction
+                      Direção
                     </label>
                     <Select
                       value={newDirection}
@@ -170,13 +170,13 @@ export function PriceAlerts() {
                         <SelectItem value="above">
                           <div className="flex items-center gap-2">
                             <ArrowUp className="w-3.5 h-3.5 text-crypto-green" />
-                            Above
+                            Acima
                           </div>
                         </SelectItem>
                         <SelectItem value="below">
                           <div className="flex items-center gap-2">
                             <ArrowDown className="w-3.5 h-3.5 text-crypto-red" />
-                            Below
+                            Abaixo
                           </div>
                         </SelectItem>
                       </SelectContent>
@@ -184,7 +184,7 @@ export function PriceAlerts() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-muted-foreground">
-                      Target Price (USD)
+                      Preço Alvo (USD)
                     </label>
                     <Input
                       type="number"
@@ -196,7 +196,7 @@ export function PriceAlerts() {
                     />
                     {tickers[newSymbol] && (
                       <p className="text-[10px] text-muted-foreground">
-                        Current price: $
+                        Preço atual: $
                         {formatPrice(tickers[newSymbol].price)}
                       </p>
                     )}
@@ -208,7 +208,7 @@ export function PriceAlerts() {
                     size="sm"
                     onClick={() => setDialogOpen(false)}
                   >
-                    Cancel
+                    Cancelar
                   </Button>
                   <Button
                     size="sm"
@@ -216,7 +216,7 @@ export function PriceAlerts() {
                     disabled={!newTargetPrice || parseFloat(newTargetPrice) <= 0}
                     className="bg-crypto-gold text-black hover:bg-crypto-gold/80"
                   >
-                    Create Alert
+                    Criar Alerta
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -229,9 +229,9 @@ export function PriceAlerts() {
               <div className="empty-state-icon bg-crypto-gold/10">
                 <Bell className="w-6 h-6 text-crypto-gold/60" />
               </div>
-              <p className="empty-state-title">No alerts configured</p>
+              <p className="empty-state-title">Nenhum alerta configurado</p>
               <p className="empty-state-desc">
-                Click &quot;Create Alert&quot; to set up price notifications for your favorite assets
+                Clique em &quot;Criar Alerta&quot; para configurar notificações de preço para seus ativos favoritos
               </p>
             </div>
           ) : (
@@ -293,20 +293,20 @@ export function PriceAlerts() {
                             </span>
                             {alert.isTriggered && (
                               <Badge className="bg-crypto-gold/20 text-crypto-gold border-crypto-gold/30 text-[9px] px-1 py-0">
-                                TRIGGERED
+                                ATIVADO
                               </Badge>
                             )}
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-[10px] text-muted-foreground">
-                              {isAbove ? "Above" : "Below"} $
+                              {isAbove ? "Acima" : "Abaixo"} $
                               {formatPrice(alert.targetPrice)}
                             </span>
                             <span className="text-[10px] text-muted-foreground/50">
                               |
                             </span>
                             <span className="text-[10px] font-mono text-muted-foreground">
-                              Now: ${formatPrice(alert.currentPrice)}
+                              Agora: ${formatPrice(alert.currentPrice)}
                             </span>
                           </div>
                           {/* Progress bar */}

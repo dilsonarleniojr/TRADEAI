@@ -104,10 +104,10 @@ function PnLTooltip({
     <div className="bg-card/95 backdrop-blur-md border border-border rounded-lg p-3 shadow-xl">
       <p className="text-xs text-muted-foreground mb-1">{label}</p>
       <p className={cn("text-sm font-bold", isPositive ? "text-crypto-green" : "text-crypto-red")}>
-        P&L: {isPositive ? "+" : ""}${formatPrice(Math.abs(data.pnl))}
+              L/P: {isPositive ? "+" : ""}${formatPrice(Math.abs(data.pnl))}
       </p>
       <p className="text-xs text-muted-foreground">
-        Value: ${formatPrice(data.value)}
+        Valor: ${formatPrice(data.value)}
       </p>
     </div>
   );
@@ -153,7 +153,7 @@ export function PnlTracker() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-crypto-cyan" />
-                P&L Timeline
+                Rastreador de L/P
               </CardTitle>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">24h</span>
@@ -246,7 +246,7 @@ export function PnlTracker() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Calendar className="w-4 h-4 text-crypto-cyan" />
-              P&L Breakdown
+              Resumo de L/P
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -258,7 +258,7 @@ export function PnlTracker() {
                     <div className="p-1.5 rounded-md bg-crypto-cyan/10">
                       <Target className="w-3.5 h-3.5 text-crypto-cyan" />
                     </div>
-                    <span className="text-xs text-muted-foreground">Today</span>
+                    <span className="text-xs text-muted-foreground">Hoje</span>
                   </div>
                   <span
                     className={cn(
@@ -271,7 +271,7 @@ export function PnlTracker() {
                 </div>
               </TooltipTrigger>
               <TooltipContent side="right" sideOffset={4}>
-                <p className="text-xs">Profit or loss from trades executed today</p>
+                <p className="text-xs">Lucro ou prejuízo de trades executados hoje</p>
               </TooltipContent>
             </Tooltip>
 
@@ -283,7 +283,7 @@ export function PnlTracker() {
                     <div className="p-1.5 rounded-md bg-crypto-cyan/10">
                       <TrendingUp className="w-3.5 h-3.5 text-crypto-cyan" />
                     </div>
-                    <span className="text-xs text-muted-foreground">7 Days</span>
+                    <span className="text-xs text-muted-foreground">7 Dias</span>
                   </div>
                   <span
                     className={cn(
@@ -296,7 +296,7 @@ export function PnlTracker() {
                 </div>
               </TooltipTrigger>
               <TooltipContent side="right" sideOffset={4}>
-                <p className="text-xs">Cumulative P&L over the past 7 days</p>
+                <p className="text-xs">L/P acumulado nos últimos 7 dias</p>
               </TooltipContent>
             </Tooltip>
 
@@ -308,7 +308,7 @@ export function PnlTracker() {
                     <div className="p-1.5 rounded-md bg-crypto-cyan/10">
                       <Calendar className="w-3.5 h-3.5 text-crypto-cyan" />
                     </div>
-                    <span className="text-xs text-muted-foreground">30 Days</span>
+                    <span className="text-xs text-muted-foreground">30 Dias</span>
                   </div>
                   <span
                     className={cn(
@@ -321,7 +321,7 @@ export function PnlTracker() {
                 </div>
               </TooltipTrigger>
               <TooltipContent side="right" sideOffset={4}>
-                <p className="text-xs">Cumulative P&L over the past 30 days</p>
+                <p className="text-xs">L/P acumulado nos últimos 30 dias</p>
               </TooltipContent>
             </Tooltip>
 
@@ -332,7 +332,7 @@ export function PnlTracker() {
                   <div className="p-1.5 rounded-md bg-crypto-gold/10">
                     <Trophy className="w-3.5 h-3.5 text-crypto-gold" />
                   </div>
-                  <span className="text-xs text-muted-foreground">Win / Loss</span>
+                  <span className="text-xs text-muted-foreground">Vitória / Derrota</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-crypto-green font-semibold">{winningTrades}W</span>
@@ -349,10 +349,10 @@ export function PnlTracker() {
               </div>
               <div className="flex items-center justify-between mt-1">
                 <span className="text-[10px] text-crypto-green">
-                  {winRate.toFixed(0)}% wins
+                  {winRate.toFixed(0)}% vitórias
                 </span>
                 <span className="text-[10px] text-crypto-red">
-                  {(100 - winRate).toFixed(0)}% losses
+                  {(100 - winRate).toFixed(0)}% derrotas
                 </span>
               </div>
             </div>
@@ -364,7 +364,7 @@ export function PnlTracker() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-crypto-cyan" />
-              Asset Performance
+              Desempenho dos Ativos
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -394,7 +394,7 @@ export function PnlTracker() {
                       borderRadius: "8px",
                       fontSize: "11px",
                     }}
-                    formatter={(value: number) => [`${value >= 0 ? "+" : ""}${value}%`, "Performance"]}
+                    formatter={(value: number) => [`${value >= 0 ? "+" : ""}${value}%`, "Desempenho"]}
                   />
                   <Bar dataKey="performance" radius={[4, 4, 0, 0]} maxBarSize={30}>
                     {assetPerformance.map((entry, index) => (

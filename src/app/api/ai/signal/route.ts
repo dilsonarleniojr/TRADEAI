@@ -16,25 +16,29 @@ export async function POST(request: NextRequest) {
 
     const zai = await getZAI();
 
-    const prompt = `Analyze the following cryptocurrency data and provide a trading signal:
+    const prompt = `Analise os seguintes dados de criptomoeda e forneça um sinal de trading:
 
-Symbol: ${symbol}
-Current Price: $${price}
-24h Change: ${priceChange24h}%
-24h Volume: $${volume}
-24h High: $${high24h}
-24h Low: $${low24h}
+Símbolo: ${symbol}
+Preço Atual: $${price}
+Variação 24h: ${priceChange24h}%
+Volume 24h: $${volume}
+Máxima 24h: $${high24h}
+Mínima 24h: $${low24h}
 
-Respond with a JSON object containing:
-- action: "BUY", "SELL", or "HOLD"
-- confidence: a number between 0 and 1
-- reasoning: a brief explanation (1-2 sentences)
+Responda com um objeto JSON contendo:
+- action: "BUY", "SELL", ou "HOLD"
+- confidence: um número entre 0 e 1
+- reasoning: uma breve explicação (1-2 frases em português)
+- stopLoss: preço sugerido para stop loss (número) - deve ser abaixo do preço atual para BUY, acima para SELL
+- takeProfit: preço sugerido para take profit (número) - deve ser acima do preço atual para BUY, abaixo para SELL
 
-Only respond with the JSON object, no additional text.`;
+IMPORTANTE: Sempre sugira valores de stopLoss e takeProfit realistas baseados em suportes/resistências e volatilidade. Para BUY: stopLoss abaixo do preço, takeProfit acima. Para SELL: stopLoss acima do preço, takeProfit abaixo. Para HOLD: use o preço atual para ambos.
+
+Responda APENAS com o objeto JSON, sem texto adicional.`;
 
     const completion = await zai.chat.completions.create({
       messages: [
-        { role: 'assistant', content: 'You are a cryptocurrency trading analyst. Respond only with valid JSON.' },
+        { role: 'assistant', content: 'Você é um analista de trading de criptomoedas. Responda apenas com JSON válido. Sempre inclua stopLoss e takeProfit realistas.' },
         { role: 'user', content: prompt }
       ],
       thinking: { type: 'disabled' }
@@ -54,7 +58,9 @@ Only respond with the JSON object, no additional text.`;
         signal: {
           action: 'HOLD',
           confidence: 0.5,
-          reasoning: 'Unable to generate analysis at this time.'
+          reasoning: 'Não foi possível gerar análise no momento.',
+          stopLoss: price || 0,
+          takeProfit: price || 0,
         }
       });
     }
@@ -62,7 +68,7 @@ Only respond with the JSON object, no additional text.`;
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('AI Signal error:', error);
     return NextResponse.json(
-      { error: 'Failed to generate signal', details: message },
+      { error: 'Falha ao gerar sinal', details: message },
       { status: 500 }
     );
   }

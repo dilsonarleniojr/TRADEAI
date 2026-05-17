@@ -191,7 +191,7 @@ export function CorrelationHeatmap() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Grid3X3 className="w-4 h-4 text-crypto-gold" />
-              Price Correlation Heatmap
+              Mapa de Correlação de Preço
               <span className="text-[10px] text-muted-foreground font-normal">
                 (24h)
               </span>
@@ -218,9 +218,9 @@ export function CorrelationHeatmap() {
           ) : availableSymbols.length < 2 ? (
             <div className="text-center py-8 text-muted-foreground text-xs">
               <Grid3X3 className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-              <p>Insufficient data for correlation analysis</p>
+              <p>Dados insuficientes para análise de correlação</p>
               <p className="text-[10px] text-muted-foreground/70 mt-1">
-                Waiting for market data to load...
+                Aguardando dados de mercado...
               </p>
             </div>
           ) : (
@@ -344,7 +344,7 @@ export function CorrelationHeatmap() {
                     style={{ backgroundColor: correlationToColor(-1) }}
                   />
                   <span className="text-[9px] text-muted-foreground">
-                    Negative
+                    Negativa
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -353,7 +353,7 @@ export function CorrelationHeatmap() {
                     style={{ backgroundColor: correlationToColor(0) }}
                   />
                   <span className="text-[9px] text-muted-foreground">
-                    None
+                    Nenhuma
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -362,7 +362,7 @@ export function CorrelationHeatmap() {
                     style={{ backgroundColor: correlationToColor(1) }}
                   />
                   <span className="text-[9px] text-muted-foreground">
-                    Positive
+                    Positiva
                   </span>
                 </div>
               </div>

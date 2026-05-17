@@ -112,9 +112,9 @@ export function PriceInfo({ symbol, interval, rsiValue }: PriceInfoProps) {
   // RSI info
   const getRSIInfo = (val: number | null | undefined) => {
     if (val === null || val === undefined) return { value: null, label: 'N/A' };
-    if (val >= 70) return { value: val, label: 'Overbought' };
-    if (val <= 30) return { value: val, label: 'Oversold' };
-    return { value: val, label: 'Neutral' };
+    if (val >= 70) return { value: val, label: 'Sobrecomprado' };
+    if (val <= 30) return { value: val, label: 'Sobrevendido' };
+    return { value: val, label: 'Neutro' };
   };
 
   const rsiInfo = getRSIInfo(rsiValue);
@@ -192,11 +192,11 @@ export function PriceInfo({ symbol, interval, rsiValue }: PriceInfoProps) {
       {/* 24h High/Low */}
       <div className="flex items-center gap-3 text-xs">
         <div className="flex flex-col">
-          <span className="text-muted-foreground">24h High</span>
+          <span className="text-muted-foreground">Máx. 24h</span>
           <span className="font-mono text-crypto-green">{formatPrice(tickerData.high)}</span>
         </div>
         <div className="flex flex-col">
-          <span className="text-muted-foreground">24h Low</span>
+          <span className="text-muted-foreground">Mín. 24h</span>
           <span className="font-mono text-crypto-red">{formatPrice(tickerData.low)}</span>
         </div>
       </div>
@@ -206,7 +206,7 @@ export function PriceInfo({ symbol, interval, rsiValue }: PriceInfoProps) {
 
       {/* 24h Volume */}
       <div className="flex flex-col text-xs">
-        <span className="text-muted-foreground">24h Volume</span>
+        <span className="text-muted-foreground">Volume 24h</span>
         <span className="font-mono">{formatVolume(tickerData.quoteVolume)}</span>
       </div>
 

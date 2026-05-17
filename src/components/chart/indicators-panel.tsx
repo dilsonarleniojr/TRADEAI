@@ -237,7 +237,7 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
     if (rsiValues.length === 0) {
       return (
         <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-          Insufficient data for RSI calculation
+          Dados insuficientes para cálculo do RSI
         </div>
       );
     }
@@ -298,7 +298,7 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
     if (macdData.macd.length === 0) {
       return (
         <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-          Insufficient data for MACD calculation
+          Dados insuficientes para cálculo do MACD
         </div>
       );
     }
@@ -367,7 +367,7 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
         <line x1={pad.left + 10} y1={pad.top + 5} x2={pad.left + 25} y2={pad.top + 5} stroke="#06b6d4" strokeWidth={2} />
         <text x={pad.left + 30} y={pad.top + 8} fill="oklch(0.65 0 0)" fontSize={9}>MACD</text>
         <line x1={pad.left + 70} y1={pad.top + 5} x2={pad.left + 85} y2={pad.top + 5} stroke="#f59e0b" strokeWidth={2} />
-        <text x={pad.left + 90} y={pad.top + 8} fill="oklch(0.65 0 0)" fontSize={9}>Signal</text>
+        <text x={pad.left + 90} y={pad.top + 8} fill="oklch(0.65 0 0)" fontSize={9}>Sinal</text>
 
         {/* Current values */}
         {currentMACD !== null && (
@@ -388,7 +388,7 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
     if (stochrsiData.k.length === 0) {
       return (
         <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-          Insufficient data for Stochastic RSI calculation
+          Dados insuficientes para cálculo do Stochastic RSI
         </div>
       );
     }
@@ -482,16 +482,16 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
 
   const getRSILabel = (val: number | null) => {
     if (val === null) return { text: 'N/A', color: 'text-muted-foreground' };
-    if (val >= 70) return { text: 'Overbought', color: 'text-crypto-red' };
-    if (val <= 30) return { text: 'Oversold', color: 'text-crypto-green' };
-    return { text: 'Neutral', color: 'text-crypto-cyan' };
+    if (val >= 70) return { text: 'Sobrecomprado', color: 'text-crypto-red' };
+    if (val <= 30) return { text: 'Sobrevendido', color: 'text-crypto-green' };
+    return { text: 'Neutro', color: 'text-crypto-cyan' };
   };
 
   const getStochRSILabel = (val: number | null) => {
     if (val === null) return { text: 'N/A', color: 'text-muted-foreground' };
-    if (val >= 80) return { text: 'Overbought', color: 'text-crypto-red' };
-    if (val <= 20) return { text: 'Oversold', color: 'text-crypto-green' };
-    return { text: 'Neutral', color: 'text-crypto-cyan' };
+    if (val >= 80) return { text: 'Sobrecomprado', color: 'text-crypto-red' };
+    if (val <= 20) return { text: 'Sobrevendido', color: 'text-crypto-green' };
+    return { text: 'Neutro', color: 'text-crypto-cyan' };
   };
 
   const rsiLabel = getRSILabel(currentRSI);
@@ -519,7 +519,7 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
         >
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-crypto-cyan" />
-            <span className="text-sm font-medium">Technical Indicators</span>
+            <span className="text-sm font-medium">Indicadores Técnicos</span>
           </div>
           <div className="flex items-center gap-3">
             {/* RSI badge */}
@@ -537,7 +537,7 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
                   currentMACD > currentSignal ? 'text-crypto-green' : 'text-crypto-red'
                 }`}
               >
-                MACD: {currentMACD > currentSignal ? 'Bullish' : 'Bearish'}
+                MACD: {currentMACD > currentSignal ? 'Alta' : 'Baixa'}
               </Badge>
             )}
             {/* StochRSI badge */}

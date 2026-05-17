@@ -148,10 +148,10 @@ export function ChartSection() {
                 : 'text-muted-foreground'
             }`}
             onClick={() => setDrawingTool('crosshair')}
-            title="Crosshair (default)"
+            title="Crosshair (padrão)"
           >
             <MousePointer2 className="w-3.5 h-3.5 mr-1" />
-            Pointer
+            Ponteiro
           </Button>
           <Button
             variant={drawingTool === 'trendline' ? 'default' : 'ghost'}
@@ -162,10 +162,10 @@ export function ChartSection() {
                 : 'text-muted-foreground'
             }`}
             onClick={() => setDrawingTool('trendline')}
-            title="Trendline tool"
+            title="Ferramenta de tendência"
           >
             <TrendingUp className="w-3.5 h-3.5 mr-1" />
-            Trendline
+            Tendência
           </Button>
           <Button
             variant={drawingTool === 'horizontal' ? 'default' : 'ghost'}
@@ -176,21 +176,21 @@ export function ChartSection() {
                 : 'text-muted-foreground'
             }`}
             onClick={() => setDrawingTool('horizontal')}
-            title="Horizontal line tool"
+            title="Linha horizontal"
           >
             <Minus className="w-3.5 h-3.5 mr-1" />
-            H-Line
+            Linha-H
           </Button>
           <Button
             variant="ghost"
             size="sm"
             className="h-7 px-2 text-xs text-muted-foreground hover:text-red-400 transition-all duration-200"
             onClick={handleClearDrawings}
-            title="Clear all drawings"
+            title="Limpar todos os desenhos"
             disabled={drawings.length === 0}
           >
             <Trash2 className="w-3.5 h-3.5 mr-1" />
-            Clear
+            Limpar
           </Button>
           {drawings.length > 0 && (
             <span className="text-[10px] text-muted-foreground/60 ml-1">{drawings.length}</span>
@@ -200,7 +200,7 @@ export function ChartSection() {
         {/* Symbol Selector */}
         <Select value={selectedSymbol} onValueChange={setSelectedSymbol}>
           <SelectTrigger className="w-[140px] h-8 text-xs bg-card/50 border-border">
-            <SelectValue placeholder="Select symbol" />
+            <SelectValue placeholder="Selecionar símbolo" />
           </SelectTrigger>
           <SelectContent>
             {SYMBOLS.map((sym) => (
@@ -314,7 +314,7 @@ export function ChartSection() {
             }`}
             onClick={() => setShowVolumeProfile(!showVolumeProfile)}
           >
-            Vol Profile
+            Perfil Vol
           </Button>
           <Button
             variant={showIchimoku ? 'default' : 'ghost'}
