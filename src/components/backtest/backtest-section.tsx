@@ -515,6 +515,7 @@ export function BacktestSection() {
         </div>
       </div>
 
+      {/* Config + Results: stack on mobile, side-by-side on desktop */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Config Panel */}
         <div className="lg:col-span-1">
@@ -530,7 +531,7 @@ export function BacktestSection() {
           />
         </div>
 
-        {/* Results */}
+        {/* Results - full width on mobile */}
         <div className="lg:col-span-2">
           {error && (
             <Card className="bg-crypto-red/5 border-crypto-red/20 mb-4">
@@ -550,7 +551,7 @@ export function BacktestSection() {
             <BacktestResults results={results} />
           ) : (
             <Card className="bg-card border-border">
-              <CardContent className="p-8 text-center">
+              <CardContent className="p-6 sm:p-8 text-center">
                 <div className="w-14 h-14 rounded-2xl bg-crypto-cyan/10 flex items-center justify-center mx-auto mb-4">
                   <History className="w-7 h-7 text-crypto-cyan" />
                 </div>

@@ -9,6 +9,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet';
+import {
   Send,
   Bot,
   User,
@@ -16,6 +23,7 @@ import {
   RefreshCw,
   MessageSquare,
   Trash2,
+  Zap,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -35,28 +43,6 @@ const WELCOME_MESSAGE = {
   content: `👋 **Bem-vindo ao Crypto IA Pro!**\n\nSou seu assistente de trading com IA. Posso ajudar com:\n\n- 📊 **Análise Técnica** — RSI, MACD, níveis de suporte/resistência\n- 🤖 **Estratégias de Trading** — Recomendações personalizadas de estratégia\n- 📈 **Insights de Mercado** — Análise e tendências em tempo real\n- ⚡ **Geração de Sinais** — Sinais de compra/venda com IA\n\nPergunte qualquer coisa sobre mercados crypto, ou experimente uma das perguntas sugeridas abaixo!`,
   timestamp: new Date().toISOString(),
 };
-
-// Bouncing dots loading animation
-function BouncingDots() {
-  return (
-    <div className="flex items-center gap-1.5 px-1">
-      <span className="sr-only">Loading...</span>
-      {[0, 1, 2].map((i) => (
-        <motion.span
-          key={i}
-          className="w-2 h-2 rounded-full bg-crypto-cyan"
-          animate={{ y: [0, -8, 0] }}
-          transition={{
-            duration: 0.6,
-            repeat: Infinity,
-            delay: i * 0.15,
-            ease: 'easeInOut',
-          }}
-        />
-      ))}
-    </div>
-  );
-}
 
 // AI thinking indicator
 function ThinkingIndicator() {
@@ -111,6 +97,42 @@ function GradientBorderButton({
   );
 }
 
+// AI Tips Card content (reusable in both desktop sidebar and mobile sheet)
+function AiTipsContent() {
+  return (
+    <Card className="bg-card/60 backdrop-blur-md gradient-border relative overflow-hidden">
+      <div className="absolute inset-0 rounded-xl p-[1px] bg-gradient-to-b from-crypto-gold/20 to-transparent pointer-events-none" />
+      <CardHeader className="pb-3 relative">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-crypto-gold" />
+          <CardTitle className="text-sm">Dicas da IA</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3 relative">
+        <TipItem
+          title="Estratégia RSI"
+          description="Compre quando RSI cair abaixo de 30 (sobrevendido), venda quando RSI subir acima de 70 (sobrecomprado)."
+        />
+        <Separator className="bg-border" />
+        <TipItem
+          title="Stop Loss"
+          description="Sempre defina um stop loss 2-5% abaixo do preço de entrada para limitar perdas potenciais."
+        />
+        <Separator className="bg-border" />
+        <TipItem
+          title="Diversificação"
+          description="Não coloque todo seu capital em uma moeda. Distribua entre 3-5 ativos diferentes."
+        />
+        <Separator className="bg-border" />
+        <TipItem
+          title="Confirmação por Volume"
+          description="Confirme rompimentos com volume acima da média para evitar sinais falsos."
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
 export function ChatSection() {
   const { chatMessages, addChatMessage, clearChat, selectedSymbol, tickers } =
     useCryptoStore();
@@ -118,6 +140,7 @@ export function ChatSection() {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId] = useState(() => crypto.randomUUID());
   const [hasInitialized, setHasInitialized] = useState(false);
+  const [signalSheetOpen, setSignalSheetOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -227,8 +250,8 @@ export function ChatSection() {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100vh-10rem)] lg:h-[calc(100vh-10rem)] max-h-[calc(100dvh-10rem)]">
-      {/* Chat Interface - Left side (2/3) */}
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100dvh-12rem)] lg:h-[calc(100vh-10rem)]">
+      {/* Chat Interface - Full width on mobile, 2/3 on desktop */}
       <Card className="lg:col-span-2 flex flex-col glass border border-border/50 overflow-hidden relative">
         {/* Gradient border glow */}
         <div className="absolute inset-0 rounded-xl p-[1px] bg-gradient-to-b from-crypto-cyan/20 to-transparent pointer-events-none" />
@@ -250,15 +273,25 @@ export function ChatSection() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="text-xs gap-1">
+              <Badge variant="secondary" className="text-xs gap-1 hidden sm:flex">
                 <MessageSquare className="w-3 h-3" />
                 {chatMessages.length} mensagens
               </Badge>
+              {/* Mobile: Sinais button to open Sheet */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="lg:hidden h-9 gap-1.5 text-xs border-crypto-cyan/30 text-crypto-cyan hover:bg-crypto-cyan/10 touch-target"
+                onClick={() => setSignalSheetOpen(true)}
+              >
+                <Zap className="w-3.5 h-3.5" />
+                Sinais
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={handleClearChat}
-                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive touch-target"
                 title="Limpar chat"
               >
                 <Trash2 className="w-4 h-4" />
@@ -326,9 +359,9 @@ export function ChatSection() {
                       )}
                     </div>
 
-                    {/* Message Bubble */}
+                    {/* Message Bubble - 85% max on mobile, 80% on desktop */}
                     <div
-                      className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
+                      className={`max-w-[85%] lg:max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
                         msg.role === 'user'
                           ? 'bg-gradient-to-br from-crypto-cyan/20 via-crypto-cyan/10 to-crypto-green/5 text-foreground rounded-tr-sm border border-crypto-cyan/20 shadow-sm shadow-crypto-cyan/5'
                           : 'bg-card/90 backdrop-blur-sm border border-border/50 rounded-tl-sm shadow-sm'
@@ -378,7 +411,7 @@ export function ChatSection() {
           </div>
         )}
 
-        {/* Input Area */}
+        {/* Input Area - safe-bottom for mobile nav */}
         <div className="p-3 border-t border-border shrink-0 safe-bottom relative">
           {/* Gradient border on focus */}
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-crypto-cyan/0 to-transparent transition-all duration-300 peer-focus:via-crypto-cyan/50 peer-focus:h-[2px]" />
@@ -388,7 +421,7 @@ export function ChatSection() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Pergunte sobre mercados crypto, análise, estratégias..."
+              placeholder="Pergunte sobre mercados crypto..."
               aria-label="Type your message"
               disabled={isLoading}
               className="flex-1 bg-background/80 backdrop-blur-sm border-border/50 input-glow peer focus-visible:ring-crypto-cyan/30 focus-visible:border-crypto-cyan/30 transition-all duration-300"
@@ -397,7 +430,7 @@ export function ChatSection() {
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || isLoading}
               size="icon"
-              className="shrink-0 bg-crypto-cyan hover:bg-crypto-cyan/90 transition-transform duration-200 hover:scale-105 active:scale-95"
+              className="shrink-0 bg-crypto-cyan hover:bg-crypto-cyan/90 transition-transform duration-200 hover:scale-105 active:scale-95 touch-target"
             >
               <Send className="w-4 h-4" />
             </Button>
@@ -409,42 +442,30 @@ export function ChatSection() {
         </div>
       </Card>
 
-      {/* Right Side Panel - Signal Generator & Tips */}
-      <div className="flex flex-col gap-4 overflow-y-auto">
+      {/* Desktop: Right Side Panel - Signal Generator & Tips */}
+      <div className="hidden lg:flex flex-col gap-4 overflow-y-auto">
         <SignalGenerator />
-
-        {/* AI Tips Card */}
-        <Card className="bg-card/60 backdrop-blur-md gradient-border relative overflow-hidden">
-          <div className="absolute inset-0 rounded-xl p-[1px] bg-gradient-to-b from-crypto-gold/20 to-transparent pointer-events-none" />
-          <CardHeader className="pb-3 relative">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-crypto-gold" />
-              <CardTitle className="text-sm">Dicas da IA</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3 relative">
-            <TipItem
-              title="Estratégia RSI"
-              description="Compre quando RSI cair abaixo de 30 (sobrevendido), venda quando RSI subir acima de 70 (sobrecomprado)."
-            />
-            <Separator className="bg-border" />
-            <TipItem
-              title="Stop Loss"
-              description="Sempre defina um stop loss 2-5% abaixo do preço de entrada para limitar perdas potenciais."
-            />
-            <Separator className="bg-border" />
-            <TipItem
-              title="Diversificação"
-              description="Não coloque todo seu capital em uma moeda. Distribua entre 3-5 ativos diferentes."
-            />
-            <Separator className="bg-border" />
-            <TipItem
-              title="Confirmação por Volume"
-              description="Confirme rompimentos com volume acima da média para evitar sinais falsos."
-            />
-          </CardContent>
-        </Card>
+        <AiTipsContent />
       </div>
+
+      {/* Mobile: Signal Sheet (slides from right) */}
+      <Sheet open={signalSheetOpen} onOpenChange={setSignalSheetOpen}>
+        <SheetContent side="right" className="w-[85vw] sm:max-w-md overflow-y-auto p-0">
+          <SheetHeader className="p-4 pb-2">
+            <SheetTitle className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-crypto-cyan" />
+              Sinais e Dicas
+            </SheetTitle>
+            <SheetDescription>
+              Gerador de sinais IA e dicas de trading
+            </SheetDescription>
+          </SheetHeader>
+          <div className="px-4 pb-4 space-y-4">
+            <SignalGenerator />
+            <AiTipsContent />
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

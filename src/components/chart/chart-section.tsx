@@ -135,107 +135,112 @@ export function ChartSection() {
       {/* Price Info Header */}
       <PriceInfo symbol={selectedSymbol} interval={interval} rsiValue={rsiValue} />
 
-      {/* Drawing Tools Toolbar + Chart Controls */}
-      <div className="flex flex-wrap items-center gap-2 glass rounded-xl p-3 border border-border/50">
-        {/* Drawing Tools */}
-        <div className="flex items-center gap-1 mr-2 pr-2 border-r border-border/50">
-          <Button
-            variant={drawingTool === 'crosshair' ? 'default' : 'ghost'}
-            size="sm"
-            className={`h-7 px-2 text-xs transition-all duration-200 ${
-              drawingTool === 'crosshair'
-                ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30 scale-[1.02] shadow-sm shadow-crypto-cyan/10 border border-crypto-cyan/40'
-                : 'text-muted-foreground'
-            }`}
-            onClick={() => setDrawingTool('crosshair')}
-            title="Crosshair (padrão)"
-          >
-            <MousePointer2 className="w-3.5 h-3.5 mr-1" />
-            Ponteiro
-          </Button>
-          <Button
-            variant={drawingTool === 'trendline' ? 'default' : 'ghost'}
-            size="sm"
-            className={`h-7 px-2 text-xs transition-all duration-200 ${
-              drawingTool === 'trendline'
-                ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30 scale-[1.02] shadow-sm shadow-crypto-cyan/10 border border-crypto-cyan/40'
-                : 'text-muted-foreground'
-            }`}
-            onClick={() => setDrawingTool('trendline')}
-            title="Ferramenta de tendência"
-          >
-            <TrendingUp className="w-3.5 h-3.5 mr-1" />
-            Tendência
-          </Button>
-          <Button
-            variant={drawingTool === 'horizontal' ? 'default' : 'ghost'}
-            size="sm"
-            className={`h-7 px-2 text-xs transition-all duration-200 ${
-              drawingTool === 'horizontal'
-                ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30 scale-[1.02] shadow-sm shadow-crypto-cyan/10 border border-crypto-cyan/40'
-                : 'text-muted-foreground'
-            }`}
-            onClick={() => setDrawingTool('horizontal')}
-            title="Linha horizontal"
-          >
-            <Minus className="w-3.5 h-3.5 mr-1" />
-            Linha-H
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-red-400 transition-all duration-200"
-            onClick={handleClearDrawings}
-            title="Limpar todos os desenhos"
-            disabled={drawings.length === 0}
-          >
-            <Trash2 className="w-3.5 h-3.5 mr-1" />
-            Limpar
-          </Button>
-          {drawings.length > 0 && (
-            <span className="text-[10px] text-muted-foreground/60 ml-1">{drawings.length}</span>
-          )}
-        </div>
-
-        {/* Symbol Selector */}
-        <Select value={selectedSymbol} onValueChange={setSelectedSymbol}>
-          <SelectTrigger className="w-[140px] h-8 text-xs bg-card/50 border-border">
-            <SelectValue placeholder="Selecionar símbolo" />
-          </SelectTrigger>
-          <SelectContent>
-            {SYMBOLS.map((sym) => (
-              <SelectItem key={sym} value={sym} className="text-xs">
-                {sym.replace('USDT', '/USDT')}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Interval Buttons */}
-        <div className="flex items-center gap-0.5 bg-secondary/30 rounded-lg p-0.5">
-          {INTERVALS.map((int) => (
+      {/* Drawing Tools Toolbar + Chart Controls - Mobile: 2 scrollable rows */}
+      <div className="glass rounded-xl p-2 sm:p-3 border border-border/50 space-y-2">
+        {/* Row 1: Drawing Tools + Symbol + Intervals - horizontally scrollable on mobile */}
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
+          {/* Drawing Tools */}
+          <div className="flex items-center gap-1 shrink-0 pr-2 border-r border-border/50">
             <Button
-              key={int.value}
-              variant={interval === int.value ? 'default' : 'ghost'}
+              variant={drawingTool === 'crosshair' ? 'default' : 'ghost'}
               size="sm"
-              className={`h-7 px-2.5 text-xs transition-all duration-200 ${
-                interval === int.value
-                  ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30 scale-[1.02] shadow-sm shadow-crypto-cyan/10'
-                  : 'text-muted-foreground hover:text-foreground'
+              className={`h-9 sm:h-7 px-2 text-xs transition-all duration-200 ${
+                drawingTool === 'crosshair'
+                  ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30 scale-[1.02] shadow-sm shadow-crypto-cyan/10 border border-crypto-cyan/40'
+                  : 'text-muted-foreground'
               }`}
-              onClick={() => setInterval(int.value)}
+              onClick={() => setDrawingTool('crosshair')}
+              title="Crosshair (padrão)"
             >
-              {int.label}
+              <MousePointer2 className="w-3.5 h-3.5 mr-1" />
+              <span className="hidden sm:inline">Ponteiro</span>
             </Button>
-          ))}
+            <Button
+              variant={drawingTool === 'trendline' ? 'default' : 'ghost'}
+              size="sm"
+              className={`h-9 sm:h-7 px-2 text-xs transition-all duration-200 ${
+                drawingTool === 'trendline'
+                  ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30 scale-[1.02] shadow-sm shadow-crypto-cyan/10 border border-crypto-cyan/40'
+                  : 'text-muted-foreground'
+              }`}
+              onClick={() => setDrawingTool('trendline')}
+              title="Ferramenta de tendência"
+            >
+              <TrendingUp className="w-3.5 h-3.5 mr-1" />
+              <span className="hidden sm:inline">Tendência</span>
+            </Button>
+            <Button
+              variant={drawingTool === 'horizontal' ? 'default' : 'ghost'}
+              size="sm"
+              className={`h-9 sm:h-7 px-2 text-xs transition-all duration-200 ${
+                drawingTool === 'horizontal'
+                  ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30 scale-[1.02] shadow-sm shadow-crypto-cyan/10 border border-crypto-cyan/40'
+                  : 'text-muted-foreground'
+              }`}
+              onClick={() => setDrawingTool('horizontal')}
+              title="Linha horizontal"
+            >
+              <Minus className="w-3.5 h-3.5 mr-1" />
+              <span className="hidden sm:inline">Linha-H</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 sm:h-7 px-2 text-xs text-muted-foreground hover:text-red-400 transition-all duration-200 "
+              onClick={handleClearDrawings}
+              title="Limpar todos os desenhos"
+              disabled={drawings.length === 0}
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1" />
+              Limpar
+            </Button>
+            {drawings.length > 0 && (
+              <span className="text-[10px] text-muted-foreground/60 ml-1">{drawings.length}</span>
+            )}
+          </div>
+
+          {/* Symbol Selector */}
+          <div className="shrink-0">
+            <Select value={selectedSymbol} onValueChange={setSelectedSymbol}>
+              <SelectTrigger className="w-[130px] sm:w-[140px] h-9 sm:h-8 text-xs bg-card/50 border-border">
+                <SelectValue placeholder="Selecionar símbolo" />
+              </SelectTrigger>
+              <SelectContent>
+                {SYMBOLS.map((sym) => (
+                  <SelectItem key={sym} value={sym} className="text-xs">
+                    {sym.replace('USDT', '/USDT')}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Interval Buttons */}
+          <div className="flex items-center gap-0.5 bg-secondary/30 rounded-lg p-0.5 shrink-0">
+            {INTERVALS.map((int) => (
+              <Button
+                key={int.value}
+                variant={interval === int.value ? 'default' : 'ghost'}
+                size="sm"
+                className={`h-9 sm:h-7 px-2.5 text-xs transition-all duration-200 ${
+                  interval === int.value
+                    ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30 scale-[1.02] shadow-sm shadow-crypto-cyan/10'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setInterval(int.value)}
+              >
+                {int.label}
+              </Button>
+            ))}
+          </div>
         </div>
 
-        {/* Indicator toggles */}
-        <div className="flex flex-wrap items-center gap-1 ml-auto">
+        {/* Row 2: Indicator toggles - horizontally scrollable on mobile, wraps on lg */}
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none lg:overflow-visible lg:flex-wrap">
           <Button
             variant={showSMA20 ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs transition-all duration-200 ${
+            className={`h-9 sm:h-7 px-2 text-xs transition-all duration-200 shrink-0  ${
               showSMA20
                 ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 scale-[1.02] shadow-sm shadow-yellow-500/10'
                 : 'text-muted-foreground'
@@ -247,7 +252,7 @@ export function ChartSection() {
           <Button
             variant={showSMA50 ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs transition-all duration-200 ${
+            className={`h-9 sm:h-7 px-2 text-xs transition-all duration-200 shrink-0  ${
               showSMA50
                 ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 scale-[1.02] shadow-sm shadow-purple-500/10'
                 : 'text-muted-foreground'
@@ -259,7 +264,7 @@ export function ChartSection() {
           <Button
             variant={showBollinger ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs transition-all duration-200 ${
+            className={`h-9 sm:h-7 px-2 text-xs transition-all duration-200 shrink-0  ${
               showBollinger
                 ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30 scale-[1.02] shadow-sm shadow-crypto-cyan/10'
                 : 'text-muted-foreground'
@@ -271,7 +276,7 @@ export function ChartSection() {
           <Button
             variant={showFibonacci ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs transition-all duration-200 ${
+            className={`h-9 sm:h-7 px-2 text-xs transition-all duration-200 shrink-0  ${
               showFibonacci
                 ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 scale-[1.02] shadow-sm shadow-amber-500/10'
                 : 'text-muted-foreground'
@@ -283,7 +288,7 @@ export function ChartSection() {
           <Button
             variant={showEMA12 ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs transition-all duration-200 ${
+            className={`h-9 sm:h-7 px-2 text-xs transition-all duration-200 shrink-0  ${
               showEMA12
                 ? 'bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 scale-[1.02] shadow-sm shadow-teal-500/10'
                 : 'text-muted-foreground'
@@ -295,7 +300,7 @@ export function ChartSection() {
           <Button
             variant={showEMA26 ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs transition-all duration-200 ${
+            className={`h-9 sm:h-7 px-2 text-xs transition-all duration-200 shrink-0  ${
               showEMA26
                 ? 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 scale-[1.02] shadow-sm shadow-orange-500/10'
                 : 'text-muted-foreground'
@@ -307,7 +312,7 @@ export function ChartSection() {
           <Button
             variant={showVolumeProfile ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs transition-all duration-200 ${
+            className={`h-9 sm:h-7 px-2 text-xs transition-all duration-200 shrink-0  ${
               showVolumeProfile
                 ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 scale-[1.02] shadow-sm shadow-emerald-500/10'
                 : 'text-muted-foreground'
@@ -319,7 +324,7 @@ export function ChartSection() {
           <Button
             variant={showIchimoku ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs transition-all duration-200 ${
+            className={`h-9 sm:h-7 px-2 text-xs transition-all duration-200 shrink-0  ${
               showIchimoku
                 ? 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 scale-[1.02] shadow-sm shadow-rose-500/10'
                 : 'text-muted-foreground'
@@ -331,7 +336,7 @@ export function ChartSection() {
         </div>
       </div>
 
-      {/* Chart + Quick Trade Layout */}
+      {/* Chart + Quick Trade + Order Book Layout - stack on mobile */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
         <div className="lg:col-span-3 min-w-0">
           <Card className={`bg-card/30 backdrop-blur-sm border-border/50 overflow-hidden ${hasActiveOverlay ? 'glow-cyan-sm' : ''}`}>

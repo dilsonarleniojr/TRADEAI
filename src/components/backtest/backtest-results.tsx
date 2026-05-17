@@ -206,14 +206,15 @@ export function BacktestResults({ results }: BacktestResultsProps) {
       transition={{ duration: 0.3 }}
       className="space-y-4"
     >
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* Summary Cards - horizontally scrollable on mobile */}
+      <div className="flex gap-3 overflow-x-auto mobile-scroll-x scrollbar-none lg:overflow-visible lg:grid lg:grid-cols-6">
         {summaryCards.map((card, i) => (
           <motion.div
             key={card.label}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.2, delay: i * 0.05 }}
+            className="shrink-0 w-[140px] lg:w-auto"
           >
             <Card className="bg-card border-border hover:border-border/80 transition-all duration-200 hover:shadow-md cursor-default">
               <CardContent className="p-3">
@@ -236,14 +237,15 @@ export function BacktestResults({ results }: BacktestResultsProps) {
         ))}
       </div>
 
-      {/* Advanced Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* Advanced Metrics - horizontally scrollable on mobile */}
+      <div className="flex gap-3 overflow-x-auto mobile-scroll-x scrollbar-none lg:overflow-visible lg:grid lg:grid-cols-6">
         {advancedMetrics.map((card, i) => (
           <motion.div
             key={card.label}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.2, delay: (i + 6) * 0.05 }}
+            className="shrink-0 w-[140px] lg:w-auto"
           >
             <Card className="bg-card border-border hover:border-border/80 transition-all duration-200 hover:shadow-md cursor-default">
               <CardContent className="p-3">
@@ -271,7 +273,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
         ))}
       </div>
 
-      {/* Equity Curve */}
+      {/* Equity Curve - full width on mobile */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -280,7 +282,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-[300px] w-full">
+          <div className="h-[200px] sm:h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
                 data={results.equityCurve}
@@ -351,7 +353,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
         </CardContent>
       </Card>
 
-      {/* Drawdown Chart */}
+      {/* Drawdown Chart - full width on mobile */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -360,7 +362,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-[150px] w-full">
+          <div className="h-[120px] sm:h-[150px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
                 data={results.drawdownCurve}
@@ -431,7 +433,7 @@ export function BacktestResults({ results }: BacktestResultsProps) {
         </CardContent>
       </Card>
 
-      {/* Trade List */}
+      {/* Trade List - horizontally scrollable on mobile */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -440,103 +442,105 @@ export function BacktestResults({ results }: BacktestResultsProps) {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <ScrollArea className="max-h-[300px]">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="text-[11px] text-muted-foreground">
-                    Data
-                  </TableHead>
-                  <TableHead className="text-[11px] text-muted-foreground">
-                    Lado
-                  </TableHead>
-                  <TableHead className="text-[11px] text-muted-foreground text-right">
-                    Preço
-                  </TableHead>
-                  <TableHead className="text-[11px] text-muted-foreground text-right">
-                    Qtd
-                  </TableHead>
-                  <TableHead className="text-[11px] text-muted-foreground text-right">
-                    L/P
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {results.trades.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="text-center text-muted-foreground text-xs py-8"
-                    >
-                      Nenhum trade gerado durante o backtest.
-                    </TableCell>
+          <div className="mobile-scroll-x">
+            <ScrollArea className="max-h-[300px]">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="text-[11px] text-muted-foreground">
+                      Data
+                    </TableHead>
+                    <TableHead className="text-[11px] text-muted-foreground">
+                      Lado
+                    </TableHead>
+                    <TableHead className="text-[11px] text-muted-foreground text-right">
+                      Preço
+                    </TableHead>
+                    <TableHead className="text-[11px] text-muted-foreground text-right">
+                      Qtd
+                    </TableHead>
+                    <TableHead className="text-[11px] text-muted-foreground text-right">
+                      L/P
+                    </TableHead>
                   </TableRow>
-                ) : (
-                  results.trades.map((trade, i) => {
-                    const isBest = results.bestTrade && trade.pnl === results.bestTrade.pnl && trade.date === results.bestTrade.date;
-                    const isWorst = results.worstTrade && trade.pnl === results.worstTrade.pnl && trade.date === results.worstTrade.date;
-                    return (
-                      <TableRow
-                        key={i}
-                        className={`border-border/50 transition-colors hover:bg-secondary/30 ${
-                          isBest
-                            ? "bg-crypto-green/5"
-                            : isWorst
-                              ? "bg-crypto-red/5"
-                              : ""
-                        }`}
+                </TableHeader>
+                <TableBody>
+                  {results.trades.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="text-center text-muted-foreground text-xs py-8"
                       >
-                        <TableCell className="text-xs font-mono text-muted-foreground">
-                          {trade.date}
-                          {isBest && (
-                            <Badge className="ml-1 text-[8px] px-1 py-0 bg-crypto-green/15 text-crypto-green border-crypto-green/30">
-                              MELHOR
-                            </Badge>
-                          )}
-                          {isWorst && (
-                            <Badge className="ml-1 text-[8px] px-1 py-0 bg-crypto-red/15 text-crypto-red border-crypto-red/30">
-                              PIOR
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            className={`text-[10px] px-1.5 py-0 ${
-                              trade.side === "BUY"
-                                ? "bg-crypto-green/15 text-crypto-green border-crypto-green/30"
-                                : "bg-crypto-red/15 text-crypto-red border-crypto-red/30"
-                            }`}
-                          >
-                            {trade.side}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs text-right font-mono">
-                          ${formatPrice(trade.price)}
-                        </TableCell>
-                        <TableCell className="text-xs text-right font-mono">
-                          {trade.quantity.toFixed(6)}
-                        </TableCell>
-                        <TableCell
-                          className={`text-xs text-right font-mono font-medium ${
-                            trade.pnl > 0
-                              ? "text-crypto-green"
-                              : trade.pnl < 0
-                                ? "text-crypto-red"
-                                : "text-muted-foreground"
+                        Nenhum trade gerado durante o backtest.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    results.trades.map((trade, i) => {
+                      const isBest = results.bestTrade && trade.pnl === results.bestTrade.pnl && trade.date === results.bestTrade.date;
+                      const isWorst = results.worstTrade && trade.pnl === results.worstTrade.pnl && trade.date === results.worstTrade.date;
+                      return (
+                        <TableRow
+                          key={i}
+                          className={`border-border/50 transition-colors hover:bg-secondary/30 ${
+                            isBest
+                              ? "bg-crypto-green/5"
+                              : isWorst
+                                ? "bg-crypto-red/5"
+                                : ""
                           }`}
                         >
-                          {trade.pnl > 0 ? "+" : ""}
-                          {trade.pnl !== 0
-                            ? `$${formatPrice(Math.abs(trade.pnl))}`
-                            : "—"}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </ScrollArea>
+                          <TableCell className="text-xs font-mono text-muted-foreground whitespace-nowrap">
+                            {trade.date}
+                            {isBest && (
+                              <Badge className="ml-1 text-[8px] px-1 py-0 bg-crypto-green/15 text-crypto-green border-crypto-green/30">
+                                MELHOR
+                              </Badge>
+                            )}
+                            {isWorst && (
+                              <Badge className="ml-1 text-[8px] px-1 py-0 bg-crypto-red/15 text-crypto-red border-crypto-red/30">
+                                PIOR
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              className={`text-[10px] px-1.5 py-0 ${
+                                trade.side === "BUY"
+                                  ? "bg-crypto-green/15 text-crypto-green border-crypto-green/30"
+                                  : "bg-crypto-red/15 text-crypto-red border-crypto-red/30"
+                              }`}
+                            >
+                              {trade.side}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-right font-mono whitespace-nowrap">
+                            ${formatPrice(trade.price)}
+                          </TableCell>
+                          <TableCell className="text-xs text-right font-mono whitespace-nowrap">
+                            {trade.quantity.toFixed(6)}
+                          </TableCell>
+                          <TableCell
+                            className={`text-xs text-right font-mono font-medium whitespace-nowrap ${
+                              trade.pnl > 0
+                                ? "text-crypto-green"
+                                : trade.pnl < 0
+                                  ? "text-crypto-red"
+                                  : "text-muted-foreground"
+                            }`}
+                          >
+                            {trade.pnl > 0 ? "+" : ""}
+                            {trade.pnl !== 0
+                              ? `$${formatPrice(Math.abs(trade.pnl))}`
+                              : "—"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+          </div>
         </CardContent>
       </Card>
     </motion.div>

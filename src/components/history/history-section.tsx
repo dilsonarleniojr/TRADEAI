@@ -68,7 +68,7 @@ export function HistorySection() {
       transition={{ duration: 0.3 }}
       className="space-y-4"
     >
-      {/* Summary Cards */}
+      {/* Summary Cards - 2 cols on mobile, 4 on md+ */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {summaryCards.map((card, i) => (
           <motion.div
@@ -78,18 +78,18 @@ export function HistorySection() {
             transition={{ duration: 0.3, delay: i * 0.05 }}
           >
             <Card className={`bg-card/60 backdrop-blur-md gradient-border overflow-hidden ${card.accentClass}`}>
-              <CardContent className="p-4">
+              <CardContent className="p-3 sm:p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <div
                     className={`w-7 h-7 rounded-lg ${card.bgColor} flex items-center justify-center shadow-sm`}
                   >
                     <card.icon className={`w-3.5 h-3.5 ${card.color}`} />
                   </div>
-                  <span className="text-[11px] text-muted-foreground font-medium">
+                  <span className="text-[10px] sm:text-[11px] text-muted-foreground font-medium">
                     {card.label}
                   </span>
                 </div>
-                <div className={`text-lg font-bold ${card.color} number-animate`}>
+                <div className={`text-base sm:text-lg font-bold ${card.color} number-animate`}>
                   {card.value}
                 </div>
               </CardContent>
@@ -98,11 +98,13 @@ export function HistorySection() {
         ))}
       </div>
 
-      {/* Trade Table */}
+      {/* Trade Table - horizontally scrollable on mobile */}
       <Card className="bg-card/60 backdrop-blur-md gradient-border overflow-hidden">
-        <CardContent className="p-4">
+        <CardContent className="p-3 sm:p-4">
           <h3 className="text-sm font-medium mb-3">All Trades</h3>
-          <TradeTable trades={trades} />
+          <div className="mobile-scroll-x">
+            <TradeTable trades={trades} />
+          </div>
         </CardContent>
       </Card>
 
