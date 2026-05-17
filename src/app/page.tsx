@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { useBinanceData } from "@/hooks/use-binance-data";
 import { useBinanceStream } from "@/hooks/use-binance-stream";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
@@ -24,6 +25,9 @@ import { AlertNotification } from "@/components/dashboard/alert-notification";
 import { CorrelationHeatmap } from "@/components/dashboard/correlation-heatmap";
 import { TradingCalculator } from "@/components/dashboard/trading-calculator";
 import { CryptoNews } from "@/components/dashboard/crypto-news";
+import { MarketOverview } from "@/components/dashboard/market-overview";
+import { FundingRates } from "@/components/dashboard/funding-rates";
+import { ShortcutsHint } from "@/components/dashboard/shortcuts-hint";
 import { ChatSection } from "@/components/ai/chat-section";
 import { ChartSection } from "@/components/chart/chart-section";
 import { BotSection } from "@/components/bot/bot-section";
@@ -106,6 +110,7 @@ export default function HomePage() {
   // Connect to real Binance data
   useBinanceData(); // Fetches initial data + periodic refresh (60s fallback)
   useBinanceStream(); // Real-time Socket.IO updates
+  useKeyboardShortcuts(); // Global keyboard shortcuts
 
   // Initialize with fallback data, then real data will replace it
   useEffect(() => {
@@ -136,6 +141,10 @@ export default function HomePage() {
             </motion.div>
             <motion.div variants={itemVariants}>
               <PnlTracker />
+            </motion.div>
+            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <MarketOverview />
+              <FundingRates />
             </motion.div>
             <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <MarketSentiment />
@@ -242,6 +251,7 @@ export default function HomePage() {
           <Footer />
         </div>
       </div>
+      <ShortcutsHint />
     </div>
   );
 }

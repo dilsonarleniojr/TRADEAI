@@ -4,19 +4,20 @@ import { useMemo } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { formatPrice, formatPercent } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
   AreaChart,
   Area,
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
   BarChart,
   Bar,
   Cell,
 } from "recharts";
-import { TrendingUp, TrendingDown, Calendar, BarChart3, Trophy, Target } from "lucide-react";
+import { TrendingUp, TrendingDown, Calendar, BarChart3, Trophy, Target, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
@@ -214,7 +215,7 @@ export function PnlTracker() {
                     tickLine={false}
                     tickFormatter={(v) => `$${v}`}
                   />
-                  <Tooltip content={<PnLTooltip />} />
+                  <RechartsTooltip content={<PnLTooltip />} />
                   <Area
                     type="monotone"
                     dataKey="pnl"
@@ -250,58 +251,79 @@ export function PnlTracker() {
           </CardHeader>
           <CardContent className="space-y-3">
             {/* Today's P&L */}
-            <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50 card-accent-cyan">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-md bg-crypto-cyan/10">
-                  <Target className="w-3.5 h-3.5 text-crypto-cyan" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50 card-accent-cyan cursor-help">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-md bg-crypto-cyan/10">
+                      <Target className="w-3.5 h-3.5 text-crypto-cyan" />
+                    </div>
+                    <span className="text-xs text-muted-foreground">Today</span>
+                  </div>
+                  <span
+                    className={cn(
+                      "text-sm font-bold",
+                      breakdown.today >= 0 ? "gradient-text-green" : "text-crypto-red"
+                    )}
+                  >
+                    {breakdown.today >= 0 ? "+" : ""}${formatPrice(Math.abs(breakdown.today))}
+                  </span>
                 </div>
-                <span className="text-xs text-muted-foreground">Today</span>
-              </div>
-              <span
-                className={cn(
-                  "text-sm font-bold",
-                  breakdown.today >= 0 ? "gradient-text-green" : "text-crypto-red"
-                )}
-              >
-                {breakdown.today >= 0 ? "+" : ""}${formatPrice(Math.abs(breakdown.today))}
-              </span>
-            </div>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={4}>
+                <p className="text-xs">Profit or loss from trades executed today</p>
+              </TooltipContent>
+            </Tooltip>
 
             {/* 7-day P&L */}
-            <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50 card-accent-green">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-md bg-crypto-cyan/10">
-                  <TrendingUp className="w-3.5 h-3.5 text-crypto-cyan" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50 card-accent-green cursor-help">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-md bg-crypto-cyan/10">
+                      <TrendingUp className="w-3.5 h-3.5 text-crypto-cyan" />
+                    </div>
+                    <span className="text-xs text-muted-foreground">7 Days</span>
+                  </div>
+                  <span
+                    className={cn(
+                      "text-sm font-bold",
+                      breakdown.week >= 0 ? "gradient-text-green" : "text-crypto-red"
+                    )}
+                  >
+                    {breakdown.week >= 0 ? "+" : ""}${formatPrice(Math.abs(breakdown.week))}
+                  </span>
                 </div>
-                <span className="text-xs text-muted-foreground">7 Days</span>
-              </div>
-              <span
-                className={cn(
-                  "text-sm font-bold",
-                  breakdown.week >= 0 ? "gradient-text-green" : "text-crypto-red"
-                )}
-              >
-                {breakdown.week >= 0 ? "+" : ""}${formatPrice(Math.abs(breakdown.week))}
-              </span>
-            </div>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={4}>
+                <p className="text-xs">Cumulative P&L over the past 7 days</p>
+              </TooltipContent>
+            </Tooltip>
 
             {/* 30-day P&L */}
-            <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50 card-accent-gold">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-md bg-crypto-cyan/10">
-                  <Calendar className="w-3.5 h-3.5 text-crypto-cyan" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50 card-accent-gold cursor-help">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-md bg-crypto-cyan/10">
+                      <Calendar className="w-3.5 h-3.5 text-crypto-cyan" />
+                    </div>
+                    <span className="text-xs text-muted-foreground">30 Days</span>
+                  </div>
+                  <span
+                    className={cn(
+                      "text-sm font-bold",
+                      breakdown.month >= 0 ? "gradient-text-green" : "text-crypto-red"
+                    )}
+                  >
+                    {breakdown.month >= 0 ? "+" : ""}${formatPrice(Math.abs(breakdown.month))}
+                  </span>
                 </div>
-                <span className="text-xs text-muted-foreground">30 Days</span>
-              </div>
-              <span
-                className={cn(
-                  "text-sm font-bold",
-                  breakdown.month >= 0 ? "gradient-text-green" : "text-crypto-red"
-                )}
-              >
-                {breakdown.month >= 0 ? "+" : ""}${formatPrice(Math.abs(breakdown.month))}
-              </span>
-            </div>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={4}>
+                <p className="text-xs">Cumulative P&L over the past 30 days</p>
+              </TooltipContent>
+            </Tooltip>
 
             {/* Win/Loss Ratio Bar */}
             <div className="p-2.5 rounded-lg bg-secondary/30 border border-border/50 card-accent-red">
@@ -365,7 +387,7 @@ export function PnlTracker() {
                     tickFormatter={(v) => `${v}%`}
                     width={35}
                   />
-                  <Tooltip
+                  <RechartsTooltip
                     contentStyle={{
                       background: "var(--card)",
                       border: "1px solid var(--border)",
