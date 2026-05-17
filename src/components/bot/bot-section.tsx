@@ -294,14 +294,14 @@ export function BotSection() {
       transition={{ duration: 0.3 }}
       className="space-y-4"
     >
-      {/* Bot Control Panel */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 glass rounded-xl p-4 border border-border/50 relative overflow-hidden">
+      {/* Bot Control Panel - stack vertically on mobile */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 glass rounded-xl p-3 sm:p-4 border border-border/50 relative overflow-hidden">
         {/* Gradient accent at top */}
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-crypto-cyan/40 to-transparent" />
         <Button
           onClick={toggleBot}
           size="lg"
-          className={`relative overflow-hidden h-12 px-8 text-base font-semibold transition-all min-w-[160px] touch-target ${
+          className={`relative overflow-hidden h-12 px-8 text-base font-semibold transition-all w-full sm:w-auto sm:min-w-[160px] touch-target ${
             botActive
               ? "btn-gradient-animated-red text-white shadow-lg shadow-crypto-red/20"
               : "btn-gradient-animated text-white shadow-lg shadow-crypto-green/20"
@@ -314,7 +314,7 @@ export function BotSection() {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: -20, opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="flex items-center gap-2"
+              className="flex items-center justify-center gap-2"
             >
               {botActive ? (
                 <>
@@ -331,82 +331,84 @@ export function BotSection() {
           </AnimatePresence>
         </Button>
 
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Status indicator */}
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <div
-                className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
-                  botActive ? "bg-crypto-green glow-green-sm pulse-glow-green" : "bg-muted-foreground/50"
-                }`}
-                style={botActive ? { boxShadow: "0 0 8px #22c55e" } : undefined}
-              />
-              {botActive && (
-                <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-crypto-green animate-ping" />
-              )}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Status indicator */}
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <div
+                  className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
+                    botActive ? "bg-crypto-green glow-green-sm pulse-glow-green" : "bg-muted-foreground/50"
+                  }`}
+                  style={botActive ? { boxShadow: "0 0 8px #22c55e" } : undefined}
+                />
+                {botActive && (
+                  <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-crypto-green animate-ping" />
+                )}
+              </div>
+              <span className="text-sm font-medium">
+                {botActive ? "Ativo" : "Inativo"}
+              </span>
             </div>
-            <span className="text-sm font-medium">
-              {botActive ? "Ativo" : "Inativo"}
-            </span>
-          </div>
 
-          {/* Strategy Badge */}
-          <Badge
-            variant="outline"
-            className="border-crypto-cyan/30 text-crypto-cyan text-xs"
-          >
-            <Bot className="w-3 h-3 mr-1" />
-            {botConfig.strategy}
-          </Badge>
+            {/* Strategy Badge */}
+            <Badge
+              variant="outline"
+              className="border-crypto-cyan/30 text-crypto-cyan text-xs"
+            >
+              <Bot className="w-3 h-3 mr-1" />
+              {botConfig.strategy}
+            </Badge>
 
-          {/* Trading Mode Badge */}
-          <Badge
-            className={`text-xs ${
-              tradingMode === "paper"
-                ? "bg-crypto-cyan/15 text-crypto-cyan border-crypto-cyan/30"
-                : "bg-crypto-red/15 text-crypto-red border-crypto-red/30"
-            }`}
-          >
-            <Zap className="w-3 h-3 mr-1" />
-            {tradingMode === "paper" ? "Simulado" : "Real"}
-          </Badge>
-
-          {/* Symbol Badge */}
-          <Badge variant="outline" className="text-xs border-border">
-            {botConfig.symbol}
-          </Badge>
-        </div>
-
-        {/* Real-time PnL Counter */}
-        {botActive && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="ml-auto flex items-center gap-2"
-          >
-            <div
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
-                portfolio.pnl >= 0
-                  ? "bg-crypto-green/10 text-crypto-green"
-                  : "bg-crypto-red/10 text-crypto-red"
+            {/* Trading Mode Badge */}
+            <Badge
+              className={`text-xs ${
+                tradingMode === "paper"
+                  ? "bg-crypto-cyan/15 text-crypto-cyan border-crypto-cyan/30"
+                  : "bg-crypto-red/15 text-crypto-red border-crypto-red/30"
               }`}
             >
-              {portfolio.pnl >= 0 ? (
-                <TrendingUp className="w-4 h-4" />
-              ) : (
-                <TrendingDown className="w-4 h-4" />
-              )}
-              <span className="text-sm font-semibold">
-                {portfolio.pnl >= 0 ? "+" : ""}
-                ${formatPrice(Math.abs(portfolio.pnl))}
-              </span>
-              <span className="text-xs opacity-75">
-                ({portfolio.pnl >= 0 ? "+" : ""}
-                {portfolio.pnlPercent.toFixed(2)}%)
-              </span>
-            </div>
-          </motion.div>
-        )}
+              <Zap className="w-3 h-3 mr-1" />
+              {tradingMode === "paper" ? "Simulado" : "Real"}
+            </Badge>
+
+            {/* Symbol Badge */}
+            <Badge variant="outline" className="text-xs border-border">
+              {botConfig.symbol}
+            </Badge>
+          </div>
+
+          {/* Real-time PnL Counter - below badges on mobile, ml-auto on desktop */}
+          {botActive && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="sm:ml-auto"
+            >
+              <div
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
+                  portfolio.pnl >= 0
+                    ? "bg-crypto-green/10 text-crypto-green"
+                    : "bg-crypto-red/10 text-crypto-red"
+                }`}
+              >
+                {portfolio.pnl >= 0 ? (
+                  <TrendingUp className="w-4 h-4" />
+                ) : (
+                  <TrendingDown className="w-4 h-4" />
+                )}
+                <span className="text-sm font-semibold">
+                  {portfolio.pnl >= 0 ? "+" : ""}
+                  ${formatPrice(Math.abs(portfolio.pnl))}
+                </span>
+                <span className="text-xs opacity-75">
+                  ({portfolio.pnl >= 0 ? "+" : ""}
+                  {portfolio.pnlPercent.toFixed(2)}%)
+                </span>
+              </div>
+            </motion.div>
+          )}
+        </div>
       </div>
 
       {/* Trade Report (shown when bot is stopped) */}
@@ -516,14 +518,14 @@ export function BotSection() {
         )}
       </AnimatePresence>
 
-      {/* Main Content Grid */}
+      {/* Main Content Grid - each section full width on mobile */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left: Config Form */}
         <div className="lg:col-span-1">
           <BotConfigForm />
         </div>
 
-        {/* Right: Activity Log + Portfolio + Performance */}
+        {/* Right: Performance + Activity + Portfolio */}
         <div className="lg:col-span-2 space-y-4">
           <BotPerformanceChart />
           <BotActivityLog />

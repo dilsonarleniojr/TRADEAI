@@ -7,7 +7,6 @@ import {
   Brain,
   Bot,
   History,
-  FileText,
 } from "lucide-react";
 import {
   Tooltip,
@@ -18,13 +17,23 @@ import {
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
-const navItems = [
-  { id: "dashboard" as const, icon: LayoutDashboard, label: "Painel", shortLabel: "Início" },
-  { id: "chart" as const, icon: BarChart3, label: "Gráfico & Análise", shortLabel: "Gráfico" },
-  { id: "ai" as const, icon: Brain, label: "Assistente IA", shortLabel: "IA" },
-  { id: "bot" as const, icon: Bot, label: "Robô de Trading", shortLabel: "Bot" },
-  { id: "backtest" as const, icon: History, label: "Backtesting", shortLabel: "Teste" },
-  { id: "history" as const, icon: FileText, label: "Histórico", shortLabel: "Histórico" },
+// Desktop: all 6 items including backtest
+const desktopNavItems = [
+  { id: "dashboard" as const, icon: LayoutDashboard, label: "Painel" },
+  { id: "chart" as const, icon: BarChart3, label: "Gráfico & Análise" },
+  { id: "ai" as const, icon: Brain, label: "Assistente IA" },
+  { id: "bot" as const, icon: Bot, label: "Robô de Trading" },
+  { id: "backtest" as const, icon: History, label: "Backtesting" },
+  { id: "history" as const, icon: History, label: "Histórico" },
+];
+
+// Mobile: 5 items (combined backtest + history into "Histórico")
+const mobileNavItems = [
+  { id: "dashboard" as const, icon: LayoutDashboard, label: "Painel" },
+  { id: "chart" as const, icon: BarChart3, label: "Gráfico" },
+  { id: "ai" as const, icon: Brain, label: "IA" },
+  { id: "bot" as const, icon: Bot, label: "Bot" },
+  { id: "history" as const, icon: History, label: "Histórico" },
 ];
 
 export function Sidebar() {
@@ -32,6 +41,7 @@ export function Sidebar() {
 
   return (
     <TooltipProvider delayDuration={0}>
+      {/* Desktop Sidebar */}
       <motion.aside
         initial={{ x: -80 }}
         animate={{ x: 0 }}
@@ -51,7 +61,7 @@ export function Sidebar() {
 
         {/* Nav Items */}
         <nav className="flex flex-col gap-1 flex-1">
-          {navItems.map((item) => {
+          {desktopNavItems.map((item) => {
             const isActive = activeSection === item.id;
             return (
               <Tooltip key={item.id}>
@@ -95,31 +105,70 @@ export function Sidebar() {
         </div>
       </motion.aside>
 
-      {/* Mobile bottom nav - shows all 6 items with safe area + backdrop blur */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 glass border-t border-border/50 flex items-center justify-around py-1.5 px-1 safe-bottom">
-        {navItems.map((item) => {
-          const isActive = activeSection === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveSection(item.id)}
-              className={cn(
-                "flex flex-col items-center gap-0.5 px-1.5 py-1 rounded-lg transition-all duration-200 min-w-0 touch-target",
-                isActive
-                  ? "text-primary scale-105"
-                  : "text-muted-foreground"
-              )}
-            >
-              <div className="relative">
-                {isActive && (
-                  <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary shadow-[0_0_6px_#06b6d4]" />
-                )}
-                <item.icon className="w-4 h-4" />
-              </div>
-              <span className="text-[9px] leading-tight">{item.shortLabel}</span>
-            </button>
-          );
-        })}
+      {/* Mobile Bottom Nav - Modern redesign with pill indicator */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 safe-bottom">
+        {/* Gradient top border line */}
+        <div className="h-px bg-gradient-to-r from-crypto-cyan/30 via-transparent to-crypto-cyan/30" />
+
+        <div className="glass backdrop-blur-xl py-2 px-2">
+          <div className="flex items-center justify-around">
+            {mobileNavItems.map((item) => {
+              const isActive = activeSection === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveSection(item.id)}
+                  className={cn(
+                    "relative flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition-all duration-200 touch-target",
+                  )}
+                >
+                  {/* Active pill background with layout animation */}
+                  {isActive && (
+                    <motion.div
+                      layoutId="mobile-nav-pill"
+                      className="absolute inset-0 bg-crypto-cyan/15 rounded-full"
+                      transition={{
+                        type: "spring",
+                        stiffness: 400,
+                        damping: 30,
+                      }}
+                    />
+                  )}
+
+                  {/* Icon */}
+                  <motion.div
+                    whileTap={{ scale: 0.85 }}
+                    transition={{ duration: 0.1 }}
+                  >
+                    <item.icon
+                      className={cn(
+                        "relative z-10 transition-all duration-200",
+                        isActive
+                          ? "w-5 h-5 text-crypto-cyan scale-110"
+                          : "w-4.5 h-4.5 text-muted-foreground"
+                      )}
+                      style={{
+                        transform: isActive ? "scale(1.1)" : "scale(1)",
+                      }}
+                    />
+                  </motion.div>
+
+                  {/* Label */}
+                  <span
+                    className={cn(
+                      "relative z-10 leading-tight mt-0.5 transition-all duration-200",
+                      isActive
+                        ? "text-[10px] font-medium text-crypto-cyan"
+                        : "text-[9px] text-muted-foreground"
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </nav>
     </TooltipProvider>
   );

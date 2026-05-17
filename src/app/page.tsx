@@ -35,12 +35,16 @@ import { StrategyComparison } from "@/components/dashboard/strategy-comparison";
 import { SocialSentiment } from "@/components/dashboard/social-sentiment";
 import { OnChainAnalytics } from "@/components/dashboard/on-chain-analytics";
 import { SLTPCalculator } from "@/components/dashboard/sltp-calculator";
+import { MobileSection } from "@/components/dashboard/mobile-section";
 import { ChatSection } from "@/components/ai/chat-section";
 import { ChartSection } from "@/components/chart/chart-section";
 import { BotSection } from "@/components/bot/bot-section";
 import { HistorySection } from "@/components/history/history-section";
 import { BacktestSection } from "@/components/backtest/backtest-section";
+import { MobilePortfolioBar } from "@/components/mobile/mobile-portfolio-bar";
+import { MobileDrawer } from "@/components/mobile/mobile-drawer";
 import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
 
 // Fallback mock data (used when Binance API is not available)
 const FALLBACK_TICKERS: Record<string, import("@/lib/store").TickerData> = {
@@ -114,6 +118,8 @@ export default function HomePage() {
     setBotActive,
   } = useCryptoStore();
 
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
   // Connect to real Binance data
   useBinanceData(); // Fetches initial data + periodic refresh (60s fallback)
   useBinanceStream(); // Real-time Socket.IO updates
@@ -137,66 +143,87 @@ export default function HomePage() {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-4"
+            className="space-y-6 md:space-y-4"
           >
-            <motion.div variants={itemVariants}>
-              <StatCards />
-            </motion.div>
-            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <FearGreedIndex />
-              <MultiTimeframeAnalysis />
-            </motion.div>
-            <motion.div variants={itemVariants}>
-              <SLTPCalculator />
-            </motion.div>
-            <motion.div variants={itemVariants}>
-              <PnlTracker />
-            </motion.div>
-            <motion.div variants={itemVariants}>
-              <PortfolioRebalancing />
-            </motion.div>
-            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <MarketOverview />
-              <FundingRates />
-            </motion.div>
-            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <MarketSentiment />
-              <MarketHighlights />
-              <PortfolioAllocation />
-            </motion.div>
-            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="lg:col-span-2">
-                <MarketTable />
-              </div>
-              <div className="space-y-4">
-                <Watchlist />
-                <PriceAlerts />
-              </div>
-            </motion.div>
-            <motion.div variants={itemVariants}>
-              <CorrelationHeatmap />
-            </motion.div>
-            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <WhaleTracker />
-              <LiquidationHeatmap />
-            </motion.div>
-            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <SocialSentiment />
-              <OnChainAnalytics />
-            </motion.div>
-            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="lg:col-span-2">
-                <AISignals />
-              </div>
-              <RecentTrades />
-            </motion.div>
-            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <TradingCalculator />
-              <CryptoNews />
-            </motion.div>
-            <motion.div variants={itemVariants}>
-              <StrategyComparison />
-            </motion.div>
+            {/* Section: Visão Geral (expanded by default) */}
+            <MobileSection title="Visão Geral" icon="📊" itemCount={3} defaultOpen={true}>
+              <motion.div variants={itemVariants}>
+                <StatCards />
+              </motion.div>
+              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
+                <FearGreedIndex />
+                <MultiTimeframeAnalysis />
+              </motion.div>
+            </MobileSection>
+
+            {/* Section: Portfólio (collapsed by default) */}
+            <MobileSection title="Portfólio" icon="💰" itemCount={4} defaultOpen={false}>
+              <motion.div variants={itemVariants}>
+                <SLTPCalculator />
+              </motion.div>
+              <motion.div variants={itemVariants}>
+                <PnlTracker />
+              </motion.div>
+              <motion.div variants={itemVariants}>
+                <PortfolioRebalancing />
+              </motion.div>
+              <motion.div variants={itemVariants}>
+                <PortfolioAllocation />
+              </motion.div>
+            </MobileSection>
+
+            {/* Section: Mercado (collapsed by default) */}
+            <MobileSection title="Mercado" icon="📈" itemCount={7} defaultOpen={false}>
+              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
+                <MarketOverview />
+                <FundingRates />
+              </motion.div>
+              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
+                <MarketSentiment />
+                <MarketHighlights />
+              </motion.div>
+              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
+                <div className="lg:col-span-2">
+                  <MarketTable />
+                </div>
+                <div className="space-y-3 md:space-y-4">
+                  <Watchlist />
+                  <PriceAlerts />
+                </div>
+              </motion.div>
+            </MobileSection>
+
+            {/* Section: Análise Avançada (collapsed by default) */}
+            <MobileSection title="Análise Avançada" icon="🔬" itemCount={5} defaultOpen={false}>
+              <motion.div variants={itemVariants}>
+                <CorrelationHeatmap />
+              </motion.div>
+              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
+                <WhaleTracker />
+                <LiquidationHeatmap />
+              </motion.div>
+              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
+                <SocialSentiment />
+                <OnChainAnalytics />
+              </motion.div>
+            </MobileSection>
+
+            {/* Section: Sinais & Notícias (collapsed by default) */}
+            <MobileSection title="Sinais & Notícias" icon="🤖" itemCount={5} defaultOpen={false}>
+              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
+                <div className="lg:col-span-2">
+                  <AISignals />
+                </div>
+                <RecentTrades />
+              </motion.div>
+              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
+                <TradingCalculator />
+                <CryptoNews />
+              </motion.div>
+              <motion.div variants={itemVariants}>
+                <StrategyComparison />
+              </motion.div>
+            </MobileSection>
           </motion.div>
         );
       case "chart":
@@ -265,9 +292,9 @@ export default function HomePage() {
       <div className="flex flex-1">
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <Header />
+          <Header onOpenMobileDrawer={() => setMobileDrawerOpen(true)} />
           <TickerTape />
-          <main className="flex-1 p-3 md:p-5 overflow-y-auto pb-20 md:pb-5 cyan-scrollbar scroll-smooth">
+          <main className="flex-1 p-3 md:p-5 overflow-y-auto pb-24 md:pb-5 cyan-scrollbar scroll-smooth">
             <AnimatePresence mode="wait">
               {renderContent()}
             </AnimatePresence>
@@ -276,6 +303,8 @@ export default function HomePage() {
         </div>
       </div>
       <ShortcutsHint />
+      <MobilePortfolioBar />
+      <MobileDrawer open={mobileDrawerOpen} onOpenChange={setMobileDrawerOpen} />
     </div>
   );
 }

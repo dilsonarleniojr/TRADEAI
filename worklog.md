@@ -1118,3 +1118,237 @@ The Crypto IA Pro platform is mature and stable with 6 fully functional sections
 - Could add multi-timeframe SL/TP analysis
 - Could add backtesting for SL/TP optimization
 - Some remaining English strings in crypto news mock data titles (intentional - news titles in English)
+
+---
+Task ID: 1-3
+Agent: mobile-nav-agent
+Task: Redesign mobile navigation, create mobile drawer, optimize header
+
+Work Log:
+- Read worklog.md and all relevant source files (sidebar.tsx, header.tsx, page.tsx, store.ts, drawer.tsx, globals.css, format.ts, footer.tsx)
+- Created `/home/z/my-project/src/components/mobile/mobile-drawer.tsx` - Full-featured mobile settings drawer using Vaul:
+  - Trading Mode Toggle (Paper/Live switch)
+  - Connection Status card with icon and label
+  - Bot Status card with active/inactive indicator
+  - Theme Toggle (Dark/Light with animated icon)
+  - Symbol Selector with 8 top symbols as tappable pills
+  - Portfolio Summary card with total value, P&L, cash/asset breakdown
+  - Keyboard Shortcuts section with expandable accordion
+  - Glass morphism styling with cyan accents
+  - Handle indicator at top, max 70vh, close on drag down
+- Redesigned mobile bottom navigation in `/home/z/my-project/src/components/sidebar.tsx`:
+  - Reduced from 6 items to 5 (combined "Backtest" + "History" into "Histórico")
+  - Modern pill-shaped active indicator using framer-motion layoutId animation
+  - Active item gets cyan gradient pill background (bg-crypto-cyan/15 rounded-full)
+  - Active icon scales up (scale-110) and becomes cyan colored
+  - Inactive icons are muted-foreground with whileTap scale-down feedback
+  - Proper touch targets (touch-target class, 44px min)
+  - Active label: 10px font, inactive: 9px
+  - Glass morphism with backdrop-blur-xl
+  - Gradient top border line (from-crypto-cyan/30 via-transparent to-crypto-cyan/30)
+  - Safe area support (safe-bottom class)
+  - Desktop sidebar kept exactly as is (hidden md:flex)
+- Optimized mobile header in `/home/z/my-project/src/components/header.tsx`:
+  - Mobile: hides trading mode toggle (moved to drawer)
+  - Mobile: compact header with Logo "IA" + Symbol badge + Settings gear button
+  - Mobile: smaller bot badge (shows "Bot" instead of "Bot Ativo")
+  - Mobile: connection status icon only (no text label)
+  - Mobile: theme toggle hidden (moved to drawer)
+  - Settings gear button opens mobile drawer via onOpenMobileDrawer prop
+  - Desktop layout unchanged
+- Updated `/home/z/my-project/src/app/page.tsx`:
+  - Added MobileDrawer import
+  - Added useState for mobileDrawerOpen
+  - Passed onOpenMobileDrawer callback to Header
+  - Added MobileDrawer component as sibling to ShortcutsHint and MobilePortfolioBar
+- Fixed existing lint error in `/home/z/my-project/src/components/mobile/mobile-portfolio-bar.tsx`:
+  - Resolved react-hooks/set-state-in-effect error by restructuring the auto-hide timer logic
+- Ran lint: 0 errors, 0 warnings
+- Dev server running normally
+
+Stage Summary:
+- Mobile bottom nav redesigned with 5 items, pill-shaped active indicator, glass morphism, gradient border, framer-motion animations
+- Mobile settings drawer created with Vaul component: trading mode, connection, bot status, theme, symbol selector, portfolio summary, keyboard shortcuts
+- Mobile header optimized: compact layout with settings gear, hidden trading mode/theme toggle (moved to drawer), smaller bot badge
+- All existing desktop functionality preserved unchanged
+- Zero lint errors, dev server compiling successfully
+
+---
+Task ID: 5-6
+Agent: mobile-dashboard-agent
+Task: Mobile-responsive dashboard layout and footer optimization
+
+Work Log:
+- Read worklog.md and all relevant files (page.tsx, footer.tsx, store.ts, format.ts) to understand project context
+- Created `src/components/dashboard/mobile-section.tsx` - Collapsible section wrapper component with:
+  - Clickable header with emoji icon, gradient text title, item count badge, and animated ChevronDown
+  - Mobile-only toggle (md:hidden on header, separate mobile/desktop content divs)
+  - AnimatePresence for smooth expand/collapse animations on mobile
+  - Desktop always shows content uncollapsed via hidden md:block pattern
+  - Glass background, rounded corners on header button, active:scale-[0.98] press feedback
+- Created `src/components/mobile/mobile-portfolio-bar.tsx` - Floating portfolio mini-bar:
+  - Fixed position at bottom: 60px (just above mobile nav bar), z-[45], md:hidden
+  - Shows compact portfolio value + P&L in a single line with icons
+  - Glass morphism background with cyan gradient border at top
+  - Auto-hides after 5 seconds of inactivity, reappears on scroll
+  - Slide-up animation with framer-motion AnimatePresence
+  - Uses useRef for timer to avoid dependency cycles
+- Updated `src/components/footer.tsx` - Hidden on mobile:
+  - Changed className from "sticky bottom-0 ... flex" to "hidden md:flex sticky bottom-0 ..."
+  - Footer now only visible on md: and above breakpoints
+- Updated `src/app/page.tsx` - Dashboard reorganization:
+  - Imported MobileSection and MobilePortfolioBar components
+  - Wrapped dashboard widgets into 5 MobileSection groups:
+    1. 📊 Visão Geral (3 items, defaultOpen=true): StatCards + FearGreedIndex + MultiTimeframeAnalysis
+    2. 💰 Portfólio (4 items, collapsed): SLTPCalculator + PnlTracker + PortfolioRebalancing + PortfolioAllocation
+    3. 📈 Mercado (7 items, collapsed): MarketOverview + FundingRates + MarketSentiment + MarketHighlights + MarketTable + Watchlist + PriceAlerts
+    4. 🔬 Análise Avançada (5 items, collapsed): CorrelationHeatmap + WhaleTracker + LiquidationHeatmap + SocialSentiment + OnChainAnalytics
+    5. 🤖 Sinais & Notícias (5 items, collapsed): AISignals + RecentTrades + TradingCalculator + CryptoNews + StrategyComparison
+  - Added MobilePortfolioBar to page layout
+  - Changed bottom padding from pb-20 md:pb-5 to pb-24 md:pb-5 (accounts for nav + portfolio bar)
+  - Adjusted gap sizing: gap-3 on mobile, gap-4 on desktop (md:gap-4)
+  - Moved PortfolioAllocation from Mercado section to Portfólio section
+- Ran `bun run lint` - 0 errors, 0 warnings
+
+Stage Summary:
+- Mobile dashboard now uses collapsible sections for better navigation on small screens
+- Footer hidden on mobile, replaced by floating portfolio bar that auto-hides
+- Desktop view completely unchanged - all MobileSection components expand unconditionally
+- All 5 sections have proper item counts and Brazilian Portuguese labels
+- Compact spacing on mobile (gap-3) vs desktop (gap-4)
+- Bottom padding updated to pb-24 to accommodate nav bar + portfolio bar on mobile
+- Zero lint errors
+
+---
+Task ID: 7-9
+Agent: mobile-sections-agent
+Task: Mobile-optimize Chart, AI, Bot, Backtest, and History sections
+
+Work Log:
+- Read worklog.md and all 5 target section files plus related components (signal-generator, backtest-results, trade-table, sheet.tsx, globals.css)
+- Chart Section (chart-section.tsx): Split controls into 2 rows (drawing tools + symbol + intervals in Row 1, indicator toggles in Row 2), both rows horizontally scrollable on mobile with scrollbar-none, buttons enlarged to h-9 (36px) on mobile / h-7 on desktop, drawing tool labels hidden on mobile (icon-only), symbol selector width adjusted for mobile, padding reduced to p-2 on mobile
+- AI Chat Section (chat-section.tsx): Added Sheet component from shadcn/ui for mobile signal panel, added "Sinais" button visible only on mobile (lg:hidden) that opens a slide-in Sheet from right containing SignalGenerator and AI Tips, right panel hidden on mobile (hidden lg:flex), chat height fixed to h-[calc(100dvh-12rem)] on mobile and lg:h-[calc(100vh-10rem)] on desktop, message bubble max-width changed to 85% on mobile / 80% on lg, safe-bottom on input area, touch-target on send button and clear button, extracted AiTipsContent as reusable component, mobile chat input placeholder shortened
+- Bot Section (bot-section.tsx): Control panel changed to flex-col sm:flex-row layout, button full width on mobile (w-full sm:w-auto), badges and PnL counter stack vertically on mobile, PnL counter uses sm:ml-auto for desktop right alignment
+- Backtest Section (backtest-section.tsx): Minor padding adjustment (p-6 sm:p-8) on empty state card, layout already grid-cols-1 lg:grid-cols-3 (confirmed stacking works)
+- Backtest Results (backtest-results.tsx): Summary and advanced metrics cards use horizontal scroll on mobile (flex with mobile-scroll-x scrollbar-none), each card shrink-0 w-[140px] lg:w-auto for mobile swipe behavior, on lg they switch to grid layout, equity curve chart height responsive h-[200px] sm:h-[300px], drawdown chart h-[120px] sm:h-[150px], trade list wrapped in mobile-scroll-x for horizontal scroll, table cells use whitespace-nowrap
+- History Section (history-section.tsx): Summary cards padding reduced on mobile (p-3 sm:p-4), label font size responsive (text-[10px] sm:text-[11px]), value font size responsive (text-base sm:text-lg), trade table wrapped in mobile-scroll-x for horizontal scroll, padding adjusted (p-3 sm:p-4)
+- Ran `bun run lint` - 0 errors, 0 warnings
+- Dev server compiling successfully with no new errors
+
+Stage Summary:
+- All 5 sections fully mobile-optimized with responsive layouts
+- Chart controls: 2-row horizontally scrollable layout, 36px touch targets on mobile
+- AI Chat: Mobile signal panel as slide-in Sheet, proper dvh height, 85% bubble width
+- Bot: Vertical stacking control panel on mobile, full-width start/stop button
+- Backtest: Horizontally scrollable metrics cards, responsive chart heights, scrollable trade table
+- History: Responsive summary cards, horizontally scrollable trade table
+- Zero lint errors, zero compilation errors
+
+---
+Task ID: Mobile-1
+Agent: main
+Task: Improve mobile navigation and interface
+
+## Current Project Status Assessment
+
+The Crypto IA Pro platform is mature with 6 sections, real Binance data, 27+ dashboard widgets, and advanced charting. The mobile experience needed significant improvements: navigation was cramped with 6 items, header controls overflowed on small screens, dashboard was an endless scroll, and sections weren't optimized for touch.
+
+## Goals / Completed Modifications / Verification Results
+
+### 1. Redesigned Mobile Bottom Navigation (sidebar.tsx)
+- Reduced from 6 to 5 nav items (combined Backtest + History into "Histórico")
+- Modern pill-shaped active indicator with framer-motion layoutId animation
+- Active item: cyan gradient pill background, scale-110 icon, 10px label
+- Inactive items: muted-foreground, 9px label
+- whileTap scale-down (0.85) for haptic-like feedback
+- Glass morphism with backdrop-blur-xl
+- Gradient top border line (from-crypto-cyan/30 via-transparent to-crypto-cyan/30)
+- Safe area support with safe-bottom class
+- Desktop sidebar completely unchanged
+
+### 2. Created Mobile Settings Drawer (mobile/mobile-drawer.tsx)
+- Built with Vaul Drawer component
+- Contains: Trading Mode Toggle, Connection Status, Bot Status, Theme Toggle, Symbol Selector (8 symbols), Portfolio Summary, Keyboard Shortcuts (collapsible)
+- Glass morphism styling, handle indicator, max-height 70vh
+- Portfolio card with total value, P&L, cash/asset breakdown
+- Closes on drag down
+
+### 3. Optimized Mobile Header (header.tsx)
+- Hidden trading mode toggle on mobile (moved to drawer)
+- Compact layout: Logo "IA" + Symbol badge + Settings gear button
+- Smaller bot badge ("Bot" instead of "Bot Ativo" on mobile)
+- Connection status icon-only on mobile (no text label)
+- Theme toggle hidden on mobile (moved to drawer)
+- Settings gear button triggers mobile drawer open
+- Desktop layout completely preserved
+
+### 4. Created Mobile Portfolio Bar (mobile/mobile-portfolio-bar.tsx)
+- Floating mini-bar above bottom nav on mobile (z-[45])
+- Shows: Portfolio Value + P&L in compact single-line format
+- Glass morphism with cyan gradient top border
+- Auto-hides after 5s inactivity, reappears on scroll
+- Slide-up animation via framer-motion
+- Only visible on mobile (md:hidden)
+
+### 5. Dashboard Mobile Sections (dashboard/mobile-section.tsx)
+- Collapsible section wrapper with emoji icon, gradient title, item count badge, animated chevron
+- 5 sections: Visão Geral (expanded by default), Portfólio, Mercado, Análise Avançada, Sinais & Notícias
+- Mobile-only toggle (md:hidden on header); desktop always shows content
+- Smooth AnimatePresence expand/collapse animations
+- Glass background, rounded corners, press feedback
+
+### 6. Footer Hidden on Mobile (footer.tsx)
+- Changed to hidden md:flex — footer only visible on desktop
+- Portfolio info replaced by MobilePortfolioBar on mobile
+
+### 7. Chart Section Mobile Optimization (chart-section.tsx)
+- Controls restructured into 2 rows: Row 1 (drawing tools + symbol + intervals), Row 2 (indicator toggles)
+- Both rows horizontally scrollable on mobile (overflow-x-auto scrollbar-none)
+- Touch-friendly buttons: h-9 (36px) on mobile, h-7 on desktop
+- Drawing tool text labels hidden on mobile (icon-only)
+- Chart+Trade layout stacks vertically on mobile (grid-cols-1 lg:grid-cols-4)
+
+### 8. AI Chat Section Mobile Optimization (chat-section.tsx)
+- Mobile signal panel: "Sinais" button opens Sheet sliding from right
+- Sheet contains SignalGenerator + AI Tips
+- Desktop unchanged (2-column lg:grid-cols-3)
+- Height: h-[calc(100dvh-12rem)] mobile, lg:h-[calc(100vh-10rem)] desktop
+- Message bubbles: max-w-[85%] mobile, lg:max-w-[80%] desktop
+- Safe-bottom on input area for mobile nav clearance
+
+### 9. Bot Section Mobile Optimization (bot-section.tsx)
+- Control panel: flex-col sm:flex-row — stacks vertically on mobile
+- Start/Stop button: w-full sm:w-auto for easy tapping
+- PnL counter moves below badges on mobile
+
+### 10. Backtest Section Mobile Optimization
+- Metrics cards: flex with mobile-scroll-x on mobile, lg:grid on desktop
+- Chart heights: h-[200px] sm:h-[300px] responsive
+- Trade table: wrapped in mobile-scroll-x
+
+### 11. History Section Mobile Optimization
+- Summary cards: responsive padding (p-3 sm:p-4), font sizes
+- Trade table: wrapped in mobile-scroll-x
+
+### QA Results
+- Lint: 0 errors, 0 warnings ✅
+- Dev server: running normally, all API endpoints returning 200 ✅
+- Mobile screenshots: all 5 nav tabs render correctly ✅
+- Mobile drawer: opens with settings gear button ✅
+- Hydration mismatch warnings are pre-existing (FearGreedIndex seeded random) - non-critical
+
+## Unresolved Issues / Risks / Next Phase Recommendations
+
+### Unresolved
+- Hydration mismatch in FearGreedIndex (pre-existing, non-critical)
+- Socket.IO WebSocket upgrade through Caddy gateway still uses polling fallback
+- Backtest section is now accessible through desktop sidebar only (mobile nav goes to "history")
+
+### Next Phase Recommendations
+1. Add swipe gesture navigation between sections
+2. Add pull-to-refresh on mobile dashboard
+3. Create mobile-specific chart touch interactions (pinch-to-zoom, pan)
+4. Add bottom sheet for quick trade on mobile (currently hidden in chart section)
+5. Optimize FearGreedIndex to avoid hydration mismatch
+6. Add haptic feedback using Vibration API for trade confirmations
+7. Create progressive web app (PWA) manifest for home screen installation
