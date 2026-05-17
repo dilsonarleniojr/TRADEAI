@@ -3,11 +3,13 @@
 import { useCryptoStore } from "@/lib/store";
 import { formatPrice, formatPercent } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
   Wallet,
   ArrowUpDown,
   Bot,
   TrendingUp,
+  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -55,6 +57,7 @@ export function StatCards() {
   const stats = [
     {
       title: "Portfolio Value",
+      tooltip: "Total portfolio value including cash and assets",
       value: portfolio.totalValue,
       displayValue: `$${formatPrice(portfolio.totalValue)}`,
       subValue: formatPercent(portfolio.pnlPercent),
@@ -68,6 +71,7 @@ export function StatCards() {
     },
     {
       title: "Total Trades Today",
+      tooltip: "Number of trades executed today",
       value: todayTrades,
       displayValue: todayTrades.toString(),
       subValue: `${trades.filter((t) => t.pnl > 0).length} profitable`,
@@ -81,6 +85,7 @@ export function StatCards() {
     },
     {
       title: "Bot Status",
+      tooltip: "Current bot operational status",
       value: botActive ? 1 : 0,
       displayValue: botActive ? "Active" : "Inactive",
       subValue: botActive ? "Running strategies" : "Paused",
@@ -96,6 +101,7 @@ export function StatCards() {
     },
     {
       title: "Best Performer",
+      tooltip: "Best performing asset in the last 24h",
       value: bestPerformer?.priceChangePercent ?? 0,
       displayValue: bestPerformer
         ? bestPerformer.symbol.replace("USDT", "")
@@ -134,9 +140,17 @@ export function StatCards() {
           >
             <CardContent className="p-4 relative">
               <div className="flex items-start justify-between mb-3">
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                  {stat.title}
-                </span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-1 cursor-help">
+                      {stat.title}
+                      <Info className="w-3 h-3 opacity-40 hover:opacity-70 transition-opacity" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" sideOffset={4}>
+                    <p className="text-xs">{stat.tooltip}</p>
+                  </TooltipContent>
+                </Tooltip>
                 <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", stat.iconBg)}>
                   <stat.icon className={cn("w-5 h-5", stat.iconColor)} />
                 </div>

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowUpRight, ArrowDownRight, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import { ExportTrades } from "@/components/dashboard/export-trades";
 
 function getSideIcon(side: TradeData["side"]) {
   return side === "BUY" ? ArrowUpRight : ArrowDownRight;
@@ -31,10 +32,13 @@ export function RecentTrades() {
     >
       <Card className="bg-card/60 backdrop-blur-md gradient-border h-full">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <FileText className="w-4 h-4 text-crypto-gold" />
-            Recent Trades
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <FileText className="w-4 h-4 text-crypto-gold" />
+              Recent Trades
+            </CardTitle>
+            <ExportTrades />
+          </div>
         </CardHeader>
         <CardContent>
           {trades.length === 0 ? (

@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Gauge, TrendingUp, TrendingDown } from "lucide-react";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Gauge, TrendingUp, TrendingDown, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
@@ -121,10 +122,22 @@ export function FearGreedIndex() {
     >
       <Card className="glass-card card-accent-cyan h-full">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Gauge className="w-4 h-4 text-crypto-cyan" />
-            Fear &amp; Greed Index
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Gauge className="w-4 h-4 text-crypto-cyan" />
+              Fear &amp; Greed Index
+            </CardTitle>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className="w-5 h-5 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors">
+                  <Info className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left" sideOffset={4} className="max-w-[250px]">
+                <p className="text-xs leading-relaxed">The Fear &amp; Greed Index measures market sentiment. Extreme Fear often signals buying opportunities, while Extreme Greed may indicate a market top.</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </CardHeader>
         <CardContent className="flex flex-col items-center pb-4">
           {/* Semi-circular Gauge */}
@@ -272,15 +285,18 @@ export function FearGreedIndex() {
 
             {/* Center text overlay */}
             <div className="absolute inset-0 flex flex-col items-center justify-end pb-1">
-              <motion.span
-                className="text-3xl font-bold"
-                style={{ color: fearGreed.color }}
-                initial={{ opacity: 0, scale: 0.5 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.8, duration: 0.4, type: "spring", stiffness: 200 }}
-              >
-                {fearGreed.value}
-              </motion.span>
+              <div className="flex items-center gap-1.5">
+                <motion.span
+                  className="text-3xl font-bold"
+                  style={{ color: fearGreed.color }}
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.8, duration: 0.4, type: "spring", stiffness: 200 }}
+                >
+                  {fearGreed.value}
+                </motion.span>
+                <span className="text-[9px] text-muted-foreground font-medium">Current</span>
+              </div>
               <motion.span
                 className="text-[11px] font-semibold uppercase tracking-wider"
                 style={{ color: fearGreed.color }}

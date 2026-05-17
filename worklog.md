@@ -615,3 +615,186 @@ The Crypto IA Pro platform is mature and stable with 6 fully functional sections
 6. Add export functionality (export trades to CSV, portfolio to PDF)
 7. Add more mobile optimizations (swipe gestures, pull-to-refresh, haptic feedback)
 8. Consider Server-Sent Events (SSE) as alternative to Socket.IO for real-time updates
+
+---
+Task ID: 28
+Agent: main
+Task: QA assessment, keyboard shortcuts, new trading widgets, light theme polish, contextual tooltips, bug fix
+
+## Current Project Status Assessment
+
+The Crypto IA Pro platform is mature with 6 sections, real Binance data, database persistence, advanced charting, 10+ dashboard widgets, keyboard shortcuts, and export functionality. All REST APIs returning 200. Zero lint errors. Zero browser JS errors. The project has grown from 6 core sections to include Fear & Greed Index, Multi-Timeframe Analysis, Trading Calculator, Crypto News, Bot Performance Charts, Market Overview, and Funding Rates widgets.
+
+## Goals / Completed Modifications / Verification Results
+
+### 1. Keyboard Shortcuts System (NEW)
+- Created `src/hooks/use-keyboard-shortcuts.ts` with global keyboard shortcuts:
+  - 1-6: Navigate between sections (Dashboard, Chart, AI, Bot, Backtest, History)
+  - B: Toggle bot on/off
+  - T: Toggle dark/light theme
+  - M: Toggle paper/live trading mode
+  - S: Cycle through symbols
+- Integrated into page.tsx via `useKeyboardShortcuts()` hook
+- Smart detection: skips shortcuts when typing in input fields
+
+### 2. Keyboard Shortcuts Hint Indicator (NEW)
+- Created `src/components/dashboard/shortcuts-hint.tsx`:
+  - Small floating keyboard icon button in bottom-left corner
+  - Popover shows all 5 shortcut categories with key bindings
+  - Uses Popover from @/components/ui/popover
+  - Subtle muted design that doesn't distract
+  - Integrated into page.tsx
+
+### 3. Market Overview Widget (NEW)
+- Created `src/components/dashboard/market-overview.tsx`:
+  - Total Market Cap (~$2.51T) with 24h change derived from BTC data
+  - BTC Dominance donut chart (52.3% BTC vs 47.7% Others) using Recharts
+  - Total 24h Volume calculated from real store data (summing quoteVolume from tickers)
+  - DeFi TVL ($85.2B) and Stablecoin Market Cap ($160.4B) metric cards
+  - Contextual tooltips on all metrics
+  - glass-card card-accent-cyan styling with number-animate
+
+### 4. Funding Rates & Open Interest Widget (NEW)
+- Created `src/components/dashboard/funding-rates.tsx`:
+  - 6 symbols with realistic funding rates (BTC near 0.01%, others -0.05% to +0.15%)
+  - Color-coded rates: green = positive (longs pay shorts), red = negative (shorts pay longs)
+  - Open Interest horizontal bars proportional to max OI
+  - Long/Short Ratio with mini progress bars
+  - 8h countdown timer to next funding period
+  - Sortable columns (click Funding/OI/L/S headers)
+  - Contextual tooltips explaining each metric
+  - glass-card card-accent-gold styling with AnimatePresence for sort animations
+
+### 5. Export Trades Utility (NEW)
+- Created `src/components/dashboard/export-trades.tsx`:
+  - Compact dropdown button with Download icon
+  - Export CSV: Downloads trades with full headers
+  - Export JSON: Downloads pretty-printed JSON
+  - Copy to Clipboard: Copies CSV data with Check icon confirmation
+  - File download via Blob + URL.createObjectURL
+  - Toast notifications on success
+- Integrated into recent-trades.tsx header
+
+### 6. Contextual Tooltips Added Across Dashboard
+- Stat Cards: Tooltips on Portfolio Value, Total Trades, Bot Status, Best Performer
+- Fear & Greed Index: Info button with explanatory tooltip + "Current" timeframe label
+- Market Overview: Tooltips on Total Market Cap, BTC Dominance, 24h Volume, DeFi TVL, Stablecoin MCap
+- Funding Rates: Tooltips on Funding Rate, OI, and L/S Ratio column headers
+- P&L Tracker: Tooltips on Today/7-day/30-day breakdown cards
+
+### 7. Light Theme Polish (globals.css)
+- Improved contrast: Updated muted-foreground, glass-bg, glass-border, grid-line, glow-opacity for light mode
+- Glass cards: Added subtle box-shadow for light mode (instead of transparent look)
+- Glow effects: Light mode uses subtle color-tinted shadows instead of glowing
+- Gradient text: Darker stops for readability on white backgrounds
+- Card accent lines: Stronger, darker accent lines for light mode visibility
+- Input focus: Darker cyan focus ring for light mode
+- Scrollbar: Better contrast for light mode cyan-scrollbar
+- Table rows: Better contrast for hover and alternating rows
+- Dot grid: More subtle pattern in light mode
+
+### 8. Critical Bug Fix: Duplicate Tooltip Import
+- Fixed `pnl-tracker.tsx` crash caused by importing `Tooltip` from both `@/components/ui/tooltip` and `recharts`
+- Aliased Recharts Tooltip as `RechartsTooltip` to resolve the conflict
+- This bug was causing 500 errors on ALL API requests (cascading build failure)
+
+### Dashboard Layout Updates
+- New 2-column row: MarketOverview + FundingRates (between PnlTracker and MarketSentiment)
+- ExportTrades button added to Recent Trades header
+
+### Verification Results
+- Lint: 0 errors, 0 warnings
+- Dev server: running normally, all API endpoints returning 200
+- Browser QA: 0 JavaScript errors across all sections
+- Connection status correctly shows "REST API"
+- Keyboard shortcuts work (1-6 navigation, B/T/M/S shortcuts)
+- All new widgets render correctly with real data where available
+
+## Unresolved Issues / Risks / Next Phase Recommendations
+
+### Unresolved Issues:
+- Socket.IO WebSocket upgrade through Caddy gateway still fails (known limitation) - REST API provides data every 60s
+- Bot trades are mock/simulated only (by design for safety)
+- News feed and Funding Rates use mock data - could integrate real APIs
+- Fear & Greed Index uses derived mock values
+
+### Priority Recommendations for Next Phase:
+1. Integrate real-time news using web-search skill for the Crypto News Feed
+2. Add chart drawing tools (trendlines, rectangles, annotations with persistence)
+3. Add social trading features (strategy sharing, copy trading)
+4. Add portfolio rebalancing suggestions based on AI analysis
+5. Add more mobile optimizations (swipe gestures, pull-to-refresh)
+6. Consider Server-Sent Events (SSE) as alternative to Socket.IO
+7. Add real funding rate API integration (Binance Futures API)
+8. Add price alerts with email/push notification delivery
+
+---
+Task ID: 28-A
+Agent: main
+Task: Create Market Overview, Funding Rates, and Export Trades components
+
+## Work Log:
+
+1. Read worklog.md and all relevant existing files (page.tsx, store.ts, format.ts, recent-trades.tsx, portfolio-allocation.tsx, dropdown-menu.tsx, use-toast.ts)
+
+2. Created Market Overview Widget (`src/components/dashboard/market-overview.tsx`):
+   - Total Market Cap display with 24h change (derived from BTC priceChangePercent in store)
+   - BTC Dominance donut chart using Recharts PieChart (BTC 52.3% vs Others 47.7%)
+   - Total 24h Volume calculated by summing quoteVolume from all tickers in store
+   - DeFi TVL metric card (mock: $85.2B, +2.34%)
+   - Stablecoin Market Cap metric card (mock: $160.4B, +0.52%)
+   - Layout: 2-row grid - top row with donut chart + market cap card, bottom row with 3 metric cards
+   - Uses `glass-card card-accent-cyan` styling
+   - Title: "Market Overview" with Globe icon
+   - `number-animate` CSS class on values
+   - framer-motion entrance animations with staggered delays
+   - Lucide icons: Globe, BarChart3, Coins, TrendingUp, TrendingDown
+
+3. Created Funding Rates & Open Interest Widget (`src/components/dashboard/funding-rates.tsx`):
+   - Shows funding rates for 6 symbols: BTC, ETH, SOL, BNB, XRP, DOGE
+   - Funding rate color coding: positive = green (longs pay shorts), negative = red (shorts pay longs)
+   - Open Interest shown with horizontal animated bars proportional to max OI
+   - Long/Short Ratio indicator per symbol with mini progress bar
+   - Funding rate countdown timer (8h cycle) calculating time until next 00:00/08:00/16:00 UTC
+   - Sortable by clicking column headers (Funding Rate, OI, L/S Ratio) with ArrowUpDown icons
+   - Uses `glass-card card-accent-gold` styling
+   - Title: "Funding & Open Interest" with Flame icon
+   - Table layout with columns: Symbol | Funding Rate | OI | L/S Ratio
+   - Realistic mock data generated with seeded pseudo-random:
+     - BTC funding: ~0.005-0.025%
+     - ETH: ~-0.01 to 0.05%
+     - Others: ~-0.05 to 0.15%
+     - OI proportional to market cap
+     - L/S Ratio: 0.8 to 1.5
+   - framer-motion for row animations with AnimatePresence
+   - Lucide icons: Flame, Clock, ArrowUpDown
+
+4. Created Export Trades Utility (`src/components/dashboard/export-trades.tsx`):
+   - Compact dropdown button with Download icon
+   - Export to CSV: Formats all trades with headers (Date, Symbol, Side, Price, Quantity, Total, PnL, Strategy, Mode)
+   - Export to JSON: Formats trades as pretty-printed JSON
+   - Copy to Clipboard: Copies CSV-formatted trade data, shows Check icon on success
+   - Uses @/components/ui/dropdown-menu (DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger)
+   - File download via Blob + URL.createObjectURL
+   - Toast notifications on successful export using existing useToast hook
+   - Empty state handling with toast messages
+   - Lucide icons: Download, FileText, Copy, Check
+
+5. Updated page.tsx dashboard layout:
+   - Added imports for MarketOverview and FundingRates
+   - Added new 2-column grid row (MarketOverview + FundingRates) between PnlTracker and the existing MarketSentiment/MarketHighlights/PortfolioAllocation row
+
+6. Updated recent-trades.tsx:
+   - Added ExportTrades import
+   - Added ExportTrades button to CardHeader next to "Recent Trades" title in a flex row
+
+7. Ran lint: 0 errors, 0 warnings
+8. Dev server running normally
+
+## Stage Summary:
+- Market Overview widget with BTC dominance donut chart, total market cap, 24h volume (from store), DeFi TVL, and stablecoin metrics
+- Funding Rates & Open Interest widget with 6 symbols, sortable columns, OI bars, L/S ratio indicators, and 8h countdown timer
+- Export Trades utility with CSV export, JSON export, and clipboard copy via dropdown menu
+- All three components integrated into dashboard
+- Consistent styling with glass-card, card-accent-cyan/gold, number-animate, framer-motion animations
+- Zero lint errors

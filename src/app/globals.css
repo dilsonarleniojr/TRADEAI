@@ -60,7 +60,7 @@
   --secondary: oklch(0.96 0.005 260);
   --secondary-foreground: oklch(0.2 0.01 260);
   --muted: oklch(0.96 0.005 260);
-  --muted-foreground: oklch(0.5 0 0);
+  --muted-foreground: oklch(0.45 0.01 260);
   --accent: oklch(0.94 0.01 260);
   --accent-foreground: oklch(0.2 0.01 260);
   --destructive: oklch(0.577 0.245 27.325);
@@ -84,13 +84,13 @@
   --crypto-red: #dc2626;
   --crypto-cyan: #0891b2;
   --crypto-gold: #d97706;
-  --glass-bg: oklch(1 0 0 / 80%);
-  --glass-border: oklch(0.85 0.01 260);
-  --glass-hover-bg: oklch(0.98 0.003 260 / 90%);
-  --glass-hover-border: oklch(0.8 0.01 260);
-  --glow-opacity: 12%;
-  --grid-line: oklch(0.85 0.005 260 / 50%);
-  --scrollbar-thumb: oklch(0.7 0.01 260);
+  --glass-bg: oklch(1 0 0 / 92%);
+  --glass-border: oklch(0.82 0.01 260 / 70%);
+  --glass-hover-bg: oklch(0.98 0.003 260 / 95%);
+  --glass-hover-border: oklch(0.75 0.01 260 / 80%);
+  --glow-opacity: 8%;
+  --grid-line: oklch(0.88 0.005 260 / 30%);
+  --scrollbar-thumb: oklch(0.72 0.01 260);
   --scrollbar-thumb-hover: oklch(0.6 0.01 260);
 }
 
@@ -200,6 +200,11 @@
   transition: all 0.3s ease;
 }
 
+/* Light theme: glass cards get a subtle shadow */
+:root .glass-card {
+  box-shadow: 0 1px 3px oklch(0 0 0 / 5%), 0 1px 2px oklch(0 0 0 / 3%);
+}
+
 .glass-card-hover {
   background: var(--glass-bg);
   backdrop-filter: blur(16px);
@@ -217,7 +222,7 @@
 }
 
 :root .glass-card-hover:hover {
-  box-shadow: 0 8px 32px oklch(0 0 0 / 6%), 0 2px 8px oklch(0 0 0 / 3%);
+  box-shadow: 0 6px 20px oklch(0 0 0 / 8%), 0 2px 6px oklch(0 0 0 / 4%);
 }
 
 /* ========================
@@ -247,6 +252,17 @@
   box-shadow: 0 0 8px oklch(0.65 0.22 25 / 10%), 0 0 16px oklch(0.65 0.22 25 / 4%);
 }
 
+/* Light theme: glow becomes subtle shadow with color tint */
+:root .glow-cyan-sm {
+  box-shadow: 0 1px 4px oklch(0.55 0.15 195 / 12%), 0 2px 8px oklch(0.55 0.15 195 / 6%);
+}
+:root .glow-green-sm {
+  box-shadow: 0 1px 4px oklch(0.45 0.2 145 / 12%), 0 2px 8px oklch(0.45 0.2 145 / 6%);
+}
+:root .glow-red-sm {
+  box-shadow: 0 1px 4px oklch(0.5 0.22 25 / 12%), 0 2px 8px oklch(0.5 0.22 25 / 6%);
+}
+
 /* ========================
    Gradient Text Utilities
    ======================== */
@@ -266,6 +282,26 @@
 
 .gradient-text-gold {
   background: linear-gradient(135deg, oklch(0.75 0.17 75), oklch(0.7 0.15 60));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Light theme: darker gradients for readability on white bg */
+:root .gradient-text-cyan {
+  background: linear-gradient(135deg, oklch(0.5 0.18 195), oklch(0.4 0.2 160));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+:root .gradient-text-green {
+  background: linear-gradient(135deg, oklch(0.45 0.2 145), oklch(0.38 0.18 160));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+:root .gradient-text-gold {
+  background: linear-gradient(135deg, oklch(0.55 0.17 75), oklch(0.5 0.16 55));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -438,6 +474,19 @@
   animation: glow-breathe 3s ease-in-out infinite;
 }
 
+/* Light theme: subtle shadow instead of glow */
+:root .glow-breathe {
+  animation: glow-breathe-light 3s ease-in-out infinite;
+}
+@keyframes glow-breathe-light {
+  0%, 100% {
+    box-shadow: 0 1px 4px oklch(0.55 0.15 195 / 8%);
+  }
+  50% {
+    box-shadow: 0 2px 8px oklch(0.55 0.15 195 / 15%);
+  }
+}
+
 /* Gradient shift for borders */
 @keyframes gradient-shift {
   0% {
@@ -532,6 +581,12 @@
   border-color: oklch(0.75 0.15 195 / 40%);
 }
 
+:root .input-glow:focus,
+:root .input-glow:focus-within {
+  box-shadow: 0 0 0 2px oklch(0.55 0.15 195 / 15%), 0 0 8px oklch(0.55 0.15 195 / 8%);
+  border-color: oklch(0.55 0.15 195 / 40%);
+}
+
 /* ========================
    Gradient Button Enhancements
    ======================== */
@@ -579,6 +634,11 @@
   background: linear-gradient(90deg, oklch(0.75 0.15 195 / 60%), oklch(0.75 0.15 195 / 0%));
 }
 
+/* Light theme: stronger accent lines for visibility */
+:root .card-accent-cyan::after {
+  background: linear-gradient(90deg, oklch(0.5 0.18 195 / 70%), oklch(0.5 0.18 195 / 0%));
+}
+
 .card-accent-green {
   position: relative;
   overflow: hidden;
@@ -591,6 +651,10 @@
   right: 0;
   height: 2px;
   background: linear-gradient(90deg, oklch(0.65 0.2 145 / 60%), oklch(0.65 0.2 145 / 0%));
+}
+
+:root .card-accent-green::after {
+  background: linear-gradient(90deg, oklch(0.45 0.2 145 / 70%), oklch(0.45 0.2 145 / 0%));
 }
 
 .card-accent-gold {
@@ -607,6 +671,10 @@
   background: linear-gradient(90deg, oklch(0.75 0.17 75 / 60%), oklch(0.75 0.17 75 / 0%));
 }
 
+:root .card-accent-gold::after {
+  background: linear-gradient(90deg, oklch(0.55 0.17 75 / 70%), oklch(0.55 0.17 75 / 0%));
+}
+
 .card-accent-red {
   position: relative;
   overflow: hidden;
@@ -621,6 +689,10 @@
   background: linear-gradient(90deg, oklch(0.65 0.22 25 / 60%), oklch(0.65 0.22 25 / 0%));
 }
 
+:root .card-accent-red::after {
+  background: linear-gradient(90deg, oklch(0.5 0.22 25 / 70%), oklch(0.5 0.22 25 / 0%));
+}
+
 /* ========================
    Table Row Hover Styles
    ======================== */
@@ -628,7 +700,7 @@
   transition: background-color 0.15s ease;
 }
 .table-row-hover:hover {
-  background-color: oklch(0.75 0.15 195 / 4%);
+  background-color: oklch(0.55 0.15 195 / 6%);
 }
 
 .dark .table-row-hover:hover {
@@ -636,7 +708,7 @@
 }
 
 .table-row-alt {
-  background-color: oklch(0 0 0 / 1%);
+  background-color: oklch(0 0 0 / 2%);
 }
 
 .dark .table-row-alt {
@@ -768,6 +840,17 @@
 }
 .cyan-scrollbar::-webkit-scrollbar-thumb:hover {
   background: oklch(0.75 0.15 195 / 40%);
+}
+
+/* Light theme: scrollbar with more contrast */
+:root .cyan-scrollbar::-webkit-scrollbar-track {
+  background: oklch(0.55 0.1 195 / 5%);
+}
+:root .cyan-scrollbar::-webkit-scrollbar-thumb {
+  background: oklch(0.55 0.1 195 / 25%);
+}
+:root .cyan-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.55 0.1 195 / 40%);
 }
 
 /* ========================
