@@ -105,8 +105,8 @@ interface CryptoStore {
   setKlines: (klines: KlineData[]) => void;
 
   // Socket.IO connection status
-  connectionStatus: "connected" | "disconnected" | "connecting";
-  setConnectionStatus: (status: "connected" | "disconnected" | "connecting") => void;
+  connectionStatus: "connected" | "disconnected" | "connecting" | "rest-api";
+  setConnectionStatus: (status: "connected" | "disconnected" | "connecting" | "rest-api") => void;
 
   // Bot status
   botActive: boolean;
@@ -175,7 +175,7 @@ export const useCryptoStore = create<CryptoStore>((set) => ({
   setKlines: (klines) => set({ klines }),
 
   // Socket.IO connection status
-  connectionStatus: "disconnected" as const,
+  connectionStatus: "rest-api" as const,
   setConnectionStatus: (status) => set({ connectionStatus: status }),
 
   // Bot status

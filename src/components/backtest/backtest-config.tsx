@@ -214,7 +214,7 @@ export function BacktestConfig({
               type="date"
               value={config.startDate}
               onChange={(e) => updateConfig("startDate", e.target.value)}
-              className="h-8 text-xs focus-visible:ring-2 focus-visible:ring-crypto-cyan/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="h-8 text-xs input-glow focus-visible:border-crypto-cyan/50 focus-visible:ring-2 focus-visible:ring-crypto-cyan/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all duration-200"
             />
           </div>
           <div className="space-y-2">
@@ -223,7 +223,7 @@ export function BacktestConfig({
               type="date"
               value={config.endDate}
               onChange={(e) => updateConfig("endDate", e.target.value)}
-              className="h-8 text-xs focus-visible:ring-2 focus-visible:ring-crypto-cyan/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="h-8 text-xs input-glow focus-visible:border-crypto-cyan/50 focus-visible:ring-2 focus-visible:ring-crypto-cyan/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all duration-200"
             />
           </div>
         </div>
@@ -242,7 +242,7 @@ export function BacktestConfig({
                 Math.max(100, parseFloat(e.target.value) || 100)
               )
             }
-            className="h-8 text-xs focus-visible:ring-2 focus-visible:ring-crypto-cyan/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="h-8 text-xs input-glow focus-visible:border-crypto-cyan/50 focus-visible:ring-2 focus-visible:ring-crypto-cyan/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all duration-200"
           />
         </div>
 
@@ -265,7 +265,7 @@ export function BacktestConfig({
                     Math.max(2, parseInt(e.target.value) || 14)
                   )
                 }
-                className="h-8 text-xs focus-visible:ring-2 focus-visible:ring-crypto-cyan/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                className="h-8 text-xs input-glow focus-visible:border-crypto-cyan/50 focus-visible:ring-2 focus-visible:ring-crypto-cyan/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all duration-200"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -279,7 +279,7 @@ export function BacktestConfig({
                   onChange={(e) =>
                     updateConfig("rsiBuyThreshold", parseFloat(e.target.value) || 30)
                   }
-                  className="h-8 text-xs focus-visible:ring-2 focus-visible:ring-crypto-cyan/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="h-8 text-xs input-glow focus-visible:border-crypto-cyan/50 focus-visible:ring-2 focus-visible:ring-crypto-cyan/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all duration-200"
                 />
               </div>
               <div className="space-y-2">
@@ -292,7 +292,7 @@ export function BacktestConfig({
                   onChange={(e) =>
                     updateConfig("rsiSellThreshold", parseFloat(e.target.value) || 70)
                   }
-                  className="h-8 text-xs focus-visible:ring-2 focus-visible:ring-crypto-cyan/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="h-8 text-xs input-glow focus-visible:border-crypto-cyan/50 focus-visible:ring-2 focus-visible:ring-crypto-cyan/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all duration-200"
                 />
               </div>
             </div>
@@ -315,7 +315,7 @@ export function BacktestConfig({
                   onChange={(e) =>
                     updateConfig("macdFast", parseInt(e.target.value) || 12)
                   }
-                  className="h-8 text-xs focus-visible:ring-2 focus-visible:ring-crypto-cyan/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="h-8 text-xs input-glow focus-visible:border-crypto-cyan/50 focus-visible:ring-2 focus-visible:ring-crypto-cyan/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all duration-200"
                 />
               </div>
               <div className="space-y-2">
@@ -328,7 +328,7 @@ export function BacktestConfig({
                   onChange={(e) =>
                     updateConfig("macdSlow", parseInt(e.target.value) || 26)
                   }
-                  className="h-8 text-xs focus-visible:ring-2 focus-visible:ring-crypto-cyan/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="h-8 text-xs input-glow focus-visible:border-crypto-cyan/50 focus-visible:ring-2 focus-visible:ring-crypto-cyan/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all duration-200"
                 />
               </div>
               <div className="space-y-2">
@@ -341,7 +341,7 @@ export function BacktestConfig({
                   onChange={(e) =>
                     updateConfig("macdSignal", parseInt(e.target.value) || 9)
                   }
-                  className="h-8 text-xs focus-visible:ring-2 focus-visible:ring-crypto-cyan/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="h-8 text-xs input-glow focus-visible:border-crypto-cyan/50 focus-visible:ring-2 focus-visible:ring-crypto-cyan/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all duration-200"
                 />
               </div>
             </div>
@@ -365,7 +365,7 @@ export function BacktestConfig({
         <Button
           onClick={onRun}
           disabled={isRunning || (compareMode && selectedStrategies.length < 2)}
-          className="w-full bg-crypto-cyan hover:bg-crypto-cyan/90 text-white font-semibold h-10 focus-visible:ring-2 focus-visible:ring-crypto-cyan/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="w-full bg-crypto-cyan hover:bg-crypto-cyan/90 text-white font-semibold h-10 focus-visible:ring-2 focus-visible:ring-crypto-cyan/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-all duration-200 active:scale-[0.98]"
         >
           {isRunning ? (
             <>

@@ -124,7 +124,15 @@ export function Header() {
                   <div className="absolute w-1.5 h-1.5 rounded-full bg-crypto-green animate-ping opacity-50" />
                 </div>
                 <span className="hidden sm:inline text-xs text-crypto-green font-medium">
-                  Connected
+                  Live
+                </span>
+              </>
+            )}
+            {connectionStatus === "rest-api" && (
+              <>
+                <Wifi className="w-4 h-4 text-crypto-cyan" />
+                <span className="hidden sm:inline text-xs text-crypto-cyan font-medium">
+                  REST API
                 </span>
               </>
             )}
@@ -132,7 +140,7 @@ export function Header() {
               <>
                 <WifiOff className="w-4 h-4 text-crypto-red" />
                 <span className="hidden sm:inline text-xs text-crypto-red font-medium">
-                  Disconnected
+                  Offline
                 </span>
               </>
             )}

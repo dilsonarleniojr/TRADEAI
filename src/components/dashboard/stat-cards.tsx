@@ -127,7 +127,7 @@ export function StatCards() {
         >
           <Card
             className={cn(
-              "bg-card/60 backdrop-blur-md gradient-border card-interactive overflow-hidden cursor-default",
+              "bg-card/60 backdrop-blur-md gradient-border overflow-hidden cursor-default transition-all duration-200 hover:scale-[1.02]",
               stat.hoverGlow,
               stat.accentClass
             )}
@@ -137,16 +137,16 @@ export function StatCards() {
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
                   {stat.title}
                 </span>
-                <div className={cn("p-2 rounded-lg", stat.iconBg)}>
-                  <stat.icon className={cn("w-4 h-4", stat.iconColor)} />
+                <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", stat.iconBg)}>
+                  <stat.icon className={cn("w-5 h-5", stat.iconColor)} />
                 </div>
               </div>
               <div className="space-y-1">
-                <p className="text-xl md:text-2xl font-bold tracking-tight leading-none">
+                <p className="text-xl md:text-2xl font-bold tracking-tight leading-none number-animate">
                   {stat.animate && stat.title === "Portfolio Value" ? (
                     <AnimatedValue value={stat.value} prefix="$" decimals={2} />
                   ) : (
-                    <span className="number-animate">{stat.displayValue}</span>
+                    <span>{stat.displayValue}</span>
                   )}
                 </p>
                 <p

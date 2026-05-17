@@ -32,6 +32,7 @@ export function HistorySection() {
       icon: BarChart3,
       color: "text-crypto-cyan",
       bgColor: "bg-crypto-cyan/10",
+      accentClass: "card-accent-cyan",
     },
     {
       label: "Win Rate",
@@ -39,6 +40,7 @@ export function HistorySection() {
       icon: Target,
       color: winRate >= 50 ? "text-crypto-green" : "text-crypto-red",
       bgColor: winRate >= 50 ? "bg-crypto-green/10" : "bg-crypto-red/10",
+      accentClass: winRate >= 50 ? "card-accent-green" : "card-accent-red",
     },
     {
       label: "Total PnL",
@@ -46,6 +48,7 @@ export function HistorySection() {
       icon: DollarSign,
       color: totalPnl >= 0 ? "text-crypto-green" : "text-crypto-red",
       bgColor: totalPnl >= 0 ? "bg-crypto-green/10" : "bg-crypto-red/10",
+      accentClass: totalPnl >= 0 ? "card-accent-green" : "card-accent-red",
     },
     {
       label: "Avg PnL/Trade",
@@ -53,6 +56,7 @@ export function HistorySection() {
       icon: TrendingUp,
       color: avgPnl >= 0 ? "text-crypto-green" : "text-crypto-red",
       bgColor: avgPnl >= 0 ? "bg-crypto-green/10" : "bg-crypto-red/10",
+      accentClass: "card-accent-gold",
     },
   ];
 
@@ -73,7 +77,7 @@ export function HistorySection() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: i * 0.05 }}
           >
-            <Card className="bg-card/60 backdrop-blur-md gradient-border overflow-hidden">
+            <Card className={`bg-card/60 backdrop-blur-md gradient-border overflow-hidden ${card.accentClass}`}>
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <div

@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TrendingUp, TrendingDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function TradeTable({ trades }: { trades: TradeData[] }) {
   return (
@@ -39,8 +40,11 @@ export function TradeTable({ trades }: { trades: TradeData[] }) {
               </TableCell>
             </TableRow>
           ) : (
-            trades.map((trade) => (
-              <TableRow key={trade.id} className="border-border/50 table-row-hover">
+            trades.map((trade, idx) => (
+              <TableRow key={trade.id} className={cn(
+                "border-border/50 table-row-hover",
+                idx % 2 === 1 && "table-row-alt"
+              )}>
                 <TableCell className="text-xs font-mono text-muted-foreground">
                   {formatTime(new Date(trade.timestamp).getTime())}
                 </TableCell>

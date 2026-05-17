@@ -4,13 +4,14 @@ import { useEffect, useRef, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import { useCryptoStore, type TickerData } from "@/lib/store";
 
-type ConnectionStatus = "connected" | "disconnected" | "connecting";
+type ConnectionStatus = "connected" | "disconnected" | "connecting" | "rest-api";
 
 export function useBinanceStream() {
   const socketRef = useRef<Socket | null>(null);
   const { selectedSymbol, updateTicker } = useCryptoStore();
   const setConnectionStatus = useCryptoStore((s) => s.setConnectionStatus);
   const reconnectAttemptRef = useRef(0);
+  const failedRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -33,7 +34,9 @@ export function useBinanceStream() {
 
       socketRef.current = socket;
 
-      if (mounted) setConnectionStatus("connecting");
+      // Don't override the default "rest-api" status - we start with REST API active
+      // and only change to "connecting" if we're actively trying WebSocket upgrade
+      // The REST API data is already flowing from useBinanceData()
 
       socket.on("connect", () => {
         if (!mounted) return;
@@ -91,13 +94,17 @@ export function useBinanceStream() {
         if (attempt === 1 || attempt % 5 === 0) {
           console.log("[BinanceStream] Reconnect attempt:", attempt);
         }
-        setConnectionStatus("connecting");
+        // Keep rest-api status rather than showing confusing "connecting"
+        // Only show connecting on first attempt
+        if (attempt === 1) {
+          setConnectionStatus("connecting");
+        }
       });
 
       socket.on("reconnect_failed", () => {
         if (!mounted) return;
         console.log("[BinanceStream] Reconnect failed - REST API will continue providing data");
-        setConnectionStatus("disconnected");
+        setConnectionStatus("rest-api");
       });
 
       socket.on("connect_error", (err) => {
@@ -106,6 +113,11 @@ export function useBinanceStream() {
         const attempt = reconnectAttemptRef.current;
         if (attempt <= 1 || attempt % 10 === 0) {
           console.warn("[BinanceStream] Connection issue (REST API fallback active):", err.message);
+        }
+        // After 2 failed attempts, transition to rest-api mode
+        if (attempt >= 2 && !failedRef.current) {
+          failedRef.current = true;
+          setConnectionStatus("rest-api");
         }
       });
     }
@@ -120,7 +132,8 @@ export function useBinanceStream() {
         socket.disconnect();
         socketRef.current = null;
       }
-      setConnectionStatus("disconnected");
+      // Don't set disconnected - REST API is still active
+      setConnectionStatus("rest-api");
     };
   }, []); // Connect once on mount
 

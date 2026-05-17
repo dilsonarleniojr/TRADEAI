@@ -18,8 +18,12 @@ import { MarketTable } from "@/components/dashboard/market-table";
 import { AISignals } from "@/components/dashboard/ai-signals";
 import { RecentTrades } from "@/components/dashboard/recent-trades";
 import { PnlTracker } from "@/components/dashboard/pnl-tracker";
+import { FearGreedIndex } from "@/components/dashboard/fear-greed-index";
+import { MultiTimeframeAnalysis } from "@/components/dashboard/multi-timeframe";
 import { AlertNotification } from "@/components/dashboard/alert-notification";
 import { CorrelationHeatmap } from "@/components/dashboard/correlation-heatmap";
+import { TradingCalculator } from "@/components/dashboard/trading-calculator";
+import { CryptoNews } from "@/components/dashboard/crypto-news";
 import { ChatSection } from "@/components/ai/chat-section";
 import { ChartSection } from "@/components/chart/chart-section";
 import { BotSection } from "@/components/bot/bot-section";
@@ -126,6 +130,10 @@ export default function HomePage() {
             <motion.div variants={itemVariants}>
               <StatCards />
             </motion.div>
+            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <FearGreedIndex />
+              <MultiTimeframeAnalysis />
+            </motion.div>
             <motion.div variants={itemVariants}>
               <PnlTracker />
             </motion.div>
@@ -151,6 +159,10 @@ export default function HomePage() {
                 <AISignals />
               </div>
               <RecentTrades />
+            </motion.div>
+            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <TradingCalculator />
+              <CryptoNews />
             </motion.div>
           </motion.div>
         );

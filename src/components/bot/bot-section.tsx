@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BotConfigForm } from "./bot-config-form";
 import { BotActivityLog } from "./bot-activity-log";
 import { BotPortfolio } from "./bot-portfolio";
+import { BotPerformanceChart } from "./bot-performance-chart";
 import {
   Play,
   Square,
@@ -522,8 +523,9 @@ export function BotSection() {
           <BotConfigForm />
         </div>
 
-        {/* Right: Activity Log + Portfolio */}
+        {/* Right: Activity Log + Portfolio + Performance */}
         <div className="lg:col-span-2 space-y-4">
+          <BotPerformanceChart />
           <BotActivityLog />
           <BotPortfolio />
         </div>
