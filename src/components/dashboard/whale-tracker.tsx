@@ -7,6 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveCont
 import { Fish, RefreshCw, TrendingUp, TrendingDown, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatVolume } from "@/lib/format";
+import { CRYPTO_SHORTS, CRYPTO_COLORS, CRYPTO_BY_SYMBOL } from "@/lib/crypto-meta";
 
 // Seeded random for consistent mock data
 function seededRandom(seed: number): () => number {
@@ -30,6 +31,10 @@ const SYMBOLS = ["BTC", "ETH", "SOL", "BNB", "XRP", "LINK", "AVAX", "DOGE"];
 const SYMBOL_PRICES: Record<string, number> = {
   BTC: 78301, ETH: 2182, SOL: 86.6, BNB: 656,
   XRP: 1.41, LINK: 9.76, AVAX: 9.32, DOGE: 0.109,
+};
+const SYMBOL_FULL_NAMES: Record<string, string> = {
+  BTC: "Bitcoin", ETH: "Ethereum", SOL: "Solana", BNB: "BNB",
+  XRP: "XRP", LINK: "Chainlink", AVAX: "Avalanche", DOGE: "Dogecoin",
 };
 
 function generateWhaleTransactions(seed: number): WhaleTransaction[] {
@@ -223,6 +228,7 @@ export function WhaleTracker() {
                           {tx.side}
                         </div>
                         <span className="text-sm font-semibold whitespace-nowrap">{tx.symbol}</span>
+                        <span className="text-[10px] text-muted-foreground">{SYMBOL_FULL_NAMES[tx.symbol] || tx.symbol}</span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-crypto-gold/15 text-crypto-gold font-medium whitespace-nowrap">
                           Alerta de Baleia
                         </span>

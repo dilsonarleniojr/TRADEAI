@@ -10,10 +10,92 @@ const BINANCE_REST_BASE = "https://api.binance.com/api/v3";
 const BINANCE_WS_BASE = "wss://stream.binance.com:9443/ws";
 
 const TOP_SYMBOLS = [
-  "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT",
-  "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT",
-  "DOTUSDT", "MATICUSDT", "LINKUSDT", "ATOMUSDT",
+  // === Layer 1 ===
+  "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "AVAXUSDT", "ADAUSDT",
+  "DOTUSDT", "ATOMUSDT", "NEARUSDT", "ALGOUSDT", "SUIUSDT", "APTUSDT",
+  "SEIUSDT", "TIAUSDT", "INJUSDT",
+
+  // === Layer 2 ===
+  "MATICUSDT", "ARBUSDT", "OPUSDT", "MANTAUSDT", "STRKUSDT",
+
+  // === DeFi ===
+  "LINKUSDT", "UNIUSDT", "AAVEUSDT", "MKRUSDT", "COMPUSDT",
+  "CRVUSDT", "SNXUSDT", "LDOUSDT", "DYDXUSDT", "PENDLEUSDT",
+
+  // === Meme ===
+  "DOGEUSDT", "SHIBUSDT", "PEPEUSDT", "FLOKIUSDT", "BONKUSDT", "WIFUSDT",
+
+  // === AI ===
+  "FETUSDT", "RENDERUSDT", "AKTUSDT", "TAOUSDT",
+
+  // === Gaming ===
+  "IMXUSDT", "GALAUSDT", "RONINUSDT", "AXSUSDT",
+
+  // === Storage/Infrastructure ===
+  "FILUSDT", "ARUSDT", "ETHFIUSDT",
+
+  // === Stablecoin/Exchange ===
+  "XRPUSDT", "LTCUSDT", "TRXUSDT", "XLMUSDT",
 ];
+
+// ============================================================
+// Symbol Categories
+// ============================================================
+const SYMBOL_CATEGORIES: Record<string, string> = {
+  // Layer 1
+  BTCUSDT: "Layer 1", ETHUSDT: "Layer 1", SOLUSDT: "Layer 1", BNBUSDT: "Layer 1",
+  AVAXUSDT: "Layer 1", ADAUSDT: "Layer 1", DOTUSDT: "Layer 1", ATOMUSDT: "Layer 1",
+  NEARUSDT: "Layer 1", ALGOUSDT: "Layer 1", SUIUSDT: "Layer 1", APTUSDT: "Layer 1",
+  SEIUSDT: "Layer 1", TIAUSDT: "Layer 1", INJUSDT: "Layer 1",
+  // Layer 2
+  MATICUSDT: "Layer 2", ARBUSDT: "Layer 2", OPUSDT: "Layer 2",
+  MANTAUSDT: "Layer 2", STRKUSDT: "Layer 2",
+  // DeFi
+  LINKUSDT: "DeFi", UNIUSDT: "DeFi", AAVEUSDT: "DeFi", MKRUSDT: "DeFi",
+  COMPUSDT: "DeFi", CRVUSDT: "DeFi", SNXUSDT: "DeFi", LDOUSDT: "DeFi",
+  DYDXUSDT: "DeFi", PENDLEUSDT: "DeFi",
+  // Meme
+  DOGEUSDT: "Meme", SHIBUSDT: "Meme", PEPEUSDT: "Meme", FLOKIUSDT: "Meme",
+  BONKUSDT: "Meme", WIFUSDT: "Meme",
+  // AI
+  FETUSDT: "AI", RENDERUSDT: "AI", AKTUSDT: "AI", TAOUSDT: "AI",
+  // Gaming
+  IMXUSDT: "Gaming", GALAUSDT: "Gaming", RONINUSDT: "Gaming", AXSUSDT: "Gaming",
+  // Storage/Infrastructure
+  FILUSDT: "Storage/Infrastructure", ARUSDT: "Storage/Infrastructure", ETHFIUSDT: "Storage/Infrastructure",
+  // Stablecoin/Exchange
+  XRPUSDT: "Stablecoin/Exchange", LTCUSDT: "Stablecoin/Exchange",
+  TRXUSDT: "Stablecoin/Exchange", XLMUSDT: "Stablecoin/Exchange",
+};
+
+// ============================================================
+// Symbol Names
+// ============================================================
+const SYMBOL_NAMES: Record<string, string> = {
+  // Layer 1
+  BTCUSDT: "Bitcoin", ETHUSDT: "Ethereum", SOLUSDT: "Solana", BNBUSDT: "BNB",
+  AVAXUSDT: "Avalanche", ADAUSDT: "Cardano", DOTUSDT: "Polkadot", ATOMUSDT: "Cosmos",
+  NEARUSDT: "NEAR Protocol", ALGOUSDT: "Algorand", SUIUSDT: "Sui", APTUSDT: "Aptos",
+  SEIUSDT: "Sei", TIAUSDT: "Celestia", INJUSDT: "Injective",
+  // Layer 2
+  MATICUSDT: "Polygon", ARBUSDT: "Arbitrum", OPUSDT: "Optimism",
+  MANTAUSDT: "Manta Network", STRKUSDT: "Starknet",
+  // DeFi
+  LINKUSDT: "Chainlink", UNIUSDT: "Uniswap", AAVEUSDT: "Aave", MKRUSDT: "Maker",
+  COMPUSDT: "Compound", CRVUSDT: "Curve", SNXUSDT: "Synthetix", LDOUSDT: "Lido DAO",
+  DYDXUSDT: "dYdX", PENDLEUSDT: "Pendle",
+  // Meme
+  DOGEUSDT: "Dogecoin", SHIBUSDT: "Shiba Inu", PEPEUSDT: "Pepe",
+  FLOKIUSDT: "Floki", BONKUSDT: "Bonk", WIFUSDT: "dogwifhat",
+  // AI
+  FETUSDT: "Fetch.ai", RENDERUSDT: "Render", AKTUSDT: "Akash Network", TAOUSDT: "Bittensor",
+  // Gaming
+  IMXUSDT: "Immutable", GALAUSDT: "Gala", RONINUSDT: "Ronin", AXSUSDT: "Axie Infinity",
+  // Storage/Infrastructure
+  FILUSDT: "Filecoin", ARUSDT: "Arweave", ETHFIUSDT: "ether.fi",
+  // Stablecoin/Exchange
+  XRPUSDT: "XRP", LTCUSDT: "Litecoin", TRXUSDT: "TRON", XLMUSDT: "Stellar",
+};
 
 // ============================================================
 // Types
@@ -132,6 +214,37 @@ let tickerCache: any[] = [];
 let tickerCacheTime = 0;
 const TICKER_CACHE_TTL = 30000; // 30 seconds
 
+// Priority symbols - fetch these first (top 12 by volume)
+const PRIORITY_SYMBOLS = [
+  "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT",
+  "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT",
+  "DOTUSDT", "LINKUSDT", "MATICUSDT", "ATOMUSDT",
+];
+
+// Extended symbols - fetch after priority
+const EXTENDED_SYMBOLS = TOP_SYMBOLS.filter(s => !PRIORITY_SYMBOLS.includes(s));
+
+// Initial fetch - just priority symbols
+async function fetchInitialTickers(): Promise<any[]> {
+  try {
+    const results = await Promise.all(
+      PRIORITY_SYMBOLS.map(async (symbol) => {
+        try {
+          const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbol=${symbol}`, {
+            signal: AbortSignal.timeout(10000),
+          });
+          if (resp.ok) return await resp.json();
+          return null;
+        } catch { return null; }
+      })
+    );
+    return results.filter(Boolean);
+  } catch (err) {
+    console.error("[Cache] Initial ticker fetch error:", err);
+    return [];
+  }
+}
+
 async function fetchAllTickers(): Promise<any[]> {
   const now = Date.now();
   if (tickerCache.length > 0 && now - tickerCacheTime < TICKER_CACHE_TTL) {
@@ -139,18 +252,33 @@ async function fetchAllTickers(): Promise<any[]> {
   }
 
   try {
-    // Fetch individual tickers in parallel to avoid URL length issues
-    const promises = TOP_SYMBOLS.map(async (symbol) => {
-      try {
-        const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbol=${symbol}`);
-        if (resp.ok) return await resp.json();
-        return null;
-      } catch { return null; }
-    });
-
-    const results = await Promise.all(promises);
-    tickerCache = results.filter(Boolean);
+    // Fetch individual tickers in small batches
+    const results: any[] = [];
+    const batchSize = 4;
+    const allSymbols = [...PRIORITY_SYMBOLS, ...EXTENDED_SYMBOLS];
+    
+    for (let i = 0; i < allSymbols.length; i += batchSize) {
+      const batch = allSymbols.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(async (symbol) => {
+          try {
+            const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbol=${symbol}`, {
+              signal: AbortSignal.timeout(8000),
+            });
+            if (resp.ok) return await resp.json();
+            return null;
+          } catch { return null; }
+        })
+      );
+      results.push(...batchResults.filter(Boolean));
+      // Small delay between batches to avoid rate limiting
+      if (i + batchSize < allSymbols.length) {
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
+    tickerCache = results;
     tickerCacheTime = now;
+    console.log(`[Cache] Fetched ${tickerCache.length}/${allSymbols.length} tickers`);
     return tickerCache;
   } catch (err) {
     console.error("[Cache] Ticker fetch error:", err);
@@ -158,22 +286,69 @@ async function fetchAllTickers(): Promise<any[]> {
   }
 }
 
-// Start periodic refresh
-setInterval(async () => {
+// Background refresh - incremental, only a few at a time
+let refreshInProgress = false;
+let lastRefreshIndex = 0;
+
+async function backgroundRefresh() {
+  if (refreshInProgress) return;
+  refreshInProgress = true;
   try {
+    // Fetch only 8 symbols per refresh cycle to avoid overloading
+    const symbolsToFetch = TOP_SYMBOLS.slice(lastRefreshIndex, lastRefreshIndex + 8);
+    if (symbolsToFetch.length === 0) {
+      lastRefreshIndex = 0; // Reset to beginning
+      refreshInProgress = false;
+      return;
+    }
+    
     const results = await Promise.all(
-      TOP_SYMBOLS.map(async (symbol) => {
+      symbolsToFetch.map(async (symbol) => {
         try {
-          const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbol=${symbol}`);
+          const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbol=${symbol}`, {
+            signal: AbortSignal.timeout(8000),
+          });
           if (resp.ok) return await resp.json();
           return null;
         } catch { return null; }
       })
     );
-    tickerCache = results.filter(Boolean);
+    
+    const validResults = results.filter(Boolean);
+    // Merge with existing cache - update existing or add new
+    for (const ticker of validResults) {
+      const existingIdx = tickerCache.findIndex((t: any) => t.symbol === ticker.symbol);
+      if (existingIdx >= 0) {
+        tickerCache[existingIdx] = ticker;
+      } else {
+        tickerCache.push(ticker);
+      }
+    }
+    
+    lastRefreshIndex += 8;
+    if (lastRefreshIndex >= TOP_SYMBOLS.length) {
+      lastRefreshIndex = 0; // Full cycle complete, restart
+    }
     tickerCacheTime = Date.now();
-  } catch {}
-}, 30000);
+    console.log(`[Refresh] +${validResults.length} tickers, total: ${tickerCache.length}, next: ${lastRefreshIndex}`);
+  } catch {} finally {
+    refreshInProgress = false;
+  }
+}
+
+// Fetch initial data on startup, then start incremental refresh
+fetchInitialTickers().then(initial => {
+  tickerCache = initial;
+  tickerCacheTime = Date.now();
+  console.log(`[Startup] Loaded ${initial.length} priority tickers`);
+  
+  // Start incremental refresh every 10 seconds
+  // Each refresh fetches 8 symbols, so full cycle = ~7 refreshes = ~70 seconds
+  setTimeout(() => {
+    backgroundRefresh();
+    setInterval(backgroundRefresh, 10000);
+  }, 5000);
+});
 
 // ============================================================
 // Bun.serve for REST API
@@ -252,11 +427,28 @@ Bun.serve({
           }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
         }
 
+        case "/api/market/categories": {
+          return new Response(JSON.stringify({ data: SYMBOL_CATEGORIES, timestamp: Date.now() }), {
+            headers: { "Content-Type": "application/json", ...corsHeaders() },
+          });
+        }
+
+        case "/api/market/symbols": {
+          const symbols = TOP_SYMBOLS.map(sym => ({
+            symbol: sym,
+            name: SYMBOL_NAMES[sym] || sym.replace("USDT", ""),
+            category: SYMBOL_CATEGORIES[sym] || "Other",
+          }));
+          return new Response(JSON.stringify({ data: symbols, timestamp: Date.now() }), {
+            headers: { "Content-Type": "application/json", ...corsHeaders() },
+          });
+        }
+
         case "/health":
           return new Response(JSON.stringify({
             status: "ok", service: "binance-service", port: PORT,
             uptime: process.uptime(), activeStreams: streamManager.connectionCount,
-            timestamp: Date.now(),
+            symbolCount: TOP_SYMBOLS.length, timestamp: Date.now(),
           }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
 
         default:
@@ -315,4 +507,7 @@ console.log(`  GET /api/market/ticker`);
 console.log(`  GET /api/market/klines?symbol=BTCUSDT&interval=1h&limit=100`);
 console.log(`  GET /api/market/price?symbol=BTCUSDT`);
 console.log(`  GET /api/market/highlights`);
+console.log(`  GET /api/market/categories`);
+console.log(`  GET /api/market/symbols`);
 console.log(`  GET /health`);
+console.log(`[BinanceService] Tracking ${TOP_SYMBOLS.length} symbols across 7 categories`);

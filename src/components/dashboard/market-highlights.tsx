@@ -6,6 +6,7 @@ import { formatPrice, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { TrendingUp, TrendingDown, Activity, Zap } from "lucide-react";
+import { CRYPTO_COLORS, CRYPTO_SHORTS } from "@/lib/crypto-meta";
 
 interface HighlightItem {
   symbol: string;
@@ -19,21 +20,6 @@ interface HighlightsData {
   topLosers: HighlightItem[];
   mostActive: HighlightItem[];
 }
-
-const symbolColors: Record<string, string> = {
-  BTCUSDT: "#f7931a",
-  ETHUSDT: "#627eea",
-  BNBUSDT: "#f3ba2f",
-  SOLUSDT: "#9945ff",
-  XRPUSDT: "#00aae4",
-  ADAUSDT: "#0033ad",
-  DOGEUSDT: "#c3a634",
-  AVAXUSDT: "#e84142",
-  DOTUSDT: "#e6007a",
-  LINKUSDT: "#2a5ada",
-  MATICUSDT: "#8247e5",
-  ATOMUSDT: "#2e3148",
-};
 
 export function MarketHighlights() {
   const [data, setData] = useState<HighlightsData | null>(null);
@@ -157,7 +143,7 @@ export function MarketHighlights() {
                       const changeNum = parseFloat(item.priceChangePercent || '0');
                       const isPositive = changeNum >= 0;
                       const color =
-                        symbolColors[item.symbol] || "#06b6d4";
+                        CRYPTO_COLORS[item.symbol] || "#06b6d4";
                       const trendColor =
                         section.positive === true
                           ? "text-crypto-green"
@@ -181,7 +167,7 @@ export function MarketHighlights() {
                               style={{ backgroundColor: color }}
                             />
                             <span className="text-sm font-medium">
-                              {item.symbol.replace("USDT", "")}
+                              {CRYPTO_SHORTS[item.symbol] || item.symbol.replace("USDT", "")}
                             </span>
                           </div>
                           <div className="flex items-center gap-3">

@@ -7,18 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { motion } from "framer-motion";
 import { PieChart as PieChartIcon } from "lucide-react";
-
-const COLORS = [
-  "#f7931a", // BTC - orange
-  "#627eea", // ETH - blue
-  "#f3ba2f", // BNB - yellow
-  "#9945ff", // SOL - purple
-  "#00aae4", // XRP - teal
-  "#e84142", // AVAX - red
-  "#06b6d4", // Cash - cyan
-  "#22c55e", // Gains - green
-  "#f59e0b", // Gold
-];
+import { CRYPTO_COLORS, CRYPTO_SHORTS } from "@/lib/crypto-meta";
 
 interface AllocationItem {
   name: string;
@@ -65,9 +54,8 @@ export function PortfolioAllocation() {
     // Asset allocation
     if (portfolio.assetBalance > 0) {
       const symbol = selectedSymbol || botConfig.symbol;
-      const assetName = symbol.replace("USDT", "");
-      const colorIdx = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "AVAXUSDT"].indexOf(symbol);
-      const assetColor = colorIdx >= 0 ? COLORS[colorIdx] : "#8b5cf6";
+      const assetName = CRYPTO_SHORTS[symbol] || symbol.replace("USDT", "");
+      const assetColor = CRYPTO_COLORS[symbol] || "#8b5cf6";
 
       items.push({
         name: assetName,

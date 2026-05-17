@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { useTheme } from "next-themes";
 import { useSyncExternalStore } from "react";
+import { CryptoSelector } from "./header/crypto-selector";
 
 interface HeaderProps {
   onOpenMobileDrawer?: () => void;
@@ -17,7 +18,6 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
   const {
     tradingMode,
     setTradingMode,
-    selectedSymbol,
     botActive,
     connectionStatus,
   } = useCryptoStore();
@@ -54,13 +54,8 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
             </h1>
           </div>
 
-          {/* Symbol badge - visible on both mobile and desktop */}
-          <Badge
-            variant="outline"
-            className="flex items-center gap-1 text-xs border-crypto-cyan/20 bg-crypto-cyan/5 transition-all duration-200 hover:scale-105 hover:bg-crypto-cyan/10 hover:border-crypto-cyan/40 hover:shadow-[0_0_8px_oklch(0.75_0.15_195/15%)] cursor-pointer"
-          >
-            <span className="text-crypto-cyan font-medium">{selectedSymbol}</span>
-          </Badge>
+          {/* Crypto Selector - visible on both mobile and desktop */}
+          <CryptoSelector />
         </div>
 
         {/* Center: Trading Mode Toggle (desktop only) */}

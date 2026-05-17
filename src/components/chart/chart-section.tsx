@@ -18,6 +18,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MousePointer2, TrendingUp, Minus, Trash2 } from 'lucide-react';
+import { ALL_SYMBOLS } from '@/lib/crypto-meta';
 import type { DrawingTool, Drawing } from './candlestick-chart';
 
 const INTERVALS = [
@@ -27,12 +28,8 @@ const INTERVALS = [
   { value: '1h', label: '1h' },
   { value: '4h', label: '4h' },
   { value: '1d', label: '1D' },
-];
-
-const SYMBOLS = [
-  'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT',
-  'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT',
-  'DOTUSDT', 'LINKUSDT', 'ATOMUSDT',
+  { value: '1w', label: '1W' },
+  { value: '1M', label: '1M' },
 ];
 
 // RSI calculation for the badge
@@ -206,7 +203,7 @@ export function ChartSection() {
                 <SelectValue placeholder="Selecionar símbolo" />
               </SelectTrigger>
               <SelectContent>
-                {SYMBOLS.map((sym) => (
+                {ALL_SYMBOLS.map((sym) => (
                   <SelectItem key={sym} value={sym} className="text-xs">
                     {sym.replace('USDT', '/USDT')}
                   </SelectItem>
