@@ -152,7 +152,7 @@ export function MarketTable() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="max-h-[420px] overflow-y-auto">
+          <div className="max-h-[420px] overflow-y-auto cyan-scrollbar relative">
             <Table>
               <TableHeader>
                 <TableRow className="border-border hover:bg-transparent">
@@ -192,12 +192,12 @@ export function MarketTable() {
                     <TableRow
                       key={ticker.symbol}
                       className={cn(
-                        "cursor-pointer transition-all duration-200 group",
+                        "cursor-pointer transition-all duration-200 group table-row-hover",
                         "hover:bg-gradient-to-r hover:from-primary/5 hover:to-transparent hover:shadow-sm",
                         isWatched && "bg-crypto-gold/[0.03]",
                         isAltRow && !isWatched && "table-row-alt"
                       )}
-                      style={{ borderLeft: `2px solid ${color}40` }}
+                      style={{ borderLeft: `2px solid ${color}40`, borderBottom: "1px solid var(--border)" }}
                       onClick={() => {
                         setSelectedSymbol(ticker.symbol);
                         setActiveSection("chart");
@@ -250,8 +250,8 @@ export function MarketTable() {
                       <TableCell className="text-right py-2.5">
                         <span
                           className={cn(
-                            "text-sm font-mono font-semibold px-1.5 py-0.5 rounded",
-                            isPositive ? "text-crypto-green bg-crypto-green/5" : "text-crypto-red bg-crypto-red/5"
+                            "text-sm font-mono font-semibold px-2 py-0.5 rounded-md",
+                            isPositive ? "text-crypto-green bg-crypto-green/10" : "text-crypto-red bg-crypto-red/10"
                           )}
                         >
                           {formatPercent(ticker.priceChangePercent)}

@@ -70,12 +70,17 @@ function ThinkingIndicator() {
       <div className="w-8 h-8 rounded-lg bg-crypto-cyan/10 flex items-center justify-center shrink-0">
         <Bot className="w-4 h-4 text-crypto-cyan" />
       </div>
-      <div className="bg-card/80 backdrop-blur-sm border border-white/5 rounded-2xl rounded-tl-sm px-4 py-3">
-        <div className="flex items-center gap-2 mb-1.5">
-          <Sparkles className="w-3 h-3 text-crypto-cyan" />
-          <span className="text-[10px] text-crypto-cyan font-medium">AI is thinking...</span>
+      <div className='bg-card/80 backdrop-blur-sm border border-border/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm'>
+        <div className='flex items-center gap-2 mb-1.5'>
+          <Sparkles className='w-3 h-3 text-crypto-cyan' />
+          <span className='text-[10px] text-crypto-cyan font-medium'>AI is thinking...</span>
         </div>
-        <BouncingDots />
+        <div className='flex items-center gap-1.5'>
+          <span className='sr-only'>Loading...</span>
+          <span className='typing-dot' />
+          <span className='typing-dot' />
+          <span className='typing-dot' />
+        </div>
       </div>
     </motion.div>
   );
@@ -323,8 +328,8 @@ export function ChatSection() {
                     <div
                       className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
                         msg.role === 'user'
-                          ? 'bg-gradient-to-br from-crypto-cyan/15 to-crypto-cyan/5 text-foreground rounded-tr-sm border border-crypto-cyan/10'
-                          : 'bg-card/90 backdrop-blur-sm border border-border/50 rounded-tl-sm'
+                          ? 'bg-gradient-to-br from-crypto-cyan/20 via-crypto-cyan/10 to-crypto-green/5 text-foreground rounded-tr-sm border border-crypto-cyan/20 shadow-sm shadow-crypto-cyan/5'
+                          : 'bg-card/90 backdrop-blur-sm border border-border/50 rounded-tl-sm shadow-sm'
                       }`}
                     >
                       {msg.role === 'assistant' ? (
@@ -381,7 +386,7 @@ export function ChatSection() {
               onKeyDown={handleKeyDown}
               placeholder="Ask about crypto markets, analysis, strategies..."
               disabled={isLoading}
-              className="flex-1 bg-background/80 backdrop-blur-sm border-border/50 input-glow focus-visible:ring-crypto-cyan/30"
+              className="flex-1 bg-background/80 backdrop-blur-sm border-border/50 input-glow focus-visible:ring-crypto-cyan/30 glow-breathe"
             />
             <Button
               onClick={() => sendMessage(input)}

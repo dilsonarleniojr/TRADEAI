@@ -347,3 +347,271 @@ Stage Summary:
 - Alert Notification popup with sound, glowing border, auto-dismiss, and queue system (Task 25)
 - All TypeScript types correct, existing functionality preserved
 - Zero lint errors
+
+---
+Task ID: 3-4
+Agent: dashboard-components-agent
+Task: Create Fear & Greed Index widget and Multi-Timeframe Analysis panel, integrate into dashboard
+
+## Work Log:
+1. Read worklog.md to understand previous agent work (Tasks 8-25)
+2. Read existing files: page.tsx, store.ts, format.ts, market-sentiment.tsx, stat-cards.tsx, pnl-tracker.tsx, globals.css
+3. Created Fear & Greed Index Widget (`src/components/dashboard/fear-greed-index.tsx`):
+   - Semi-circular SVG gauge with gradient from red (Extreme Fear) to green (Extreme Greed)
+   - Color gradient: Red → Orange → Yellow → Light Green → Green
+   - Tick marks at key positions (0, 25, 45, 55, 75, 100)
+   - Zone labels on outer edge (EF, F, N, G, EG)
+   - Animated needle with glow effect pointing to current value
+   - Large number display in center with spring animation
+   - Current label (e.g., "Greed") below the number
+   - Zone legend bar showing all 5 zones with color dots
+   - 7-day history bar chart at bottom with colored bars per day
+   - Yesterday comparison indicator with TrendingUp/TrendingDown icons
+   - Uses `glass-card card-accent-cyan` CSS classes
+   - Realistic mock value derived from market data (weighted by volume, correlated with price changes)
+   - Seeded pseudo-random for slowly changing values (changes daily)
+   - Uses framer-motion for all animations
+4. Created Multi-Timeframe Analysis Panel (`src/components/dashboard/multi-timeframe.tsx`):
+   - Grid/table layout showing 6 timeframes: 5m, 15m, 1h, 4h, 1d, 1w
+   - Each row shows: Timeframe | RSI value + signal badge + visual bar | MACD signal badge | Overall signal badge
+   - RSI color coding: <30 = green (oversold), 30-70 = neutral, >70 = red (overbought)
+   - RSI visual sparkline bar showing level proportionally
+   - MACD badge: Bullish = green, Bearish = red, Neutral = gray
+   - Overall signal combines RSI + MACD logic: both bullish → BUY, both bearish → SELL, otherwise HOLD
+   - BUY/SELL/HOLD badges with colored backgrounds and borders
+   - Summary bar showing Buy/Hold/Sell counts and consensus (Bullish/Bearish/Neutral)
+   - RSI legend at bottom (OS <30, Neutral 30-70, OB >70)
+   - Uses `glass-card card-accent-cyan` CSS classes
+   - Realistic mock RSI/MACD values correlated with current market data from store
+   - Symbol-aware data (shows analysis for selectedSymbol)
+   - Seeded pseudo-random for deterministic, slowly changing values
+   - Uses framer-motion for staggered row animations
+5. Updated page.tsx dashboard layout:
+   - Added imports for FearGreedIndex and MultiTimeframeAnalysis
+   - Inserted new 2-column grid row after StatCards, before PnlTracker
+   - FearGreedIndex on left, MultiTimeframeAnalysis on right
+6. Ran lint: 0 errors, 0 warnings
+7. Dev server running normally, all API endpoints returning 200
+
+## Stage Summary:
+- Fear & Greed Index gauge widget with SVG semi-circular gauge, animated needle, 7-day history, and market-correlated values
+- Multi-Timeframe Analysis panel with RSI + MACD signals across 6 timeframes with colored badges and consensus summary
+- Both components integrated into dashboard between StatCards and PnlTracker in a 2-column layout
+- Consistent styling with glass-card, card-accent-cyan, framer-motion animations
+- Zero lint errors, dev server running normally
+
+---
+Task ID: 5-6
+Agent: calculator-news-agent
+Task: Create Trading Calculator and Crypto News Feed components, integrate into dashboard
+
+## Work Log:
+1. Read worklog.md to understand previous agent work (Tasks 8-25, 3-4)
+2. Read existing files: page.tsx, store.ts, format.ts, globals.css, ai-signals.tsx, tabs.tsx, input.tsx, badge.tsx
+3. Created Trading Calculator (`src/components/dashboard/trading-calculator.tsx`):
+   - Three tabs using Radix Tabs component: Position Size, Risk/Reward, DCA Calculator
+   - **Position Size Tab**:
+     - Inputs: Account Balance, Risk % (default 2%), Entry Price (from store's selectedSymbol price), Stop Loss Price
+     - Formulas: Risk Amount = Balance * Risk%, Position Size = Risk Amount / |Entry - StopLoss|
+     - Real-time calculation as user types via useMemo
+     - Results displayed in 3 styled glass-cards with card-accent variants (cyan, green, red)
+     - Warning when Entry and Stop Loss are equal
+   - **Risk/Reward Tab**:
+     - Inputs: Entry Price, Take Profit Price, Stop Loss Price (defaults from store)
+     - Outputs: Risk ($), Reward ($), R:R Ratio, Risk %, Reward %
+     - Animated proportional bar with red/green gradient showing risk vs reward
+     - Assessment text: "Excellent trade setup" (R:R ≥ 3), "Good trade" (R:R ≥ 2), "Acceptable" (R:R ≥ 1), "Consider adjusting" (R:R < 1)
+     - CheckCircle2/AlertTriangle icons based on assessment
+   - **DCA Calculator Tab**:
+     - Inputs: Investment Amount per order, Number of orders, Price Drop % per order
+     - Animated table showing each order with price, quantity, investment, cumulative investment, average entry price
+     - Summary row: Total Invested, Total Units, Average Entry, Current Value, P&L (with green/red card accents)
+     - Staggered row animations with framer-motion
+   - Uses Calculator, Target, Layers, DollarSign, Percent, TrendingUp, TrendingDown Lucide icons
+   - All inputs have input-glow CSS class for cyan accent on focus
+   - glass-card card-accent-cyan main container
+   - Responsive grid layouts (1-col mobile, 2/3/5-col desktop)
+4. Created Crypto News Feed (`src/components/dashboard/crypto-news.tsx`):
+   - 10 realistic mock crypto news items with proper terminology:
+     - "Bitcoin Surges Past Key Resistance Level Amid Institutional Buying"
+     - "Ethereum Layer 2 Solutions See Record Transaction Volume"
+     - "Fed Policy Update: Implications for Crypto Markets"
+     - "DeFi Total Value Locked Reaches New Monthly High"
+     - "Solana DEX Volume Overtakes Ethereum for Third Consecutive Week"
+     - "SEC Approves New Spot Crypto ETF Applications"
+     - "AI-Powered Trading Bots Outperform Traditional Strategies in Q1"
+     - "Cross-Chain Bridge Protocol Raises $120M in Series B Funding"
+     - "Bitcoin Mining Difficulty Adjusts to All-Time High After Halving"
+     - "DeFi Lending Protocols Implement Dynamic Risk Parameters"
+   - Each item: title, source, time ago, category badge, brief summary, full summary
+   - Category badges with color coding: Market (cyan), DeFi (purple), Regulation (gold), Tech (green), Trading (red)
+   - Clickable items expand to show full summary with framer-motion height animation
+   - "Read full article" link with ExternalLink icon on expanded view
+   - Category filter buttons (All, Market, DeFi, Regulation, Tech, Trading) with active state styling
+   - Refresh button that shuffles news order with spinning animation
+   - Auto-update timestamp display
+   - Max height 96 with cyan-scrollbar for overflow
+   - AnimatePresence for smooth list transitions
+   - Empty state when no news match category filter
+   - Uses Newspaper, RefreshCw, Clock, ExternalLink Lucide icons
+5. Updated page.tsx dashboard layout:
+   - Added imports for TradingCalculator and CryptoNews
+   - Added new 2-column grid row after AISignals/RecentTrades row
+   - TradingCalculator on left, CryptoNews on right
+6. Ran lint: 0 errors, 0 warnings
+7. Dev server running normally, all API endpoints returning 200
+
+## Stage Summary:
+- Trading Calculator with 3 tabs (Position Size, Risk/Reward, DCA) with real-time calculations and animated visualizations
+- Crypto News Feed with 10 realistic mock items, category filtering, expandable summaries, and shuffle refresh
+- Both components integrated into dashboard in a 2-column layout below AI Signals / Recent Trades
+- Consistent styling with glass-card, card-accent-cyan, input-glow, gradient-text, framer-motion animations
+- Zero lint errors, dev server running normally
+
+---
+Task ID: 7-9
+Agent: styling-agent
+Task: Bot Performance Charts and Styling Polish Across All Sections
+
+## Work Log:
+
+### Part 1: Bot Performance Charts
+
+1. Read worklog.md and all relevant existing files (bot-section.tsx, store.ts, format.ts, globals.css, all component files)
+2. Created `src/components/bot/bot-performance-chart.tsx` with:
+   - **P&L Over Time** (AreaChart with green/red gradient fill): Shows cumulative P&L across the last 20 trades from the `trades` store
+   - **Win/Loss Distribution** (PieChart donut style): Green segment for wins, red for losses, gray for neutral trades; with legend showing counts and percentages
+   - **Trade Volume by Hour** (BarChart): Groups trades into hour buckets showing distribution of trading activity throughout the day
+   - **Summary Stats Row**: 4 cards showing Total P&L (card-accent-cyan, gradient-text-green), Win Rate (card-accent-green), Avg P&L/Trade (card-accent-gold), Best/Worst Trade (card-accent-red)
+   - Uses `glass-card gradient-border` styling
+   - Title: "Performance Analytics" with BarChart3 icon
+   - Responsive layout: 2-column grid on desktop (P&L chart + Win/Loss pie), single column on mobile
+   - Full-width Trade Volume by Hour bar chart below the 2-column grid
+   - `framer-motion` fade-in-up card animation
+   - Empty state with BarChart3 icon and message "Start the bot to generate performance data"
+   - Uses existing CSS utilities: `number-animate`, `gradient-text-green`, `card-accent-*`, `glass-card`, `gradient-border`
+3. Integrated BotPerformanceChart into `bot-section.tsx`:
+   - Added import for BotPerformanceChart
+   - Placed it as the first component in the right column (before BotActivityLog and BotPortfolio)
+
+### Part 2: Styling Polish
+
+4. **stat-cards.tsx**:
+   - Added `hover:scale-[1.02]` with `transition-all duration-200` for subtle hover scale transform (replaced `card-interactive`)
+   - Each card already had `card-accent-cyan/green/gold/red` classes from previous work
+   - Made icon containers `w-10 h-10` with `flex items-center justify-center` (was `p-2`); icons `w-5 h-5` (was `w-4 h-4`)
+   - Added `number-animate` class to the main value `<p>` element
+
+5. **market-table.tsx**:
+   - Added `table-row-hover` class to table body rows
+   - Changed 24h% change values from `bg-crypto-green/5`/`bg-crypto-red/5` to `bg-crypto-green/10`/`bg-crypto-red/10` with `rounded-md` and `px-2` (more prominent color pills)
+   - Added `borderBottom: "1px solid var(--border)"` inline style to each row for subtle border
+   - Added `cyan-scrollbar` class and `relative` to the scroll container for styled scrollbar
+
+6. **pnl-tracker.tsx**:
+   - Added `relative` class to CardContent for gradient overlay positioning
+   - Added gradient overlay div at bottom of P&L chart area: `bg-gradient-to-t from-[var(--glass-bg)] to-transparent` with `h-8`
+   - P&L value display already uses `gradient-text-green` for positive and `text-crypto-red` for negative
+   - Added `card-accent-cyan` to Today's P&L breakdown card
+   - Added `card-accent-green` to 7-day P&L breakdown card
+   - Added `card-accent-gold` to 30-day P&L breakdown card
+   - Added `card-accent-red` to Win/Loss ratio card
+
+7. **chart-section.tsx**:
+   - Added `glass rounded-xl p-3 border border-border/50` to chart controls area for glass panel effect
+   - All toggle buttons now have `transition-all duration-200` and active state gets `scale-[1.02] shadow-sm shadow-{color}/10` for slight scale + glow
+   - Added `mt-1` wrapper div around IndicatorsPanel for better spacing between chart and indicators
+
+8. **chat-section.tsx**:
+   - Typing indicator now uses CSS `typing-dot` class (3 bouncing dots) instead of framer-motion `BouncingDots` component
+   - User message bubbles enhanced: `from-crypto-cyan/20 via-crypto-cyan/10 to-crypto-green/5` gradient with `border-crypto-cyan/20` and `shadow-sm shadow-crypto-cyan/5`
+   - AI response bubbles enhanced: Added `shadow-sm` for subtle depth
+   - Input field enhanced: Added `glow-breathe` CSS class for breathing cyan glow on focus
+
+9. **backtest-config.tsx**:
+   - Run Backtest button already has Loader2 with animate-spin when isRunning ✓
+   - All date and number inputs now have `input-glow focus-visible:border-crypto-cyan/50 focus-visible:ring-2 focus-visible:ring-crypto-cyan/30 transition-all duration-200`
+   - Run Backtest button has `active:scale-[0.98] transition-all duration-200` for press feedback
+
+10. **history-section.tsx**:
+    - Summary stat cards now have different `card-accent-*` classes per card: cyan for Total Trades, green/red for Win Rate, green/red for Total PnL, gold for Avg PnL/Trade
+    - `number-animate` class already present on stat values ✓
+    - Trade table (`trade-table.tsx`): Added `cn` import and alternating row colors with `table-row-alt` class on odd-indexed rows
+
+### Verification
+- Ran `bun run lint`: 0 errors, 0 warnings
+- Dev server running normally, all API endpoints returning 200
+- No compile errors in dev.log
+
+## Stage Summary:
+- Bot Performance Charts component with P&L AreaChart, Win/Loss PieChart donut, Trade Volume BarChart, and summary stats
+- Integrated into Bot section as first component in right column
+- Styling polish across 7 component files: stat-cards, market-table, pnl-tracker, chart-section, chat-section, backtest-config, history-section/trade-table
+- Consistent use of existing CSS utilities: glass-card, gradient-border, card-accent-*, input-glow, glow-breathe, typing-dot, table-row-hover, table-row-alt, number-animate, cyan-scrollbar
+- Zero lint errors, zero runtime errors
+
+---
+Task ID: 27
+Agent: main
+Task: QA assessment, connection status fix, new features integration verification, final QA
+
+## Current Project Status Assessment
+
+The Crypto IA Pro platform is mature and stable with 6 fully functional sections, real Binance data, database persistence, advanced charting, and multiple new dashboard widgets. All REST APIs returning 200. Zero lint errors. Zero browser JS errors. VLM rates the dashboard 8-9/10 across visual polish, color scheme, and layout quality.
+
+## Goals / Completed Modifications / Verification Results
+
+### 1. Fixed Connection Status Indicator (Bug Fix)
+- Problem: Header permanently showed "Connecting..." even though REST API data was actively flowing
+- Root cause: `useBinanceStream` hook set status to "connecting" on mount, overriding store default
+- Solution:
+  - Added "rest-api" as valid connection status type in store.ts
+  - Changed default connectionStatus from "disconnected" to "rest-api"
+  - Removed immediate "connecting" override on mount in use-binance-stream.ts
+  - Transition to "rest-api" after 2 failed Socket.IO attempts (was 3)
+  - Updated reconnect_failed to show "rest-api" instead of "disconnected"
+  - Updated cleanup handler to preserve "rest-api" status
+- Updated header.tsx: New "REST API" (cyan) status, renamed "Connected" to "Live" (green), "Disconnected" to "Offline" (red)
+- Verified: Header now shows "REST API" immediately instead of permanent "Connecting..."
+
+### 2. Verified New Features (from subagents)
+- Fear & Greed Index widget: Semi-circular SVG gauge with 5 sentiment zones, animated needle, 7-day history
+- Multi-Timeframe Analysis: 6 timeframes with RSI + MACD signals and consensus summary
+- Trading Calculator: 3 tabs (Position Size, Risk/Reward, DCA) with real-time calculations
+- Crypto News Feed: 10 mock items with category filtering, expandable summaries
+- Bot Performance Charts: P&L AreaChart, Win/Loss PieChart, Trade Volume BarChart
+- All integrated into dashboard and bot sections
+
+### 3. Styling Polish Verified (from subagent)
+- stat-cards: hover:scale-[1.02], larger icons, number-animate
+- market-table: table-row-hover, 24h% color pills, row borders, cyan-scrollbar
+- pnl-tracker: Gradient overlay, gradient-text, card accents
+- chart-section: Glass panel on controls, active toggle glow, better spacing
+- chat-section: typing-dot indicator, user bubble gradient, AI bubble shadow, input glow
+- backtest-config: input-glow, focus:border-crypto-cyan, loading spinner
+- history-section: Per-card accents, number-animate, alternating row colors
+
+### 4. Final QA Results
+- Lint: 0 errors, 0 warnings
+- Dev server: running normally, all API endpoints returning 200
+- Browser QA: 0 JavaScript errors across all sections (dashboard, chart, AI, bot, backtest, history)
+- Connection status correctly shows "REST API" (cyan Wifi icon)
+- VLM assessment: Visual Polish 8/10, Information Density 7/10, Color Scheme 9/10, Layout Quality 8/10
+
+## Unresolved Issues / Risks / Next Phase Recommendations
+
+### Unresolved Issues:
+- Socket.IO WebSocket upgrade through Caddy gateway still fails (known Caddy limitation) - REST API provides data every 60s as adequate fallback
+- Bot trades are mock/simulated only - no actual Binance API execution (by design for safety)
+- News feed uses mock data - could integrate real news API
+- Fear & Greed Index uses derived mock values - could integrate real API
+
+### Priority Recommendations for Next Phase:
+1. Integrate real-time news using web-search skill for the Crypto News Feed
+2. Add chart drawing tools (trendlines, rectangles, annotations with persistence)
+3. Add social trading features (strategy sharing, copy trading)
+4. Add portfolio rebalancing suggestions based on AI analysis
+5. Add keyboard shortcuts for common actions (1-6 for sections, B for bot toggle)
+6. Add export functionality (export trades to CSV, portfolio to PDF)
+7. Add more mobile optimizations (swipe gestures, pull-to-refresh, haptic feedback)
+8. Consider Server-Sent Events (SSE) as alternative to Socket.IO for real-time updates

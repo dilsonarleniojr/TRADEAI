@@ -182,7 +182,7 @@ export function PnlTracker() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="pb-2">
+          <CardContent className="pb-2 relative">
             <div className="h-[200px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={pnlTimeline} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
@@ -231,6 +231,8 @@ export function PnlTracker() {
                   />
                 </AreaChart>
               </ResponsiveContainer>
+              {/* Gradient overlay at bottom of chart */}
+              <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[var(--glass-bg)] to-transparent pointer-events-none" />
             </div>
           </CardContent>
         </Card>
@@ -248,7 +250,7 @@ export function PnlTracker() {
           </CardHeader>
           <CardContent className="space-y-3">
             {/* Today's P&L */}
-            <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50">
+            <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50 card-accent-cyan">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 rounded-md bg-crypto-cyan/10">
                   <Target className="w-3.5 h-3.5 text-crypto-cyan" />
@@ -266,7 +268,7 @@ export function PnlTracker() {
             </div>
 
             {/* 7-day P&L */}
-            <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50">
+            <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50 card-accent-green">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 rounded-md bg-crypto-cyan/10">
                   <TrendingUp className="w-3.5 h-3.5 text-crypto-cyan" />
@@ -284,7 +286,7 @@ export function PnlTracker() {
             </div>
 
             {/* 30-day P&L */}
-            <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50">
+            <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30 border border-border/50 card-accent-gold">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 rounded-md bg-crypto-cyan/10">
                   <Calendar className="w-3.5 h-3.5 text-crypto-cyan" />
@@ -302,7 +304,7 @@ export function PnlTracker() {
             </div>
 
             {/* Win/Loss Ratio Bar */}
-            <div className="p-2.5 rounded-lg bg-secondary/30 border border-border/50">
+            <div className="p-2.5 rounded-lg bg-secondary/30 border border-border/50 card-accent-red">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 rounded-md bg-crypto-gold/10">

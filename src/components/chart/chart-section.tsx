@@ -121,7 +121,7 @@ export function ChartSection() {
       <PriceInfo symbol={selectedSymbol} interval={interval} rsiValue={rsiValue} />
 
       {/* Chart Controls */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 glass rounded-xl p-3 border border-border/50">
         {/* Symbol Selector */}
         <Select value={selectedSymbol} onValueChange={setSelectedSymbol}>
           <SelectTrigger className="w-[140px] h-8 text-xs bg-card/50 border-border">
@@ -143,9 +143,9 @@ export function ChartSection() {
               key={int.value}
               variant={interval === int.value ? 'default' : 'ghost'}
               size="sm"
-              className={`h-7 px-2.5 text-xs ${
+              className={`h-7 px-2.5 text-xs transition-all duration-200 ${
                 interval === int.value
-                  ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30'
+                  ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30 scale-[1.02] shadow-sm shadow-crypto-cyan/10'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
               onClick={() => setInterval(int.value)}
@@ -160,9 +160,9 @@ export function ChartSection() {
           <Button
             variant={showSMA20 ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs ${
+            className={`h-7 px-2 text-xs transition-all duration-200 ${
               showSMA20
-                ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'
+                ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 scale-[1.02] shadow-sm shadow-yellow-500/10'
                 : 'text-muted-foreground'
             }`}
             onClick={() => setShowSMA20(!showSMA20)}
@@ -172,9 +172,9 @@ export function ChartSection() {
           <Button
             variant={showSMA50 ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs ${
+            className={`h-7 px-2 text-xs transition-all duration-200 ${
               showSMA50
-                ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
+                ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 scale-[1.02] shadow-sm shadow-purple-500/10'
                 : 'text-muted-foreground'
             }`}
             onClick={() => setShowSMA50(!showSMA50)}
@@ -184,9 +184,9 @@ export function ChartSection() {
           <Button
             variant={showBollinger ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs ${
+            className={`h-7 px-2 text-xs transition-all duration-200 ${
               showBollinger
-                ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30'
+                ? 'bg-crypto-cyan/20 text-crypto-cyan hover:bg-crypto-cyan/30 scale-[1.02] shadow-sm shadow-crypto-cyan/10'
                 : 'text-muted-foreground'
             }`}
             onClick={() => setShowBollinger(!showBollinger)}
@@ -196,9 +196,9 @@ export function ChartSection() {
           <Button
             variant={showFibonacci ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs ${
+            className={`h-7 px-2 text-xs transition-all duration-200 ${
               showFibonacci
-                ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
+                ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 scale-[1.02] shadow-sm shadow-amber-500/10'
                 : 'text-muted-foreground'
             }`}
             onClick={() => setShowFibonacci(!showFibonacci)}
@@ -208,9 +208,9 @@ export function ChartSection() {
           <Button
             variant={showEMA12 ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs ${
+            className={`h-7 px-2 text-xs transition-all duration-200 ${
               showEMA12
-                ? 'bg-teal-500/20 text-teal-400 hover:bg-teal-500/30'
+                ? 'bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 scale-[1.02] shadow-sm shadow-teal-500/10'
                 : 'text-muted-foreground'
             }`}
             onClick={() => setShowEMA12(!showEMA12)}
@@ -220,9 +220,9 @@ export function ChartSection() {
           <Button
             variant={showEMA26 ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs ${
+            className={`h-7 px-2 text-xs transition-all duration-200 ${
               showEMA26
-                ? 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'
+                ? 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 scale-[1.02] shadow-sm shadow-orange-500/10'
                 : 'text-muted-foreground'
             }`}
             onClick={() => setShowEMA26(!showEMA26)}
@@ -232,9 +232,9 @@ export function ChartSection() {
           <Button
             variant={showVolumeProfile ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs ${
+            className={`h-7 px-2 text-xs transition-all duration-200 ${
               showVolumeProfile
-                ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 scale-[1.02] shadow-sm shadow-emerald-500/10'
                 : 'text-muted-foreground'
             }`}
             onClick={() => setShowVolumeProfile(!showVolumeProfile)}
@@ -244,9 +244,9 @@ export function ChartSection() {
           <Button
             variant={showIchimoku ? 'default' : 'ghost'}
             size="sm"
-            className={`h-7 px-2 text-xs ${
+            className={`h-7 px-2 text-xs transition-all duration-200 ${
               showIchimoku
-                ? 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/30'
+                ? 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 scale-[1.02] shadow-sm shadow-rose-500/10'
                 : 'text-muted-foreground'
             }`}
             onClick={() => setShowIchimoku(!showIchimoku)}
@@ -293,7 +293,9 @@ export function ChartSection() {
       </div>
 
       {/* Technical Indicators Panel */}
-      <IndicatorsPanel symbol={selectedSymbol} interval={interval} />
+      <div className="mt-1">
+        <IndicatorsPanel symbol={selectedSymbol} interval={interval} />
+      </div>
     </motion.div>
   );
 }
