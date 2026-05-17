@@ -95,7 +95,7 @@ export function BacktestConfig({
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <Settings className="w-4 h-4 text-crypto-cyan" />
-          Backtest Configuration
+          Configuração do Backtest
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -104,8 +104,8 @@ export function BacktestConfig({
           <div className="flex items-center gap-2">
             <GitCompare className="w-4 h-4 text-crypto-gold" />
             <div>
-              <Label className="text-xs font-medium cursor-pointer">Compare Mode</Label>
-              <p className="text-[10px] text-muted-foreground">Run multiple strategies side-by-side</p>
+              <Label className="text-xs font-medium cursor-pointer">Modo Comparação</Label>
+              <p className="text-[10px] text-muted-foreground">Execute múltiplas estratégias lado a lado</p>
             </div>
           </div>
           <Switch
@@ -119,7 +119,7 @@ export function BacktestConfig({
         {compareMode && (
           <div className="space-y-2 p-3 rounded-lg border border-crypto-gold/20 bg-crypto-gold/5">
             <Label className="text-[10px] text-crypto-gold uppercase tracking-wider font-medium">
-              Select Strategies (2-3)
+              Selecionar Estratégias (2-3)
             </Label>
             <div className="space-y-2">
               {STRATEGY_CHECKBOX_CONFIG.map((s) => (
@@ -158,7 +158,7 @@ export function BacktestConfig({
             </div>
             {selectedStrategies.length < 2 && (
               <p className="text-[10px] text-crypto-gold/70">
-                Select at least 2 strategies to compare
+                Selecione pelo menos 2 estratégias para comparar
               </p>
             )}
           </div>
@@ -166,7 +166,7 @@ export function BacktestConfig({
 
         {/* Symbol */}
         <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">Symbol</Label>
+          <Label className="text-xs text-muted-foreground">Símbolo</Label>
           <Select
             value={config.symbol}
             onValueChange={(val) => updateConfig("symbol", val)}
@@ -187,7 +187,7 @@ export function BacktestConfig({
         {/* Strategy (only shown when not in compare mode) */}
         {!compareMode && (
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Strategy</Label>
+            <Label className="text-xs text-muted-foreground">Estratégia</Label>
             <Select
               value={config.strategy}
               onValueChange={(val) =>
@@ -209,7 +209,7 @@ export function BacktestConfig({
         {/* Date Range */}
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Start Date</Label>
+            <Label className="text-xs text-muted-foreground">Data Início</Label>
             <Input
               type="date"
               value={config.startDate}
@@ -218,7 +218,7 @@ export function BacktestConfig({
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">End Date</Label>
+            <Label className="text-xs text-muted-foreground">Data Fim</Label>
             <Input
               type="date"
               value={config.endDate}
@@ -230,7 +230,7 @@ export function BacktestConfig({
 
         {/* Initial Balance */}
         <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">Initial Balance</Label>
+          <Label className="text-xs text-muted-foreground">Capital Inicial</Label>
           <Input
             type="number"
             min={100}
@@ -250,10 +250,10 @@ export function BacktestConfig({
         {!compareMode && config.strategy === "RSI" && (
           <div className="space-y-3 pt-2 border-t border-border">
             <span className="text-[10px] text-crypto-cyan uppercase tracking-wider font-medium">
-              RSI Parameters
+              Parâmetros RSI
             </span>
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">RSI Period</Label>
+              <Label className="text-xs text-muted-foreground">Período RSI</Label>
               <Input
                 type="number"
                 min={2}
@@ -270,7 +270,7 @@ export function BacktestConfig({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Buy Below</Label>
+                <Label className="text-xs text-muted-foreground">Comprar Abaixo</Label>
                 <Input
                   type="number"
                   min={1}
@@ -283,7 +283,7 @@ export function BacktestConfig({
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Sell Above</Label>
+                <Label className="text-xs text-muted-foreground">Vender Acima</Label>
                 <Input
                   type="number"
                   min={1}
@@ -302,11 +302,11 @@ export function BacktestConfig({
         {!compareMode && config.strategy === "MACD" && (
           <div className="space-y-3 pt-2 border-t border-border">
             <span className="text-[10px] text-crypto-cyan uppercase tracking-wider font-medium">
-              MACD Parameters
+              Parâmetros MACD
             </span>
             <div className="grid grid-cols-3 gap-2">
               <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Fast</Label>
+                <Label className="text-xs text-muted-foreground">Rápido</Label>
                 <Input
                   type="number"
                   min={2}
@@ -319,7 +319,7 @@ export function BacktestConfig({
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Slow</Label>
+                <Label className="text-xs text-muted-foreground">Lento</Label>
                 <Input
                   type="number"
                   min={2}
@@ -332,7 +332,7 @@ export function BacktestConfig({
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Signal</Label>
+                <Label className="text-xs text-muted-foreground">Sinal</Label>
                 <Input
                   type="number"
                   min={2}
@@ -350,14 +350,14 @@ export function BacktestConfig({
 
         {!compareMode && config.strategy === "AI" && (
           <div className="text-xs text-crypto-cyan bg-crypto-cyan/5 border border-crypto-cyan/20 rounded-md p-2.5 pt-2 border-t border-border mt-2">
-            AI strategy uses simulated signals for backtesting. Real AI would analyze patterns, sentiment, and multiple indicators.
+            A estratégia de IA usa sinais simulados para backtesting. Uma IA real analisaria padrões, sentimento e múltiplos indicadores.
           </div>
         )}
 
         {/* Compare mode note */}
         {compareMode && (
           <div className="text-xs text-crypto-gold bg-crypto-gold/5 border border-crypto-gold/20 rounded-md p-2.5">
-            All strategies will use the same symbol, date range, and initial balance. Default parameters are used for each strategy.
+            Todas as estratégias usarão o mesmo símbolo, intervalo de datas e capital inicial. Parâmetros padrão são usados para cada estratégia.
           </div>
         )}
 
@@ -370,12 +370,12 @@ export function BacktestConfig({
           {isRunning ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              {compareMode ? "Comparing Strategies..." : "Running Backtest..."}
+              {compareMode ? "Comparando Estratégias..." : "Executando Backtest..."}
             </>
           ) : (
             <>
               <Play className="w-4 h-4 mr-2" />
-              {compareMode ? "Compare Strategies" : "Run Backtest"}
+              {compareMode ? "Comparar Estratégias" : "Executar Backtest"}
             </>
           )}
         </Button>

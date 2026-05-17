@@ -469,7 +469,7 @@ export function BacktestSection() {
 
       if (filteredKlines.length < 30) {
         throw new Error(
-          "Not enough data for the selected date range. Please choose a wider range."
+          "Dados históricos insuficientes para o intervalo selecionado. Escolha um intervalo maior."
         );
       }
 
@@ -508,9 +508,9 @@ export function BacktestSection() {
           <History className="w-5 h-5 text-crypto-cyan" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold">Strategy Backtesting</h2>
+          <h2 className="text-lg font-semibold">Backtesting de Estratégias</h2>
           <p className="text-xs text-muted-foreground">
-            Test your trading strategies against historical data
+            Teste suas estratégias de trading contra dados históricos
           </p>
         </div>
       </div>
@@ -554,11 +554,11 @@ export function BacktestSection() {
                 <div className="w-14 h-14 rounded-2xl bg-crypto-cyan/10 flex items-center justify-center mx-auto mb-4">
                   <History className="w-7 h-7 text-crypto-cyan" />
                 </div>
-                <h3 className="text-sm font-medium mb-1">No Results Yet</h3>
+                <h3 className="text-sm font-medium mb-1">Sem Resultados Ainda</h3>
                 <p className="text-xs text-muted-foreground max-w-sm mx-auto">
                   {compareMode
-                    ? "Select 2-3 strategies and click \"Compare Strategies\" to see side-by-side results."
-                    : "Configure your backtest parameters and click \"Run Backtest\" to see strategy performance results."
+                    ? "Selecione 2-3 estratégias e clique em \"Comparar Estratégias\" para ver resultados lado a lado."
+                    : "Configure os parâmetros do backtest e clique em \"Executar Backtest\" para ver os resultados de performance da estratégia."
                   }
                 </p>
               </CardContent>

@@ -41,7 +41,7 @@ function PositionSizeTab() {
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
             <DollarSign className="w-3 h-3 text-crypto-cyan" />
-            Account Balance
+            Saldo da Conta
           </label>
           <Input
             type="number"
@@ -54,7 +54,7 @@ function PositionSizeTab() {
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
             <Percent className="w-3 h-3 text-crypto-cyan" />
-            Risk %
+            Risco %
           </label>
           <Input
             type="number"
@@ -68,7 +68,7 @@ function PositionSizeTab() {
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
             <TrendingUp className="w-3 h-3 text-crypto-green" />
-            Entry Price
+            Preço de Entrada
           </label>
           <Input
             type="number"
@@ -81,7 +81,7 @@ function PositionSizeTab() {
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
             <TrendingDown className="w-3 h-3 text-crypto-red" />
-            Stop Loss Price
+            Stop Loss
           </label>
           <Input
             type="number"
@@ -96,32 +96,32 @@ function PositionSizeTab() {
       {/* Results */}
       <div className="grid grid-cols-3 gap-2">
         <div className="glass-card p-3 text-center card-accent-cyan">
-          <p className="text-[10px] text-muted-foreground mb-1">Position Size</p>
+          <p className="text-[10px] text-muted-foreground mb-1">Tamanho da Posição</p>
           <p className="text-sm font-bold gradient-text-cyan">
             {results.positionSize > 0 ? formatPrice(results.positionSize) : "0.00"}
           </p>
-          <p className="text-[10px] text-muted-foreground">units</p>
+          <p className="text-[10px] text-muted-foreground">unidades</p>
         </div>
         <div className="glass-card p-3 text-center card-accent-green">
-          <p className="text-[10px] text-muted-foreground mb-1">Position Value</p>
+          <p className="text-[10px] text-muted-foreground mb-1">Valor da Posição</p>
           <p className="text-sm font-bold gradient-text-green">
             ${results.positionValue > 0 ? formatPrice(results.positionValue) : "0.00"}
           </p>
           <p className="text-[10px] text-muted-foreground">total</p>
         </div>
         <div className="glass-card p-3 text-center card-accent-red">
-          <p className="text-[10px] text-muted-foreground mb-1">Risk Amount</p>
+          <p className="text-[10px] text-muted-foreground mb-1">Valor em Risco</p>
           <p className="text-sm font-bold text-crypto-red">
             ${results.riskAmount > 0 ? formatPrice(results.riskAmount) : "0.00"}
           </p>
-          <p className="text-[10px] text-muted-foreground">at risk</p>
+          <p className="text-[10px] text-muted-foreground">em risco</p>
         </div>
       </div>
 
       {results.diff === 0 && parseFloat(entryPrice) > 0 && (
         <p className="text-[10px] text-crypto-gold flex items-center gap-1">
           <AlertTriangle className="w-3 h-3" />
-          Entry and Stop Loss prices must differ to calculate position size.
+          Preço de entrada e Stop Loss devem ser diferentes para calcular o tamanho da posição.
         </p>
       )}
     </div>
@@ -151,19 +151,19 @@ function RiskRewardTab() {
     let assessment = "";
     let assessmentColor = "";
     if (ratio >= 3) {
-      assessment = "Excellent trade setup";
+      assessment = "Excelente configuração de trade";
       assessmentColor = "text-crypto-green";
     } else if (ratio >= 2) {
-      assessment = "Good trade — favorable R:R";
+      assessment = "Bom trade — R:R favorável";
       assessmentColor = "text-crypto-green";
     } else if (ratio >= 1) {
-      assessment = "Acceptable — consider tightening stop";
+      assessment = "Aceitável — considere apertar o stop";
       assessmentColor = "text-crypto-gold";
     } else if (ratio > 0) {
-      assessment = "Consider adjusting — risk exceeds reward";
+      assessment = "Considere ajustar — risco excede retorno";
       assessmentColor = "text-crypto-red";
     } else {
-      assessment = "Enter prices to calculate";
+      assessment = "Insira preços para calcular";
       assessmentColor = "text-muted-foreground";
     }
 
@@ -181,7 +181,7 @@ function RiskRewardTab() {
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
             <TrendingUp className="w-3 h-3 text-crypto-cyan" />
-            Entry Price
+            Preço de Entrada
           </label>
           <Input
             type="number"
@@ -222,8 +222,8 @@ function RiskRewardTab() {
       {/* Risk/Reward Visual Bar */}
       <div className="space-y-1.5">
         <div className="flex justify-between text-[10px] text-muted-foreground">
-          <span>Risk ({riskWidth.toFixed(1)}%)</span>
-          <span>Reward ({rewardWidth.toFixed(1)}%)</span>
+          <span>Risco ({riskWidth.toFixed(1)}%)</span>
+          <span>Retorno ({rewardWidth.toFixed(1)}%)</span>
         </div>
         <div className="h-6 rounded-full overflow-hidden flex bg-secondary">
           <motion.div
@@ -256,11 +256,11 @@ function RiskRewardTab() {
       {/* Results Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         <div className="glass-card p-2.5 text-center">
-          <p className="text-[10px] text-muted-foreground">Risk</p>
+          <p className="text-[10px] text-muted-foreground">Risco</p>
           <p className="text-xs font-bold text-crypto-red">${formatPrice(results.risk)}</p>
         </div>
         <div className="glass-card p-2.5 text-center">
-          <p className="text-[10px] text-muted-foreground">Reward</p>
+          <p className="text-[10px] text-muted-foreground">Retorno</p>
           <p className="text-xs font-bold text-crypto-green">${formatPrice(results.reward)}</p>
         </div>
         <div className="glass-card p-2.5 text-center card-accent-cyan">
@@ -362,7 +362,7 @@ function DCACalculatorTab() {
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
             <DollarSign className="w-3 h-3 text-crypto-cyan" />
-            Investment / Order
+            Investimento / Ordem
           </label>
           <Input
             type="number"
@@ -375,7 +375,7 @@ function DCACalculatorTab() {
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
             <Layers className="w-3 h-3 text-crypto-cyan" />
-            Number of Orders
+            Número de Ordens
           </label>
           <Input
             type="number"
@@ -390,7 +390,7 @@ function DCACalculatorTab() {
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
             <TrendingDown className="w-3 h-3 text-crypto-red" />
-            Price Drop % / Order
+            Queda de Preço % / Ordem
           </label>
           <Input
             type="number"
@@ -410,11 +410,11 @@ function DCACalculatorTab() {
             <thead>
               <tr className="border-b border-border/50">
                 <th className="text-left py-1.5 px-2 font-medium text-muted-foreground">#</th>
-                <th className="text-right py-1.5 px-2 font-medium text-muted-foreground">Price</th>
+                <th className="text-right py-1.5 px-2 font-medium text-muted-foreground">Preço</th>
                 <th className="text-right py-1.5 px-2 font-medium text-muted-foreground">Qty</th>
-                <th className="text-right py-1.5 px-2 font-medium text-muted-foreground">Invested</th>
-                <th className="text-right py-1.5 px-2 font-medium text-muted-foreground">Cum. Inv.</th>
-                <th className="text-right py-1.5 px-2 font-medium text-muted-foreground">Avg Price</th>
+                <th className="text-right py-1.5 px-2 font-medium text-muted-foreground">Investido</th>
+                <th className="text-right py-1.5 px-2 font-medium text-muted-foreground">Inv. Acum.</th>
+                <th className="text-right py-1.5 px-2 font-medium text-muted-foreground">Preço Médio</th>
               </tr>
             </thead>
             <tbody>
@@ -445,23 +445,23 @@ function DCACalculatorTab() {
       {summary && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           <div className="glass-card p-2.5 text-center">
-            <p className="text-[10px] text-muted-foreground">Total Invested</p>
+            <p className="text-[10px] text-muted-foreground">Total Investido</p>
             <p className="text-xs font-bold">${formatPrice(summary.totalInvested)}</p>
           </div>
           <div className="glass-card p-2.5 text-center">
-            <p className="text-[10px] text-muted-foreground">Total Units</p>
+            <p className="text-[10px] text-muted-foreground">Total de Unidades</p>
             <p className="text-xs font-bold gradient-text-cyan">{summary.totalUnits.toFixed(6)}</p>
           </div>
           <div className="glass-card p-2.5 text-center card-accent-cyan">
-            <p className="text-[10px] text-muted-foreground">Avg Entry</p>
+            <p className="text-[10px] text-muted-foreground">Entrada Média</p>
             <p className="text-xs font-bold gradient-text-cyan">${formatPrice(summary.avgPrice)}</p>
           </div>
           <div className="glass-card p-2.5 text-center">
-            <p className="text-[10px] text-muted-foreground">Current Value</p>
+            <p className="text-[10px] text-muted-foreground">Valor Atual</p>
             <p className="text-xs font-bold">${formatPrice(summary.currentValue)}</p>
           </div>
           <div className={cn("glass-card p-2.5 text-center", summary.pnl >= 0 ? "card-accent-green" : "card-accent-red")}>
-            <p className="text-[10px] text-muted-foreground">P&L</p>
+            <p className="text-[10px] text-muted-foreground">L/P</p>
             <p className={cn("text-xs font-bold", summary.pnl >= 0 ? "text-crypto-green" : "text-crypto-red")}>
               {summary.pnl >= 0 ? "+" : ""}{formatPrice(summary.pnl)} ({summary.pnlPct.toFixed(2)}%)
             </p>
@@ -484,7 +484,7 @@ export function TradingCalculator() {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Calculator className="w-4 h-4 text-crypto-cyan" />
-            Trading Calculator
+            Calculadora de Trading
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -492,15 +492,15 @@ export function TradingCalculator() {
             <TabsList className="w-full h-8 mb-3">
               <TabsTrigger value="position" className="text-[11px] gap-1 h-6">
                 <Target className="w-3 h-3" />
-                Position
+                Posição
               </TabsTrigger>
               <TabsTrigger value="riskreward" className="text-[11px] gap-1 h-6">
                 <Layers className="w-3 h-3" />
-                Risk/Reward
+                Risco/Retorno
               </TabsTrigger>
               <TabsTrigger value="dca" className="text-[11px] gap-1 h-6">
                 <DollarSign className="w-3 h-3" />
-                DCA
+                Calculadora DCA
               </TabsTrigger>
             </TabsList>
             <TabsContent value="position">

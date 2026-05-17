@@ -144,10 +144,10 @@ export function MarketTable() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-crypto-cyan" />
-              Market Overview
+              Visão do Mercado
             </CardTitle>
             <span className="text-xs text-muted-foreground">
-              {tickerList.length} assets
+              {tickerList.length} ativos
             </span>
           </div>
         </CardHeader>
@@ -162,22 +162,22 @@ export function MarketTable() {
                     #
                   </TableHead>
                   <TableHead className="text-xs font-medium text-muted-foreground h-8">
-                    Asset
+                    Ativo
                   </TableHead>
                   <TableHead className="text-xs font-medium text-muted-foreground text-right h-8">
-                    Price
+                    Preço
                   </TableHead>
                   <TableHead className="text-xs font-medium text-muted-foreground text-right h-8">
                     24h %
                   </TableHead>
                   <TableHead className="text-xs font-medium text-muted-foreground text-right h-8 hidden sm:table-cell">
-                    High/Low
+                    Máx/Mín
                   </TableHead>
                   <TableHead className="text-xs font-medium text-muted-foreground text-right h-8 hidden md:table-cell">
                     Volume
                   </TableHead>
                   <TableHead className="text-xs font-medium text-muted-foreground text-right h-8 w-[70px] hidden lg:table-cell">
-                    24h Trend
+                    Tendência 24h
                   </TableHead>
                 </TableRow>
               </TableHeader>

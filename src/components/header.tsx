@@ -65,7 +65,7 @@ export function Header() {
                   : "text-muted-foreground"
               }`}
             >
-              Paper
+              Simulado
             </span>
             <Switch
               checked={tradingMode === "live"}
@@ -81,7 +81,7 @@ export function Header() {
                   : "text-muted-foreground"
               }`}
             >
-              Live
+              Real
             </span>
           </div>
         </div>
@@ -115,7 +115,7 @@ export function Header() {
           {botActive && (
             <Badge className="bg-crypto-green/15 text-crypto-green border-crypto-green/30 hover:bg-crypto-green/20 text-xs glow-green-sm">
               <span className="w-1.5 h-1.5 rounded-full bg-crypto-green mr-1.5 pulse-soft" />
-              Bot Active
+              Bot Ativo
             </Badge>
           )}
           <Button
@@ -131,7 +131,7 @@ export function Header() {
                   <div className="absolute w-2 h-2 rounded-full bg-crypto-green animate-ping opacity-60" />
                 </div>
                 <span className="hidden sm:inline text-xs text-crypto-green font-medium">
-                  Live
+                  Ao Vivo
                 </span>
               </>
             )}
@@ -150,7 +150,7 @@ export function Header() {
               <>
                 <WifiOff className="w-4 h-4 text-crypto-red" />
                 <span className="hidden sm:inline text-xs text-crypto-red font-medium">
-                  Offline
+                  Desconectado
                 </span>
               </>
             )}
@@ -158,7 +158,7 @@ export function Header() {
               <>
                 <Loader2 className="w-4 h-4 text-crypto-gold animate-spin" />
                 <span className="hidden sm:inline text-xs text-crypto-gold font-medium">
-                  Connecting...
+                  Conectando...
                 </span>
               </>
             )}

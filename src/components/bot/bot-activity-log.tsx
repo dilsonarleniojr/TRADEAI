@@ -19,43 +19,43 @@ const INITIAL_LOG_ENTRIES: LogEntry[] = [
   {
     id: "l1",
     timestamp: Date.now() - 3600000,
-    message: "Bot started - Strategy: AI, Symbol: BTCUSDT",
+    message: "Bot iniciado - Estratégia: AI, Símbolo: BTCUSDT",
     type: "system",
   },
   {
     id: "l2",
     timestamp: Date.now() - 3500000,
-    message: "Analyzing market conditions...",
+    message: "Analisando condições de mercado...",
     type: "info",
   },
   {
     id: "l3",
     timestamp: Date.now() - 3400000,
-    message: "Signal: BUY BTCUSDT at $78,301.00",
+    message: "Sinal: COMPRA BTCUSDT a $78,301.00",
     type: "buy",
   },
   {
     id: "l4",
     timestamp: Date.now() - 3300000,
-    message: "Order placed: 0.01 BTC at $78,301.00",
+    message: "Ordem colocada: 0.01 BTC a $78,301.00",
     type: "buy",
   },
   {
     id: "l5",
     timestamp: Date.now() - 3000000,
-    message: "Price update: BTCUSDT at $78,450.00 (+0.19%)",
+    message: "Atualização de preço: BTCUSDT a $78,450.00 (+0.19%)",
     type: "info",
   },
   {
     id: "l6",
     timestamp: Date.now() - 2400000,
-    message: "Take Profit triggered: +2.3% on BTCUSDT",
+    message: "Take Profit ativado: +2.3% em BTCUSDT",
     type: "profit",
   },
   {
     id: "l7",
     timestamp: Date.now() - 2000000,
-    message: "Signal: SELL ETHUSDT at $3,875.20",
+    message: "Sinal: VENDA ETHUSDT a $3,875.20",
     type: "sell",
   },
 ];
@@ -113,10 +113,10 @@ function getLogColor(type: LogEntry["type"]) {
 
 function getRelativeTime(timestamp: number): string {
   const diff = Math.floor((Date.now() - timestamp) / 1000);
-  if (diff < 5) return "just now";
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 5) return "agora";
+  if (diff < 60) return `${diff}s atrás`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m atrás`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`;
   return new Date(timestamp).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
@@ -150,7 +150,7 @@ export function BotActivityLog() {
             ? {
                 id: `${trade.id}-pnl`,
                 timestamp: tradeTime + 1,
-                message: `Trade PnL: ${trade.pnl >= 0 ? "+" : ""}$${Math.abs(trade.pnl).toFixed(2)}`,
+                message: `L/P do Trade: ${trade.pnl >= 0 ? "+" : ""}$${Math.abs(trade.pnl).toFixed(2)}`,
                 type: trade.pnl >= 0 ? "profit" : "loss",
               }
             : null;
@@ -180,11 +180,11 @@ export function BotActivityLog() {
     if (!botActive) return;
 
     const actions: Omit<LogEntry, "id" | "timestamp">[] = [
-      { message: `Analyzing ${botConfig.symbol} market conditions...`, type: "info" },
-      { message: `RSI check: ${botConfig.symbol} at neutral zone`, type: "info" },
-      { message: `Stop loss check: All positions safe`, type: "info" },
-      { message: `MACD crossover detected on ${botConfig.symbol}`, type: "system" },
-      { message: `Volume spike alert on ${botConfig.symbol}`, type: "system" },
+      { message: `Analisando condições de mercado de ${botConfig.symbol}...`, type: "info" },
+      { message: `Verificação RSI: ${botConfig.symbol} na zona neutra`, type: "info" },
+      { message: `Verificação stop loss: Todas as posições seguras`, type: "info" },
+      { message: `Cruzamento MACD detectado em ${botConfig.symbol}`, type: "system" },
+      { message: `Alerta de pico de volume em ${botConfig.symbol}`, type: "system" },
     ];
 
     const addLog = () => {
@@ -210,10 +210,10 @@ export function BotActivityLog() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Activity className="w-4 h-4 text-crypto-cyan" />
-            Activity Log
+            Log de Atividade
           </CardTitle>
           <Badge variant="outline" className="text-[10px] border-border">
-            {allLogs.length} entries
+            {allLogs.length} entradas
           </Badge>
         </div>
       </CardHeader>

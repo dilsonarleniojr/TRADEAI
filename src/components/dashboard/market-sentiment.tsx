@@ -12,7 +12,7 @@ export function MarketSentiment() {
 
   const sentiment = useMemo(() => {
     const tickerValues = Object.values(tickers);
-    if (tickerValues.length === 0) return { score: 50, label: "Neutral", color: "#f59e0b" };
+    if (tickerValues.length === 0) return { score: 50, label: "Neutro", color: "#f59e0b" };
 
     // Calculate weighted sentiment based on price changes
     const totalVolume = tickerValues.reduce((sum, t) => sum + t.quoteVolume, 0);
@@ -30,19 +30,19 @@ export function MarketSentiment() {
     let color: string;
 
     if (score >= 75) {
-      label = "Extreme Greed";
+      label = "Ganância Extrema";
       color = "#22c55e";
     } else if (score >= 60) {
-      label = "Greed";
+      label = "Ganância";
       color = "#4ade80";
     } else if (score >= 45) {
-      label = "Neutral";
+      label = "Neutro";
       color = "#f59e0b";
     } else if (score >= 30) {
-      label = "Fear";
+      label = "Medo";
       color = "#fb923c";
     } else {
-      label = "Extreme Fear";
+      label = "Medo Extremo";
       color = "#ef4444";
     }
 
@@ -70,7 +70,7 @@ export function MarketSentiment() {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Gauge className="w-4 h-4 text-crypto-cyan" />
-            Market Sentiment
+            Sentimento do Mercado
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col items-center pb-4">
@@ -154,11 +154,11 @@ export function MarketSentiment() {
             <div className="flex items-center justify-between text-xs">
               <div className="flex items-center gap-1.5">
                 <TrendingUp className="w-3 h-3 text-crypto-green" />
-                <span className="text-crypto-green font-medium">{gainers} Gainers</span>
+                <span className="text-crypto-green font-medium">{gainers} Em Alta</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <TrendingDown className="w-3 h-3 text-crypto-red" />
-                <span className="text-crypto-red font-medium">{losers} Losers</span>
+                <span className="text-crypto-red font-medium">{losers} Em Baixa</span>
               </div>
             </div>
             <div className="w-full h-2 bg-secondary/50 rounded-full overflow-hidden flex shadow-inner">
@@ -177,9 +177,9 @@ export function MarketSentiment() {
             </div>
             {/* Labels */}
             <div className="flex justify-between text-[9px] text-muted-foreground">
-              <span>Extreme Fear</span>
-              <span>Neutral</span>
-              <span>Extreme Greed</span>
+              <span>Medo Extremo</span>
+              <span>Neutro</span>
+              <span>Ganância Extrema</span>
             </div>
           </div>
         </CardContent>

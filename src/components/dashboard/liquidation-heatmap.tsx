@@ -104,9 +104,9 @@ export function LiquidationHeatmap() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Flame className="w-4 h-4 text-crypto-red" />
-              Liquidation Heatmap
+              Mapa de Liquidações
               <span className="text-[10px] text-muted-foreground font-normal">
-                (BTC Estimated Levels)
+                (Níveis Estimados BTC)
               </span>
             </CardTitle>
           </div>
@@ -234,7 +234,7 @@ export function LiquidationHeatmap() {
           {/* Legend */}
           <div className="mt-4 flex items-center justify-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground font-medium">Low</span>
+              <span className="text-[10px] text-muted-foreground font-medium">Baixo</span>
               <div className="flex h-3 w-32 rounded-full overflow-hidden">
                 {Array.from({ length: 16 }, (_, i) => {
                   const t = i / 15;
@@ -244,20 +244,20 @@ export function LiquidationHeatmap() {
                   return <div key={i} className="flex-1" style={{ backgroundColor: `rgba(239,68,68,${(0.1 + (t - 0.5) * 1.6).toFixed(2)})` }} />;
                 })}
               </div>
-              <span className="text-[10px] text-muted-foreground font-medium">High</span>
+              <span className="text-[10px] text-muted-foreground font-medium">Alto</span>
             </div>
             <div className="flex items-center gap-4 ml-4">
               <div className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded-sm bg-crypto-green/60" />
-                <span className="text-[9px] text-muted-foreground">Long Liq</span>
+                <span className="text-[9px] text-muted-foreground">Liq. Long</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded-sm bg-crypto-red/60" />
-                <span className="text-[9px] text-muted-foreground">Short Liq</span>
+                <span className="text-[9px] text-muted-foreground">Liq. Short</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-5 border-t border-dashed border-crypto-cyan" />
-                <span className="text-[9px] text-muted-foreground">Current Price</span>
+                <span className="text-[9px] text-muted-foreground">Preço Atual</span>
               </div>
             </div>
           </div>
@@ -267,7 +267,7 @@ export function LiquidationHeatmap() {
             <div className="p-3 rounded-lg bg-crypto-green/5 border border-crypto-green/10">
               <div className="flex items-center gap-2 mb-1">
                 <TrendingUp className="w-3.5 h-3.5 text-crypto-green" />
-                <span className="text-xs text-muted-foreground">Est. Long Liquidations (24h)</span>
+                <span className="text-xs text-muted-foreground">Liquidações Long Estimadas (24h)</span>
               </div>
               <span className="text-base font-bold text-crypto-green number-animate">
                 {formatVolume(longLiqTotal)}
@@ -276,7 +276,7 @@ export function LiquidationHeatmap() {
             <div className="p-3 rounded-lg bg-crypto-red/5 border border-crypto-red/10">
               <div className="flex items-center gap-2 mb-1">
                 <TrendingDown className="w-3.5 h-3.5 text-crypto-red" />
-                <span className="text-xs text-muted-foreground">Est. Short Liquidations (24h)</span>
+                <span className="text-xs text-muted-foreground">Liquidações Short Estimadas (24h)</span>
               </div>
               <span className="text-base font-bold text-crypto-red number-animate">
                 {formatVolume(shortLiqTotal)}

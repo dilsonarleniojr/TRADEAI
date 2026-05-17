@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useCryptoStore } from '@/lib/store';
+import { formatPrice } from '@/lib/format';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +22,8 @@ interface SignalResult {
   action: 'BUY' | 'SELL' | 'HOLD';
   confidence: number;
   reasoning: string;
+  stopLoss: number;
+  takeProfit: number;
 }
 
 const ACTION_CONFIG = {
@@ -30,7 +33,7 @@ const ACTION_CONFIG = {
     bg: 'bg-emerald-400/10',
     border: 'border-emerald-400/20',
     badge: 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20',
-    label: 'Buy Signal',
+    label: 'Sinal de Compra',
   },
   SELL: {
     icon: TrendingDown,
@@ -38,7 +41,7 @@ const ACTION_CONFIG = {
     bg: 'bg-red-400/10',
     border: 'border-red-400/20',
     badge: 'bg-red-400/10 text-red-400 border-red-400/20',
-    label: 'Sell Signal',
+    label: 'Sinal de Venda',
   },
   HOLD: {
     icon: Minus,
@@ -46,7 +49,7 @@ const ACTION_CONFIG = {
     bg: 'bg-amber-400/10',
     border: 'border-amber-400/20',
     badge: 'bg-amber-400/10 text-amber-400 border-amber-400/20',
-    label: 'Hold Signal',
+    label: 'Sinal de Espera',
   },
 };
 
@@ -88,9 +91,18 @@ export function SignalGenerator() {
         const reasoning =
           typeof data.signal.reasoning === 'string'
             ? data.signal.reasoning
-            : 'No reasoning provided.';
+            : 'Nenhuma justificativa fornecida.';
 
-        const newSignal: SignalResult = { action, confidence, reasoning };
+        const stopLoss =
+          typeof data.signal.stopLoss === 'number' && data.signal.stopLoss > 0
+            ? data.signal.stopLoss
+            : ticker?.price ?? 0;
+        const takeProfit =
+          typeof data.signal.takeProfit === 'number' && data.signal.takeProfit > 0
+            ? data.signal.takeProfit
+            : ticker?.price ?? 0;
+
+        const newSignal: SignalResult = { action, confidence, reasoning, stopLoss, takeProfit };
         setSignal(newSignal);
 
         // Also add to store signals
@@ -101,20 +113,26 @@ export function SignalGenerator() {
           confidence,
           reasoning,
           priceAtSignal: ticker?.price ?? 0,
+          stopLoss,
+          takeProfit,
           createdAt: new Date().toISOString(),
         });
       } else {
         setSignal({
           action: 'HOLD',
           confidence: 0.5,
-          reasoning: 'Unable to generate analysis at this time.',
+          reasoning: 'Não foi possível gerar análise no momento.',
+          stopLoss: ticker?.price ?? 0,
+          takeProfit: ticker?.price ?? 0,
         });
       }
     } catch {
       setSignal({
         action: 'HOLD',
         confidence: 0.5,
-        reasoning: 'Network error. Please try again.',
+        reasoning: 'Erro de rede. Por favor, tente novamente.',
+        stopLoss: ticker?.price ?? 0,
+        takeProfit: ticker?.price ?? 0,
       });
     } finally {
       setIsGenerating(false);
@@ -124,13 +142,19 @@ export function SignalGenerator() {
   const actionConfig = signal ? ACTION_CONFIG[signal.action] : null;
   const ActionIcon = actionConfig?.icon ?? Minus;
 
+  const formatSlTpPercent = (entryPrice: number, targetPrice: number) => {
+    if (!entryPrice || entryPrice === 0) return '0%';
+    const pct = ((targetPrice - entryPrice) / entryPrice) * 100;
+    return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+  };
+
   return (
     <Card className="bg-card border-border">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Zap className="w-4 h-4 text-primary" />
-            <CardTitle className="text-sm">AI Signal Generator</CardTitle>
+            <CardTitle className="text-sm">Gerador de Sinais IA</CardTitle>
           </div>
           {signal && (
             <Badge variant="outline" className={actionConfig?.badge}>
@@ -140,7 +164,7 @@ export function SignalGenerator() {
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          Generate AI-powered signal for {selectedSymbol}
+          Gerar sinal com IA para {selectedSymbol}
         </p>
       </CardHeader>
 
@@ -155,12 +179,12 @@ export function SignalGenerator() {
           {isGenerating ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-              Analyzing...
+              Analisando...
             </>
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-              Generate Signal
+              Gerar Sinal
             </>
           )}
         </Button>
@@ -193,7 +217,7 @@ export function SignalGenerator() {
                       {selectedSymbol} •{' '}
                       {ticker
                         ? `$${ticker.price.toLocaleString()}`
-                        : 'No data'}
+                        : 'Sem dados'}
                     </p>
                   </div>
                 </div>
@@ -202,7 +226,7 @@ export function SignalGenerator() {
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-xs text-muted-foreground">
-                      Confidence
+                      Confiança
                     </span>
                     <span
                       className={`text-xs font-semibold ${actionConfig?.color}`}
@@ -217,12 +241,40 @@ export function SignalGenerator() {
                 </div>
               </div>
 
+              {/* Stop Loss / Take Profit */}
+              {(signal.stopLoss > 0 || signal.takeProfit > 0) && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-red-400/20 bg-red-400/5 p-3">
+                    <p className="text-[10px] text-red-400 font-medium mb-1 flex items-center gap-1">
+                      🛑 Stop Loss
+                    </p>
+                    <p className="text-sm font-bold text-red-400">
+                      ${formatPrice(signal.stopLoss)}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {formatSlTpPercent(ticker?.price ?? 0, signal.stopLoss)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-3">
+                    <p className="text-[10px] text-emerald-400 font-medium mb-1 flex items-center gap-1">
+                      ✅ Take Profit
+                    </p>
+                    <p className="text-sm font-bold text-emerald-400">
+                      ${formatPrice(signal.takeProfit)}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {formatSlTpPercent(ticker?.price ?? 0, signal.takeProfit)}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <Separator className="bg-border" />
 
               {/* Reasoning */}
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1">
-                  Reasoning
+                  Justificativa
                 </p>
                 <p className="text-sm text-foreground leading-relaxed">
                   {signal.reasoning}
@@ -239,7 +291,7 @@ export function SignalGenerator() {
               <Sparkles className="w-6 h-6 text-muted-foreground" />
             </div>
             <p className="text-sm text-muted-foreground">
-              Click generate to get an AI trading signal
+              Clique em gerar para obter um sinal de trading com IA
             </p>
           </div>
         )}

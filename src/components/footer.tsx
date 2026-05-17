@@ -28,20 +28,20 @@ export function Footer() {
         <span className="hidden md:inline text-xs font-semibold gradient-text-cyan">Crypto IA Pro</span>
         <div className="flex items-center gap-1.5">
           <Wallet className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-muted-foreground">Value:</span>
+          <span className="text-muted-foreground">Valor:</span>
           <span className="font-semibold number-animate">
             ${formatPrice(portfolio.totalValue)}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
           <DollarSign className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-muted-foreground">Cash:</span>
+          <span className="text-muted-foreground">Caixa:</span>
           <span className="font-medium">
             ${formatPrice(portfolio.cashBalance)}
           </span>
         </div>
         <div className="hidden sm:flex items-center gap-1.5">
-          <span className="text-muted-foreground">Assets:</span>
+          <span className="text-muted-foreground">Ativos:</span>
           <span className="font-medium">
             ${formatPrice(portfolio.assetBalance)}
           </span>
@@ -53,7 +53,7 @@ export function Footer() {
         ) : (
           <TrendingDown className="w-3.5 h-3.5 text-crypto-red" />
         )}
-        <span className="text-muted-foreground text-xs md:text-sm">PnL:</span>
+        <span className="text-muted-foreground text-xs md:text-sm">L/P:</span>
         <div
           key={pnlKey}
           className={cn(

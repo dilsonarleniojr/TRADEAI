@@ -62,7 +62,7 @@ export function MarketHighlights() {
 
   const sections = [
     {
-      title: "Top Gainers",
+      title: "Em Alta",
       icon: TrendingUp,
       iconColor: "text-crypto-green",
       iconBg: "bg-crypto-green/10",
@@ -71,7 +71,7 @@ export function MarketHighlights() {
       positive: true,
     },
     {
-      title: "Top Losers",
+      title: "Em Baixa",
       icon: TrendingDown,
       iconColor: "text-crypto-red",
       iconBg: "bg-crypto-red/10",
@@ -80,7 +80,7 @@ export function MarketHighlights() {
       positive: false,
     },
     {
-      title: "Most Active",
+      title: "Mais Ativos",
       icon: Activity,
       iconColor: "text-crypto-cyan",
       iconBg: "bg-crypto-cyan/10",
@@ -101,10 +101,10 @@ export function MarketHighlights() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Zap className="w-4 h-4 text-crypto-gold" />
-              Market Highlights
+              Destaques do Mercado
             </CardTitle>
             <span className="text-xs text-muted-foreground">
-              Auto-refreshes every 30s
+              Atualiza a cada 30s
             </span>
           </div>
         </CardHeader>
@@ -148,7 +148,7 @@ export function MarketHighlights() {
                   </div>
                 ) : section.items.length === 0 ? (
                   <div className="text-xs text-muted-foreground py-4 text-center">
-                    No data available
+                    Sem dados disponíveis
                   </div>
                 ) : (
                   <div className="space-y-1.5">

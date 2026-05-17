@@ -53,19 +53,19 @@ interface MetricRow {
 
 const METRICS: MetricRow[] = [
   {
-    label: "Total Return",
+    label: "Retorno Total",
     key: "totalReturnPercent",
     format: (val) => `${parseFloat(String(val)) >= 0 ? "+" : ""}${parseFloat(String(val)).toFixed(2)}%`,
     higherIsBetter: true,
   },
   {
-    label: "Win Rate",
+    label: "Taxa de Acerto",
     key: "winRate",
     format: (val) => `${parseFloat(String(val)).toFixed(1)}%`,
     higherIsBetter: true,
   },
   {
-    label: "Max Drawdown",
+    label: "Drawdown Máx.",
     key: "maxDrawdown",
     format: (val) => `-${parseFloat(String(val)).toFixed(2)}%`,
     higherIsBetter: false,
@@ -161,7 +161,7 @@ export function BacktestComparison({ results, strategies }: BacktestComparisonPr
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <GitCompare className="w-4 h-4 text-crypto-gold" />
-            Strategy Comparison
+            Comparação de Estratégias
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">

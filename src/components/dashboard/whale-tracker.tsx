@@ -121,7 +121,7 @@ export function WhaleTracker() {
               <div className="p-1.5 rounded-md bg-crypto-gold/10">
                 <Fish className="w-3.5 h-3.5 text-crypto-gold" />
               </div>
-              <span className="text-xs text-muted-foreground">Whale Volume (24h)</span>
+              <span className="text-xs text-muted-foreground">Volume de Baleias (24h)</span>
             </div>
             <span className="text-lg font-bold gradient-text-gold number-animate">
               {formatVolume(totalVolume)}
@@ -136,7 +136,7 @@ export function WhaleTracker() {
               <div className="p-1.5 rounded-md bg-crypto-gold/10">
                 <TrendingUp className="w-3.5 h-3.5 text-crypto-gold" />
               </div>
-              <span className="text-xs text-muted-foreground">Buy / Sell Ratio</span>
+              <span className="text-xs text-muted-foreground">Proporção Compra / Venda</span>
             </div>
             <div className="flex items-center gap-2 mt-2">
               <span className="text-xs text-crypto-green font-semibold">{(buyRatio * 100).toFixed(0)}%</span>
@@ -162,7 +162,7 @@ export function WhaleTracker() {
               <div className="p-1.5 rounded-md bg-crypto-gold/10">
                 <Trophy className="w-3.5 h-3.5 text-crypto-gold" />
               </div>
-              <span className="text-xs text-muted-foreground">Largest Tx (24h)</span>
+              <span className="text-xs text-muted-foreground">Maior Tx (24h)</span>
             </div>
             <span className="text-lg font-bold gradient-text-gold number-animate">
               {formatVolume(largestTx)}
@@ -179,10 +179,10 @@ export function WhaleTracker() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <Fish className="w-4 h-4 text-crypto-gold" />
-                Whale Transaction Feed
+                Feed de Transações de Baleias
               </CardTitle>
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-muted-foreground">Auto-refresh</span>
+                <span className="text-[10px] text-muted-foreground">Atualização automática</span>
                 <RefreshCw className={cn("w-3 h-3 text-crypto-gold", refreshing && "animate-spin")} />
               </div>
             </div>
@@ -224,7 +224,7 @@ export function WhaleTracker() {
                         </div>
                         <span className="text-sm font-semibold whitespace-nowrap">{tx.symbol}</span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-crypto-gold/15 text-crypto-gold font-medium whitespace-nowrap">
-                          Whale Alert
+                          Alerta de Baleia
                         </span>
                         {isMega && <span className="text-xs" title="Mega whale ($5M+)">💎</span>}
                         {!isMega && isLarge && <span className="text-xs" title="Large whale ($1M+)">🔥</span>}
@@ -258,7 +258,7 @@ export function WhaleTracker() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <TrendingDown className="w-4 h-4 text-crypto-gold" />
-              Volume by Symbol
+              Volume por Símbolo
             </CardTitle>
           </CardHeader>
           <CardContent>

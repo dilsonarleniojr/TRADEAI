@@ -112,11 +112,11 @@ export function PortfolioRebalancing() {
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Scale className="w-4 h-4 text-crypto-cyan" /> Portfolio Rebalancing
+              <Scale className="w-4 h-4 text-crypto-cyan" /> Rebalanceamento da Carteira
             </CardTitle>
             <div className="flex items-center gap-1.5 text-[10px]">
               <Shield className="w-3 h-3 text-crypto-cyan" />
-              <span className="text-muted-foreground">AI-Powered</span>
+              <span className="text-muted-foreground">Powered por IA</span>
             </div>
           </div>
         </CardHeader>
@@ -125,7 +125,7 @@ export function PortfolioRebalancing() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Risk Meter Gauge */}
             <div className="flex flex-col items-center">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Risk Level</span>
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Nível de Risco</span>
               <div className="relative w-[180px] h-[100px]">
                 <svg viewBox="0 0 180 90" className="w-full h-full overflow-visible">
                   <defs>
@@ -166,7 +166,7 @@ export function PortfolioRebalancing() {
 
             {/* Diversification Score */}
             <div className="flex flex-col items-center justify-center">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Diversification</span>
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Diversificação</span>
               <div className="relative w-20 h-20">
                 <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
                   <circle cx="40" cy="40" r="34" fill="none" stroke="oklch(1 0 0 / 6%)" strokeWidth={6} />
@@ -182,16 +182,16 @@ export function PortfolioRebalancing() {
               <span className={cn("text-[10px] font-semibold mt-1",
                 risk.diversificationScore >= 60 ? "text-crypto-green" :
                 risk.diversificationScore >= 35 ? "text-crypto-gold" : "text-crypto-red")}>
-                {risk.diversificationScore >= 60 ? "Well Diversified" :
-                 risk.diversificationScore >= 35 ? "Needs Improvement" : "Poorly Diversified"}
+                {risk.diversificationScore >= 60 ? "Bem Diversificado" :
+                 risk.diversificationScore >= 35 ? "Precisa Melhorar" : "Pouco Diversificado"}
               </span>
             </div>
 
             {/* Current Allocation */}
             <div className="space-y-2">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Current Allocation</span>
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Alocação Atual</span>
               {[
-                { label: "Cash", pct: cashPct, color: "bg-crypto-cyan", textCls: "gradient-text-cyan", value: portfolio.cashBalance },
+                { label: "Caixa", pct: cashPct, color: "bg-crypto-cyan", textCls: "gradient-text-cyan", value: portfolio.cashBalance },
                 { label: selectedSymbol.replace("USDT", ""), pct: assetPct, color: "bg-crypto-gold", textCls: "text-crypto-gold", value: portfolio.assetBalance },
               ].map((item) => (
                 <div key={item.label} className="p-2 rounded-lg bg-secondary/30 border border-border/50">
@@ -216,7 +216,7 @@ export function PortfolioRebalancing() {
           <div>
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp className="w-3.5 h-3.5 text-crypto-cyan" />
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Suggested Actions</span>
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Ações Sugeridas</span>
             </div>
             <div className="space-y-1.5 max-h-48 overflow-y-auto cyan-scrollbar">
               {actions.map((a, i) => (
@@ -249,10 +249,10 @@ export function PortfolioRebalancing() {
                       </TooltipTrigger>
                       <TooltipContent side="top" sideOffset={4}>
                         <p className="text-xs">
-                          {a.action === "BUY" ? `Buy $${formatPrice(a.estimatedAmount)} of ${a.symbol}` :
-                           a.action === "SELL" ? `Sell $${formatPrice(a.estimatedAmount)} of ${a.symbol}` :
-                           a.action === "INVEST" ? `Invest $${formatPrice(a.estimatedAmount)} from cash` :
-                           `Hold current ${a.symbol} position`}
+                          {a.action === "BUY" ? `Comprar $${formatPrice(a.estimatedAmount)} de ${a.symbol}` :
+                           a.action === "SELL" ? `Vender $${formatPrice(a.estimatedAmount)} de ${a.symbol}` :
+                           a.action === "INVEST" ? `Investir $${formatPrice(a.estimatedAmount)} do caixa` :
+                           `Manter posição atual de ${a.symbol}`}
                         </p>
                       </TooltipContent>
                     </Tooltip>
@@ -270,14 +270,14 @@ export function PortfolioRebalancing() {
                   className="flex items-center justify-center gap-2 p-2.5 rounded-lg bg-crypto-green/10 border border-crypto-green/30 text-crypto-green"
                   initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
                   <CheckCircle2 className="w-4 h-4" />
-                  <span className="text-xs font-semibold">Suggestions Applied (Mock)</span>
+                  <span className="text-xs font-semibold">Sugestões Aplicadas (Simulação)</span>
                 </motion.div>
               ) : (
                 <motion.button key="apply"
                   className="w-full p-2.5 rounded-lg btn-gradient-cyan text-white text-xs font-semibold flex items-center justify-center gap-2 touch-target"
                   onClick={() => setShowConfirm(true)} whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
                   initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
-                  <Scale className="w-3.5 h-3.5" /> Apply Rebalancing Suggestions
+                  <Scale className="w-3.5 h-3.5" /> Aplicar Sugestões de Rebalanceamento
                 </motion.button>
               )}
             </AnimatePresence>
@@ -291,13 +291,13 @@ export function PortfolioRebalancing() {
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <AlertTriangle className="w-5 h-5 text-crypto-gold" />
-                        <span className="text-sm font-bold">Confirm Rebalancing</span>
+                        <span className="text-sm font-bold">Confirmar Rebalanceamento</span>
                       </div>
                       <button className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-secondary/60 transition-colors"
                         onClick={() => setShowConfirm(false)}><X className="w-3.5 h-3.5" /></button>
                     </div>
                     <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-                      This will adjust your portfolio allocation. This is a <strong>mock operation</strong> — no real trades will be executed.
+                      Isso ajustará sua alocação de carteira. Esta é uma <strong>operação simulada</strong> — nenhum trade real será executado.
                     </p>
                     <div className="space-y-1.5 mb-4 max-h-32 overflow-y-auto cyan-scrollbar">
                       {actions.map((a) => (
@@ -312,9 +312,9 @@ export function PortfolioRebalancing() {
                     </div>
                     <div className="flex gap-2">
                       <button className="flex-1 p-2 rounded-lg bg-secondary/60 border border-border/50 text-xs font-medium hover:bg-secondary/80 transition-colors touch-target"
-                        onClick={() => setShowConfirm(false)}>Cancel</button>
+                        onClick={() => setShowConfirm(false)}>Cancelar</button>
                       <button className="flex-1 p-2 rounded-lg btn-gradient-cyan text-white text-xs font-semibold touch-target"
-                        onClick={handleApply}>Apply (Mock)</button>
+                        onClick={handleApply}>Aplicar (Simulação)</button>
                     </div>
                   </motion.div>
                 </motion.div>

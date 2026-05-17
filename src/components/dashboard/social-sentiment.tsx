@@ -172,7 +172,7 @@ export function SocialSentiment() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <MessageCircle className="w-4 h-4 text-crypto-cyan" />
-              Social Sentiment
+              Sentimento Social
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col items-center">
@@ -223,15 +223,15 @@ export function SocialSentiment() {
             <div className="flex items-center gap-4 mt-3">
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full bg-crypto-red" />
-                <span className="text-[10px] text-muted-foreground">Bearish</span>
+                <span className="text-[10px] text-muted-foreground">Baixa</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full bg-yellow-400" />
-                <span className="text-[10px] text-muted-foreground">Neutral</span>
+                <span className="text-[10px] text-muted-foreground">Neutro</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full bg-crypto-green" />
-                <span className="text-[10px] text-muted-foreground">Bullish</span>
+                <span className="text-[10px] text-muted-foreground">Alta</span>
               </div>
             </div>
           </CardContent>
@@ -242,8 +242,8 @@ export function SocialSentiment() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-crypto-cyan" />
-              Sentiment Timeline
-              <span className="text-[10px] text-muted-foreground font-normal">(7 Days)</span>
+              Linha do Tempo do Sentimento
+              <span className="text-[10px] text-muted-foreground font-normal">(7 Dias)</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -278,7 +278,7 @@ export function SocialSentiment() {
                       borderRadius: "8px",
                       fontSize: "11px",
                     }}
-                    formatter={(value: number) => [`${value}`, "Sentiment"]}
+                    formatter={(value: number) => [`${value}`, "Sentimento"]}
                   />
                   <Area
                     type="monotone"
@@ -330,19 +330,19 @@ export function SocialSentiment() {
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-muted-foreground">Mentions (24h)</span>
+                      <span className="text-[10px] text-muted-foreground">Menções (24h)</span>
                       <span className="text-xs font-semibold number-animate">
                         {formatMentions(platform.mentions)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-muted-foreground">Sentiment</span>
+              <span className="text-[10px] text-muted-foreground">Sentimento</span>
                       <span className={cn("text-xs font-bold number-animate", getSentimentColor(platform.sentiment))}>
                         {platform.sentiment}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-muted-foreground">Trend</span>
+                      <span className="text-[10px] text-muted-foreground">Tendência</span>
                       <div className={cn("flex items-center gap-1", trendColor)}>
                         <TrendIcon className="w-3 h-3" />
                         <span className="text-[10px] font-medium">
@@ -366,7 +366,7 @@ export function SocialSentiment() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Hash className="w-4 h-4 text-crypto-cyan" />
-              Trending Topics
+              Tópicos em Alta
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -421,7 +421,7 @@ export function SocialSentiment() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Users className="w-4 h-4 text-crypto-cyan" />
-              Key Influencers
+              Influenciadores Chave
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -450,10 +450,10 @@ export function SocialSentiment() {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] text-muted-foreground">
-                      {influencer.followers} followers
+                      {influencer.followers} seguidores
                     </span>
                     <span className="text-xs font-medium">
-                      {influencer.mentionCount} mentions
+                      {influencer.mentionCount} menções
                     </span>
                   </div>
                 </motion.div>

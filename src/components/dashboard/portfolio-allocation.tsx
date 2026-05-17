@@ -55,7 +55,7 @@ export function PortfolioAllocation() {
     // Cash allocation
     if (portfolio.cashBalance > 0) {
       items.push({
-        name: "Cash",
+        name: "Caixa",
         value: portfolio.cashBalance,
         color: "#06b6d4",
         percent: (portfolio.cashBalance / total) * 100,
@@ -80,7 +80,7 @@ export function PortfolioAllocation() {
     // If nothing, show empty state
     if (items.length === 0) {
       items.push({
-        name: "No Assets",
+        name: "Sem Ativos",
         value: 100,
         color: "#334155",
         percent: 100,
@@ -100,7 +100,7 @@ export function PortfolioAllocation() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <PieChartIcon className="w-4 h-4 text-crypto-gold" />
-            Portfolio Allocation
+            Alocação da Carteira
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -163,13 +163,13 @@ export function PortfolioAllocation() {
           {/* Total Value */}
           <div className="mt-3 pt-3 border-t border-border/50">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Total Value</span>
+              <span className="text-xs text-muted-foreground">Valor Total</span>
               <span className="text-sm font-bold font-mono pulse-soft">
                 ${formatPrice(portfolio.totalValue)}
               </span>
             </div>
             <div className="flex items-center justify-between mt-1">
-              <span className="text-xs text-muted-foreground">PnL</span>
+              <span className="text-xs text-muted-foreground">L/P</span>
               <span
                 className={`text-xs font-mono font-semibold ${
                   portfolio.pnl >= 0 ? "text-crypto-green" : "text-crypto-red"

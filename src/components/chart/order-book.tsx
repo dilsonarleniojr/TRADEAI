@@ -155,7 +155,7 @@ export function OrderBook() {
           <div className="w-10 h-10 rounded-xl bg-crypto-cyan/10 flex items-center justify-center mx-auto mb-3">
             <BookOpen className="w-5 h-5 text-crypto-cyan" />
           </div>
-          <p className="text-xs text-muted-foreground">Loading order book...</p>
+          <p className="text-xs text-muted-foreground">Carregando livro de ofertas...</p>
         </CardContent>
       </Card>
     );
@@ -172,7 +172,7 @@ export function OrderBook() {
         <CardTitle className="text-sm font-medium flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BookOpen className="w-4 h-4 text-crypto-cyan" />
-            Order Book
+            Livro de Ofertas
             <span className="text-[10px] text-muted-foreground font-normal">
               {selectedSymbol.replace("USDT", "/USDT")}
             </span>
@@ -199,18 +199,18 @@ export function OrderBook() {
           </div>
           <div className="flex items-center gap-3 text-[10px]">
             <span className="text-crypto-green">
-              Bids: {formatBookVolume(orderBook.totalBidVolume)}
+              Compra: {formatBookVolume(orderBook.totalBidVolume)}
             </span>
             <span className="text-crypto-red">
-              Asks: {formatBookVolume(orderBook.totalAskVolume)}
+              Venda: {formatBookVolume(orderBook.totalAskVolume)}
             </span>
           </div>
         </div>
 
         {/* Column Headers */}
         <div className="grid grid-cols-3 gap-1 text-[9px] text-muted-foreground uppercase tracking-wider mb-1 px-1">
-          <span>Price</span>
-          <span className="text-right">Size</span>
+          <span>Preço</span>
+          <span className="text-right">Qtd</span>
           <span className="text-right">Total</span>
         </div>
 
@@ -256,10 +256,10 @@ export function OrderBook() {
           <span className="text-sm font-bold text-crypto-cyan">
             ${formatBookPrice(currentPrice)}
           </span>
-          <span className="text-[9px] text-muted-foreground">Current Price</span>
+          <span className="text-[9px] text-muted-foreground">Preço Atual</span>
           <span className="ml-auto flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-crypto-cyan animate-pulse" />
-            <span className="text-[8px] text-crypto-cyan font-medium">LIVE</span>
+            <span className="text-[8px] text-crypto-cyan font-medium">AO VIVO</span>
           </span>
         </div>
 
@@ -303,9 +303,9 @@ export function OrderBook() {
         {/* Depth Visual Bar */}
         <div className="mt-3 px-1">
           <div className="flex items-center gap-1 text-[9px] text-muted-foreground mb-1">
-            <span>Depth</span>
+            <span>Profundidade</span>
             <span className="ml-auto">
-              Buy vs Sell Pressure
+              Pressão Compra vs Venda
             </span>
           </div>
           <div className="h-2.5 rounded-full overflow-hidden flex bg-secondary/30 relative">
@@ -336,10 +336,10 @@ export function OrderBook() {
           </div>
           <div className="flex justify-between text-[9px] mt-0.5">
             <span className="text-crypto-green">
-              {((orderBook.totalBidVolume / (orderBook.totalBidVolume + orderBook.totalAskVolume)) * 100).toFixed(1)}% Bids
+              {((orderBook.totalBidVolume / (orderBook.totalBidVolume + orderBook.totalAskVolume)) * 100).toFixed(1)}% Compra
             </span>
             <span className="text-crypto-red">
-              {((orderBook.totalAskVolume / (orderBook.totalBidVolume + orderBook.totalAskVolume)) * 100).toFixed(1)}% Asks
+              {((orderBook.totalAskVolume / (orderBook.totalBidVolume + orderBook.totalAskVolume)) * 100).toFixed(1)}% Venda
             </span>
           </div>
         </div>
@@ -347,7 +347,7 @@ export function OrderBook() {
         {/* Auto-refresh indicator */}
         <div className="mt-2 flex items-center justify-center gap-1.5 text-[9px] text-muted-foreground">
           <div className="w-1.5 h-1.5 rounded-full bg-crypto-green animate-pulse" />
-          Auto-refreshing every 5s
+          Atualizando a cada 5s
         </div>
       </CardContent>
     </Card>
