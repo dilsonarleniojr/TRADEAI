@@ -1403,3 +1403,390 @@ Stage Summary:
 - Ensemble signal generation weighted by F1 scores
 - Random Forest is best model (55.4% F1, 65.5% AUC) — reasonable for noisy crypto prediction
 - Zero lint errors, zero runtime errors, all features working
+
+---
+Task ID: 2
+Agent: crypto-meta-agent
+Task: Create Crypto Metadata System
+
+## Work Log:
+1. Read worklog.md to understand project history and current state
+2. Read existing store.ts to understand the CryptoStore interface and implementation
+3. Created `/home/z/my-project/src/lib/crypto-meta.ts` with:
+   - `CryptoCategory` type: 9 categories (Layer 1, Layer 2, DeFi, Meme, AI, Gaming, Infrastructure, Exchange, Stablecoin)
+   - `CryptoMeta` interface: symbol, name, short, color, category, description, rank, launchYear
+   - `CRYPTO_LIST`: 50 crypto entries across 8 categories:
+     - Layer 1 (15): BTC, ETH, SOL, BNB, AVAX, ADA, DOT, ATOM, NEAR, ALGO, SUI, APT, SEI, TIA, INJ
+     - Layer 2 (5): MATIC, ARB, OP, MANTA, STRK
+     - DeFi (10): LINK, UNI, AAVE, MKR, COMP, CRV, SNX, LDO, DYDX, PENDLE
+     - Meme (6): DOGE, SHIB, PEPE, FLOKI, BONK, WIF
+     - AI (4): FET, RNDR, AKT, TAO
+     - Gaming (4): IMX, GALA, RON, AXS
+     - Infrastructure (3): FIL, AR, ETHFI
+     - Exchange (4): XRP, LTC, TRX, XLM
+   - Lookup maps: CRYPTO_BY_SYMBOL, CRYPTO_COLORS, CRYPTO_NAMES, CRYPTO_CATEGORIES, CRYPTO_SHORTS
+   - ALL_SYMBOLS: array of all symbol strings
+   - CATEGORY_META: category metadata (label, emoji, color) for all 9 categories
+   - `getSymbolsByCategory()`: filter symbols by category
+   - `searchCrypto()`: search by name, short, symbol, or category
+4. Updated `/home/z/my-project/src/lib/store.ts`:
+   - Added `categoryFilter: string` and `setCategoryFilter` to CryptoStore interface
+   - Added `symbolSearchQuery: string` and `setSymbolSearchQuery` to CryptoStore interface
+   - Implemented in store: `categoryFilter: "all"`, `symbolSearchQuery: ""`
+   - Expanded default watchlist from 3 to 6 symbols: BTC, ETH, SOL, BNB, XRP, DOGE
+5. Ran `bun run lint` - 0 errors, 0 warnings
+
+## Stage Summary:
+- Centralized crypto metadata system with 50+ symbols, categories, colors, and descriptions
+- Pre-built lookup maps for O(1) symbol lookups (by symbol, color, name, category, short)
+- Category metadata with emojis and colors for UI rendering
+- Search function for filtering by name/symbol/category
+- Store updated with category filter and symbol search state
+- Default watchlist expanded to top 6 symbols
+- Zero lint errors
+
+---
+Task ID: 1
+Agent: binance-backend-agent
+Task: Expand Backend Crypto Symbols from 12 to 50+
+
+## Work Log:
+
+1. Read worklog.md and current `/home/z/my-project/mini-services/binance-service/index.ts` to understand project context
+2. Expanded `TOP_SYMBOLS` array from 12 to 51 symbols organized by 7 category groups:
+   - **Layer 1** (15): BTC, ETH, SOL, BNB, AVAX, ADA, DOT, ATOM, NEAR, ALGO, SUI, APT, SEI, TIA, INJ
+   - **Layer 2** (5): MATIC, ARB, OP, MANTA, STRK
+   - **DeFi** (10): LINK, UNI, AAVE, MKR, COMP, CRV, SNX, LDO, DYDX, PENDLE
+   - **Meme** (6): DOGE, SHIB, PEPE, FLOKI, BONK, WIF
+   - **AI** (4): FET, RENDER, AKT, TAO
+   - **Gaming** (4): IMX, GALA, RONIN, AXS
+   - **Storage/Infrastructure** (3): FIL, AR, ETHFI
+   - **Stablecoin/Exchange** (4): XRP, LTC, TRX, XLM
+3. Added `TOP_SYMBOLS_SET` (Set) for O(1) lookup when filtering bulk API responses
+4. Added `SYMBOL_CATEGORIES` mapping (Record<string, string>) - all 51 symbols mapped to their category
+5. Added `SYMBOL_NAMES` mapping (Record<string, string>) - human-readable names for all 51 symbols
+6. Optimized `fetchAllTickers()` function:
+   - **Before**: Made 12+ individual API calls to `GET /api/v3/ticker/24hr?symbol=XXX` (one per symbol)
+   - **After**: Single bulk API call to `GET /api/v3/ticker/24hr` (returns ALL ~3587 tickers), then filters using `TOP_SYMBOLS_SET`
+   - Much more efficient: 1 API call instead of 51+
+   - Added logging: `[Cache] Fetched 3587 tickers, filtered to 50 for TOP_SYMBOLS`
+7. Updated periodic refresh interval (`setInterval`) to use the same bulk fetch approach
+8. Added new endpoint `GET /api/market/categories`:
+   - Returns `{ data: SYMBOL_CATEGORIES, timestamp }` with symbol→category mapping
+   - 51 entries across 8 categories
+9. Added new endpoint `GET /api/market/symbols`:
+   - Returns `{ data: [{ symbol, name, category }, ...], timestamp }` with full metadata
+   - 51 symbol objects with human-readable names and categories
+10. Updated `/health` endpoint to include `symbolCount: TOP_SYMBOLS.length`
+11. Updated startup log to print new endpoints and symbol count
+12. Restarted the binance-service successfully
+
+## Test Results:
+- Health: `{"status":"ok","symbolCount":51}` ✅
+- Categories: 51 symbols in 8 categories (Layer 1:15, Layer 2:5, DeFi:10, Meme:6, AI:4, Gaming:4, Storage/Infrastructure:3, Stablecoin/Exchange:4) ✅
+- Symbols: 51 symbols with name+category metadata ✅
+- Ticker: 50 tickers from Binance (AKTUSDT not available on Binance USDT market) ✅
+- Highlights: 5 gainers, 5 losers, 5 most active ✅
+- Price: Working (tested SOLUSDT) ✅
+- Klines: Working (tested ETHUSDT) ✅
+- Socket.IO: Running on port 3002 ✅
+
+## Notes:
+- AKTUSDT (Akash Network) is not available on Binance's USDT market, so only 50 of 51 symbols return ticker data
+- All existing endpoint response formats preserved - `/api/market/ticker` still returns `{ data: [...], timestamp }` with same ticker object structure
+- Bulk fetch approach reduces API calls from 51 to 1, significantly improving efficiency and reducing rate limit risk
+
+---
+Task ID: 4
+Agent: main
+Task: Update components with expanded 51-symbol crypto metadata system
+
+## Work Log:
+1. Read worklog.md and all relevant files (crypto-meta.ts, ticker-tape.tsx, chart-section.tsx, page.tsx, store.ts)
+2. Updated `ticker-tape.tsx`:
+   - Removed local `symbolColors` object (had 12 hardcoded entries)
+   - Added import of `CRYPTO_COLORS` from `@/lib/crypto-meta`
+   - Replaced `symbolColors[ticker.symbol]` with `CRYPTO_COLORS[ticker.symbol]`
+   - Ticker tape now automatically uses all 51 symbol colors from centralized metadata
+3. Updated `chart-section.tsx`:
+   - Removed local `SYMBOLS` array (had 11 hardcoded entries)
+   - Added import of `ALL_SYMBOLS` from `@/lib/crypto-meta`
+   - Replaced `SYMBOLS.map()` with `ALL_SYMBOLS.map()` in Select dropdown
+   - Chart symbol selector now shows all 51 symbols
+   - Added "1w" (1W) and "1M" (1M) timeframes to INTERVALS array
+4. Updated `page.tsx`:
+   - Added 20 new fallback ticker entries: NEARUSDT, ALGOUSDT, SUIUSDT, APTUSDT, SEIUSDT, TIAUSDT, INJUSDT, ARBUSDT, OPUSDT, UNIUSDT, AAVEUSDT, MKRUSDT, SHIBUSDT, PEPEUSDT, FETUSDT, RENDERUSDT, FILUSDT, LTCUSDT, TRXUSDT (plus existing MATICUSDT, LINKUSDT, DOGEUSDT, XRPUSDT were already in FALLBACK_TICKERS)
+   - Added 4 new AI signals for new symbols: INJUSDT (BUY, 0.91), PEPEUSDT (BUY, 0.78), TIAUSDT (SELL, 0.73), FETUSDT (BUY, 0.82)
+   - Did NOT modify existing fallback data - only added new entries
+   - Store watchlist already has appropriate default symbols, no change needed
+5. Ran `bun run lint`: 0 errors, 0 warnings
+6. Dev server compiling successfully
+
+## Stage Summary:
+- Ticker tape uses centralized CRYPTO_COLORS for all 51 symbols (was 12 hardcoded)
+- Chart symbol selector shows all 51 symbols (was 11 hardcoded)
+- Chart timeframes expanded with 1W and 1M (was 6, now 8)
+- Fallback tickers expanded from 12 to 32 entries with realistic mock price data
+- AI signals expanded from 6 to 10 entries covering new symbols
+- Zero lint errors, all TypeScript types correct
+
+---
+Task ID: 3
+Agent: market-table-enhance-agent
+Task: Enhance MarketTable with Search, Category Filters, and More
+
+## Work Log:
+
+1. Read worklog.md, crypto-meta.ts, store.ts, and existing market-table.tsx to understand current state
+2. Completely rewrote `/home/z/my-project/src/components/dashboard/market-table.tsx` with the following enhancements:
+
+### Search Bar
+- Added `Input` component from `@/components/ui/input` with `Search` icon from lucide-react
+- Debounced search (300ms) using `useRef` for timeout management
+- Uses `searchCrypto()` function from `@/lib/crypto-meta` for filtering by name, symbol, short, or category
+- Clear button (✕) when search has value
+- Applied `input-glow` CSS class for cyan focus accent
+- Reads/writes `symbolSearchQuery` and `setSymbolSearchQuery` from store
+
+### Category Filter Tabs
+- Horizontal scrollable row of category pills below the search bar
+- "Todos" (All) tab + one tab per category from `CATEGORY_META`
+- Each tab shows category emoji + label + count badge
+- Active tab styling: `bg-crypto-cyan/20 text-crypto-cyan border-crypto-cyan/40 shadow-sm shadow-crypto-cyan/10`
+- Inactive tab: `bg-secondary/30 text-muted-foreground border-border/40` with hover states
+- Clicking same category again toggles back to "all"
+- Uses `scrollbar-none` for horizontal scroll on mobile
+- Reads/writes `categoryFilter` and `setCategoryFilter` from store
+
+### Enhanced Table Columns
+- **#** (rank number) - sequential index
+- **Star** (watchlist toggle) - gold star with fill
+- **Asset** - icon circle with CRYPTO_COLORS + name from CRYPTO_NAMES + short symbol + CategoryBadge
+- **Price** - with `number-animate` class
+- **24h %** - color-coded pill + mini range bar
+- **24h High/Low** - hidden on mobile
+- **Volume** - quoteVolume, hidden below md
+- **Market Cap Rank** - from CRYPTO_LIST rank field, shown as `#rank` badge, hidden below lg
+- **Category** - small CategoryBadge component, hidden below xl
+- **24h Trend** - sparkline SVG, hidden below sm
+
+### Category Badge Component
+- `CategoryBadge` sub-component with short labels: L1, L2, DeFi, Meme, IA, Game, Infra, Exch, Stbl
+- Uses category's color from `CATEGORY_META` for dynamic bg/text/border via CSS custom properties
+- `text-[8px]` with `px-1 py-0` for very compact sizing
+- Shown next to asset name (always visible) and in dedicated column (xl+ only)
+
+### Replaced Local symbolColors with CRYPTO_COLORS
+- Removed the local `symbolColors` object entirely (had only 12 entries)
+- Now uses `CRYPTO_COLORS` from crypto-meta.ts (51 entries)
+- Also uses `CRYPTO_NAMES`, `CRYPTO_SHORTS`, `CRYPTO_CATEGORIES` for asset display
+
+### Show More / Show Less
+- Default: shows top 20 symbols by volume
+- "Ver Mais" button shows count of remaining assets
+- "Ver Menos" button to collapse back to 20
+- `max-h-[420px]` by default, `max-h-[600px]` when expanded
+- Smooth transition with `transition-[max-height] duration-300`
+- Uses `ChevronDown`/`ChevronUp` icons
+
+### Filter Logic
+1. Sort all tickers by quoteVolume descending
+2. Apply search filter (using `searchCrypto()` from store's `symbolSearchQuery`)
+3. Apply category filter (from store's `categoryFilter`)
+4. Display filtered results (top 20 or all)
+
+### Styling
+- `glass-card gradient-border` for the card
+- `cyan-scrollbar` for scrollable areas
+- `scrollbar-none` for horizontal category tabs
+- `input-glow` on search input
+- Responsive: columns hide progressively on smaller screens
+- `table-row-hover` and `table-row-alt` classes preserved
+- framer-motion `AnimatePresence` with staggered row animations
+- Empty state with search icon when no results
+
+### Preserved Functionality
+- Sparkline fetching (24h of 1h klines, refreshed every 2 min)
+- Clicking a row navigates to chart section
+- Watchlist star toggle still works
+- Color coding for positive/negative changes
+- All existing CSS classes maintained
+
+3. Ran `bun run lint` - 0 errors, 0 warnings
+4. Dev server running normally (503s on klines are pre-existing Binance API timeouts, not related to changes)
+
+## Stage Summary:
+- MarketTable completely rewritten with search, category filters, enhanced columns, show more/less
+- Replaced local symbolColors (12 entries) with CRYPTO_COLORS from crypto-meta.ts (51 entries)
+- CategoryBadge sub-component with dynamic colors from CATEGORY_META
+- Debounced search (300ms) with searchCrypto() function
+- Horizontal scrollable category filter tabs with count badges
+- "Ver Mais" / "Ver Menos" toggle for 20/51 symbols
+- Responsive column visibility across breakpoints
+- Zero lint errors, all existing functionality preserved
+
+---
+Task ID: 5
+Agent: crypto-selector-agent
+Task: Add CryptoSelector component and update hardcoded symbol lists across components
+
+## Work Log:
+
+1. Read worklog.md to understand project context and previous agent work
+2. Read all relevant source files: crypto-meta.ts, store.ts, header.tsx, watchlist.tsx, market-highlights.tsx, correlation-heatmap.tsx, whale-tracker.tsx, social-sentiment.tsx, on-chain-analytics.tsx, portfolio-allocation.tsx, market-overview.tsx, market-table.tsx, ticker-tape.tsx, format.ts
+
+3. Created `/home/z/my-project/src/components/header/crypto-selector.tsx` - CryptoSelector dropdown component:
+   - Popover trigger showing current symbol color dot + short name + price + chevron
+   - Search input with `input-glow` class for filtering
+   - Category filter pills (all, Layer 1, Layer 2, DeFi, Meme, AI, Gaming, Infrastructure, Exchange, Stablecoin)
+   - Scrollable symbol list with color dot + short name + full name + price + 24h% change
+   - Click to select symbol and close popover
+   - Uses `searchCrypto`, `CRYPTO_COLORS`, `CRYPTO_SHORTS`, `CATEGORY_META` from crypto-meta.ts
+   - Uses `useCryptoStore` for selectedSymbol, setSelectedSymbol, tickers
+   - Empty state when no results found
+   - Glass morphism styling consistent with the rest of the app
+
+4. Updated `/home/z/my-project/src/components/header.tsx`:
+   - Added import for `CryptoSelector` from `./header/crypto-selector`
+   - Removed `selectedSymbol` from destructured store values
+   - Replaced the Badge element showing `selectedSymbol` with `<CryptoSelector />` component
+
+5. Updated `/home/z/my-project/src/components/dashboard/watchlist.tsx`:
+   - Replaced hardcoded `symbolColors` map with import of `CRYPTO_COLORS` and `CRYPTO_SHORTS` from crypto-meta
+   - Updated color lookup: `symbolColors[ticker.symbol]` → `CRYPTO_COLORS[ticker.symbol]`
+   - Updated short name display to use `CRYPTO_SHORTS[ticker.symbol]`
+
+6. Updated `/home/z/my-project/src/components/dashboard/market-highlights.tsx`:
+   - Replaced hardcoded `symbolColors` map with import of `CRYPTO_COLORS` and `CRYPTO_SHORTS` from crypto-meta
+   - Updated color lookup and symbol display to use centralized metadata
+
+7. Updated `/home/z/my-project/src/components/dashboard/correlation-heatmap.tsx`:
+   - Added import of `CRYPTO_SHORTS` from crypto-meta
+   - Updated column/row header labels to use `CRYPTO_SHORTS[symbol]` instead of `symbol.replace("USDT", "")`
+
+8. Updated `/home/z/my-project/src/components/dashboard/whale-tracker.tsx`:
+   - Added import of `CRYPTO_SHORTS`, `CRYPTO_COLORS`, `CRYPTO_BY_SYMBOL` from crypto-meta
+   - Added `SYMBOL_FULL_NAMES` map for full name display next to symbol in transaction feed
+
+9. Updated `/home/z/my-project/src/components/dashboard/portfolio-allocation.tsx`:
+   - Replaced hardcoded `COLORS` array with import of `CRYPTO_COLORS` and `CRYPTO_SHORTS` from crypto-meta
+   - Updated asset color lookup: `CRYPTO_COLORS[symbol]` instead of index-based lookup
+   - Updated asset name: `CRYPTO_SHORTS[symbol]` instead of `symbol.replace("USDT", "")`
+
+10. Updated `/home/z/my-project/src/components/dashboard/market-overview.tsx`:
+    - Added import of `CRYPTO_COLORS` from crypto-meta
+    - Updated BTC color references from hardcoded `"#f7931a"` to `CRYPTO_COLORS["BTCUSDT"]`
+
+11. Ran `bun run lint` - 0 errors, 0 warnings
+12. Verified dev server responding on port 3000
+
+## Stage Summary:
+- CryptoSelector component created with search, category filter, and symbol selection
+- Header updated to use CryptoSelector instead of static Badge
+- 7 component files updated to use centralized crypto metadata from crypto-meta.ts
+- All hardcoded symbol colors and names replaced with CRYPTO_COLORS, CRYPTO_SHORTS lookups
+- Zero lint errors, dev server running normally
+
+---
+Task ID: 40
+Agent: main
+Task: Expand number of coins, cryptos, and options
+
+## Current Project Status
+
+The Crypto IA Pro platform has been massively expanded from 12 to 51 crypto symbols, with a complete category system, search functionality, and a centralized metadata architecture. All REST APIs returning 200. Zero lint errors. Backend service tracking 51 symbols with incremental data refresh.
+
+## Work Completed This Round
+
+### 1. Backend: Expanded Binance Service (12 → 51 symbols)
+- **File**: `mini-services/binance-service/index.ts`
+- Expanded `TOP_SYMBOLS` from 12 to 51 symbols organized by 7 categories:
+  - Layer 1 (15): BTC, ETH, SOL, BNB, AVAX, ADA, DOT, ATOM, NEAR, ALGO, SUI, APT, SEI, TIA, INJ
+  - Layer 2 (5): MATIC, ARB, OP, MANTA, STRK
+  - DeFi (10): LINK, UNI, AAVE, MKR, COMP, CRV, SNX, LDO, DYDX, PENDLE
+  - Meme (6): DOGE, SHIB, PEPE, FLOKI, BONK, WIF
+  - AI (4): FET, RENDER, AKT, TAO
+  - Gaming (4): IMX, GALA, RONIN, AXS
+  - Infrastructure (3): FIL, AR, ETHFI
+  - Exchange (4): XRP, LTC, TRX, XLM
+- Added `SYMBOL_CATEGORIES` and `SYMBOL_NAMES` maps
+- New API endpoints: `/api/market/categories`, `/api/market/symbols`
+- Priority-based fetch system: loads 12 priority tickers instantly, then incrementally refreshes 8 symbols every 10 seconds
+- Batch size of 4 with AbortSignal timeout to prevent service crashes
+
+### 2. Frontend: Crypto Metadata System
+- **File**: `src/lib/crypto-meta.ts`
+- Complete metadata for 51 cryptos: symbol, name, short, color, category, description, rank, launchYear
+- Lookup maps: `CRYPTO_BY_SYMBOL`, `CRYPTO_COLORS`, `CRYPTO_NAMES`, `CRYPTO_CATEGORIES`, `CRYPTO_SHORTS`
+- `ALL_SYMBOLS` array for easy use
+- `CATEGORY_META` with emoji, label, and color for each of 9 categories
+- `getSymbolsByCategory()` and `searchCrypto()` utility functions
+
+### 3. Frontend: Store Updates
+- **File**: `src/lib/store.ts`
+- Added `categoryFilter` and `setCategoryFilter` state
+- Added `symbolSearchQuery` and `setSymbolSearchQuery` state
+- Expanded default watchlist to 6 symbols: BTC, ETH, SOL, BNB, XRP, DOGE
+
+### 4. Frontend: Enhanced MarketTable
+- **File**: `src/components/dashboard/market-table.tsx`
+- Search bar with debounce (300ms) and clear button
+- Category filter tabs: Todos (51) + 9 category pills with emoji and count
+- Enhanced columns: # rank, Star (watchlist), Asset (icon + name + category badge), Price, 24h%, High/Low, Volume, Market Cap Rank, Category, 24h Trend
+- CategoryBadge component with dynamic colors
+- "Ver Mais" / "Ver Menos" toggle (default top 20, expand to all 51)
+- Replaced local `symbolColors` with `CRYPTO_COLORS` from crypto-meta
+
+### 5. Frontend: CryptoSelector Component
+- **File**: `src/components/header/crypto-selector.tsx`
+- Popover with search input, category filter pills, and scrollable symbol list
+- Each row shows: color dot + short name + full name + live price + 24h% change
+- Click to select symbol and close popover
+- Glass morphism styling with `input-glow` search
+
+### 6. Frontend: Header Update
+- **File**: `src/components/header.tsx`
+- Replaced static Badge with CryptoSelector component
+- Now shows "BTC $78,156.09" trigger button with live price
+
+### 7. Frontend: Chart Section Updates
+- **File**: `src/components/chart/chart-section.tsx`
+- Replaced hardcoded 11-symbol `SYMBOLS` array with `ALL_SYMBOLS` from crypto-meta (51 symbols)
+- Added "1W" and "1M" timeframes to `INTERVALS` array
+
+### 8. Frontend: Ticker Tape Update
+- **File**: `src/components/header/ticker-tape.tsx`
+- Replaced local `symbolColors` (12 entries) with `CRYPTO_COLORS` from crypto-meta
+
+### 9. Frontend: Fallback Data Expansion
+- **File**: `src/app/page.tsx`
+- Added 20 new fallback ticker entries with realistic mock data
+- Added 4 new AI signals for expanded symbols
+
+### 10. Frontend: 7 Component Updates
+- Updated all components that had hardcoded symbol colors/names to use centralized crypto-meta:
+  - `watchlist.tsx` - CRYPTO_COLORS, CRYPTO_SHORTS
+  - `market-highlights.tsx` - CRYPTO_COLORS, CRYPTO_SHORTS
+  - `correlation-heatmap.tsx` - CRYPTO_SHORTS
+  - `whale-tracker.tsx` - CRYPTO_SHORTS, CRYPTO_COLORS
+  - `portfolio-allocation.tsx` - CRYPTO_COLORS, CRYPTO_SHORTS
+  - `market-overview.tsx` - CRYPTO_COLORS
+  - `social-sentiment.tsx` - CRYPTO_SHORTS, CRYPTO_COLORS
+
+## Verification Results
+- Lint: 0 errors, 0 warnings
+- Binance service: running with 51 symbols, incremental refresh working
+- Ticker endpoint: returning 50+ symbols through Caddy proxy
+- Market table: search, category filters, and "Ver Mais" toggle all working
+- CryptoSelector: popover with search and category filter working
+- Chart section: 51 symbols in dropdown, 1W and 1M timeframes available
+- Ticker tape: showing expanded symbols with proper colors
+- Category filters tested: "Meme" filter correctly shows DOGE, PEPE, SHIB, BONK, FLOKI, WIF
+
+## Unresolved Issues / Risks
+- Binance service needs careful process management - background processes tend to get killed after ~30s; works fine when started with `(... & )` subshell pattern
+- Some Binance symbols may not exist on USDT market (e.g., AKTUSDT was not found, returning null)
+- Not all 51 symbols may have kline data for sparklines - this causes 500 errors in dev.log but is handled gracefully
+- Light theme could use further refinement
+- Could add more advanced chart types (Renko, Line Break)
+- Could add more crypto pairs (USDC, BTC pairs)

@@ -8,6 +8,7 @@ import { Tooltip as UITooltip, TooltipTrigger, TooltipContent } from "@/componen
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { motion } from "framer-motion";
 import { Globe, BarChart3, Coins, TrendingUp, TrendingDown, Info } from "lucide-react";
+import { CRYPTO_COLORS } from "@/lib/crypto-meta";
 
 interface MetricCardProps {
   icon: React.ReactNode;
@@ -105,7 +106,7 @@ export function MarketOverview() {
   }, [tickers]);
 
   const donutData = useMemo(() => [
-    { name: "BTC", value: marketData.btcDominance, percent: marketData.btcDominance, color: "#f7931a" },
+    { name: "BTC", value: marketData.btcDominance, percent: marketData.btcDominance, color: CRYPTO_COLORS["BTCUSDT"] || "#f7931a" },
     { name: "Outros", value: marketData.othersDominance, percent: marketData.othersDominance, color: "#475569" },
   ], [marketData.btcDominance, marketData.othersDominance]);
 
@@ -159,7 +160,7 @@ export function MarketOverview() {
                 <UITooltip>
                   <TooltipTrigger asChild>
                     <div className="flex items-center gap-1 cursor-help">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#f7931a" }} />
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: CRYPTO_COLORS["BTCUSDT"] || "#f7931a" }} />
                       <span className="text-[10px] text-muted-foreground">BTC</span>
                     </div>
                   </TooltipTrigger>

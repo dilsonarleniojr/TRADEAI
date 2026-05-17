@@ -146,6 +146,14 @@ interface CryptoStore {
   toggleWatchlist: (symbol: string) => void;
   isInWatchlist: (symbol: string) => boolean;
 
+  // Category filter
+  categoryFilter: string;
+  setCategoryFilter: (category: string) => void;
+
+  // Symbol search
+  symbolSearchQuery: string;
+  setSymbolSearchQuery: (query: string) => void;
+
   // Loading states
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
@@ -261,7 +269,7 @@ export const useCryptoStore = create<CryptoStore>((set) => ({
     })),
 
   // Watchlist
-  watchlist: ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+  watchlist: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT"],
   toggleWatchlist: (symbol) =>
     set((state) => ({
       watchlist: state.watchlist.includes(symbol)
@@ -271,6 +279,14 @@ export const useCryptoStore = create<CryptoStore>((set) => ({
   isInWatchlist: (symbol) => {
     return useCryptoStore.getState().watchlist.includes(symbol);
   },
+
+  // Category filter
+  categoryFilter: "all",
+  setCategoryFilter: (category) => set({ categoryFilter: category }),
+
+  // Symbol search
+  symbolSearchQuery: "",
+  setSymbolSearchQuery: (query) => set({ symbolSearchQuery: query }),
 
   // Loading states
   isLoading: false,

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import { Grid3X3, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CRYPTO_SHORTS } from "@/lib/crypto-meta";
 
 interface KlineRaw {
   openTime: number;
@@ -244,7 +245,7 @@ export function CorrelationHeatmap() {
                       fontFamily="monospace"
                       fontWeight={600}
                     >
-                      {symbol.replace("USDT", "")}
+                      {CRYPTO_SHORTS[symbol] || symbol.replace("USDT", "")}
                     </text>
                   ))}
 
@@ -261,7 +262,7 @@ export function CorrelationHeatmap() {
                         fontFamily="monospace"
                         fontWeight={600}
                       >
-                        {rowSymbol.replace("USDT", "")}
+                        {CRYPTO_SHORTS[rowSymbol] || rowSymbol.replace("USDT", "")}
                       </text>
 
                       {/* Cells */}

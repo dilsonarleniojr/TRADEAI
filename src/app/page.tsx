@@ -61,6 +61,25 @@ const FALLBACK_TICKERS: Record<string, import("@/lib/store").TickerData> = {
   MATICUSDT: { symbol: "MATICUSDT", price: 0.3794, priceChange: -0.0011, priceChangePercent: -0.29, high: 0.3806, low: 0.3774, volume: 2834467.3, quoteVolume: 1074370.0 },
   LINKUSDT: { symbol: "LINKUSDT", price: 9.76, priceChange: -0.29, priceChangePercent: -2.89, high: 10.1, low: 9.61, volume: 2545188.75, quoteVolume: 24850582.0 },
   ATOMUSDT: { symbol: "ATOMUSDT", price: 2.043, priceChange: 0.103, priceChangePercent: 5.31, high: 2.044, low: 1.91, volume: 2295228.07, quoteVolume: 4533359.0 },
+  NEARUSDT: { symbol: "NEARUSDT", price: 3.85, priceChange: 0.12, priceChangePercent: 3.21, high: 3.98, low: 3.71, volume: 12500000, quoteVolume: 47800000 },
+  ALGOUSDT: { symbol: "ALGOUSDT", price: 0.182, priceChange: -0.004, priceChangePercent: -2.15, high: 0.188, low: 0.178, volume: 35000000, quoteVolume: 6400000 },
+  SUIUSDT: { symbol: "SUIUSDT", price: 1.45, priceChange: 0.08, priceChangePercent: 5.84, high: 1.52, low: 1.36, volume: 28000000, quoteVolume: 40600000 },
+  APTUSDT: { symbol: "APTUSDT", price: 8.92, priceChange: -0.31, priceChangePercent: -3.36, high: 9.28, low: 8.75, volume: 8500000, quoteVolume: 75800000 },
+  SEIUSDT: { symbol: "SEIUSDT", price: 0.42, priceChange: 0.015, priceChangePercent: 3.7, high: 0.44, low: 0.40, volume: 18000000, quoteVolume: 7560000 },
+  TIAUSDT: { symbol: "TIAUSDT", price: 8.15, priceChange: -0.42, priceChangePercent: -4.9, high: 8.65, low: 7.95, volume: 6200000, quoteVolume: 50500000 },
+  INJUSDT: { symbol: "INJUSDT", price: 24.5, priceChange: 1.2, priceChangePercent: 5.14, high: 25.2, low: 23.1, volume: 4500000, quoteVolume: 110000000 },
+  ARBUSDT: { symbol: "ARBUSDT", price: 0.95, priceChange: -0.03, priceChangePercent: -3.06, high: 0.99, low: 0.92, volume: 12000000, quoteVolume: 11400000 },
+  OPUSDT: { symbol: "OPUSDT", price: 1.82, priceChange: 0.04, priceChangePercent: 2.25, high: 1.88, low: 1.76, volume: 9500000, quoteVolume: 17300000 },
+  UNIUSDT: { symbol: "UNIUSDT", price: 6.35, priceChange: -0.12, priceChangePercent: -1.85, high: 6.52, low: 6.21, volume: 5200000, quoteVolume: 33000000 },
+  AAVEUSDT: { symbol: "AAVEUSDT", price: 92.5, priceChange: 2.8, priceChangePercent: 3.12, high: 95.0, low: 89.2, volume: 850000, quoteVolume: 78600000 },
+  MKRUSDT: { symbol: "MKRUSDT", price: 1520, priceChange: -45, priceChangePercent: -2.87, high: 1580, low: 1505, volume: 1200, quoteVolume: 1824000 },
+  SHIBUSDT: { symbol: "SHIBUSDT", price: 0.00001182, priceChange: -0.00000045, priceChangePercent: -3.67, high: 0.00001235, low: 0.00001155, volume: 450000000000, quoteVolume: 53200000 },
+  PEPEUSDT: { symbol: "PEPEUSDT", price: 0.00000842, priceChange: 0.00000065, priceChangePercent: 8.37, high: 0.00000885, low: 0.00000765, volume: 620000000000, quoteVolume: 52200000 },
+  FETUSDT: { symbol: "FETUSDT", price: 1.58, priceChange: 0.12, priceChangePercent: 8.22, high: 1.65, low: 1.44, volume: 15000000, quoteVolume: 23700000 },
+  RENDERUSDT: { symbol: "RENDERUSDT", price: 5.82, priceChange: 0.35, priceChangePercent: 6.4, high: 6.05, low: 5.42, volume: 8200000, quoteVolume: 47700000 },
+  FILUSDT: { symbol: "FILUSDT", price: 3.25, priceChange: -0.08, priceChangePercent: -2.4, high: 3.38, low: 3.15, volume: 9800000, quoteVolume: 31850000 },
+  LTCUSDT: { symbol: "LTCUSDT", price: 68.4, priceChange: -1.2, priceChangePercent: -1.72, high: 70.1, low: 67.5, volume: 5400000, quoteVolume: 369600000 },
+  TRXUSDT: { symbol: "TRXUSDT", price: 0.1245, priceChange: 0.0018, priceChangePercent: 1.47, high: 0.1262, low: 0.1221, volume: 82000000, quoteVolume: 10200000 },
 };
 
 const MOCK_TRADES: import("@/lib/store").TradeData[] = [
@@ -78,6 +97,10 @@ const MOCK_AI_SIGNALS: import("@/lib/store").AISignalData[] = [
   { id: "s4", symbol: "BNBUSDT", action: "SELL", confidence: 0.7, reasoning: "Divergência baixista no RSI. Nível de suporte em risco.", priceAtSignal: 656.82, stopLoss: 669.96, takeProfit: 623.98, createdAt: new Date(Date.now() - 420000).toISOString() },
   { id: "s5", symbol: "ADAUSDT", action: "SELL", confidence: 0.65, reasoning: "Falhou em manter suporte. Momento baixista aumentando.", priceAtSignal: 0.2554, stopLoss: 0.2605, takeProfit: 0.2426, createdAt: new Date(Date.now() - 540000).toISOString() },
   { id: "s6", symbol: "ATOMUSDT", action: "BUY", confidence: 0.88, reasoning: "Forte rompimento acima da resistência com confirmação de volume.", priceAtSignal: 2.043, stopLoss: 2.002, takeProfit: 2.145, createdAt: new Date(Date.now() - 660000).toISOString() },
+  { id: "s7", symbol: "INJUSDT", action: "BUY", confidence: 0.91, reasoning: "Padrão de copo com alça completo. Volume confirmando rompimento.", priceAtSignal: 24.5, stopLoss: 23.0, takeProfit: 27.8, createdAt: new Date(Date.now() - 780000).toISOString() },
+  { id: "s8", symbol: "PEPEUSDT", action: "BUY", confidence: 0.78, reasoning: "Rompimento de resistance com volume explosivo. Momentum forte.", priceAtSignal: 0.00000842, stopLoss: 0.00000750, takeProfit: 0.00001050, createdAt: new Date(Date.now() - 900000).toISOString() },
+  { id: "s9", symbol: "TIAUSDT", action: "SELL", confidence: 0.73, reasoning: "Divergência baixista no MACD. Suporte chave sob pressão.", priceAtSignal: 8.15, stopLoss: 8.55, takeProfit: 7.20, createdAt: new Date(Date.now() - 1020000).toISOString() },
+  { id: "s10", symbol: "FETUSDT", action: "BUY", confidence: 0.82, reasoning: "Setor de IA em alta. Rompimento de triângulo ascendente com volume.", priceAtSignal: 1.58, stopLoss: 1.42, takeProfit: 1.95, createdAt: new Date(Date.now() - 1140000).toISOString() },
 ];
 
 const MOCK_PORTFOLIO: import("@/lib/store").PortfolioData = {

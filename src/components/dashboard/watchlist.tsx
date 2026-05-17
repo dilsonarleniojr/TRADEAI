@@ -7,21 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Star, BarChart3, TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-
-const symbolColors: Record<string, string> = {
-  BTCUSDT: "#f7931a",
-  ETHUSDT: "#627eea",
-  BNBUSDT: "#f3ba2f",
-  SOLUSDT: "#9945ff",
-  XRPUSDT: "#00aae4",
-  ADAUSDT: "#0033ad",
-  DOGEUSDT: "#c3a634",
-  AVAXUSDT: "#e84142",
-  DOTUSDT: "#e6007a",
-  LINKUSDT: "#2a5ada",
-  MATICUSDT: "#8247e5",
-  ATOMUSDT: "#2e3148",
-};
+import { CRYPTO_COLORS, CRYPTO_SHORTS } from "@/lib/crypto-meta";
 
 export function Watchlist() {
   const { tickers, watchlist, toggleWatchlist, setSelectedSymbol, setActiveSection } = useCryptoStore();
@@ -65,7 +51,7 @@ export function Watchlist() {
               <AnimatePresence>
                 {watchlistTickers.map((ticker) => {
                   const isPositive = ticker.priceChangePercent >= 0;
-                  const color = symbolColors[ticker.symbol] || "#06b6d4";
+                  const color = CRYPTO_COLORS[ticker.symbol] || "#06b6d4";
 
                   return (
                     <motion.div
@@ -85,11 +71,11 @@ export function Watchlist() {
                           className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
                           style={{ backgroundColor: color }}
                         >
-                          {ticker.symbol.replace("USDT", "").slice(0, 2)}
+                          {(CRYPTO_SHORTS[ticker.symbol] || ticker.symbol.replace("USDT", "")).slice(0, 2)}
                         </div>
                         <div className="min-w-0">
                           <span className="text-sm font-medium">
-                            {ticker.symbol.replace("USDT", "")}
+                            {CRYPTO_SHORTS[ticker.symbol] || ticker.symbol.replace("USDT", "")}
                           </span>
                           <p className="text-[10px] text-muted-foreground truncate">
                             Vol: {formatVolume(ticker.quoteVolume)}

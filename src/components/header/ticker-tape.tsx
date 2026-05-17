@@ -1,24 +1,10 @@
 "use client";
 
 import { useCryptoStore } from "@/lib/store";
+import { CRYPTO_COLORS } from "@/lib/crypto-meta";
 import { formatPrice, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown } from "lucide-react";
-
-const symbolColors: Record<string, string> = {
-  BTCUSDT: "#f7931a",
-  ETHUSDT: "#627eea",
-  BNBUSDT: "#f3ba2f",
-  SOLUSDT: "#9945ff",
-  XRPUSDT: "#00aae4",
-  ADAUSDT: "#0033ad",
-  DOGEUSDT: "#c3a634",
-  AVAXUSDT: "#e84142",
-  DOTUSDT: "#e6007a",
-  LINKUSDT: "#2a5ada",
-  MATICUSDT: "#8247e5",
-  ATOMUSDT: "#2e3148",
-};
 
 export function TickerTape() {
   const { tickers } = useCryptoStore();
@@ -42,7 +28,7 @@ export function TickerTape() {
       <div className="ticker-tape flex items-center gap-8 whitespace-nowrap">
         {items.map((ticker, i) => {
           const isPositive = ticker.priceChangePercent >= 0;
-          const color = symbolColors[ticker.symbol] || "#06b6d4";
+          const color = CRYPTO_COLORS[ticker.symbol] || "#06b6d4";
           const key = `${ticker.symbol}-${i}`;
 
           return (
