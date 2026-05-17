@@ -59,10 +59,10 @@ export function Sidebar() {
                   <button
                     onClick={() => setActiveSection(item.id)}
                     className={cn(
-                      "relative w-11 h-11 rounded-lg flex items-center justify-center transition-all duration-200",
+                      "relative w-11 h-11 rounded-lg flex items-center justify-center transition-all duration-300",
                       "hover:bg-accent hover:text-accent-foreground hover:scale-105",
                       isActive
-                        ? "bg-primary/15 text-primary glow-cyan-sm"
+                        ? "bg-primary/15 text-primary glow-cyan-sm border-l-2 border-crypto-cyan"
                         : "text-muted-foreground"
                     )}
                   >

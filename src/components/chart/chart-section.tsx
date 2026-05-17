@@ -73,6 +73,7 @@ export function ChartSection() {
   const [showEMA26, setShowEMA26] = useState(false);
   const [showVolumeProfile, setShowVolumeProfile] = useState(false);
   const [showIchimoku, setShowIchimoku] = useState(false);
+  const hasActiveOverlay = showSMA20 || showSMA50 || showBollinger || showFibonacci || showEMA12 || showEMA26 || showVolumeProfile || showIchimoku;
   const [rsiValue, setRsiValue] = useState<number | null>(null);
   const rsiAbortRef = useRef<AbortController | null>(null);
 
@@ -333,7 +334,7 @@ export function ChartSection() {
       {/* Chart + Quick Trade Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
         <div className="lg:col-span-3 min-w-0">
-          <Card className="bg-card/30 backdrop-blur-sm border-border/50 overflow-hidden">
+          <Card className={`bg-card/30 backdrop-blur-sm border-border/50 overflow-hidden ${hasActiveOverlay ? 'glow-cyan-sm' : ''}`}>
             <CardContent className="p-0">
               <AnimatePresence mode="wait">
                 <motion.div

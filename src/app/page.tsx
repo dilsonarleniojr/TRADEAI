@@ -32,6 +32,8 @@ import { FundingRates } from "@/components/dashboard/funding-rates";
 import { ShortcutsHint } from "@/components/dashboard/shortcuts-hint";
 import { PortfolioRebalancing } from "@/components/dashboard/portfolio-rebalancing";
 import { StrategyComparison } from "@/components/dashboard/strategy-comparison";
+import { SocialSentiment } from "@/components/dashboard/social-sentiment";
+import { OnChainAnalytics } from "@/components/dashboard/on-chain-analytics";
 import { ChatSection } from "@/components/ai/chat-section";
 import { ChartSection } from "@/components/chart/chart-section";
 import { BotSection } from "@/components/bot/bot-section";
@@ -173,6 +175,10 @@ export default function HomePage() {
             <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <WhaleTracker />
               <LiquidationHeatmap />
+            </motion.div>
+            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <SocialSentiment />
+              <OnChainAnalytics />
             </motion.div>
             <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="lg:col-span-2">

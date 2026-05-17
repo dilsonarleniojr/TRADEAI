@@ -250,7 +250,7 @@ export function MarketTable() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right py-2.5">
-                        <span className="text-sm font-mono font-medium number-animate price-flash-up">
+                        <span className="text-sm font-mono font-medium number-animate price-flash-up transition-colors duration-300">
                           ${formatPrice(ticker.price)}
                         </span>
                       </TableCell>

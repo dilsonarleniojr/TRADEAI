@@ -1165,3 +1165,14 @@
 .value-bounce {
   animation: value-bounce 0.4s ease-out;
 }
+
+/* ========================
+   Pulse Glow for Active Elements
+   ======================== */
+.pulse-glow-green {
+  animation: pulse-glow-green 2s ease-in-out infinite;
+}
+@keyframes pulse-glow-green {
+  0%, 100% { box-shadow: 0 0 4px rgba(34, 197, 94, 0.3); }
+  50% { box-shadow: 0 0 12px rgba(34, 197, 94, 0.6); }
+}

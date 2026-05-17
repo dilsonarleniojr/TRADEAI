@@ -148,7 +148,7 @@ export function PnlTracker() {
     >
       {/* P&L Timeline Chart - 2 columns */}
       <div className="lg:col-span-2">
-        <Card className="glass-card card-accent-cyan h-full">
+        <Card className="glass-card card-accent-cyan gradient-border h-full">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">

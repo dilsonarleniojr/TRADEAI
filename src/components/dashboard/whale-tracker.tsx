@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion, AnimatePresence } from "framer-motion";
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from "recharts";
-import { Whale, RefreshCw, TrendingUp, TrendingDown, Trophy } from "lucide-react";
+import { Fish, RefreshCw, TrendingUp, TrendingDown, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatVolume } from "@/lib/format";
 
@@ -119,7 +119,7 @@ export function WhaleTracker() {
           <CardContent className="p-3">
             <div className="flex items-center gap-2 mb-1">
               <div className="p-1.5 rounded-md bg-crypto-gold/10">
-                <Whale className="w-3.5 h-3.5 text-crypto-gold" />
+                <Fish className="w-3.5 h-3.5 text-crypto-gold" />
               </div>
               <span className="text-xs text-muted-foreground">Whale Volume (24h)</span>
             </div>
@@ -178,7 +178,7 @@ export function WhaleTracker() {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Whale className="w-4 h-4 text-crypto-gold" />
+                <Fish className="w-4 h-4 text-crypto-gold" />
                 Whale Transaction Feed
               </CardTitle>
               <div className="flex items-center gap-1.5">
@@ -205,7 +205,7 @@ export function WhaleTracker() {
                       exit={{ opacity: 0, x: -40 }}
                       transition={{ duration: 0.35, ease: "easeOut" }}
                       className={cn(
-                        "flex items-center justify-between p-2.5 rounded-lg border transition-colors",
+                        "flex items-center justify-between p-2.5 rounded-lg border transition-all duration-200 hover:scale-[1.01]",
                         isBuy
                           ? "bg-crypto-green/5 border-crypto-green/10"
                           : "bg-crypto-red/5 border-crypto-red/10"
