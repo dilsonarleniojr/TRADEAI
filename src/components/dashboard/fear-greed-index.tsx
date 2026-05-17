@@ -285,21 +285,20 @@ export function FearGreedIndex() {
 
             {/* Center text overlay */}
             <div className="absolute inset-0 flex flex-col items-center justify-end pb-1">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 <motion.span
-                  className="text-3xl font-bold"
-                  style={{ color: fearGreed.color }}
+                  className="text-4xl font-extrabold drop-shadow-sm"
+                  style={{ color: fearGreed.color, textShadow: `0 0 20px ${fearGreed.color}40` }}
                   initial={{ opacity: 0, scale: 0.5 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.8, duration: 0.4, type: "spring", stiffness: 200 }}
                 >
                   {fearGreed.value}
                 </motion.span>
-                <span className="text-[9px] text-muted-foreground font-medium">Current</span>
               </div>
               <motion.span
-                className="text-[11px] font-semibold uppercase tracking-wider"
-                style={{ color: fearGreed.color }}
+                className="text-xs font-bold uppercase tracking-widest"
+                style={{ color: fearGreed.color, textShadow: `0 0 12px ${fearGreed.color}30` }}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 1, duration: 0.3 }}

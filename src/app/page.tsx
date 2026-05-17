@@ -23,12 +23,15 @@ import { FearGreedIndex } from "@/components/dashboard/fear-greed-index";
 import { MultiTimeframeAnalysis } from "@/components/dashboard/multi-timeframe";
 import { AlertNotification } from "@/components/dashboard/alert-notification";
 import { CorrelationHeatmap } from "@/components/dashboard/correlation-heatmap";
+import { WhaleTracker } from "@/components/dashboard/whale-tracker";
+import { LiquidationHeatmap } from "@/components/dashboard/liquidation-heatmap";
 import { TradingCalculator } from "@/components/dashboard/trading-calculator";
 import { CryptoNews } from "@/components/dashboard/crypto-news";
 import { MarketOverview } from "@/components/dashboard/market-overview";
 import { FundingRates } from "@/components/dashboard/funding-rates";
 import { ShortcutsHint } from "@/components/dashboard/shortcuts-hint";
 import { PortfolioRebalancing } from "@/components/dashboard/portfolio-rebalancing";
+import { StrategyComparison } from "@/components/dashboard/strategy-comparison";
 import { ChatSection } from "@/components/ai/chat-section";
 import { ChartSection } from "@/components/chart/chart-section";
 import { BotSection } from "@/components/bot/bot-section";
@@ -167,6 +170,10 @@ export default function HomePage() {
             <motion.div variants={itemVariants}>
               <CorrelationHeatmap />
             </motion.div>
+            <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <WhaleTracker />
+              <LiquidationHeatmap />
+            </motion.div>
             <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="lg:col-span-2">
                 <AISignals />
@@ -176,6 +183,9 @@ export default function HomePage() {
             <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <TradingCalculator />
               <CryptoNews />
+            </motion.div>
+            <motion.div variants={itemVariants}>
+              <StrategyComparison />
             </motion.div>
           </motion.div>
         );

@@ -341,7 +341,7 @@ export function CryptoNews() {
                       exit={{ opacity: 0, y: -8 }}
                       transition={{ duration: 0.2 }}
                       className={cn(
-                        "glass-card p-2.5 cursor-pointer transition-all duration-200 hover:bg-secondary/30 hover:-translate-y-0.5 hover:shadow-md slide-up",
+                        "glass-card p-2.5 cursor-pointer transition-all duration-200 hover:bg-secondary/30 hover:-translate-y-0.5 hover:shadow-md slide-up card-shimmer",
                         CATEGORY_BORDER[item.category],
                         isExpanded && "ring-1 ring-crypto-cyan/20"
                       )}
