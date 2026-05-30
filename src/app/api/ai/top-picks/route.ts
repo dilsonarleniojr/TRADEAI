@@ -49,6 +49,24 @@ export async function POST(request: Request) {
 
     const zai = await getZAI();
 
+    // Fetch latest crypto news to inform the AI analysis
+    let newsContext = '';
+    try {
+      const newsResults = await zai.functions.invoke('web_search', {
+        query: 'cryptocurrency bitcoin ethereum market news today 2025',
+        num: 5,
+        recency_days: 2,
+      });
+      if (Array.isArray(newsResults) && newsResults.length > 0) {
+        newsContext = newsResults
+          .slice(0, 5)
+          .map((r: any) => `- ${r.name || r.title || 'Notícia'}: ${r.snippet || ''}`)
+          .join('\n');
+      }
+    } catch {
+      // News search failed, continue without it
+    }
+
     // Prepare market summary for AI analysis
     const marketSummary = Object.entries(marketData)
       .slice(0, 30)
@@ -57,16 +75,21 @@ export async function POST(request: Request) {
       ))
       .join('\n');
 
-    const prompt = `Você é um analista de criptomoedas experiente. Analise os dados de mercado atuais e selecione as 5 melhores oportunidades de investimento para CURTO PRAZO (1-7 dias).
+    const newsSection = newsContext
+      ? `\nNOTÍCIAS RECENTES DO MUNDO CRYPTO:\n${newsContext}\n`
+      : '';
+
+    const prompt = `Você é um analista de criptomoedas experiente. Analise os dados de mercado atuais e as notícias recentes para selecionar as 5 melhores oportunidades de investimento para CURTO PRAZO (1-7 dias).
 
 DADOS DE MERCADO ATUAIS:
 ${marketSummary}
-
+${newsSection}
 INSTRUÇÕES:
-1. Selecione as 5 criptomoedas com melhor potencial de alta baseado em: momento, volume, tendência de preço
-2. Considere fatores como: momentum positivo, volume crescente, rompimento de resistências
-3. Para cada seleção, forneça análise detalhada
+1. Selecione as 5 criptomoedas com melhor potencial de alta baseado em: momento, volume, tendência de preço e notícias recentes
+2. Considere fatores como: momentum positivo, volume crescente, rompimento de resistências, notícias positivas, tendências macro
+3. Para cada seleção, forneça análise detalhada incluindo impacto das notícias
 4. Atribua um score (0-100) baseado na força do setup
+5. Priorize ativos com tendências de alta confirmadas por dados e notícias
 
 Responda APENAS com um array JSON contendo objetos com:
 - rank: posição (1-5)
@@ -75,7 +98,7 @@ Responda APENAS com um array JSON contendo objetos com:
 - currentPrice: preço atual
 - priceChange24h: variação 24h em porcentagem
 - recommendation: "COMPRA FORTE", "COMPRA", ou "ACUMULAR"
-- reason: motivo detalhado em português (2-3 frases)
+- reason: motivo detalhado em português (2-3 frases, mencione notícias quando relevante)
 - targetPrice: preço alvo sugerido
 - stopLoss: preço de stop loss sugerido
 - riskLevel: "Baixo", "Médio" ou "Alto"
@@ -88,7 +111,7 @@ IMPORTANTE: Responda APENAS com o array JSON, sem texto adicional.`;
       messages: [
         {
           role: 'assistant',
-          content: 'Você é um analista de criptomoedas profissional. Responda apenas com JSON válido. Foque em oportunidades reais baseadas nos dados fornecidos.'
+          content: 'Você é um analista de criptomoedas profissional. Responda apenas com JSON válido. Foque em oportunidades reais baseadas nos dados e notícias fornecidas.'
         },
         { role: 'user', content: prompt }
       ],
