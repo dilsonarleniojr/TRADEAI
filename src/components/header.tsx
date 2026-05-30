@@ -1,7 +1,7 @@
 "use client";
 
 import { useCryptoStore } from "@/lib/store";
-import { Activity, Wifi, WifiOff, Loader2, Moon, Sun, Settings } from "lucide-react";
+import { Activity, Wifi, WifiOff, Loader2, Moon, Sun, Settings, Trash2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
     setTradingMode,
     botActive,
     connectionStatus,
+    clearMockData,
   } = useCryptoStore();
 
   const { theme, setTheme } = useTheme();
@@ -91,6 +92,24 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
 
         {/* Right: Controls */}
         <div className="flex items-center gap-1.5 md:gap-2">
+          {/* Clear Mock Data Button - desktop only */}
+          {mounted && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="hidden md:flex h-8 gap-1.5 px-2 hover:bg-crypto-red/10 text-muted-foreground hover:text-crypto-red transition-colors duration-200"
+              onClick={() => {
+                clearMockData();
+                // Also clear server-side trades
+                fetch("/api/trades", { method: "DELETE" }).catch(() => {});
+              }}
+              aria-label="Limpar dados simulados"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span className="text-[10px] font-medium">Limpar Dados</span>
+            </Button>
+          )}
+
           {/* Theme Toggle - desktop only */}
           {mounted && (
             <Button

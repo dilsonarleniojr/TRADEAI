@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { useBinanceData } from "@/hooks/use-binance-data";
 import { useBinanceStream } from "@/hooks/use-binance-stream";
@@ -44,8 +44,8 @@ import { HistorySection } from "@/components/history/history-section";
 import { BacktestSection } from "@/components/backtest/backtest-section";
 import { MobilePortfolioBar } from "@/components/mobile/mobile-portfolio-bar";
 import { MobileDrawer } from "@/components/mobile/mobile-drawer";
+import { AITopPicks } from "@/components/dashboard/ai-top-picks";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
 
 // Fallback mock data (used when Binance API is not available)
 const FALLBACK_TICKERS: Record<string, import("@/lib/store").TickerData> = {
@@ -149,13 +149,20 @@ export default function HomePage() {
   useBinanceStream(); // Real-time Socket.IO updates
   useKeyboardShortcuts(); // Global keyboard shortcuts
 
-  // Initialize with fallback data, then real data will replace it
+  // Initialize with fallback data on mount, then real data will replace it
   useEffect(() => {
     setTickers(FALLBACK_TICKERS);
-    setTrades(MOCK_TRADES);
-    setAiSignals(MOCK_AI_SIGNALS);
-    setPortfolio(MOCK_PORTFOLIO);
-    setBotActive(true);
+    setTrades([]);
+    setAiSignals([]);
+    setPortfolio({
+      totalValue: 10000,
+      cashBalance: 10000,
+      assetBalance: 0,
+      assetQuantity: 0,
+      pnl: 0,
+      pnlPercent: 0,
+    });
+    setBotActive(false);
   }, [setTickers, setTrades, setAiSignals, setPortfolio, setBotActive]);
 
   const renderContent = () => {
@@ -170,9 +177,12 @@ export default function HomePage() {
             className="space-y-6 md:space-y-4"
           >
             {/* Section: Visão Geral (expanded by default) */}
-            <MobileSection title="Visão Geral" icon="📊" itemCount={3} defaultOpen={true}>
+            <MobileSection title="Visão Geral" icon="📊" itemCount={4} defaultOpen={true}>
               <motion.div variants={itemVariants}>
                 <StatCards />
+              </motion.div>
+              <motion.div variants={itemVariants}>
+                <AITopPicks />
               </motion.div>
               <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
                 <FearGreedIndex />
