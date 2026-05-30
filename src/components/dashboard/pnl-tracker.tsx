@@ -57,12 +57,12 @@ function generatePnLTimeline(portfolioPnl: number, pnlPercent: number) {
   return data;
 }
 
-// Generate breakdown data
+// Generate breakdown data (deterministic based on portfolio)
 function generateBreakdown(portfolioPnl: number) {
-  // Simulate different time period P&Ls
-  const todayPnl = portfolioPnl * 0.15 + (Math.random() - 0.3) * 20;
-  const weekPnl = portfolioPnl * 0.6 + (Math.random() - 0.2) * 50;
-  const monthPnl = portfolioPnl * 1.0 + (Math.random() - 0.1) * 30;
+  // Deterministic breakdown based on portfolio PnL (no Math.random)
+  const todayPnl = portfolioPnl * 0.15 + Math.sin(portfolioPnl) * 10;
+  const weekPnl = portfolioPnl * 0.6 + Math.cos(portfolioPnl * 0.5) * 20;
+  const monthPnl = portfolioPnl * 1.0 + Math.sin(portfolioPnl * 0.3) * 15;
 
   return {
     today: parseFloat(todayPnl.toFixed(2)),

@@ -27,7 +27,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Star, BarChart3, Search, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 // SVG Sparkline component
 function Sparkline({
@@ -56,7 +56,7 @@ function Sparkline({
     .join(" ");
 
   const areaPoints = `0,${height} ${points} ${width},${height}`;
-  const gradientId = `spark-${color.replace("#", "")}-${Math.random().toString(36).slice(2, 6)}`;
+  const gradientId = `spark-${color.replace("#", "")}-${data.length}`;
 
   return (
     <svg width={width} height={height} className="shrink-0">
@@ -401,7 +401,6 @@ export function MarketTable() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <AnimatePresence mode="popLayout">
                   {displayedList.map((ticker, idx) => {
                     const isPositive = ticker.priceChangePercent >= 0;
                     const meta = getMeta(ticker.symbol);
@@ -412,7 +411,7 @@ export function MarketTable() {
                     const isAltRow = idx % 2 === 1;
 
                     return (
-                      <motionTableRow
+                      <MotionTableRow
                         key={ticker.symbol}
                         idx={idx}
                         className={cn(
@@ -578,10 +577,9 @@ export function MarketTable() {
                             </div>
                           )}
                         </TableCell>
-                      </motionTableRow>
+                      </MotionTableRow>
                     );
                   })}
-                </AnimatePresence>
               </TableBody>
             </Table>
 
@@ -629,13 +627,12 @@ export function MarketTable() {
   );
 }
 
-// Motion-compatible TableRow wrapper
-function motionTableRow({
+// Motion-compatible TableRow wrapper (PascalCase to avoid hydration errors)
+function MotionTableRow({
   children,
   className,
   style,
   onClick,
-  idx,
 }: {
   children: React.ReactNode;
   className?: string;
@@ -644,15 +641,12 @@ function motionTableRow({
   idx: number;
 }) {
   return (
-    <motion.tr
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: idx * 0.02, duration: 0.2 }}
+    <TableRow
       className={className}
       style={style}
       onClick={onClick}
     >
       {children}
-    </motion.tr>
+    </TableRow>
   );
 }

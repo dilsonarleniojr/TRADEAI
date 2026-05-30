@@ -28,6 +28,7 @@ import {
   Keyboard,
   ChevronRight,
   Activity,
+  Trash2,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSyncExternalStore, useState } from "react";
@@ -57,6 +58,7 @@ export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
     connectionStatus,
     botActive,
     portfolio,
+    clearMockData,
   } = useCryptoStore();
 
   const { theme, setTheme } = useTheme();
@@ -329,6 +331,22 @@ export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Clear Mock Data */}
+          <div className="glass-card rounded-xl p-4">
+            <Button
+              variant="ghost"
+              className="w-full h-9 gap-2 text-crypto-red hover:bg-crypto-red/10 hover:text-crypto-red rounded-lg text-xs font-medium"
+              onClick={() => {
+                clearMockData();
+                fetch("/api/trades", { method: "DELETE" }).catch(() => {});
+                onOpenChange(false);
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Limpar Dados Simulados
+            </Button>
           </div>
 
           {/* Keyboard Shortcuts */}

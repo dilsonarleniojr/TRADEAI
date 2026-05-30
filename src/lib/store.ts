@@ -157,6 +157,9 @@ interface CryptoStore {
   // Loading states
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
+
+  // Clear all mock data
+  clearMockData: () => void;
 }
 
 export const useCryptoStore = create<CryptoStore>((set) => ({
@@ -291,4 +294,21 @@ export const useCryptoStore = create<CryptoStore>((set) => ({
   // Loading states
   isLoading: false,
   setIsLoading: (loading) => set({ isLoading: loading }),
+
+  // Clear all mock data
+  clearMockData: () => set({
+    trades: [],
+    aiSignals: [],
+    chatMessages: [],
+    alerts: [],
+    botActive: false,
+    portfolio: {
+      totalValue: 10000,
+      cashBalance: 10000,
+      assetBalance: 0,
+      assetQuantity: 0,
+      pnl: 0,
+      pnlPercent: 0,
+    },
+  }),
 }));
