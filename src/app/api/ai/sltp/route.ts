@@ -10,6 +10,14 @@ async function getZAI() {
   return zaiInstance;
 }
 
+// Cache SL/TP results to avoid excessive AI API calls (429 rate limiting)
+const sltpCache = new Map<string, { data: Record<string, unknown>; timestamp: number }>();
+const SLTP_CACHE_DURATION = 3 * 60 * 1000; // 3 minutes
+
+// Rate limiter: max 1 AI call per 10 seconds
+let lastAICallTime = 0;
+const AI_CALL_MIN_INTERVAL = 10000; // 10 seconds
+
 // ATR (Average True Range) calculation
 function calculateATR(highs: number[], lows: number[], closes: number[], period: number = 14): number {
   if (highs.length < 2) return 0;
@@ -245,59 +253,92 @@ export async function POST(request: NextRequest) {
     const slPercent = ((currentPrice - stopLoss) / currentPrice) * 100;
     const tpPercent = ((takeProfit - currentPrice) / currentPrice) * 100;
 
-    // Generate AI reasoning
-    const zai = await getZAI();
-    const reasoningPrompt = `Com base na análise técnica de ${symbol}:
+    // Build response data first (without AI reasoning)
+    const responseData: Record<string, unknown> = {
+      symbol,
+      currentPrice,
+      stopLoss: parseFloat(stopLoss.toFixed(2)),
+      takeProfit: parseFloat(takeProfit.toFixed(2)),
+      slPercent: parseFloat(slPercent.toFixed(2)),
+      tpPercent: parseFloat(tpPercent.toFixed(2)),
+      riskRewardRatio: parseFloat(riskRewardRatio.toFixed(2)),
+      atr: parseFloat(atr.toFixed(2)),
+      support: parseFloat(sr.nearestSupport.toFixed(2)),
+      resistance: parseFloat(sr.nearestResistance.toFixed(2)),
+      rsi: parseFloat(rsi.toFixed(1)),
+      bollingerLower: parseFloat(bb.lower.toFixed(2)),
+      bollingerUpper: parseFloat(bb.upper.toFixed(2)),
+      recommendation,
+      reasoning: '',
+    };
+
+    // Check cache first
+    const cacheKey = `${symbol}-${currentPrice.toFixed(0)}`;
+    const cached = sltpCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < SLTP_CACHE_DURATION) {
+      return NextResponse.json({ success: true, data: cached.data, cached: true });
+    }
+
+    // Generate AI reasoning only if rate limiter allows
+    const now = Date.now();
+    const canCallAI = now - lastAICallTime >= AI_CALL_MIN_INTERVAL;
+
+    let reasoning = '';
+    if (canCallAI) {
+      const reasoningPrompt = `Com base na análise técnica de ${symbol}:
 - Preço atual: $${currentPrice.toFixed(2)}
 - ATR(14): $${atr.toFixed(2)}
 - RSI(14): ${rsi.toFixed(1)}
 - Suporte mais próximo: $${sr.nearestSupport.toFixed(2)}
 - Resistência mais próxima: $${sr.nearestResistance.toFixed(2)}
-- Banda de Bollinger Inferior: $${bb.lower.toFixed(2)}
-- Banda de Bollinger Superior: $${bb.upper.toFixed(2)}
 - Stop Loss calculado: $${stopLoss.toFixed(2)} (${slPercent.toFixed(1)}%)
 - Take Profit calculado: $${takeProfit.toFixed(2)} (${tpPercent > 0 ? '+' : ''}${tpPercent.toFixed(1)}%)
 - Recomendação: ${recommendation}
 
-Explique em 1-2 frases em português brasileiro por que esses valores de SL/TP são adequados, mencionando os níveis técnicos utilizados.`;
+Explique em 1-2 frases em português brasileiro por que esses valores de SL/TP são adequados.`;
 
-    let reasoning = '';
-    try {
-      const completion = await zai.chat.completions.create({
-        messages: [
-          { role: 'assistant', content: 'Você é um analista técnico de criptomoedas. Responda de forma concisa em português brasileiro.' },
-          { role: 'user', content: reasoningPrompt }
-        ],
-        thinking: { type: 'disabled' }
-      });
-      reasoning = completion.choices[0]?.message?.content || '';
-    } catch {
+      try {
+        const zai = await getZAI();
+        lastAICallTime = Date.now();
+        const completion = await zai.chat.completions.create({
+          messages: [
+            { role: 'assistant', content: 'Você é um analista técnico de criptomoedas. Responda de forma concisa em português brasileiro.' },
+            { role: 'user', content: reasoningPrompt }
+          ],
+          thinking: { type: 'disabled' }
+        });
+        reasoning = completion.choices[0]?.message?.content || '';
+      } catch {
+        reasoning = recommendation === 'COMPRA'
+          ? `SL baseado em suporte ($${sr.nearestSupport.toFixed(2)}) e ATR, TP baseado em resistência ($${sr.nearestResistance.toFixed(2)}). Risco/Recompensa de 1:${riskRewardRatio.toFixed(1)}.`
+          : recommendation === 'VENDA'
+            ? `SL baseado em resistência ($${sr.nearestResistance.toFixed(2)}) e ATR, TP baseado em suporte ($${sr.nearestSupport.toFixed(2)}). Risco/Recompensa de 1:${riskRewardRatio.toFixed(1)}.`
+            : `SL e TP baseados em ATR ($${atr.toFixed(2)}) e níveis de suporte/resistência. Aguardando confirmação de tendência.`;
+      }
+    } else {
+      // Use fallback reasoning when rate-limited
       reasoning = recommendation === 'COMPRA'
-        ? `SL baseado em suporte ($${sr.nearestSupport.toFixed(2)}) e ATR, TP baseado em resistência ($${sr.nearestResistance.toFixed(2)}). Risco/Recompensa de 1:${riskRewardRatio.toFixed(1)}.`
+        ? `SL em $${stopLoss.toFixed(2)} (suporte/ATR), TP em $${takeProfit.toFixed(2)} (resistência). R:R de 1:${riskRewardRatio.toFixed(1)}.`
         : recommendation === 'VENDA'
-          ? `SL baseado em resistência ($${sr.nearestResistance.toFixed(2)}) e ATR, TP baseado em suporte ($${sr.nearestSupport.toFixed(2)}). Risco/Recompensa de 1:${riskRewardRatio.toFixed(1)}.`
-          : `SL e TP baseados em ATR ($${atr.toFixed(2)}) e níveis de suporte/resistência. Aguardando confirmação de tendência.`;
+          ? `SL em $${stopLoss.toFixed(2)} (resistência/ATR), TP em $${takeProfit.toFixed(2)} (suporte). R:R de 1:${riskRewardRatio.toFixed(1)}.`
+          : `SL e TP baseados em ATR ($${atr.toFixed(2)}) e suporte/resistência. Aguardando confirmação.`;
+    }
+
+    responseData.reasoning = reasoning;
+
+    // Cache the result
+    sltpCache.set(cacheKey, { data: responseData, timestamp: Date.now() });
+
+    // Clean old cache entries (keep last 50)
+    if (sltpCache.size > 50) {
+      const entries = Array.from(sltpCache.entries()).sort((a, b) => a[1].timestamp - b[1].timestamp);
+      sltpCache.clear();
+      entries.slice(-30).forEach(([k, v]) => sltpCache.set(k, v));
     }
 
     return NextResponse.json({
       success: true,
-      data: {
-        symbol,
-        currentPrice,
-        stopLoss: parseFloat(stopLoss.toFixed(2)),
-        takeProfit: parseFloat(takeProfit.toFixed(2)),
-        slPercent: parseFloat(slPercent.toFixed(2)),
-        tpPercent: parseFloat(tpPercent.toFixed(2)),
-        riskRewardRatio: parseFloat(riskRewardRatio.toFixed(2)),
-        atr: parseFloat(atr.toFixed(2)),
-        support: parseFloat(sr.nearestSupport.toFixed(2)),
-        resistance: parseFloat(sr.nearestResistance.toFixed(2)),
-        rsi: parseFloat(rsi.toFixed(1)),
-        bollingerLower: parseFloat(bb.lower.toFixed(2)),
-        bollingerUpper: parseFloat(bb.upper.toFixed(2)),
-        recommendation,
-        reasoning,
-      }
+      data: responseData,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';

@@ -91,9 +91,9 @@ export function SLTPCalculator() {
   useEffect(() => {
     fetchSLTP();
 
-    // Auto-refresh every 60s
+    // Auto-refresh every 120s (reduced from 60s to avoid rate limiting)
     if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(() => fetchSLTP(true), 60000);
+    intervalRef.current = setInterval(() => fetchSLTP(true), 120000);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);

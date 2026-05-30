@@ -16,6 +16,7 @@ import {
   Star,
   ArrowUpRight,
   Loader2,
+  Newspaper,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -53,6 +54,7 @@ export function AITopPicks() {
   const [isLoading, setIsLoading] = useState(false);
   const [isCached, setIsCached] = useState(false);
   const [isFallback, setIsFallback] = useState(false);
+  const [hasNews, setHasNews] = useState(false);
   const [expandedPick, setExpandedPick] = useState<number | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
@@ -75,6 +77,7 @@ export function AITopPicks() {
         setPicks(result.picks);
         setIsCached(result.cached || false);
         setIsFallback(result.fallback || false);
+        setHasNews(!result.fallback && !result.cached);
         setLastUpdated(new Date());
       }
     } catch (err) {
@@ -116,6 +119,12 @@ export function AITopPicks() {
               {isCached && (
                 <Badge className="text-[8px] bg-crypto-cyan/10 text-crypto-cyan border-crypto-cyan/30 px-1">
                   Cache
+                </Badge>
+              )}
+              {hasNews && (
+                <Badge className="text-[8px] bg-crypto-green/10 text-crypto-green border-crypto-green/30 px-1">
+                  <Newspaper className="w-2 h-2 mr-0.5" />
+                  Notícias
                 </Badge>
               )}
             </CardTitle>

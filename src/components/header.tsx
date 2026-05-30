@@ -92,12 +92,12 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
 
         {/* Right: Controls */}
         <div className="flex items-center gap-1.5 md:gap-2">
-          {/* Clear Mock Data Button - desktop only */}
+          {/* Clear Mock Data Button - available on both mobile and desktop */}
           {mounted && (
             <Button
               variant="ghost"
               size="sm"
-              className="hidden md:flex h-8 gap-1.5 px-2 hover:bg-crypto-red/10 text-muted-foreground hover:text-crypto-red transition-colors duration-200"
+              className="h-8 gap-1.5 px-2 hover:bg-crypto-red/10 text-muted-foreground hover:text-crypto-red transition-colors duration-200"
               onClick={() => {
                 clearMockData();
                 // Also clear server-side trades
@@ -106,7 +106,7 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
               aria-label="Limpar dados simulados"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span className="text-[10px] font-medium">Limpar Dados</span>
+              <span className="text-[10px] font-medium hidden md:inline">Limpar Dados</span>
             </Button>
           )}
 
