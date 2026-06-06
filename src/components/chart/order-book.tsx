@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { BookOpen, RefreshCw, Minimize2, Maximize2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { getOrFetch, CACHE_TTL, invalidateCache } from "@/lib/cache";
 
 interface OrderBookLevel {
   price: number;
@@ -21,64 +23,30 @@ interface OrderBookData {
   totalAskVolume: number;
 }
 
-function generateOrderBook(currentPrice: number, _seed?: number): OrderBookData {
-  const seed = _seed ?? Date.now();
-  // Simple seeded pseudo-random for reproducibility within a single call
-  let rng = seed;
-  const random = () => {
-    rng = (rng * 1664525 + 1013904223) & 0x7fffffff;
-    return rng / 0x7fffffff;
-  };
+async function fetchRealOrderBook(symbol: string, limit: number): Promise<OrderBookData> {
+  const response = await fetch(`/api/market/depth?symbol=${symbol}&limit=${limit}`);
+  if (!response.ok) throw new Error("Failed to fetch order book");
 
-  const bids: OrderBookLevel[] = [];
-  const asks: OrderBookLevel[] = [];
-  const levels = 15;
+  const data = await response.json();
 
-  // Determine tick size based on price magnitude
-  let tickSize: number;
-  if (currentPrice >= 10000) tickSize = currentPrice * 0.0002; // ~$2 for BTC
-  else if (currentPrice >= 100) tickSize = currentPrice * 0.0003; // ~$0.03 for ETH
-  else if (currentPrice >= 1) tickSize = currentPrice * 0.0005; // smaller
-  else tickSize = currentPrice * 0.001;
-
-  // Base volume scales with price (higher-priced assets tend to have lower volume in units)
-  const baseVolume = Math.max(0.5, 100000 / currentPrice);
-
+  // Build cumulative volumes
   let bidCumulative = 0;
+  const bids: OrderBookLevel[] = (data.bids || []).map((b: { price: number; volume: number }) => {
+    bidCumulative += b.volume;
+    return { price: b.price, volume: b.volume, cumulative: bidCumulative };
+  });
+
   let askCumulative = 0;
+  const asks: OrderBookLevel[] = (data.asks || []).map((a: { price: number; volume: number }) => {
+    askCumulative += a.volume;
+    return { price: a.price, volume: a.volume, cumulative: askCumulative };
+  });
 
-  for (let i = 0; i < levels; i++) {
-    // Bids (below current price)
-    const bidPrice = currentPrice - tickSize * (i + 1);
-    // Volume increases slightly further from the center with some randomness
-    const bidBaseVol = baseVolume * (1 + i * 0.15 + random() * 0.8);
-    bidCumulative += bidBaseVol;
-    bids.push({
-      price: bidPrice,
-      volume: bidBaseVol,
-      cumulative: bidCumulative,
-    });
-
-    // Asks (above current price)
-    const askPrice = currentPrice + tickSize * (i + 1);
-    const askBaseVol = baseVolume * (1 + i * 0.12 + random() * 0.7);
-    askCumulative += askBaseVol;
-    asks.push({
-      price: askPrice,
-      volume: askBaseVol,
-      cumulative: askCumulative,
-    });
-  }
-
-  // Sort bids descending by price (closest to center at top)
-  bids.sort((a, b) => b.price - a.price);
-  // Sort asks ascending by price (closest to center at top)
-  asks.sort((a, b) => a.price - b.price);
-
-  const bestBid = bids[0]?.price ?? currentPrice;
-  const bestAsk = asks[0]?.price ?? currentPrice;
+  const bestBid = bids[0]?.price ?? 0;
+  const bestAsk = asks[0]?.price ?? 0;
   const spread = bestAsk - bestBid;
-  const spreadPercent = (spread / currentPrice) * 100;
+  const midPrice = (bestAsk + bestBid) / 2;
+  const spreadPercent = midPrice > 0 ? (spread / midPrice) * 100 : 0;
 
   return {
     bids,
@@ -99,56 +67,86 @@ function formatBookPrice(price: number): string {
 function formatBookVolume(vol: number): string {
   if (vol >= 1e6) return `${(vol / 1e6).toFixed(2)}M`;
   if (vol >= 1e3) return `${(vol / 1e3).toFixed(2)}K`;
-  if (vol >= 1) return vol.toFixed(2);
-  return vol.toFixed(4);
+  if (vol >= 1) return vol.toFixed(4);
+  return vol.toFixed(6);
 }
 
 export function OrderBook() {
   const { selectedSymbol, tickers } = useCryptoStore();
   const [orderBook, setOrderBook] = useState<OrderBookData | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isCompact, setIsCompact] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const seedRef = useRef<number>(Date.now());
+  const midPriceRef = useRef<HTMLDivElement | null>(null);
 
   const currentPrice = tickers[selectedSymbol]?.price ?? 0;
+  const levels = isCompact ? 8 : 15;
 
-  const refreshOrderBook = useCallback(() => {
-    if (currentPrice <= 0) return;
+  const refreshOrderBook = useCallback(async () => {
+    if (!selectedSymbol) return;
 
     setIsRefreshing(true);
-    // Slightly vary the seed each refresh to simulate market activity
-    seedRef.current += Math.floor(Math.random() * 10000) + 1;
-    const data = generateOrderBook(currentPrice, seedRef.current);
-    setOrderBook(data);
+    setError(null);
 
-    // Brief visual feedback
-    setTimeout(() => setIsRefreshing(false), 300);
-  }, [currentPrice]);
+    try {
+      // Invalidate cache to force fresh data
+      invalidateCache(`depth-${selectedSymbol}-${levels}`);
 
-  // Initial load and auto-refresh every 5 seconds
+      const data = await getOrFetch(
+        `depth-${selectedSymbol}-${levels}`,
+        () => fetchRealOrderBook(selectedSymbol, levels),
+        CACHE_TTL.ORDER_BOOK
+      );
+      setOrderBook(data);
+    } catch (err) {
+      console.error("[OrderBook] Fetch error:", err);
+      setError("Dados indisponíveis");
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 300);
+    }
+  }, [selectedSymbol, levels]);
+
+  // Initial load and auto-refresh every 3 seconds
   useEffect(() => {
-    if (currentPrice <= 0) return;
+    refreshOrderBook();
 
-    // Generate initial data
-    seedRef.current = Date.now();
-    const data = generateOrderBook(currentPrice, seedRef.current);
-    setOrderBook(data);
-
-    // Auto-refresh every 5 seconds
-    intervalRef.current = setInterval(() => {
-      seedRef.current += Math.floor(Math.random() * 10000) + 1;
-      const newData = generateOrderBook(currentPrice, seedRef.current);
-      setOrderBook(newData);
-    }, 5000);
+    intervalRef.current = setInterval(refreshOrderBook, 3000);
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [currentPrice, selectedSymbol]);
+  }, [refreshOrderBook]);
 
-  if (!orderBook || currentPrice <= 0) {
+  // Auto-scroll to mid-price on data load
+  useEffect(() => {
+    if (orderBook && midPriceRef.current) {
+      midPriceRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [orderBook?.spread]);
+
+  if (error && !orderBook) {
+    return (
+      <Card className="bg-card/50 border-border backdrop-blur-sm">
+        <CardContent className="p-6 text-center">
+          <div className="w-10 h-10 rounded-xl bg-crypto-red/10 flex items-center justify-center mx-auto mb-3">
+            <BookOpen className="w-5 h-5 text-crypto-red" />
+          </div>
+          <p className="text-xs text-muted-foreground">{error}</p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={refreshOrderBook}
+            className="mt-2 text-xs text-crypto-cyan"
+          >
+            Tentar novamente
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!orderBook) {
     return (
       <Card className="bg-card/50 border-border backdrop-blur-sm">
         <CardContent className="p-6 text-center">
@@ -166,6 +164,10 @@ export function OrderBook() {
     orderBook.asks[orderBook.asks.length - 1]?.cumulative ?? 0
   );
 
+  const totalVolume = orderBook.totalBidVolume + orderBook.totalAskVolume;
+  const bidPct = totalVolume > 0 ? (orderBook.totalBidVolume / totalVolume) * 100 : 50;
+  const askPct = totalVolume > 0 ? (orderBook.totalAskVolume / totalVolume) * 100 : 50;
+
   return (
     <Card className="bg-card/50 border-border backdrop-blur-sm">
       <CardHeader className="pb-2">
@@ -176,13 +178,31 @@ export function OrderBook() {
             <span className="text-[10px] text-muted-foreground font-normal">
               {selectedSymbol.replace("USDT", "/USDT")}
             </span>
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] bg-crypto-green/10 text-crypto-green border border-crypto-green/20">
+              Dados Reais
+            </span>
           </div>
-          <motion.div
-            animate={{ rotate: isRefreshing ? 360 : 0 }}
-            transition={{ duration: 0.5, ease: "easeInOut" }}
-          >
-            <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
-          </motion.div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              onClick={() => setIsCompact(!isCompact)}
+              aria-label={isCompact ? "Expandir" : "Compactar"}
+            >
+              {isCompact ? (
+                <Maximize2 className="w-3 h-3 text-muted-foreground" />
+              ) : (
+                <Minimize2 className="w-3 h-3 text-muted-foreground" />
+              )}
+            </Button>
+            <motion.div
+              animate={{ rotate: isRefreshing ? 360 : 0 }}
+              transition={{ duration: 0.5, ease: "easeInOut" }}
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
+            </motion.div>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="p-3 pt-0">
@@ -221,7 +241,7 @@ export function OrderBook() {
               const barWidth = maxCumulative > 0 ? (level.cumulative / maxCumulative) * 100 : 0;
               return (
                 <motion.div
-                  key={`ask-${i}`}
+                  key={`ask-${level.price}`}
                   initial={{ opacity: 0, x: 10 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -10 }}
@@ -252,9 +272,12 @@ export function OrderBook() {
         </div>
 
         {/* Current Price Divider */}
-        <div className="flex items-center gap-2 py-1.5 px-1 my-1 bg-crypto-cyan/5 border-y border-crypto-cyan/20 rounded-sm mid-price-pulse">
+        <div
+          ref={midPriceRef}
+          className="flex items-center gap-2 py-1.5 px-1 my-1 bg-crypto-cyan/5 border-y border-crypto-cyan/20 rounded-sm mid-price-pulse"
+        >
           <span className="text-sm font-bold text-crypto-cyan">
-            ${formatBookPrice(currentPrice)}
+            ${currentPrice > 0 ? formatBookPrice(currentPrice) : "—"}
           </span>
           <span className="text-[9px] text-muted-foreground">Preço Atual</span>
           <span className="ml-auto flex items-center gap-1">
@@ -270,7 +293,7 @@ export function OrderBook() {
               const barWidth = maxCumulative > 0 ? (level.cumulative / maxCumulative) * 100 : 0;
               return (
                 <motion.div
-                  key={`bid-${i}`}
+                  key={`bid-${level.price}`}
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 10 }}
@@ -315,7 +338,7 @@ export function OrderBook() {
                 background: "linear-gradient(90deg, #10b981, #06b6d4)",
               }}
               animate={{
-                width: `${(orderBook.totalBidVolume / (orderBook.totalBidVolume + orderBook.totalAskVolume)) * 100}%`,
+                width: `${bidPct}%`,
               }}
               transition={{ duration: 0.5, ease: "easeOut" }}
             >
@@ -327,7 +350,7 @@ export function OrderBook() {
                 background: "linear-gradient(90deg, #06b6d4, #ef4444)",
               }}
               animate={{
-                width: `${(orderBook.totalAskVolume / (orderBook.totalBidVolume + orderBook.totalAskVolume)) * 100}%`,
+                width: `${askPct}%`,
               }}
               transition={{ duration: 0.5, ease: "easeOut" }}
             >
@@ -336,10 +359,10 @@ export function OrderBook() {
           </div>
           <div className="flex justify-between text-[9px] mt-0.5">
             <span className="text-crypto-green">
-              {((orderBook.totalBidVolume / (orderBook.totalBidVolume + orderBook.totalAskVolume)) * 100).toFixed(1)}% Compra
+              {bidPct.toFixed(1)}% Compra
             </span>
             <span className="text-crypto-red">
-              {((orderBook.totalAskVolume / (orderBook.totalBidVolume + orderBook.totalAskVolume)) * 100).toFixed(1)}% Venda
+              {askPct.toFixed(1)}% Venda
             </span>
           </div>
         </div>
@@ -347,7 +370,7 @@ export function OrderBook() {
         {/* Auto-refresh indicator */}
         <div className="mt-2 flex items-center justify-center gap-1.5 text-[9px] text-muted-foreground">
           <div className="w-1.5 h-1.5 rounded-full bg-crypto-green animate-pulse" />
-          Atualizando a cada 5s
+          Dados reais da Binance • Atualizando a cada 3s
         </div>
       </CardContent>
     </Card>

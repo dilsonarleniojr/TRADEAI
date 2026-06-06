@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { useCryptoStore, type TickerData } from "@/lib/store";
+import { getOrFetch, CACHE_TTL } from "@/lib/cache";
+import { syncManager } from "@/lib/realtime-sync";
 
 const BINANCE_API = "/api/market";
 
 export function useBinanceData() {
   const {
     setTickers,
-    updateTicker,
     selectedSymbol,
     setKlines,
     setIsLoading,
@@ -16,34 +17,42 @@ export function useBinanceData() {
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch all tickers from Binance
+  // Fetch all tickers from Binance with TTL cache
   const fetchTickers = useCallback(async () => {
     try {
-      const response = await fetch(`${BINANCE_API}/ticker`);
-      if (!response.ok) return;
+      const tickersMap = await getOrFetch<Record<string, TickerData>>(
+        "tickers-all",
+        async () => {
+          const response = await fetch(`${BINANCE_API}/ticker`);
+          if (!response.ok) throw new Error("Ticker fetch failed");
 
-      const result = await response.json();
-      const data = result.data;
+          const result = await response.json();
+          const data = result.data;
+          if (!Array.isArray(data)) throw new Error("Invalid ticker data");
 
-      if (!Array.isArray(data)) return;
-
-      const tickersMap: Record<string, TickerData> = {};
-      for (const item of data) {
-        tickersMap[item.symbol] = {
-          symbol: item.symbol,
-          price: parseFloat(item.lastPrice),
-          priceChange: parseFloat(item.priceChange),
-          priceChangePercent: parseFloat(item.priceChangePercent),
-          high: parseFloat(item.highPrice),
-          low: parseFloat(item.lowPrice),
-          volume: parseFloat(item.volume),
-          quoteVolume: parseFloat(item.quoteVolume),
-        };
-      }
+          const map: Record<string, TickerData> = {};
+          for (const item of data) {
+            map[item.symbol] = {
+              symbol: item.symbol,
+              price: parseFloat(item.lastPrice),
+              priceChange: parseFloat(item.priceChange),
+              priceChangePercent: parseFloat(item.priceChangePercent),
+              high: parseFloat(item.highPrice),
+              low: parseFloat(item.lowPrice),
+              volume: parseFloat(item.volume),
+              quoteVolume: parseFloat(item.quoteVolume),
+            };
+          }
+          return map;
+        },
+        CACHE_TTL.TICKER_FULL
+      );
 
       setTickers(tickersMap);
+      syncManager.onPollingSuccess();
     } catch (err) {
       console.error("[BinanceData] Ticker fetch error:", err);
+      syncManager.onPollingFailure();
     }
   }, [setTickers]);
 
@@ -53,32 +62,40 @@ export function useBinanceData() {
       const sym = symbol || selectedSymbol;
       try {
         setIsLoading(true);
-        const response = await fetch(
-          `${BINANCE_API}/klines?symbol=${sym}&interval=${interval}&limit=${limit}`
-        );
-        if (!response.ok) return;
 
-        const result = await response.json();
-        if (result.data) {
-          const klines = result.data.map(
-            (k: {
-              openTime: number;
-              open: string;
-              high: string;
-              low: string;
-              close: string;
-              volume: string;
-            }) => ({
-              time: k.openTime,
-              open: parseFloat(k.open),
-              high: parseFloat(k.high),
-              low: parseFloat(k.low),
-              close: parseFloat(k.close),
-              volume: parseFloat(k.volume),
-            })
-          );
-          setKlines(klines);
-        }
+        const klines = await getOrFetch(
+          `klines-${sym}-${interval}-${limit}`,
+          async () => {
+            const response = await fetch(
+              `${BINANCE_API}/klines?symbol=${sym}&interval=${interval}&limit=${limit}`
+            );
+            if (!response.ok) throw new Error("Klines fetch failed");
+
+            const result = await response.json();
+            if (!result.data) throw new Error("No kline data");
+
+            return result.data.map(
+              (k: {
+                openTime: number;
+                open: string;
+                high: string;
+                low: string;
+                close: string;
+                volume: string;
+              }) => ({
+                time: k.openTime,
+                open: parseFloat(k.open),
+                high: parseFloat(k.high),
+                low: parseFloat(k.low),
+                close: parseFloat(k.close),
+                volume: parseFloat(k.volume),
+              })
+            );
+          },
+          CACHE_TTL.KLINES
+        );
+
+        setKlines(klines);
       } catch (err) {
         console.error("[BinanceData] Klines fetch error:", err);
       } finally {
@@ -102,7 +119,7 @@ export function useBinanceData() {
     };
   }, [fetchTickers]);
 
-  // Setup periodic account/portfolio balance poll
+  // Setup periodic account/portfolio balance poll via SyncManager
   useEffect(() => {
     let active = true;
     const pollAccount = async () => {
@@ -122,9 +139,11 @@ export function useBinanceData() {
               symbol: acc.symbol,
             });
           }
+          syncManager.onPollingSuccess();
         }
       } catch (err) {
         console.warn("[BinanceData] Account polling failed:", err);
+        syncManager.onPollingFailure();
       }
     };
 

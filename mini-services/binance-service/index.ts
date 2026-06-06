@@ -444,6 +444,32 @@ Bun.serve({
           });
         }
 
+        case "/api/market/depth": {
+          const symbol = url.searchParams.get("symbol") || "BTCUSDT";
+          const limit = url.searchParams.get("limit") || "20";
+          const bUrl = `${BINANCE_REST_BASE}/depth?symbol=${symbol.toUpperCase()}&limit=${limit}`;
+          const resp = await fetch(bUrl, { signal: AbortSignal.timeout(8000) });
+          if (!resp.ok) {
+            return new Response(JSON.stringify({ error: "Failed to fetch depth" }), {
+              status: resp.status, headers: { "Content-Type": "application/json", ...corsHeaders() },
+            });
+          }
+          const raw = await resp.json();
+          // Transform arrays to objects: [[price, qty], ...] -> [{price, volume}, ...]
+          const bids = (raw.bids || []).map((b: string[]) => ({
+            price: parseFloat(b[0]),
+            volume: parseFloat(b[1]),
+          }));
+          const asks = (raw.asks || []).map((a: string[]) => ({
+            price: parseFloat(a[0]),
+            volume: parseFloat(a[1]),
+          }));
+          return new Response(JSON.stringify({
+            symbol: symbol.toUpperCase(), bids, asks,
+            lastUpdateId: raw.lastUpdateId, timestamp: Date.now(),
+          }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
+        }
+
         case "/health":
           return new Response(JSON.stringify({
             status: "ok", service: "binance-service", port: PORT,
