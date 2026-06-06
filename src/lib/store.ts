@@ -342,3 +342,8 @@ export const useCryptoStore = create<CryptoStore>((set) => ({
     },
   }),
 }));
+
+if (typeof window !== "undefined") {
+  (window as any).useCryptoStore = useCryptoStore;
+}
+

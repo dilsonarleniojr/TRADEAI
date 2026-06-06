@@ -104,3 +104,12 @@ model PriceAlert {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+model Account {
+  id             String   @id @default("user-account")
+  userId         String   @default("binance_live_user")
+  cashBalance    Float    @default(10000.0)
+  assetQuantity  Float    @default(0.0)
+  symbol         String   @default("BTCUSDT")
+  updatedAt      DateTime @updatedAt
+}

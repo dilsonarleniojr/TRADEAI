@@ -395,12 +395,50 @@ export function BotSection() {
         variant: "default",
       });
 
-      // Persist trade to database
+      // Persist trade to database and sync balance
       fetch("/api/trades", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(trade),
-      }).catch(() => {});
+      })
+        .then(async (res) => {
+          if (res.ok) {
+            const result = await res.json();
+            if (result.success && result.account) {
+              const store = useCryptoStore.getState();
+              const latestPrice = store.tickers[trade.symbol]?.price ?? trade.price;
+              const newAssetBalance = result.account.assetQuantity * latestPrice;
+              const newTotalValue = result.account.cashBalance + newAssetBalance;
+              const initialBalance = store.botConfig.initialBalance || 10000;
+              const newPnl = newTotalValue - initialBalance;
+              const newPnlPercent = (newPnl / initialBalance) * 100;
+
+              console.log("[BotSection AI] Balance updated from API:", result.account);
+              store.setPortfolio({
+                totalValue: newTotalValue,
+                cashBalance: result.account.cashBalance,
+                assetBalance: newAssetBalance,
+                assetQuantity: result.account.assetQuantity,
+                pnl: newPnl,
+                pnlPercent: newPnlPercent,
+              });
+
+              // Emit telemetry event
+              const { telemetry } = require("@/lib/telemetry");
+              telemetry.emit("trade", {
+                tradeId: result.data.id,
+                symbol: trade.symbol,
+                side: trade.side,
+                price: trade.price,
+                quantity: trade.quantity,
+                total: trade.total,
+                cashBalance: result.account.cashBalance,
+                assetQuantity: result.account.assetQuantity,
+              });
+            }
+          }
+        })
+        .catch(() => {});
     }
   }, [aiSignals, botActive, botConfig.autoTradeSignals, botConfig.signalConfidenceThreshold, tickers, tradingMode, addTrade, updatePortfolioWithTrade, toast]);
 
@@ -426,12 +464,50 @@ export function BotSection() {
               description: `${trade.quantity.toFixed(6)} @ $${formatPrice(trade.price)} (${trade.strategy})`,
             });
 
-            // Persist trade to database
+            // Persist trade to database and sync balance
             fetch("/api/trades", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(trade),
-            }).catch(() => {});
+            })
+              .then(async (res) => {
+                if (res.ok) {
+                  const result = await res.json();
+                  if (result.success && result.account) {
+                    const store = useCryptoStore.getState();
+                    const latestPrice = store.tickers[trade.symbol]?.price ?? trade.price;
+                    const newAssetBalance = result.account.assetQuantity * latestPrice;
+                    const newTotalValue = result.account.cashBalance + newAssetBalance;
+                    const initialBalance = store.botConfig.initialBalance || 10000;
+                    const newPnl = newTotalValue - initialBalance;
+                    const newPnlPercent = (newPnl / initialBalance) * 100;
+
+                    console.log("[BotSection Quant] Balance updated from API:", result.account);
+                    store.setPortfolio({
+                      totalValue: newTotalValue,
+                      cashBalance: result.account.cashBalance,
+                      assetBalance: newAssetBalance,
+                      assetQuantity: result.account.assetQuantity,
+                      pnl: newPnl,
+                      pnlPercent: newPnlPercent,
+                    });
+
+                    // Emit telemetry event
+                    const { telemetry } = require("@/lib/telemetry");
+                    telemetry.emit("trade", {
+                      tradeId: result.data.id,
+                      symbol: trade.symbol,
+                      side: trade.side,
+                      price: trade.price,
+                      quantity: trade.quantity,
+                      total: trade.total,
+                      cashBalance: result.account.cashBalance,
+                      assetQuantity: result.account.assetQuantity,
+                    });
+                  }
+                }
+              })
+              .catch(() => {});
           }
 
           // Schedule next

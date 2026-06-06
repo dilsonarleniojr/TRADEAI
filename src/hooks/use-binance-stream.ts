@@ -71,6 +71,28 @@ export function useBinanceStream() {
         });
       });
 
+      socket.on("balance-update", (data: { cashBalance: number; assetQuantity: number; symbol: string }) => {
+        if (!mounted) return;
+        const store = useCryptoStore.getState();
+        const ticker = store.tickers[data.symbol];
+        const currentPrice = ticker?.price ?? 0;
+        const newAssetBalance = data.assetQuantity * currentPrice;
+        const newTotalValue = data.cashBalance + newAssetBalance;
+        const initialBalance = store.botConfig.initialBalance || 10000;
+        const newPnl = newTotalValue - initialBalance;
+        const newPnlPercent = (newPnl / initialBalance) * 100;
+
+        console.log("[BinanceStream] Balance updated via Socket.IO:", data, "newTotalValue:", newTotalValue);
+        store.setPortfolio({
+          totalValue: newTotalValue,
+          cashBalance: data.cashBalance,
+          assetBalance: newAssetBalance,
+          assetQuantity: data.assetQuantity,
+          pnl: newPnl,
+          pnlPercent: newPnlPercent,
+        });
+      });
+
       socket.on("subscribed", (data: { symbol: string }) => {
         if (!mounted) return;
         console.log("[BinanceStream] Subscribed to", data.symbol);

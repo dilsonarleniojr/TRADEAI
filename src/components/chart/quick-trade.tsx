@@ -53,14 +53,52 @@ export function QuickTrade() {
       description: `${qty} ${selectedSymbol.replace("USDT", "")} @ $${formatPrice(currentPrice)} — Total: $${formatPrice(total)}`,
     });
 
-    // Persist trade to database
+    // Persist trade to database and update balance
     fetch("/api/trades", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(trade),
-    }).catch(() => {
-      // Silently fail - local state already updated
-    });
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          const result = await res.json();
+          if (result.success && result.account) {
+            const store = useCryptoStore.getState();
+            const latestPrice = store.tickers[selectedSymbol]?.price ?? currentPrice;
+            const newAssetBalance = result.account.assetQuantity * latestPrice;
+            const newTotalValue = result.account.cashBalance + newAssetBalance;
+            const initialBalance = store.botConfig.initialBalance || 10000;
+            const newPnl = newTotalValue - initialBalance;
+            const newPnlPercent = (newPnl / initialBalance) * 100;
+
+            console.log("[QuickTrade] Balance updated from API:", result.account);
+            store.setPortfolio({
+              totalValue: newTotalValue,
+              cashBalance: result.account.cashBalance,
+              assetBalance: newAssetBalance,
+              assetQuantity: result.account.assetQuantity,
+              pnl: newPnl,
+              pnlPercent: newPnlPercent,
+            });
+
+            // Emit telemetry event
+            const { telemetry } = require("@/lib/telemetry");
+            telemetry.emit("trade", {
+              tradeId: result.data.id,
+              symbol: selectedSymbol,
+              side,
+              price: currentPrice,
+              quantity: qty,
+              total,
+              cashBalance: result.account.cashBalance,
+              assetQuantity: result.account.assetQuantity,
+            });
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("[QuickTrade] Failed to persist trade:", err.message);
+      });
 
     // Clear the last trade notification after 3 seconds
     setTimeout(() => setLastTrade(null), 3000);
@@ -68,7 +106,8 @@ export function QuickTrade() {
 
   // Fetch AI SL/TP suggestions
   const fetchSLTP = useCallback(async () => {
-    if (!ticker || currentPrice <= 0) return;
+    const currentTicker = useCryptoStore.getState().tickers[selectedSymbol];
+    if (!currentTicker || currentTicker.price <= 0) return;
     setSltpLoading(true);
     try {
       const res = await fetch("/api/ai/sltp", {
@@ -76,11 +115,11 @@ export function QuickTrade() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           symbol: selectedSymbol,
-          price: ticker.price,
-          high24h: ticker.high,
-          low24h: ticker.low,
-          volume: ticker.quoteVolume,
-          priceChange24h: ticker.priceChangePercent,
+          price: currentTicker.price,
+          high24h: currentTicker.high,
+          low24h: currentTicker.low,
+          volume: currentTicker.quoteVolume,
+          priceChange24h: currentTicker.priceChangePercent,
         }),
       });
       if (res.ok) {
@@ -94,7 +133,7 @@ export function QuickTrade() {
     } finally {
       setSltpLoading(false);
     }
-  }, [selectedSymbol, ticker, currentPrice]);
+  }, [selectedSymbol]);
 
   useEffect(() => {
     fetchSLTP();
