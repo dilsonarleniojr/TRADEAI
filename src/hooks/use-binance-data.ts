@@ -102,5 +102,51 @@ export function useBinanceData() {
     };
   }, [fetchTickers]);
 
+  // Setup periodic account/portfolio balance poll
+  useEffect(() => {
+    let active = true;
+    const pollAccount = async () => {
+      // Only poll if connectionStatus is not "connected"
+      const status = useCryptoStore.getState().connectionStatus;
+      if (status === "connected") return;
+
+      try {
+        const res = await fetch("/api/account");
+        if (res.ok && active) {
+          const result = await res.json();
+          if (result.success && result.data) {
+            const acc = result.data;
+            const store = useCryptoStore.getState();
+            const price = store.tickers[store.selectedSymbol]?.price ?? 78301.49;
+            const assetBal = acc.assetQuantity * price;
+            const total = acc.cashBalance + assetBal;
+            const initial = store.botConfig.initialBalance || 10000;
+            const pnl = total - initial;
+            const pnlPercent = (pnl / initial) * 100;
+
+            store.setPortfolio({
+              totalValue: total,
+              cashBalance: acc.cashBalance,
+              assetBalance: assetBal,
+              assetQuantity: acc.assetQuantity,
+              pnl,
+              pnlPercent,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("[BinanceData] Account polling failed:", err);
+      }
+    };
+
+    pollAccount(); // Initial poll
+    const interval = setInterval(pollAccount, 10000); // Poll every 10s
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   return { fetchTickers, fetchKlines };
 }

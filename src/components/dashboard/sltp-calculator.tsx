@@ -52,7 +52,8 @@ export function SLTPCalculator() {
   const currentPrice = ticker?.price ?? 0;
 
   const fetchSLTP = useCallback(async (showRefresh = false) => {
-    if (!ticker) return;
+    const currentTicker = useCryptoStore.getState().tickers[selectedSymbol];
+    if (!currentTicker) return;
     if (showRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
@@ -63,11 +64,11 @@ export function SLTPCalculator() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           symbol: selectedSymbol,
-          price: ticker.price,
-          high24h: ticker.high,
-          low24h: ticker.low,
-          volume: ticker.quoteVolume,
-          priceChange24h: ticker.priceChangePercent,
+          price: currentTicker.price,
+          high24h: currentTicker.high,
+          low24h: currentTicker.low,
+          volume: currentTicker.quoteVolume,
+          priceChange24h: currentTicker.priceChangePercent,
         }),
       });
 
@@ -85,7 +86,7 @@ export function SLTPCalculator() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedSymbol, ticker]);
+  }, [selectedSymbol]);
 
   // Fetch on mount and when symbol changes
   useEffect(() => {

@@ -492,6 +492,18 @@ io.on("connection", (socket) => {
     streamManager.unsubscribe(socket.id, s);
     socket.emit("unsubscribed", { symbol: s });
   });
+  socket.on("trade-executed", (data: any) => {
+    console.log(`[SocketIO] trade-executed:`, data);
+    io.emit("trade-executed", data);
+  });
+  socket.on("balance-update", (data: any) => {
+    console.log(`[SocketIO] balance-update:`, data);
+    io.emit("balance-update", data);
+  });
+  socket.on("telemetry:event", (data: any) => {
+    console.log(`[SocketIO] telemetry:event:`, data);
+    io.emit("telemetry:event", data);
+  });
   socket.on("disconnect", () => { streamManager.unsubscribeAll(socket.id); });
 });
 

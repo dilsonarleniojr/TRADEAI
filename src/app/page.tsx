@@ -152,17 +152,64 @@ export default function HomePage() {
   // Initialize with fallback data on mount, then real data will replace it
   useEffect(() => {
     setTickers(FALLBACK_TICKERS);
-    setTrades([]);
     setAiSignals([]);
-    setPortfolio({
-      totalValue: 10000,
-      cashBalance: 10000,
-      assetBalance: 0,
-      assetQuantity: 0,
-      pnl: 0,
-      pnlPercent: 0,
-    });
     setBotActive(false);
+
+    // Fetch initial account/portfolio balance from database
+    fetch("/api/account")
+      .then(async (res) => {
+        if (res.ok) {
+          const result = await res.json();
+          if (result.success && result.data) {
+            const acc = result.data;
+            const store = useCryptoStore.getState();
+            const price = store.tickers[store.selectedSymbol]?.price ?? 78301.49;
+            const assetBal = acc.assetQuantity * price;
+            const total = acc.cashBalance + assetBal;
+            const initial = store.botConfig.initialBalance || 10000;
+            const pnl = total - initial;
+            const pnlPercent = (pnl / initial) * 100;
+
+            console.log("[Page] Initial account loaded:", acc);
+            setPortfolio({
+              totalValue: total,
+              cashBalance: acc.cashBalance,
+              assetBalance: assetBal,
+              assetQuantity: acc.assetQuantity,
+              pnl,
+              pnlPercent,
+            });
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("[Page] Initial account fetch error:", err);
+        setPortfolio({
+          totalValue: 10000,
+          cashBalance: 10000,
+          assetBalance: 0,
+          assetQuantity: 0,
+          pnl: 0,
+          pnlPercent: 0,
+        });
+      });
+
+    // Fetch initial trades
+    fetch("/api/trades")
+      .then(async (res) => {
+        if (res.ok) {
+          const result = await res.json();
+          if (result.success && Array.isArray(result.data)) {
+            console.log("[Page] Initial trades loaded:", result.data.length);
+            setTrades(result.data);
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("[Page] Initial trades fetch error:", err);
+        setTrades([]);
+      });
+
   }, [setTickers, setTrades, setAiSignals, setPortfolio, setBotActive]);
 
   const renderContent = () => {
