@@ -43,7 +43,16 @@ function AnimatedValue({ value, prefix = "", suffix = "", decimals = 2 }: {
 }
 
 export function StatCards() {
-  const { portfolio, trades, botActive, tickers } = useCryptoStore();
+  const { portfolio, trades, botActive, tickers, connectionStatus } = useCryptoStore();
+
+  // Connection status indicator config
+  const statusConfig: Record<string, { color: string; label: string }> = {
+    connected: { color: "bg-crypto-green", label: "WS" },
+    "rest-api": { color: "bg-amber-400", label: "Polling" },
+    connecting: { color: "bg-amber-400 animate-pulse", label: "Conectando" },
+    disconnected: { color: "bg-crypto-red", label: "Offline" },
+  };
+  const currentStatus = statusConfig[connectionStatus] || statusConfig["rest-api"];
 
   // Find best performer from tickers
   const tickerValues = Object.values(tickers);
@@ -178,11 +187,17 @@ export function StatCards() {
                 </p>
                 <p
                   className={cn(
-                    "text-xs font-semibold value-bounce",
+                    "text-xs font-semibold value-bounce flex items-center gap-1.5",
                     stat.subPositive ? "text-crypto-green" : "text-crypto-red"
                   )}
                 >
                   {stat.subValue}
+                  {stat.title === "Valor da Carteira" && (
+                    <span className="inline-flex items-center gap-1 text-[9px] font-medium text-muted-foreground">
+                      <span className={cn("w-1.5 h-1.5 rounded-full", currentStatus.color)} />
+                      {currentStatus.label}
+                    </span>
+                  )}
                 </p>
               </div>
               {/* Subtle gradient line at bottom */}

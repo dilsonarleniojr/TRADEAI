@@ -25,7 +25,10 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json({
       success: true,
-      data: account,
+      data: {
+        ...account,
+        positions: [{ symbol: account.symbol, quantity: account.assetQuantity }],
+      },
     });
   } catch (error: any) {
     console.error('[Account API] GET error:', error.message);

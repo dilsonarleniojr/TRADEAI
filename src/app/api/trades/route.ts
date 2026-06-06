@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
 
     // Send notifications to Socket.IO in the background
     try {
-      const { io } = require('socket.io-client');
+      const { io } = await import('socket.io-client');
       const socket = io('http://localhost:3002', {
         transports: ['websocket'],
         reconnection: false,
@@ -154,6 +154,12 @@ export async function POST(request: NextRequest) {
         cashBalance: result.account.cashBalance,
         assetQuantity: result.account.assetQuantity,
         symbol: result.account.symbol,
+        positions: [{
+          symbol: result.account.symbol,
+          quantity: result.account.assetQuantity,
+          marketValue: result.account.assetQuantity * priceVal,
+        }],
+        totalValue: result.account.cashBalance + (result.account.assetQuantity * priceVal),
       },
     });
   } catch (error: any) {
@@ -186,7 +192,7 @@ export async function DELETE() {
     });
 
     try {
-      const { io } = require('socket.io-client');
+      const { io } = await import('socket.io-client');
       const socket = io('http://localhost:3002', {
         transports: ['websocket'],
         reconnection: false,

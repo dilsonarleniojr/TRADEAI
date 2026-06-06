@@ -82,35 +82,7 @@ const FALLBACK_TICKERS: Record<string, import("@/lib/store").TickerData> = {
   TRXUSDT: { symbol: "TRXUSDT", price: 0.1245, priceChange: 0.0018, priceChangePercent: 1.47, high: 0.1262, low: 0.1221, volume: 82000000, quoteVolume: 10200000 },
 };
 
-const MOCK_TRADES: import("@/lib/store").TradeData[] = [
-  { id: "t1", symbol: "BTCUSDT", side: "BUY", price: 78150.5, quantity: 0.02, total: 1563.01, strategy: "AI", mode: "paper", pnl: 0, timestamp: new Date(Date.now() - 120000).toISOString() },
-  { id: "t2", symbol: "ETHUSDT", side: "SELL", price: 2195.2, quantity: 0.5, total: 1097.6, strategy: "RSI", mode: "paper", pnl: 45.8, timestamp: new Date(Date.now() - 300000).toISOString() },
-  { id: "t3", symbol: "SOLUSDT", side: "BUY", price: 87.3, quantity: 10, total: 873.0, strategy: "MACD", mode: "paper", pnl: 0, timestamp: new Date(Date.now() - 600000).toISOString() },
-  { id: "t4", symbol: "BNBUSDT", side: "SELL", price: 659.8, quantity: 0.3, total: 197.94, strategy: "AI", mode: "paper", pnl: -12.3, timestamp: new Date(Date.now() - 900000).toISOString() },
-  { id: "t5", symbol: "LINKUSDT", side: "BUY", price: 9.82, quantity: 100, total: 982.0, strategy: "AI", mode: "paper", pnl: 0, timestamp: new Date(Date.now() - 1200000).toISOString() },
-];
 
-const MOCK_AI_SIGNALS: import("@/lib/store").AISignalData[] = [
-  { id: "s1", symbol: "BTCUSDT", action: "BUY", confidence: 0.85, reasoning: "Forte momento de alta com recuperação do RSI em sobrevenda. Volume crescente.", priceAtSignal: 78301.49, stopLoss: 76735, takeProfit: 82216, createdAt: new Date(Date.now() - 60000).toISOString() },
-  { id: "s2", symbol: "ETHUSDT", action: "HOLD", confidence: 0.6, reasoning: "Consolidando próximo ao suporte. Aguardar confirmação de rompimento.", priceAtSignal: 2182.68, stopLoss: 21391, takeProfit: 22918, createdAt: new Date(Date.now() - 180000).toISOString() },
-  { id: "s3", symbol: "SOLUSDT", action: "BUY", confidence: 0.72, reasoning: "Aproximando-se de suporte chave com volume de compra crescente.", priceAtSignal: 86.69, stopLoss: 84.96, takeProfit: 91.02, createdAt: new Date(Date.now() - 300000).toISOString() },
-  { id: "s4", symbol: "BNBUSDT", action: "SELL", confidence: 0.7, reasoning: "Divergência baixista no RSI. Nível de suporte em risco.", priceAtSignal: 656.82, stopLoss: 669.96, takeProfit: 623.98, createdAt: new Date(Date.now() - 420000).toISOString() },
-  { id: "s5", symbol: "ADAUSDT", action: "SELL", confidence: 0.65, reasoning: "Falhou em manter suporte. Momento baixista aumentando.", priceAtSignal: 0.2554, stopLoss: 0.2605, takeProfit: 0.2426, createdAt: new Date(Date.now() - 540000).toISOString() },
-  { id: "s6", symbol: "ATOMUSDT", action: "BUY", confidence: 0.88, reasoning: "Forte rompimento acima da resistência com confirmação de volume.", priceAtSignal: 2.043, stopLoss: 2.002, takeProfit: 2.145, createdAt: new Date(Date.now() - 660000).toISOString() },
-  { id: "s7", symbol: "INJUSDT", action: "BUY", confidence: 0.91, reasoning: "Padrão de copo com alça completo. Volume confirmando rompimento.", priceAtSignal: 24.5, stopLoss: 23.0, takeProfit: 27.8, createdAt: new Date(Date.now() - 780000).toISOString() },
-  { id: "s8", symbol: "PEPEUSDT", action: "BUY", confidence: 0.78, reasoning: "Rompimento de resistance com volume explosivo. Momentum forte.", priceAtSignal: 0.00000842, stopLoss: 0.00000750, takeProfit: 0.00001050, createdAt: new Date(Date.now() - 900000).toISOString() },
-  { id: "s9", symbol: "TIAUSDT", action: "SELL", confidence: 0.73, reasoning: "Divergência baixista no MACD. Suporte chave sob pressão.", priceAtSignal: 8.15, stopLoss: 8.55, takeProfit: 7.20, createdAt: new Date(Date.now() - 1020000).toISOString() },
-  { id: "s10", symbol: "FETUSDT", action: "BUY", confidence: 0.82, reasoning: "Setor de IA em alta. Rompimento de triângulo ascendente com volume.", priceAtSignal: 1.58, stopLoss: 1.42, takeProfit: 1.95, createdAt: new Date(Date.now() - 1140000).toISOString() },
-];
-
-const MOCK_PORTFOLIO: import("@/lib/store").PortfolioData = {
-  totalValue: 10412.50,
-  cashBalance: 6234.5,
-  assetBalance: 4178.0,
-  assetQuantity: 0.0534,
-  pnl: 412.50,
-  pnlPercent: 4.13,
-};
 
 // Stagger animation container for dashboard cards
 const containerVariants = {
@@ -138,7 +110,6 @@ export default function HomePage() {
     setTickers,
     setTrades,
     setAiSignals,
-    setPortfolio,
     setBotActive,
   } = useCryptoStore();
 
@@ -162,35 +133,21 @@ export default function HomePage() {
           const result = await res.json();
           if (result.success && result.data) {
             const acc = result.data;
-            const store = useCryptoStore.getState();
-            const price = store.tickers[store.selectedSymbol]?.price ?? 78301.49;
-            const assetBal = acc.assetQuantity * price;
-            const total = acc.cashBalance + assetBal;
-            const initial = store.botConfig.initialBalance || 10000;
-            const pnl = total - initial;
-            const pnlPercent = (pnl / initial) * 100;
-
             console.log("[Page] Initial account loaded:", acc);
-            setPortfolio({
-              totalValue: total,
+            useCryptoStore.getState().setAccount({
               cashBalance: acc.cashBalance,
-              assetBalance: assetBal,
               assetQuantity: acc.assetQuantity,
-              pnl,
-              pnlPercent,
+              symbol: acc.symbol,
             });
           }
         }
       })
       .catch((err) => {
         console.error("[Page] Initial account fetch error:", err);
-        setPortfolio({
-          totalValue: 10000,
+        useCryptoStore.getState().setAccount({
           cashBalance: 10000,
-          assetBalance: 0,
           assetQuantity: 0,
-          pnl: 0,
-          pnlPercent: 0,
+          symbol: "BTCUSDT",
         });
       });
 
@@ -210,7 +167,7 @@ export default function HomePage() {
         setTrades([]);
       });
 
-  }, [setTickers, setTrades, setAiSignals, setPortfolio, setBotActive]);
+  }, [setTickers, setTrades, setAiSignals, setBotActive]);
 
   const renderContent = () => {
     switch (activeSection) {

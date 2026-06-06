@@ -73,24 +73,30 @@ export function useBinanceStream() {
 
       socket.on("balance-update", (data: { cashBalance: number; assetQuantity: number; symbol: string }) => {
         if (!mounted) return;
-        const store = useCryptoStore.getState();
-        const ticker = store.tickers[data.symbol];
-        const currentPrice = ticker?.price ?? 0;
-        const newAssetBalance = data.assetQuantity * currentPrice;
-        const newTotalValue = data.cashBalance + newAssetBalance;
-        const initialBalance = store.botConfig.initialBalance || 10000;
-        const newPnl = newTotalValue - initialBalance;
-        const newPnlPercent = (newPnl / initialBalance) * 100;
+        console.log("[BinanceStream] Balance updated via Socket.IO:", data);
+        useCryptoStore.getState().setAccount(data);
+      });
 
-        console.log("[BinanceStream] Balance updated via Socket.IO:", data, "newTotalValue:", newTotalValue);
-        store.setPortfolio({
-          totalValue: newTotalValue,
-          cashBalance: data.cashBalance,
-          assetBalance: newAssetBalance,
-          assetQuantity: data.assetQuantity,
-          pnl: newPnl,
-          pnlPercent: newPnlPercent,
-        });
+      socket.on("trade-executed", (data: any) => {
+        if (!mounted) return;
+        console.log("[BinanceStream] Trade received via Socket.IO:", data);
+        const store = useCryptoStore.getState();
+        // Deduplicate by id
+        const exists = store.trades.some(t => t.id === data.id);
+        if (!exists) {
+          store.addTrade({
+            id: data.id,
+            symbol: data.symbol,
+            side: data.side,
+            price: data.price,
+            quantity: data.quantity,
+            total: data.total,
+            strategy: data.strategy || "Manual",
+            mode: data.mode || "paper",
+            pnl: data.pnl || 0,
+            timestamp: data.timestamp || new Date().toISOString(),
+          });
+        }
       });
 
       socket.on("subscribed", (data: { symbol: string }) => {

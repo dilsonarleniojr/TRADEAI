@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 
 export function QuickTrade() {
-  const { selectedSymbol, tickers, tradingMode, addTrade, portfolio, botConfig } = useCryptoStore();
+  const { selectedSymbol, tickers, tradingMode, portfolio, botConfig } = useCryptoStore();
   const [quantity, setQuantity] = useState("");
   const [lastTrade, setLastTrade] = useState<{ side: "BUY" | "SELL"; qty: number; price: number } | null>(null);
   const [sltpData, setSltpData] = useState<{ stopLoss: number; takeProfit: number; riskRewardRatio: number; recommendation: string } | null>(null);
@@ -24,85 +24,93 @@ export function QuickTrade() {
   const currentPrice = ticker?.price ?? 0;
   const isPositive = (ticker?.priceChangePercent ?? 0) >= 0;
 
-  const handleTrade = useCallback((side: "BUY" | "SELL") => {
+  const handleTrade = useCallback(async (side: "BUY" | "SELL") => {
     const qty = parseFloat(quantity);
     if (!qty || qty <= 0 || currentPrice <= 0) return;
 
     const total = qty * currentPrice;
 
-    const trade = {
-      id: `qt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      symbol: selectedSymbol,
-      side,
-      price: currentPrice,
-      quantity: qty,
-      total,
-      strategy: "Manual",
-      mode: tradingMode,
-      pnl: side === "SELL" ? parseFloat(((Math.random() - 0.4) * 30).toFixed(2)) : 0,
-      timestamp: new Date().toISOString(),
-    };
-
-    addTrade(trade);
-    setLastTrade({ side, qty, price: currentPrice });
-    setQuantity("");
-
-    // Show toast notification
-    toast({
-      title: `${side === "BUY" ? "🟢 Compra" : "🔴 Venda"} Executada`,
-      description: `${qty} ${selectedSymbol.replace("USDT", "")} @ $${formatPrice(currentPrice)} — Total: $${formatPrice(total)}`,
-    });
-
-    // Persist trade to database and update balance
-    fetch("/api/trades", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(trade),
-    })
-      .then(async (res) => {
-        if (res.ok) {
-          const result = await res.json();
-          if (result.success && result.account) {
-            const store = useCryptoStore.getState();
-            const latestPrice = store.tickers[selectedSymbol]?.price ?? currentPrice;
-            const newAssetBalance = result.account.assetQuantity * latestPrice;
-            const newTotalValue = result.account.cashBalance + newAssetBalance;
-            const initialBalance = store.botConfig.initialBalance || 10000;
-            const newPnl = newTotalValue - initialBalance;
-            const newPnlPercent = (newPnl / initialBalance) * 100;
-
-            console.log("[QuickTrade] Balance updated from API:", result.account);
-            store.setPortfolio({
-              totalValue: newTotalValue,
-              cashBalance: result.account.cashBalance,
-              assetBalance: newAssetBalance,
-              assetQuantity: result.account.assetQuantity,
-              pnl: newPnl,
-              pnlPercent: newPnlPercent,
-            });
-
-            // Emit telemetry event
-            const { telemetry } = require("@/lib/telemetry");
-            telemetry.emit("trade", {
-              tradeId: result.data.id,
-              symbol: selectedSymbol,
-              side,
-              price: currentPrice,
-              quantity: qty,
-              total,
-              cashBalance: result.account.cashBalance,
-              assetQuantity: result.account.assetQuantity,
-            });
-          }
-        }
-      })
-      .catch((err) => {
-        console.error("[QuickTrade] Failed to persist trade:", err.message);
+    try {
+      const res = await fetch("/api/trades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: selectedSymbol,
+          side,
+          price: currentPrice,
+          quantity: qty,
+          total,
+          strategy: "Manual",
+          mode: tradingMode,
+          pnl: 0,
+        }),
       });
 
-    // Clear the last trade notification after 3 seconds
-    setTimeout(() => setLastTrade(null), 3000);
-  }, [quantity, currentPrice, selectedSymbol, tradingMode, addTrade, toast]);
+      const result = await res.json();
+      if (result.success) {
+        const store = useCryptoStore.getState();
+
+        // Add server-generated trade to store
+        store.addTrade({
+          id: result.data.id,
+          symbol: result.data.symbol,
+          side: result.data.side,
+          price: result.data.price,
+          quantity: result.data.quantity,
+          total: result.data.total,
+          strategy: result.data.strategy || "Manual",
+          mode: result.data.mode || tradingMode,
+          pnl: result.data.pnl || 0,
+          timestamp: result.data.timestamp || new Date().toISOString(),
+        });
+
+        // Update account from backend payload
+        if (result.account) {
+          store.setAccount(result.account);
+        }
+
+        setLastTrade({ side, qty, price: currentPrice });
+        setQuantity("");
+
+        // Show toast notification
+        toast({
+          title: `${side === "BUY" ? "🟢 Compra" : "🔴 Venda"} Executada`,
+          description: `${qty} ${selectedSymbol.replace("USDT", "")} @ $${formatPrice(currentPrice)} — Total: $${formatPrice(total)}`,
+        });
+
+        // Emit telemetry event
+        try {
+          const { telemetry } = await import('@/lib/telemetry');
+          telemetry.emit("trade", {
+            tradeId: result.data.id,
+            symbol: selectedSymbol,
+            side,
+            price: currentPrice,
+            quantity: qty,
+            total,
+            cashBalance: result.account?.cashBalance,
+            assetQuantity: result.account?.assetQuantity,
+          });
+        } catch {}
+
+        // Clear the last trade notification after 3 seconds
+        setTimeout(() => setLastTrade(null), 3000);
+      } else {
+        toast({
+          title: "Erro na execução",
+          description: result.error || "Falha ao executar trade",
+          variant: "destructive",
+        });
+      }
+    } catch (err: any) {
+      console.error("[QuickTrade] Failed to execute trade:", err.message);
+      toast({
+        title: "Erro de conexão",
+        description: "Falha ao comunicar com o servidor. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  }, [quantity, currentPrice, selectedSymbol, tradingMode, toast]);
 
   // Fetch AI SL/TP suggestions
   const fetchSLTP = useCallback(async () => {
