@@ -173,6 +173,11 @@ function calculateMACD(closes: number[]): { macdLine: number[]; signalLine: numb
 // Feature Engineering
 // ========================
 
+function sanitizeValue(v: number): number {
+  if (isNaN(v) || !isFinite(v)) return 0;
+  return v;
+}
+
 export function extractFeatures(klines: KlinePoint[]): FeatureRow[] {
   if (klines.length < 30) return [];
 
@@ -193,18 +198,32 @@ export function extractFeatures(klines: KlinePoint[]): FeatureRow[] {
     const hlRange = highs[i] - lows[i];
     const referencePrice = closes[i] || 1;
 
+    // Convert raw price-dependent indicators into stationary percentage returns/distances
+    const rawEma9 = ema9Values[i] ?? closes[i];
+    const rawEma21 = ema21Values[i] ?? closes[i];
+    const rawMacdLine = macdData.macdLine[i] ?? 0;
+    const rawMacdSignal = macdData.signalLine[i] ?? 0;
+    const rawMacdHistogram = macdData.histogram[i] ?? 0;
+
+    const ema9Pct = ((rawEma9 - closes[i]) / referencePrice) * 100;
+    const ema21Pct = ((rawEma21 - closes[i]) / referencePrice) * 100;
+    const macdLinePct = (rawMacdLine / referencePrice) * 100;
+    const macdSignalPct = (rawMacdSignal / referencePrice) * 100;
+    const macdHistogramPct = (rawMacdHistogram / referencePrice) * 100;
+    const emaSpreadPct = ((rawEma9 - rawEma21) / rawEma21) * 100;
+
     features.push({
-      rsi: rsiValues[i] ?? 50,
-      ema9: ema9Values[i] ?? closes[i],
-      ema21: ema21Values[i] ?? closes[i],
-      macdLine: macdData.macdLine[i] ?? 0,
-      macdSignal: macdData.signalLine[i] ?? 0,
-      macdHistogram: macdData.histogram[i] ?? 0,
-      volumeChange: i > 0 && volumes[i - 1] > 0 ? ((volumes[i] - volumes[i - 1]) / volumes[i - 1]) * 100 : 0,
-      priceChange: i > 0 && closes[i - 1] > 0 ? ((closes[i] - closes[i - 1]) / closes[i - 1]) * 100 : 0,
-      hlRange: referencePrice > 0 ? (hlRange / referencePrice) * 100 : 0,
-      closePosition: hlRange > 0 ? (closes[i] - lows[i]) / hlRange : 0.5,
-      emaSpread: (ema9Values[i] ?? closes[i]) - (ema21Values[i] ?? closes[i]),
+      rsi: sanitizeValue(rsiValues[i] ?? 50),
+      ema9: sanitizeValue(ema9Pct),
+      ema21: sanitizeValue(ema21Pct),
+      macdLine: sanitizeValue(macdLinePct),
+      macdSignal: sanitizeValue(macdSignalPct),
+      macdHistogram: sanitizeValue(macdHistogramPct),
+      volumeChange: sanitizeValue(i > 0 && volumes[i - 1] > 0 ? ((volumes[i] - volumes[i - 1]) / volumes[i - 1]) * 100 : 0),
+      priceChange: sanitizeValue(i > 0 && closes[i - 1] > 0 ? ((closes[i] - closes[i - 1]) / closes[i - 1]) * 100 : 0),
+      hlRange: sanitizeValue(referencePrice > 0 ? (hlRange / referencePrice) * 100 : 0),
+      closePosition: sanitizeValue(hlRange > 0 ? (closes[i] - lows[i]) / hlRange : 0.5),
+      emaSpread: sanitizeValue(emaSpreadPct),
       target: closes[i + 1] > closes[i] ? 1 : 0,
     });
   }
@@ -781,10 +800,28 @@ export function runMLPipeline(
   const rfResult = predictRandomForest(rfTrees, lastX);
   const rfProb = rfResult.probability;
 
-  // Ensemble: weighted average probabilities (weight by F1 score)
+  // 1. Calculate ADX and ATR for dynamic thresholding
+  const { relATR, adx } = calculateTrendAndVolatility(klines);
+  const dynamicThreshold = getDynamicThreshold(adx, relATR);
+
+  // 2. Voting Classifier / Confluency Check
+  const getDirection = (p: number) => (p > 0.5 + (dynamicThreshold - 0.5) ? "COMPRA" : p < 0.5 - (dynamicThreshold - 0.5) ? "VENDA" : "NEUTRO");
+  
+  const dirLR = getDirection(logRegProb);
+  const dirDT = getDirection(dtProb);
+  const dirRF = getDirection(rfProb);
+
+  // Confluency: Random Forest (stability) and the best model must agree
+  const bestModelName = bestModel === "logistic" ? "logistic" : bestModel === "decision-tree" ? "dt" : "rf";
+  const bestModelDir = bestModelName === "logistic" ? dirLR : bestModelName === "dt" ? dirDT : dirRF;
+
+  let action: "COMPRA" | "VENDA" | "NEUTRO" = "NEUTRO";
+  if (dirRF === bestModelDir && dirRF !== "NEUTRO") {
+    action = dirRF;
+  }
+  
   const totalF1 = logRegMetrics.f1 + dtMetrics.f1 + rfMetrics.f1 || 1;
   const avgProb = (logRegProb * logRegMetrics.f1 + dtProb * dtMetrics.f1 + rfProb * rfMetrics.f1) / totalF1;
-  const action: "COMPRA" | "VENDA" | "NEUTRO" = avgProb > 0.6 ? "COMPRA" : avgProb < 0.4 ? "VENDA" : "NEUTRO";
   const confidence = Math.abs(avgProb - 0.5) * 2; // 0-1 scale
 
   // Current feature values (raw, not normalized)
@@ -842,4 +879,69 @@ export function runMLPipeline(
       features: currentFeatures,
     },
   };
+}
+
+// ==========================================
+// HFT Quant Helper Functions
+// ==========================================
+
+function calculateTrendAndVolatility(klines: KlinePoint[]): { relATR: number; adx: number } {
+  const period = 14;
+  if (klines.length < period + 1) {
+    return { relATR: 0.02, adx: 25 };
+  }
+
+  let trSum = 0;
+  let plusDM = 0;
+  let minusDM = 0;
+
+  for (let i = 1; i < klines.length; i++) {
+    const k = klines[i];
+    const prev = klines[i - 1];
+    
+    const tr = Math.max(
+      k.high - k.low,
+      Math.abs(k.high - prev.close),
+      Math.abs(k.low - prev.close)
+    );
+    trSum += tr;
+
+    const upMove = k.high - prev.high;
+    const downMove = prev.low - k.low;
+
+    if (upMove > downMove && upMove > 0) {
+      plusDM += upMove;
+    } else if (downMove > upMove && downMove > 0) {
+      minusDM += downMove;
+    }
+  }
+
+  const avgTR = trSum / (klines.length - 1);
+  const relATR = avgTR / klines[klines.length - 1].close; 
+
+  const plusDI = trSum > 0 ? (plusDM / trSum) * 100 : 50;
+  const minusDI = trSum > 0 ? (minusDM / trSum) * 100 : 50;
+  const sumDI = plusDI + minusDI;
+  const dx = sumDI > 0 ? (Math.abs(plusDI - minusDI) / sumDI) * 100 : 0;
+  
+  return { relATR, adx: dx };
+}
+
+function getDynamicThreshold(adx: number, relATR: number): number {
+  let baseThreshold = 0.65;
+  
+  if (adx < 20) {
+    baseThreshold = 0.75;
+  } else if (adx > 25) {
+    baseThreshold = 0.55; 
+  } else {
+    const pct = (adx - 20) / 5;
+    baseThreshold = 0.75 - pct * 0.20; 
+  }
+
+  if (relATR > 0.04) {
+    baseThreshold += 0.05; 
+  }
+  
+  return Math.min(0.85, Math.max(0.50, baseThreshold));
 }

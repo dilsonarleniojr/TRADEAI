@@ -10,7 +10,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Next.js 项目路径
-NEXTJS_PROJECT_DIR="/home/z/my-project"
+NEXTJS_PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
 
 # 检查 Next.js 项目目录是否存在
 if [ ! -d "$NEXTJS_PROJECT_DIR" ]; then
@@ -29,6 +30,7 @@ export NEXT_TELEMETRY_DISABLED=1
 
 BUILD_DIR="/tmp/build_fullstack_$BUILD_ID"
 echo "📁 清理并创建构建目录: $BUILD_DIR"
+rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
 # 安装依赖
@@ -64,17 +66,31 @@ if [ -d ".next/standalone" ]; then
     cp -r .next/standalone "$BUILD_DIR/next-service-dist/"
 fi
 
-# 复制 Next.js 静态文件
-if [ -d ".next/static" ]; then
-    echo "  - 复制 .next/static"
-    mkdir -p "$BUILD_DIR/next-service-dist/.next"
-    cp -r .next/static "$BUILD_DIR/next-service-dist/.next/"
-fi
-
-# 复制 public 目录
-if [ -d "public" ]; then
-    echo "  - 复制 public"
-    cp -r public "$BUILD_DIR/next-service-dist/"
+# 复制 Next.js 静态文件和 public 目录到 server.js 所在的目录
+SERVER_JS_PATH=$(find "$BUILD_DIR/next-service-dist" -name node_modules -prune -o -name server.js -print | head -n 1)
+if [ -n "$SERVER_JS_PATH" ]; then
+    SERVER_DIR=$(dirname "$SERVER_JS_PATH")
+    echo "  - 动态定位 Next.js 服务根目录: $SERVER_DIR"
+    
+    if [ -d ".next/static" ]; then
+        echo "  - 复制 .next/static 到 $SERVER_DIR/.next/static"
+        mkdir -p "$SERVER_DIR/.next"
+        cp -r .next/static "$SERVER_DIR/.next/"
+    fi
+    
+    if [ -d "public" ]; then
+        echo "  - 复制 public 到 $SERVER_DIR/public"
+        cp -r public "$SERVER_DIR/"
+    fi
+else
+    echo "  - ⚠️  未定位到 server.js，使用默认复制到根目录"
+    if [ -d ".next/static" ]; then
+        mkdir -p "$BUILD_DIR/next-service-dist/.next"
+        cp -r .next/static "$BUILD_DIR/next-service-dist/.next/"
+    fi
+    if [ -d "public" ]; then
+        cp -r public "$BUILD_DIR/next-service-dist/"
+    fi
 fi
 
 # 将测试环境数据库复制到构建产物中，生产环境直接使用这份数据库
