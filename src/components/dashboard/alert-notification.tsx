@@ -168,10 +168,10 @@ export function AlertNotification() {
     );
 
     if (newlyTriggered.length > 0) {
-      newlyTriggered.forEach((a) => {
+      newlyTriggered.forEach(async (a) => {
         previouslyTriggeredIdsRef.current.add(a.id);
         // Emit telemetry event
-        const { telemetry } = require("@/lib/telemetry");
+        const { telemetry } = await import('@/lib/telemetry');
         telemetry.emit('alert', {
           alertId: a.id,
           symbol: a.symbol,

@@ -304,7 +304,7 @@ export function BotSection() {
     };
 
     return trade;
-  }, [tickers, activeKlines, botConfig, tradingMode, getKlinesHistoryRecord, calculateRSIForTrading]);
+  }, [tickers, activeKlines, botConfig, tradingMode, getKlinesHistoryRecord, calculateRSIForTrading, isVetoActive, toast, scannerPairs]);
 
   const updatePortfolioWithTrade = useCallback((trade: TradeData) => {
     const portfolio_ = useCryptoStore.getState().portfolio;
@@ -424,7 +424,7 @@ export function BotSection() {
               });
 
               // Emit telemetry event
-              const { telemetry } = require("@/lib/telemetry");
+              const { telemetry } = await import('@/lib/telemetry');
               telemetry.emit("trade", {
                 tradeId: result.data.id,
                 symbol: trade.symbol,
@@ -493,7 +493,7 @@ export function BotSection() {
                     });
 
                     // Emit telemetry event
-                    const { telemetry } = require("@/lib/telemetry");
+                    const { telemetry } = await import('@/lib/telemetry');
                     telemetry.emit("trade", {
                       tradeId: result.data.id,
                       symbol: trade.symbol,

@@ -88,15 +88,18 @@ export function SLTPCalculator() {
     }
   }, [selectedSymbol]);
 
-  // Fetch on mount and when symbol changes
+  // Fetch on mount and when symbol changes (with 500ms debounce)
   useEffect(() => {
-    fetchSLTP();
+    const timeout = setTimeout(() => {
+      fetchSLTP();
+    }, 500);
 
     // Auto-refresh every 120s (reduced from 60s to avoid rate limiting)
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = setInterval(() => fetchSLTP(true), 120000);
 
     return () => {
+      clearTimeout(timeout);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [fetchSLTP]);

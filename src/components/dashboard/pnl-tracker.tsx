@@ -21,12 +21,59 @@ import { TrendingUp, TrendingDown, Calendar, BarChart3, Trophy, Target, Info } f
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
-// Generate 24 hourly P&L data points based on portfolio
-function generatePnLTimeline(portfolioPnl: number, pnlPercent: number) {
+// Generate 24 hourly P&L data points based on real trades or portfolio
+function generatePnLTimeline(portfolioPnl: number, pnlPercent: number, trades: import("@/lib/store").TradeData[] = []) {
   const now = new Date();
   const data = [];
   const baseValue = 10000; // Starting portfolio value
-  let cumulativePnl = portfolioPnl - portfolioPnl * 0.3; // Start from lower value
+
+  // If we have real trades, build timeline from trade history
+  if (trades.length > 0) {
+    // Group trades by hour bucket
+    const hourBuckets: Record<string, number> = {};
+    for (let i = 23; i >= 0; i--) {
+      const time = new Date(now.getTime() - i * 3600000);
+      const hourKey = time.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+      hourBuckets[hourKey] = 0;
+    }
+
+    // Accumulate P&L from trades into hour buckets
+    for (const trade of trades) {
+      const tradeTime = new Date(trade.timestamp);
+      const hoursSinceNow = (now.getTime() - tradeTime.getTime()) / 3600000;
+      if (hoursSinceNow >= 0 && hoursSinceNow < 24) {
+        const hourLabel = tradeTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+        if (hourBuckets[hourLabel] !== undefined) {
+          // For BUY trades, the P&L impact is the negative cost (invested)
+          // For SELL trades with pnl, use the pnl value
+          hourBuckets[hourLabel] += trade.pnl || 0;
+        }
+      }
+    }
+
+    // Build cumulative timeline
+    let cumulativePnl = 0;
+    const hourKeys = Object.keys(hourBuckets);
+    for (const hourKey of hourKeys) {
+      cumulativePnl += hourBuckets[hourKey];
+      data.push({
+        time: hourKey,
+        pnl: parseFloat(cumulativePnl.toFixed(2)),
+        value: parseFloat((baseValue + cumulativePnl).toFixed(2)),
+      });
+    }
+
+    // Ensure last point matches current portfolio P&L
+    if (data.length > 0) {
+      data[data.length - 1].pnl = parseFloat(portfolioPnl.toFixed(2));
+      data[data.length - 1].value = parseFloat((baseValue + portfolioPnl).toFixed(2));
+    }
+
+    return data;
+  }
+
+  // Fallback: synthetic timeline when no trades exist
+  let cumulativePnl = portfolioPnl - portfolioPnl * 0.3;
 
   for (let i = 23; i >= 0; i--) {
     const time = new Date(now.getTime() - i * 3600000);
@@ -36,7 +83,6 @@ function generatePnLTimeline(portfolioPnl: number, pnlPercent: number) {
       hour12: false,
     });
 
-    // Simulate progressive P&L movement towards current value
     const progress = (24 - i) / 24;
     const noise = (Math.sin(i * 0.8) * 15 + Math.cos(i * 1.3) * 8) * (1 - progress * 0.5);
     cumulativePnl = portfolioPnl * progress + noise;
@@ -117,8 +163,8 @@ export function PnlTracker() {
   const { portfolio, trades, tickers } = useCryptoStore();
 
   const pnlTimeline = useMemo(
-    () => generatePnLTimeline(portfolio.pnl, portfolio.pnlPercent),
-    [portfolio.pnl, portfolio.pnlPercent]
+    () => generatePnLTimeline(portfolio.pnl, portfolio.pnlPercent, trades),
+    [portfolio.pnl, portfolio.pnlPercent, trades]
   );
 
   const breakdown = useMemo(

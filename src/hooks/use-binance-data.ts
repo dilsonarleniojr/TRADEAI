@@ -116,21 +116,10 @@ export function useBinanceData() {
           const result = await res.json();
           if (result.success && result.data) {
             const acc = result.data;
-            const store = useCryptoStore.getState();
-            const price = store.tickers[store.selectedSymbol]?.price ?? 78301.49;
-            const assetBal = acc.assetQuantity * price;
-            const total = acc.cashBalance + assetBal;
-            const initial = store.botConfig.initialBalance || 10000;
-            const pnl = total - initial;
-            const pnlPercent = (pnl / initial) * 100;
-
-            store.setPortfolio({
-              totalValue: total,
+            useCryptoStore.getState().setAccount({
               cashBalance: acc.cashBalance,
-              assetBalance: assetBal,
               assetQuantity: acc.assetQuantity,
-              pnl,
-              pnlPercent,
+              symbol: acc.symbol,
             });
           }
         }

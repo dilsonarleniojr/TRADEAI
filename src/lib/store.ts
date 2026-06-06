@@ -126,6 +126,9 @@ interface CryptoStore {
   portfolio: PortfolioData;
   setPortfolio: (portfolio: PortfolioData) => void;
 
+  // Account from backend — authoritative source
+  setAccount: (account: { cashBalance: number; assetQuantity: number; symbol: string; positions?: Array<{ symbol: string; quantity: number; marketValue: number }> }) => void;
+
   // Trades
   trades: TradeData[];
   setTrades: (trades: TradeData[]) => void;
@@ -239,6 +242,26 @@ export const useCryptoStore = create<CryptoStore>((set) => ({
     pnlPercent: 0,
   },
   setPortfolio: (portfolio) => set({ portfolio }),
+
+  // Account from backend — single source of truth for balance
+  setAccount: (account) => set((state) => {
+    const price = state.tickers[account.symbol]?.price ?? 0;
+    const assetBalance = account.assetQuantity * price;
+    const totalValue = account.cashBalance + assetBalance;
+    const initial = state.botConfig.initialBalance || 10000;
+    const pnl = totalValue - initial;
+    const pnlPercent = initial > 0 ? (pnl / initial) * 100 : 0;
+    return {
+      portfolio: {
+        totalValue,
+        cashBalance: account.cashBalance,
+        assetBalance,
+        assetQuantity: account.assetQuantity,
+        pnl,
+        pnlPercent,
+      },
+    };
+  }),
 
   // Trades
   trades: [],
