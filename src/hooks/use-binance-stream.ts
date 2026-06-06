@@ -3,8 +3,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import { useCryptoStore, type TickerData } from "@/lib/store";
-
-type ConnectionStatus = "connected" | "disconnected" | "connecting" | "rest-api";
+import { syncManager } from "@/lib/realtime-sync";
 
 export function useBinanceStream() {
   const socketRef = useRef<Socket | null>(null);
@@ -34,15 +33,12 @@ export function useBinanceStream() {
 
       socketRef.current = socket;
 
-      // Don't override the default "rest-api" status - we start with REST API active
-      // and only change to "connecting" if we're actively trying WebSocket upgrade
-      // The REST API data is already flowing from useBinanceData()
-
       socket.on("connect", () => {
         if (!mounted) return;
         console.log("[BinanceStream] Connected via", socket.io.engine?.transport?.name || "unknown");
         reconnectAttemptRef.current = 0;
-        setConnectionStatus("connected");
+        failedRef.current = false;
+        syncManager.onWSConnected();
         socket.emit("subscribe", selectedSymbol);
       });
 
@@ -99,6 +95,18 @@ export function useBinanceStream() {
         }
       });
 
+      socket.on("portfolio-update", (data: any) => {
+        if (!mounted) return;
+        console.log("[BinanceStream] Portfolio updated via Socket.IO:", data);
+        if (data.cashBalance !== undefined) {
+          useCryptoStore.getState().setAccount({
+            cashBalance: data.cashBalance,
+            assetQuantity: data.assetQuantity ?? 0,
+            symbol: data.symbol ?? "BTCUSDT",
+          });
+        }
+      });
+
       socket.on("subscribed", (data: { symbol: string }) => {
         if (!mounted) return;
         console.log("[BinanceStream] Subscribed to", data.symbol);
@@ -112,18 +120,15 @@ export function useBinanceStream() {
       socket.on("disconnect", (reason) => {
         if (!mounted) return;
         console.log("[BinanceStream] Disconnected:", reason);
-        setConnectionStatus("disconnected");
+        syncManager.onWSDisconnected();
       });
 
       socket.on("reconnect_attempt", (attempt) => {
         if (!mounted) return;
         reconnectAttemptRef.current = attempt;
-        // Only log every 5th attempt to reduce noise
         if (attempt === 1 || attempt % 5 === 0) {
           console.log("[BinanceStream] Reconnect attempt:", attempt);
         }
-        // Keep rest-api status rather than showing confusing "connecting"
-        // Only show connecting on first attempt
         if (attempt === 1) {
           setConnectionStatus("connecting");
         }
@@ -131,21 +136,19 @@ export function useBinanceStream() {
 
       socket.on("reconnect_failed", () => {
         if (!mounted) return;
-        console.log("[BinanceStream] Reconnect failed - REST API will continue providing data");
-        setConnectionStatus("rest-api");
+        console.log("[BinanceStream] Reconnect failed — polling fallback active");
+        syncManager.onWSDisconnected();
       });
 
       socket.on("connect_error", (err) => {
         if (!mounted) return;
-        // Reduce log noise - only log first error and then every 10th
         const attempt = reconnectAttemptRef.current;
         if (attempt <= 1 || attempt % 10 === 0) {
-          console.warn("[BinanceStream] Connection issue (REST API fallback active):", err.message);
+          console.warn("[BinanceStream] Connection issue (fallback active):", err.message);
         }
-        // After 2 failed attempts, transition to rest-api mode
         if (attempt >= 2 && !failedRef.current) {
           failedRef.current = true;
-          setConnectionStatus("rest-api");
+          syncManager.onWSDisconnected();
         }
       });
     }
@@ -160,7 +163,6 @@ export function useBinanceStream() {
         socket.disconnect();
         socketRef.current = null;
       }
-      // Don't set disconnected - REST API is still active
       setConnectionStatus("rest-api");
     };
   }, []); // Connect once on mount
