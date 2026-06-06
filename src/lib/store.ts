@@ -31,6 +31,12 @@ export interface BotConfigData {
   initialBalance: number;
   autoTradeSignals: boolean;
   signalConfidenceThreshold: number;
+  useQuantFunnel: boolean;
+  useMarketRegime: boolean;
+  useEnsemble: boolean;
+  rsiPeriod: number;
+  emaFast: number;
+  emaSlow: number;
 }
 
 export interface PortfolioData {
@@ -158,6 +164,15 @@ interface CryptoStore {
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
 
+  // Binance credentials and connection state
+  binanceApiKey: string;
+  binanceApiSecret: string;
+  binanceConnected: boolean;
+  binanceTestnet: boolean;
+  setBinanceCredentials: (key: string, secret: string) => void;
+  setBinanceConnected: (connected: boolean) => void;
+  setBinanceTestnet: (testnet: boolean) => void;
+
   // Clear all mock data
   clearMockData: () => void;
 }
@@ -205,6 +220,12 @@ export const useCryptoStore = create<CryptoStore>((set) => ({
     initialBalance: 10000,
     autoTradeSignals: false,
     signalConfidenceThreshold: 75,
+    useQuantFunnel: false,
+    useMarketRegime: false,
+    useEnsemble: false,
+    rsiPeriod: 14,
+    emaFast: 9,
+    emaSlow: 21,
   },
   setBotConfig: (config) => set({ botConfig: config }),
 
@@ -294,6 +315,15 @@ export const useCryptoStore = create<CryptoStore>((set) => ({
   // Loading states
   isLoading: false,
   setIsLoading: (loading) => set({ isLoading: loading }),
+
+  // Binance credentials and connection state
+  binanceApiKey: "",
+  binanceApiSecret: "",
+  binanceConnected: false,
+  binanceTestnet: true,
+  setBinanceCredentials: (key, secret) => set({ binanceApiKey: key, binanceApiSecret: secret }),
+  setBinanceConnected: (connected) => set({ binanceConnected: connected }),
+  setBinanceTestnet: (testnet) => set({ binanceTestnet: testnet }),
 
   // Clear all mock data
   clearMockData: () => set({

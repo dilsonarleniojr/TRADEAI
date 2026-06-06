@@ -56,10 +56,15 @@ ls -lah
 DEFAULT_PACKAGED_DB_PATH="/app/db/custom.db"
 DEFAULT_PACKAGED_DATABASE_URL="file:$DEFAULT_PACKAGED_DB_PATH"
 
-# 启动 Next.js 服务器
-if [ -f "./next-service-dist/server.js" ]; then
-    echo "🚀 启动 Next.js 服务器..."
-    cd next-service-dist/ || exit 1
+# 自动寻找 Next.js server.js 路径
+SERVER_JS_PATH=$(find ./next-service-dist -name node_modules -prune -o -name server.js -print | head -n 1)
+
+if [ -n "$SERVER_JS_PATH" ]; then
+    echo "🚀 启动 Next.js 服务器 ($SERVER_JS_PATH)..."
+    SERVER_DIR=$(dirname "$SERVER_JS_PATH")
+    
+    START_DIR=$(pwd)
+    cd "$SERVER_DIR" || exit 1
     
     # 设置环境变量
     export NODE_ENV=production
@@ -93,9 +98,9 @@ if [ -f "./next-service-dist/server.js" ]; then
         echo "✅ Next.js 服务器已启动 (PID: $NEXT_PID, Port: $PORT)"
     fi
     
-    cd ../
+    cd "$START_DIR"
 else
-    echo "⚠️  未找到 Next.js 服务器文件: ./next-service-dist/server.js"
+    echo "⚠️  未找到 Next.js 服务器文件 (server.js)"
 fi
 
 # 启动 mini-services
@@ -132,4 +137,16 @@ echo "💡 按 Ctrl+C 停止所有服务"
 echo ""
 
 # Caddy 作为主进程运行
-exec caddy run --config Caddyfile --adapter caddyfile
+if command -v docker >/dev/null 2>&1 && docker ps >/dev/null 2>&1; then
+    echo "🐳 Detected Docker. Starting Caddy in Docker container on host network..."
+    docker rm -f trade-caddy-proxy >/dev/null 2>&1 || true
+    exec docker run --name trade-caddy-proxy --rm --network host -v "$(pwd)/Caddyfile:/etc/caddy/Caddyfile" caddy caddy run --config /etc/caddy/Caddyfile
+else
+    echo "⚠️ Docker not running/available. Trying to run Caddy locally..."
+    if [ -f "./caddy" ]; then
+        echo "💡 使用本地 caddy 运行..."
+        exec ./caddy run --config Caddyfile --adapter caddyfile
+    else
+        exec caddy run --config Caddyfile --adapter caddyfile
+    fi
+fi

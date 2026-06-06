@@ -97,6 +97,7 @@ export function MLPipeline() {
   const [showConfig, setShowConfig] = useState(true);
   const [activeModelTab, setActiveModelTab] = useState<"logistic" | "dt" | "rf">("logistic");
   const [progressStep, setProgressStep] = useState(0);
+  const [missingDays, setMissingDays] = useState<number | null>(null);
 
   const ticker = tickers[selectedSymbol];
 
@@ -105,6 +106,7 @@ export function MLPipeline() {
     setError(null);
     setResult(null);
     setProgressStep(0);
+    setMissingDays(null);
 
     try {
       // Step 1: Fetch data
@@ -115,7 +117,13 @@ export function MLPipeline() {
       if (!res.ok) throw new Error("Falha ao buscar dados históricos");
       const json = await res.json();
       const rawData: KlineRaw[] = json.data || [];
-      if (rawData.length < 50) throw new Error("Dados históricos insuficientes (mínimo 50 candles)");
+      
+      // Features calculation requires at least 77 candles to yield 50 samples
+      if (rawData.length < 77) {
+        const missing = 77 - rawData.length;
+        setMissingDays(missing);
+        throw new Error(`Dados históricos insuficientes (recebidos ${rawData.length} de 77 candles diários necessários).`);
+      }
 
       const klines: KlinePoint[] = rawData.map((k) => ({
         time: k.openTime,
@@ -140,7 +148,14 @@ export function MLPipeline() {
       setProgressStep(4);
       setResult(pipelineResult);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro desconhecido");
+      if (err instanceof Error) {
+        setError(err.message);
+        if (err.message.includes("Dados insuficientes para treinar") && !missingDays) {
+          setMissingDays(27);
+        }
+      } else {
+        setError("Erro desconhecido");
+      }
     } finally {
       setIsTraining(false);
     }
@@ -406,9 +421,17 @@ export function MLPipeline() {
 
           {/* Error */}
           {error && (
-            <div className="bg-crypto-red/5 border border-crypto-red/20 rounded-lg p-3 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-crypto-red shrink-0" />
-              <span className="text-xs text-crypto-red">{error}</span>
+            <div className="bg-crypto-red/5 border border-crypto-red/20 rounded-lg p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-crypto-red shrink-0" />
+                <span className="text-xs text-crypto-red font-semibold">{error}</span>
+              </div>
+              {missingDays !== null && (
+                <p className="text-[10px] text-muted-foreground pl-6">
+                  Como o intervalo de análise é diário (1d), a IA necessita que o ativo complete mais{" "}
+                  <span className="text-crypto-red font-bold font-mono">{missingDays} dias</span> de histórico de negociação na Binance para prosseguir.
+                </p>
+              )}
             </div>
           )}
 
