@@ -84,14 +84,20 @@ export interface ChatMessage {
 export interface PriceAlert {
   id: string;
   symbol: string;
-  targetPrice: number;
-  direction: "above" | "below";
+  targetPrice?: number;
+  direction?: "above" | "below";
   currentPrice: number;
   isTriggered: boolean;
   createdAt: string;
+  type?: "price" | "volatility" | "liquidity" | "indicator" | "sr_breakout";
+  threshold?: number;
+  indicatorName?: "RSI" | "MACD";
+  srLevel?: "support" | "resistance";
+  indicatorValue?: number;
+  message?: string;
 }
 
-export type ActiveSection = "dashboard" | "chart" | "ai" | "bot" | "backtest" | "history";
+export type ActiveSection = "dashboard" | "chart" | "ai" | "bot" | "backtest" | "history" | "education";
 export type TradingMode = "paper" | "live";
 export type ConnectionStatus = "connected" | "disconnected" | "connecting" | "rest-api";
 export type SyncMode = "realtime" | "polling" | "offline";

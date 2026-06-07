@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BotConfigForm } from "./bot-config-form";
+import { StrategyPanel } from "./strategy-panel";
 import { BotActivityLog } from "./bot-activity-log";
 import { BotPortfolio } from "./bot-portfolio";
 import { BotPerformanceChart } from "./bot-performance-chart";
@@ -854,6 +855,7 @@ export function BotSection() {
 
         {/* Right: Performance + Activity + Portfolio */}
         <div className="lg:col-span-2 space-y-4">
+          <StrategyPanel />
           {/* Motor Quant Intelligence Dashboard */}
           <Card className="bg-card/60 backdrop-blur-md border border-border/50 relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-crypto-cyan/40 to-transparent" />
