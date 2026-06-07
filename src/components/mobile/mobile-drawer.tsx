@@ -29,6 +29,7 @@ import {
   ChevronRight,
   Activity,
   Trash2,
+  BookOpen,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSyncExternalStore, useState } from "react";
@@ -59,6 +60,7 @@ export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
     botActive,
     portfolio,
     clearMockData,
+    setActiveSection,
   } = useCryptoStore();
 
   const { theme, setTheme } = useTheme();
@@ -331,6 +333,21 @@ export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Central de Educação Link */}
+          <div className="glass-card rounded-xl p-4 card-accent-cyan">
+            <Button
+              variant="ghost"
+              className="w-full h-9 gap-2 text-crypto-cyan hover:bg-crypto-cyan/10 hover:text-crypto-cyan rounded-lg text-xs font-semibold"
+              onClick={() => {
+                setActiveSection("education");
+                onOpenChange(false);
+              }}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              Acessar Central de Educação
+            </Button>
           </div>
 
           {/* Clear Mock Data */}

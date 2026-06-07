@@ -7,6 +7,7 @@ import {
   Brain,
   Bot,
   History,
+  BookOpen,
 } from "lucide-react";
 import {
   Tooltip,
@@ -25,6 +26,7 @@ const desktopNavItems = [
   { id: "bot" as const, icon: Bot, label: "Robô de Trading" },
   { id: "backtest" as const, icon: History, label: "Backtesting" },
   { id: "history" as const, icon: History, label: "Histórico" },
+  { id: "education" as const, icon: BookOpen, label: "Educação" },
 ];
 
 // Mobile: 5 items (combined backtest + history into "Histórico")
@@ -105,28 +107,32 @@ export function Sidebar() {
         </div>
       </motion.aside>
 
-      {/* Mobile Bottom Nav - Modern redesign with pill indicator */}
+      {/* Mobile Bottom Nav - Modern Binance Pro style redesign */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 safe-bottom">
         {/* Gradient top border line */}
-        <div className="h-px bg-gradient-to-r from-crypto-cyan/30 via-transparent to-crypto-cyan/30" />
+        <div className="h-px bg-gradient-to-r from-crypto-cyan/40 via-transparent to-crypto-cyan/40" />
 
-        <div className="glass backdrop-blur-xl py-2 px-2">
+        <div className="glass backdrop-blur-xl py-2 px-1 pb-3 shadow-[0_-4px_20px_rgba(0,0,0,0.4)]">
           <div className="flex items-center justify-around">
             {mobileNavItems.map((item) => {
               const isActive = activeSection === item.id;
+              
+              // Dynamic alerts badge for History/Dashboard
+              const alerts = useCryptoStore.getState().alerts;
+              const triggeredCount = alerts.filter((a) => a.isTriggered).length;
+
               return (
                 <button
                   key={item.id}
                   onClick={() => setActiveSection(item.id)}
-                  className={cn(
-                    "relative flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition-all duration-200 touch-target",
-                  )}
+                  className="relative flex flex-col items-center justify-center py-2 px-4 rounded-xl transition-all duration-200 select-none min-w-[64px]"
+                  style={{ minHeight: "48px" }}
                 >
                   {/* Active pill background with layout animation */}
                   {isActive && (
                     <motion.div
                       layoutId="mobile-nav-pill"
-                      className="absolute inset-0 bg-crypto-cyan/15 rounded-full"
+                      className="absolute inset-0 bg-crypto-cyan/15 rounded-xl border border-crypto-cyan/10"
                       transition={{
                         type: "spring",
                         stiffness: 400,
@@ -139,27 +145,33 @@ export function Sidebar() {
                   <motion.div
                     whileTap={{ scale: 0.85 }}
                     transition={{ duration: 0.1 }}
+                    className="relative"
                   >
                     <item.icon
                       className={cn(
                         "relative z-10 transition-all duration-200",
                         isActive
-                          ? "w-5 h-5 text-crypto-cyan scale-110"
-                          : "w-4.5 h-4.5 text-muted-foreground"
+                          ? "w-6 h-6 text-crypto-cyan scale-110"
+                          : "w-5 h-5 text-muted-foreground"
                       )}
-                      style={{
-                        transform: isActive ? "scale(1.1)" : "scale(1)",
-                      }}
                     />
+                    
+                    {/* Alerts Notification Badge */}
+                    {item.id === "history" && triggeredCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5 z-20">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-crypto-red opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-crypto-red shadow-[0_0_8px_#ef4444]"></span>
+                      </span>
+                    )}
                   </motion.div>
 
                   {/* Label */}
                   <span
                     className={cn(
-                      "relative z-10 leading-tight mt-0.5 transition-all duration-200",
+                      "relative z-10 leading-tight mt-1 transition-all duration-200 font-sans tracking-wide",
                       isActive
-                        ? "text-[10px] font-medium text-crypto-cyan"
-                        : "text-[9px] text-muted-foreground"
+                        ? "text-[10px] font-bold text-crypto-cyan"
+                        : "text-[9px] text-muted-foreground font-medium"
                     )}
                   >
                     {item.label}

@@ -2,13 +2,18 @@
 
 import { useCryptoStore } from "@/lib/store";
 import { Activity, Wifi, WifiOff, Loader2, Moon, Sun, Settings, Trash2 } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { useTheme } from "next-themes";
 import { useSyncExternalStore } from "react";
 import { CryptoSelector } from "./header/crypto-selector";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface HeaderProps {
   onOpenMobileDrawer?: () => void;
@@ -59,35 +64,49 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
           <CryptoSelector />
         </div>
 
-        {/* Center: Trading Mode Toggle (desktop only) */}
-        <div className="hidden md:flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-secondary/50 rounded-lg px-3 py-1.5 border border-border/50">
-            <span
-              className={`text-xs font-medium transition-colors ${
-                tradingMode === "paper"
-                  ? "text-crypto-cyan"
-                  : "text-muted-foreground"
-              }`}
-            >
-              Simulado
-            </span>
-            <Switch
-              checked={tradingMode === "live"}
-              onCheckedChange={(checked) =>
-                setTradingMode(checked ? "live" : "paper")
-              }
-              className="data-[state=checked]:bg-crypto-red data-[state=unchecked]:bg-crypto-cyan"
-            />
-            <span
-              className={`text-xs font-medium transition-colors ${
-                tradingMode === "live"
-                  ? "text-crypto-red"
-                  : "text-muted-foreground"
-              }`}
-            >
-              Real
-            </span>
-          </div>
+        {/* Center: Trading Mode Dropdown Selector */}
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 px-2 bg-secondary/40 border-border/50 hover:bg-secondary/60 font-medium cursor-pointer shadow-sm select-none"
+              >
+                {tradingMode === "live" ? (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-crypto-green animate-pulse" />
+                    <span className="text-[11px] font-bold text-crypto-green flex items-center gap-1">
+                      <span>🟢</span> Real (Binance)
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-crypto-cyan animate-pulse" />
+                    <span className="text-[11px] font-bold text-crypto-cyan flex items-center gap-1">
+                      <span>🔵</span> Simulado
+                    </span>
+                  </>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" className="w-[170px] glass-card gradient-border p-1">
+              <DropdownMenuItem
+                onClick={() => setTradingMode("live")}
+                className="flex items-center gap-2.5 cursor-pointer rounded-md py-1.5 px-2 hover:bg-crypto-green/10 focus:bg-crypto-green/10 transition-colors"
+              >
+                <span className="w-2 h-2 rounded-full bg-crypto-green shadow-[0_0_8px_#10b981]" />
+                <span className="text-xs font-semibold text-foreground">🟢 Real (Binance)</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setTradingMode("paper")}
+                className="flex items-center gap-2.5 cursor-pointer rounded-md py-1.5 px-2 hover:bg-crypto-cyan/10 focus:bg-crypto-cyan/10 transition-colors"
+              >
+                <span className="w-2 h-2 rounded-full bg-crypto-cyan shadow-[0_0_8px_#06b6d4]" />
+                <span className="text-xs font-semibold text-foreground">🔵 Simulado</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Right: Controls */}

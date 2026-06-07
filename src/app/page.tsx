@@ -10,42 +10,17 @@ import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { TickerTape } from "@/components/header/ticker-tape";
-import { StatCards } from "@/components/dashboard/stat-cards";
-import { MarketHighlights } from "@/components/dashboard/market-highlights";
-import { MarketSentiment } from "@/components/dashboard/market-sentiment";
-import { PortfolioAllocation } from "@/components/dashboard/portfolio-allocation";
-import { Watchlist } from "@/components/dashboard/watchlist";
-import { PriceAlerts } from "@/components/dashboard/price-alerts";
-import { MarketTable } from "@/components/dashboard/market-table";
-import { AISignals } from "@/components/dashboard/ai-signals";
-import { RecentTrades } from "@/components/dashboard/recent-trades";
-import { PnlTracker } from "@/components/dashboard/pnl-tracker";
-import { FearGreedIndex } from "@/components/dashboard/fear-greed-index";
-import { MultiTimeframeAnalysis } from "@/components/dashboard/multi-timeframe";
-import { AlertNotification } from "@/components/dashboard/alert-notification";
-import { CorrelationHeatmap } from "@/components/dashboard/correlation-heatmap";
-import { WhaleTracker } from "@/components/dashboard/whale-tracker";
-import { LiquidationHeatmap } from "@/components/dashboard/liquidation-heatmap";
-import { TradingCalculator } from "@/components/dashboard/trading-calculator";
-import { CryptoNews } from "@/components/dashboard/crypto-news";
-import { MarketOverview } from "@/components/dashboard/market-overview";
-import { FundingRates } from "@/components/dashboard/funding-rates";
-import { ShortcutsHint } from "@/components/dashboard/shortcuts-hint";
-import { PortfolioRebalancing } from "@/components/dashboard/portfolio-rebalancing";
-import { StrategyComparison } from "@/components/dashboard/strategy-comparison";
-import { SocialSentiment } from "@/components/dashboard/social-sentiment";
-import { OnChainAnalytics } from "@/components/dashboard/on-chain-analytics";
-import { SLTPCalculator } from "@/components/dashboard/sltp-calculator";
-import { MLPipeline } from "@/components/dashboard/ml-pipeline";
-import { MobileSection } from "@/components/dashboard/mobile-section";
+import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
 import { ChatSection } from "@/components/ai/chat-section";
 import { ChartSection } from "@/components/chart/chart-section";
 import { BotSection } from "@/components/bot/bot-section";
 import { HistorySection } from "@/components/history/history-section";
 import { BacktestSection } from "@/components/backtest/backtest-section";
+import { EducationSection } from "@/components/education/education-section";
 import { MobilePortfolioBar } from "@/components/mobile/mobile-portfolio-bar";
 import { MobileDrawer } from "@/components/mobile/mobile-drawer";
-import { AITopPicks } from "@/components/dashboard/ai-top-picks";
+import { AlertNotification } from "@/components/dashboard/alert-notification";
+import { ShortcutsHint } from "@/components/dashboard/shortcuts-hint";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
 
@@ -118,97 +93,9 @@ function HomePageContent() {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-6 md:space-y-4"
+            className="space-y-4"
           >
-            {/* Section: Visão Geral (expanded by default) */}
-            <MobileSection title="Visão Geral" icon="📊" itemCount={4} defaultOpen={true}>
-              <motion.div variants={itemVariants}>
-                <StatCards />
-              </motion.div>
-              <motion.div variants={itemVariants}>
-                <AITopPicks />
-              </motion.div>
-              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-                <FearGreedIndex />
-                <MultiTimeframeAnalysis />
-              </motion.div>
-            </MobileSection>
-
-            {/* Section: Portfólio (collapsed by default) */}
-            <MobileSection title="Portfólio" icon="💰" itemCount={4} defaultOpen={false}>
-              <motion.div variants={itemVariants}>
-                <SLTPCalculator />
-              </motion.div>
-              <motion.div variants={itemVariants}>
-                <PnlTracker />
-              </motion.div>
-              <motion.div variants={itemVariants}>
-                <PortfolioRebalancing />
-              </motion.div>
-              <motion.div variants={itemVariants}>
-                <PortfolioAllocation />
-              </motion.div>
-            </MobileSection>
-
-            {/* Section: Mercado (collapsed by default) */}
-            <MobileSection title="Mercado" icon="📈" itemCount={7} defaultOpen={false}>
-              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-                <MarketOverview />
-                <FundingRates />
-              </motion.div>
-              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-                <MarketSentiment />
-                <MarketHighlights />
-              </motion.div>
-              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
-                <div className="lg:col-span-2">
-                  <MarketTable />
-                </div>
-                <div className="space-y-3 md:space-y-4">
-                  <Watchlist />
-                  <PriceAlerts />
-                </div>
-              </motion.div>
-            </MobileSection>
-
-            {/* Section: Análise Avançada (collapsed by default) */}
-            <MobileSection title="Análise Avançada" icon="🔬" itemCount={5} defaultOpen={false}>
-              <motion.div variants={itemVariants}>
-                <CorrelationHeatmap />
-              </motion.div>
-              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-                <WhaleTracker />
-                <LiquidationHeatmap />
-              </motion.div>
-              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-                <SocialSentiment />
-                <OnChainAnalytics />
-              </motion.div>
-            </MobileSection>
-
-            {/* Section: ML Pipeline (collapsed by default) */}
-            <MobileSection title="Machine Learning" icon="🧠" itemCount={1} defaultOpen={false}>
-              <motion.div variants={itemVariants}>
-                <MLPipeline />
-              </motion.div>
-            </MobileSection>
-
-            {/* Section: Sinais & Notícias (collapsed by default) */}
-            <MobileSection title="Sinais & Notícias" icon="🤖" itemCount={5} defaultOpen={false}>
-              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
-                <div className="lg:col-span-2">
-                  <AISignals />
-                </div>
-                <RecentTrades />
-              </motion.div>
-              <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-                <TradingCalculator />
-                <CryptoNews />
-              </motion.div>
-              <motion.div variants={itemVariants}>
-                <StrategyComparison />
-              </motion.div>
-            </MobileSection>
+            <DashboardGrid />
           </motion.div>
         );
       case "chart":
@@ -264,6 +151,17 @@ function HomePageContent() {
             transition={{ duration: 0.3 }}
           >
             <HistorySection />
+          </motion.div>
+        );
+      case "education":
+        return (
+          <motion.div
+            key="education"
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <EducationSection />
           </motion.div>
         );
       default:

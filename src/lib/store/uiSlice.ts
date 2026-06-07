@@ -104,14 +104,51 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
         const ticker = tickers[alert.symbol];
         if (!ticker) return alert;
         const newPrice = ticker.price;
-        const triggered =
-          alert.direction === "above"
-            ? newPrice >= alert.targetPrice
-            : newPrice <= alert.targetPrice;
+        
+        let triggered = alert.isTriggered;
+        let message = alert.message || "";
+        const alertType = alert.type || "price";
+        
+        if (!alert.isTriggered) {
+          if (alertType === "price") {
+            triggered = alert.direction === "above"
+              ? newPrice >= (alert.targetPrice || 0)
+              : newPrice <= (alert.targetPrice || 0);
+            if (triggered) {
+              message = `Preço de ${alert.symbol.replace("USDT", "")} atingiu $${newPrice} (Meta: $${alert.targetPrice})`;
+            }
+          } else if (alertType === "volatility") {
+            const vol = Math.abs(ticker.priceChangePercent);
+            triggered = vol >= (alert.threshold || 0);
+            if (triggered) {
+              message = `Volatilidade em ${alert.symbol.replace("USDT", "")}: Variação de ${vol.toFixed(2)}% (Limite: ${alert.threshold}%)`;
+            }
+          } else if (alertType === "liquidity") {
+            const volume = ticker.volume;
+            triggered = volume <= (alert.threshold || 0);
+            if (triggered) {
+              message = `Liquidez de ${alert.symbol.replace("USDT", "")} sob alerta: Volume nas 24h caiu para ${volume.toFixed(2)} (Limite: ${alert.threshold})`;
+            }
+          } else if (alertType === "sr_breakout") {
+            if (alert.srLevel === "resistance") {
+              triggered = newPrice >= ticker.high;
+              if (triggered) {
+                message = `Rompimento de Resistência em ${alert.symbol.replace("USDT", "")}: atingiu $${newPrice} (Máxima 24h: $${ticker.high})`;
+              }
+            } else {
+              triggered = newPrice <= ticker.low;
+              if (triggered) {
+                message = `Rompimento de Suporte em ${alert.symbol.replace("USDT", "")}: atingiu $${newPrice} (Mínima 24h: $${ticker.low})`;
+              }
+            }
+          }
+        }
+        
         return {
           ...alert,
           currentPrice: newPrice,
           isTriggered: triggered,
+          message,
         };
       }),
     })),
