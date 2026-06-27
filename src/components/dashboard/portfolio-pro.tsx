@@ -55,68 +55,28 @@ function AllocationCustomTooltip({ active, payload }: { active?: boolean; payloa
 export function PortfolioPro() {
   const { portfolio, trades, tickers, selectedSymbol, botConfig } = useCryptoStore();
 
-  // 1. Calculate positions from trades history + fallback to current state
+  // 1. Get positions directly from authoritative backend payload
   const positions = useMemo(() => {
-    const symbolMap: Record<string, { quantity: number; totalCost: number }> = {};
-    
-    // Sort oldest to newest for chronological calculations
-    const sortedTrades = [...trades].reverse();
-    
-    for (const t of sortedTrades) {
-      const sym = t.symbol;
-      if (!symbolMap[sym]) {
-        symbolMap[sym] = { quantity: 0, totalCost: 0 };
-      }
+    const list = portfolio.positions ?? [];
+    return list.map((p) => {
+      const meta = CRYPTO_BY_SYMBOL[p.symbol];
+      const totalCost = p.quantity * p.avgPrice;
+      const pnlPercent = totalCost > 0 ? (p.unrealizedPnl / totalCost) * 100 : 0;
       
-      const pos = symbolMap[sym];
-      if (t.side === "BUY") {
-        pos.quantity += t.quantity;
-        pos.totalCost += t.price * t.quantity;
-      } else {
-        const avgPrice = pos.quantity > 0 ? pos.totalCost / pos.quantity : 0;
-        pos.quantity = Math.max(0, pos.quantity - t.quantity);
-        pos.totalCost = pos.quantity * avgPrice;
-      }
-    }
-
-    // Include the active portfolio position if not represented in trade logs
-    const activeSymbol = selectedSymbol || botConfig.symbol;
-    if (portfolio.assetQuantity > 0 && (!symbolMap[activeSymbol] || symbolMap[activeSymbol].quantity === 0)) {
-      symbolMap[activeSymbol] = {
-        quantity: portfolio.assetQuantity,
-        totalCost: portfolio.assetBalance || (portfolio.assetQuantity * (tickers[activeSymbol]?.price || 0))
-      };
-    }
-
-    const result: Position[] = [];
-    for (const [sym, pos] of Object.entries(symbolMap)) {
-      if (pos.quantity <= 0.00001) continue; // Ignore dust balances
-      
-      const ticker = tickers[sym];
-      const currentPrice = ticker?.price || 0;
-      const avgPrice = pos.quantity > 0 ? pos.totalCost / pos.quantity : 0;
-      const currentValue = pos.quantity * currentPrice;
-      const pnl = currentValue - pos.totalCost;
-      const pnlPercent = pos.totalCost > 0 ? (pnl / pos.totalCost) * 100 : 0;
-      const meta = CRYPTO_BY_SYMBOL[sym];
-      
-      result.push({
-        symbol: sym,
-        quantity: pos.quantity,
-        averageBuyPrice: avgPrice,
-        totalCost: pos.totalCost,
-        currentPrice,
-        currentValue,
-        pnl,
+      return {
+        symbol: p.symbol,
+        quantity: p.quantity,
+        averageBuyPrice: p.avgPrice,
+        totalCost,
+        currentPrice: p.marketPrice,
+        currentValue: p.marketValue,
+        pnl: p.unrealizedPnl,
         pnlPercent,
         color: meta?.color || "#8b5cf6",
         category: meta?.category || "Other"
-      });
-    }
-
-    // Sort positions by current value descending
-    return result.sort((a, b) => b.currentValue - a.currentValue);
-  }, [trades, tickers, portfolio, selectedSymbol, botConfig.symbol]);
+      };
+    }).sort((a, b) => b.currentValue - a.currentValue);
+  }, [portfolio.positions]);
 
   // 2. Format data for the Recharts Pie Chart
   const pieData = useMemo(() => {

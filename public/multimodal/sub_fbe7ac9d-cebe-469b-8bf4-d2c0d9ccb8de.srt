@@ -1,0 +1,35 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9hcnRpY2xlLWNvdmVycy0xMTA1ODktd2hhdC1oYXBwZW5lZC1pbi1jcnlwdG8tdG9kYXkuanBn.jpg" alt="Here’s
+
+3
+00:00:06,000 --> 00:00:09,000
+what happened in crypto today"
+
+4
+00:00:09,000 --> 00:00:12,000
+class="type:primaryImage"></p><p>Need to know what happened
+
+5
+00:00:12,000 --> 00:00:15,000
+in crypto today? **Corpo:** Here
+
+6
+00:00:15,000 --> 00:00:18,000
+is the latest news on
+
+7
+00:00:18,000 --> 00:00:21,000
+daily trends and events impacting
+
+8
+00:00:21,000 --> 00:00:24,000
+Bitcoin price, blockchain, DeFi, Web3
+
+9
+00:00:24,000 --> 00:00:27,000
+and crypto regulation.</p>

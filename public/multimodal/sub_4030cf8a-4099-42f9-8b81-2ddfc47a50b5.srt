@@ -1,0 +1,39 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS13aGF0LWlzLWEtYmVhci10cmFwLWFuZC1ob3ctdG8taWRlbnRpZnktaXQtYml0Y29pbjEuanBn.jpg" alt="Bitcoin
+
+3
+00:00:06,000 --> 00:00:09,000
+bears face $2.6B trap as
+
+4
+00:00:09,000 --> 00:00:12,000
+BTC funding rate drops: Is
+
+5
+00:00:12,000 --> 00:00:15,000
+a short squeeze brewing? **Corpo:**
+
+6
+00:00:15,000 --> 00:00:18,000
+" class="type:primaryImage"></p><p>Bitcoin bears piled into
+
+7
+00:00:18,000 --> 00:00:21,000
+short positions as BTC price
+
+8
+00:00:21,000 --> 00:00:24,000
+slid to $60,000. Will the
+
+9
+00:00:24,000 --> 00:00:27,000
+$2.6 billion in short leverage
+
+10
+00:00:27,000 --> 00:00:30,000
+lead to an upside squeeze?

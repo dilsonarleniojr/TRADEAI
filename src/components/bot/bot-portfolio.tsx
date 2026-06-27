@@ -6,6 +6,7 @@ import { formatPrice } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 import {
   DollarSign,
   Wallet,
@@ -14,7 +15,10 @@ import {
   BarChart3,
   ArrowUpRight,
   ArrowDownRight,
+  RefreshCw,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import {
   LineChart,
@@ -34,6 +38,8 @@ interface PortfolioHistoryPoint {
 export function BotPortfolio() {
   const { portfolio, botConfig, trades, botActive, tickers } = useCryptoStore();
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioHistoryPoint[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const { toast } = useToast();
 
   const dailyChange = useMemo(() => {
     const initial = botConfig.initialBalance;
@@ -50,6 +56,43 @@ export function BotPortfolio() {
   });
 
   const pnlIsPositive = portfolio.pnl >= 0;
+
+  const forceSync = async () => {
+    setIsSyncing(true);
+    try {
+      const state = useCryptoStore.getState();
+      const mode = state.tradingMode;
+      const res = await fetch(`/api/account?mode=${mode}`, {
+        headers: {
+          'x-binance-api-key': state.binanceApiKey || '',
+          'x-binance-api-secret': state.binanceApiSecret || '',
+          'x-binance-testnet': state.binanceTestnet ? 'true' : 'false'
+        }
+      });
+      const result = await res.json();
+      if (res.ok && result.success && result.data) {
+        state.setAccount(result.data);
+        toast({
+          title: "Sincronização Concluída",
+          description: `Os dados da conta (${mode === "live" ? "Real" : "Simulado"}) foram atualizados.`,
+        });
+      } else {
+        toast({
+          title: "Erro de Sincronização",
+          description: result.error || "Não foi possível sincronizar os dados da conta.",
+          variant: "destructive",
+        });
+      }
+    } catch (e: any) {
+      toast({
+        title: "Erro de Sincronização",
+        description: e.message || "Ocorreu um erro ao sincronizar.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Track portfolio history (last 20 data points)
   useEffect(() => {
@@ -83,13 +126,26 @@ export function BotPortfolio() {
       {/* Gradient border effect */}
       <div className="absolute inset-0 rounded-xl p-[1px] bg-gradient-to-r from-crypto-cyan/20 via-crypto-green/20 to-crypto-gold/20 pointer-events-none" />
       <CardHeader className="pb-3 relative">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Wallet className="w-4 h-4 text-crypto-cyan" />
-          Status do Portfólio
-          {botActive && (
-            <span className="w-1.5 h-1.5 rounded-full bg-crypto-green animate-pulse ml-1" />
-          )}
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Wallet className="w-4 h-4 text-crypto-cyan" />
+            Status do Portfólio
+            {botActive && (
+              <span className="w-1.5 h-1.5 rounded-full bg-crypto-green animate-pulse ml-1" />
+            )}
+          </CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-[10px] font-medium border-border/50 hover:bg-secondary text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1.5"
+            onClick={forceSync}
+            disabled={isSyncing}
+            title="Forçar Sincronização"
+          >
+            <RefreshCw className={cn("w-3 h-3", isSyncing && "animate-spin")} />
+            Sincronizar
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4 relative">
         {/* Total Balance */}

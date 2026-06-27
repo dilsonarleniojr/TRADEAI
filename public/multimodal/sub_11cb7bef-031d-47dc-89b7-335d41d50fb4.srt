@@ -1,0 +1,63 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1ob3ctc2lnbmlmaWNhbnQtaXMtYmxvY2tjaGFpbi1pbi10aGUtbW9ydGdhZ2UtaW5kdXN0cnkyLmpwZw==.jpg" alt="Coinbase
+
+3
+00:00:06,000 --> 00:00:09,000
+to launch token-backed mortgage down
+
+4
+00:00:09,000 --> 00:00:12,000
+payments this summer" class="type:primaryImage"></p><p>A Coinbase-Better
+
+5
+00:00:12,000 --> 00:00:15,000
+Home & Finance initiative will
+
+6
+00:00:15,000 --> 00:00:18,000
+allow qualified borrowers to use
+
+7
+00:00:18,000 --> 00:00:21,000
+Bitcoin and USDC as collateral
+
+8
+00:00:21,000 --> 00:00:24,000
+for home loan down payments.</p>
+
+9
+00:00:24,000 --> 00:00:27,000
+**Corpo:** <p style="float:right; margin:0 0
+
+10
+00:00:27,000 --> 00:00:30,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1ob3ctc2lnbmlmaWNhbnQtaXMtYmxvY2tjaGFpbi1pbi10aGUtbW9ydGdhZ2UtaW5kdXN0cnkyLmpwZw==.jpg" alt="Coinbase
+
+11
+00:00:30,000 --> 00:00:33,000
+to launch token-backed mortgage down
+
+12
+00:00:33,000 --> 00:00:36,000
+payments this summer" class="type:primaryImage"></p><p>A Coinbase-Better
+
+13
+00:00:36,000 --> 00:00:39,000
+Home & Finance initiative will
+
+14
+00:00:39,000 --> 00:00:42,000
+allow qualified borrowers to use
+
+15
+00:00:42,000 --> 00:00:45,000
+Bitcoin and USDC as collateral
+
+16
+00:00:45,000 --> 00:00:48,000
+for home loan down payments.</p>

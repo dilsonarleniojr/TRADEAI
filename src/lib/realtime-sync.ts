@@ -40,8 +40,13 @@ class RealTimeSyncManagerImpl {
     store.resetPollingFailures();
     store.setLastSyncAt(Date.now());
 
-    // Stop polling — WS handles everything
-    this.stopPolling();
+    // Stop polling — WS handles everything, unless we are in live mode
+    if (store.tradingMode !== "live") {
+      this.stopPolling();
+    } else {
+      // Ensure polling remains active to sync live balance
+      this.startPolling();
+    }
 
     console.log("[SyncManager] WS connected → realtime mode");
   }
@@ -101,23 +106,24 @@ class RealTimeSyncManagerImpl {
     this.pollingInterval = setInterval(async () => {
       const store = useCryptoStore.getState();
 
-      // Don't poll if WS is connected (realtime mode)
-      if (store.connectionStatus === "connected") {
+      // Don't poll if WS is connected (realtime mode) unless in live trading mode
+      if (store.connectionStatus === "connected" && store.tradingMode !== "live") {
         this.stopPolling();
         return;
       }
 
       try {
-        // Poll account balance
-        const accountRes = await fetch("/api/account");
+        const headers: Record<string, string> = {};
+        if (store.binanceApiKey) {
+          headers['x-binance-api-key'] = store.binanceApiKey;
+          headers['x-binance-api-secret'] = store.binanceApiSecret;
+          headers['x-binance-testnet'] = store.binanceTestnet ? 'true' : 'false';
+        }
+        const accountRes = await fetch(`/api/account?mode=${store.tradingMode}`, { headers });
         if (accountRes.ok) {
           const result = await accountRes.json();
           if (result.success && result.data) {
-            store.setAccount({
-              cashBalance: result.data.cashBalance,
-              assetQuantity: result.data.assetQuantity,
-              symbol: result.data.symbol,
-            });
+            store.setAccount(result.data);
           }
         }
 

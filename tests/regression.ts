@@ -6,7 +6,7 @@ import * as path from "path";
 
 process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY = "1";
 
-const ARTIFACT_DIR = "/home/dcorrea/.gemini/antigravity-ide/brain/44b6530d-b50b-4f0c-9276-075b32d99d70";
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || "/home/dcorrea/.gemini/antigravity-ide/brain/b2324724-40b4-4ce4-ae67-d71dc5c5622e";
 const SCREENSHOTS_DIR = path.join(ARTIFACT_DIR, "screenshots");
 const REPORT_PATH = path.join(ARTIFACT_DIR, "regression_report.json");
 const HAR_PATH = path.join(ARTIFACT_DIR, "network.har");

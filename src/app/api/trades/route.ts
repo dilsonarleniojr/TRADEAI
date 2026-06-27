@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { isRateLimited } from '@/lib/rate-limit';
 
 // GET /api/trades - Get all trades
 export async function GET(request: NextRequest) {
@@ -30,6 +31,15 @@ export async function GET(request: NextRequest) {
 // POST /api/trades - Create a new trade and update balance in a transaction
 export async function POST(request: NextRequest) {
   try {
+    // 1. Rate Limiting Check
+    const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
+    if (isRateLimited(ip, 30)) {
+      return NextResponse.json(
+        { success: false, error: 'Too many requests. Please wait before executing more trades.' },
+        { status: 429 }
+      );
+    }
+
     const body = await request.json();
     const { symbol, side, price, quantity, total, strategy, mode, pnl } = body;
 
@@ -40,23 +50,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 2. Input Sanitization and Validation
     const priceVal = parseFloat(price);
     const qtyVal = parseFloat(quantity);
     const totalVal = parseFloat(total) || priceVal * qtyVal;
     const pnlVal = parseFloat(pnl) || 0;
+
+    if (isNaN(priceVal) || priceVal <= 0 || isNaN(qtyVal) || qtyVal <= 0 || isNaN(totalVal) || totalVal <= 0 || isNaN(pnlVal)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid numeric input values for price, quantity, total or pnl' },
+        { status: 400 }
+      );
+    }
+
+    const sideClean = side === "BUY" ? "BUY" : "SELL";
+    const symbolClean = symbol.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+    const strategyClean = (strategy || "Manual").replace(/[<>]/g, "");
+    const modeClean = mode === "live" ? "live" : "paper";
 
     // Use Prisma transaction to ensure atomic updates
     const result = await db.$transaction(async (tx) => {
       // 1. Create the trade
       const trade = await tx.trade.create({
         data: {
-          symbol,
-          side,
+          symbol: symbolClean,
+          side: sideClean,
           price: priceVal,
           quantity: qtyVal,
           total: totalVal,
-          strategy: strategy || 'Manual',
-          mode: mode || 'paper',
+          strategy: strategyClean,
+          mode: modeClean,
           pnl: pnlVal,
         },
       });
@@ -97,7 +120,7 @@ export async function POST(request: NextRequest) {
         data: {
           cashBalance: newCash,
           assetQuantity: newAssetQty,
-          symbol,
+          symbol: symbolClean,
         },
       });
 

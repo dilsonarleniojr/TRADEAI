@@ -19,7 +19,12 @@ export interface AccountSlice {
 export const createAccountSlice: StateCreator<AccountSlice, [], [], AccountSlice> = (set) => ({
   // Trading mode
   tradingMode: "paper",
-  setTradingMode: (mode) => set({ tradingMode: mode }),
+  setTradingMode: (mode) => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("trading_mode", mode);
+    }
+    set({ tradingMode: mode });
+  },
 
   // Binance credentials
   binanceApiKey: "",

@@ -20,6 +20,8 @@ interface NewsItem {
   fullSummary?: string;
   timestamp?: string;
   url?: string;
+  confidenceScore?: number;
+  relevanceExplain?: string;
 }
 
 interface ApiResponse {
@@ -209,10 +211,24 @@ export function CryptoNews() {
 
     try {
       const response = await fetch('/api/news');
-      const result: ApiResponse = await response.json();
+      const result = await response.json();
 
       if (result.success && result.data && result.data.length > 0) {
-        setNewsItems(result.data);
+        const mappedData = result.data.map((ev: any) => ({
+          id: ev.id,
+          title: ev.title,
+          source: ev.articles && ev.articles.length > 0 
+            ? Array.from(new Set(ev.articles.map((a: any) => a.source))).join(", ") 
+            : "TrendRadar",
+          category: ev.category as NewsCategory,
+          summary: ev.summary.split("\n\n")[0].replace("**Resumo:** ", ""),
+          fullSummary: ev.summary,
+          timestamp: ev.createdAt,
+          url: ev.articles && ev.articles.length > 0 ? ev.articles[0].sourceUrl : "#",
+          confidenceScore: ev.confidenceScore,
+          relevanceExplain: ev.relevanceExplain,
+        }));
+        setNewsItems(mappedData);
         setIsLiveData(true);
         setLastUpdated(
           new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
@@ -356,6 +372,11 @@ export function CryptoNews() {
                             >
                               {item.category}
                             </Badge>
+                            {item.confidenceScore !== undefined && (
+                              <Badge className="bg-purple-500/10 text-purple-400 border-purple-500/20 text-[8px] px-1 py-0 scale-95 shrink-0">
+                                Confiabilidade: {Math.round(item.confidenceScore * 100)}%
+                              </Badge>
+                            )}
                             <span className="text-[9px] text-muted-foreground shrink-0 truncate max-w-[100px]">
                               {displaySource}
                             </span>
@@ -378,12 +399,17 @@ export function CryptoNews() {
                                 <p className="text-[11px] text-muted-foreground leading-relaxed mt-1.5">
                                   {item.fullSummary || item.summary}
                                 </p>
+                                {item.relevanceExplain && (
+                                  <div className="mt-2 text-[10px] text-crypto-cyan/80 bg-crypto-cyan/5 px-2 py-1 rounded border border-crypto-cyan/10 flex items-center gap-1.5 font-sans">
+                                    <span className="font-bold">💡 Relevância:</span> {item.relevanceExplain}
+                                  </div>
+                                )}
                                 {hasRealUrl && (
                                   <a
                                     href={item.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="flex items-center gap-1 mt-1.5 text-crypto-cyan hover:text-crypto-cyan/80 transition-colors"
+                                    className="flex items-center gap-1 mt-2.5 text-crypto-cyan hover:text-crypto-cyan/80 transition-colors"
                                     onClick={(e) => e.stopPropagation()}
                                   >
                                     <ExternalLink className="w-3 h-3" />

@@ -1,13 +1,14 @@
 "use client";
 
 import { useCryptoStore } from "@/lib/store";
-import { Activity, Wifi, WifiOff, Loader2, Moon, Sun, Settings, Trash2 } from "lucide-react";
+import { Activity, Wifi, WifiOff, Loader2, Moon, Sun, Settings, Trash2, RefreshCw, Power } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { useTheme } from "next-themes";
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, useState } from "react";
 import { CryptoSelector } from "./header/crypto-selector";
+import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,14 +27,56 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
     botActive,
     connectionStatus,
     clearMockData,
+    binanceApiKey,
+    binanceApiSecret,
+    binanceTestnet,
+    setAccount,
   } = useCryptoStore();
 
   const { theme, setTheme } = useTheme();
+  const { toast } = useToast();
   const mounted = useSyncExternalStore(
     () => () => {},
     () => true,
     () => false
   );
+
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await fetch(`/api/account?mode=${tradingMode}`, {
+        headers: {
+          'x-binance-api-key': binanceApiKey || '',
+          'x-binance-api-secret': binanceApiSecret || '',
+          'x-binance-testnet': binanceTestnet ? 'true' : 'false'
+        }
+      });
+      const result = await res.json();
+      if (res.ok && result.success && result.data) {
+        setAccount(result.data);
+        toast({
+          title: "Sincronização Concluída",
+          description: `Saldo atualizado com sucesso (${tradingMode === "live" ? "Binance" : "Simulado"}).`,
+        });
+      } else {
+        toast({
+          title: "Falha na Sincronização",
+          description: result.error || "Erro ao consultar saldo.",
+          variant: "destructive",
+        });
+      }
+    } catch (e: any) {
+      toast({
+        title: "Erro de Conexão",
+        description: e.message || "Erro de rede ao sincronizar saldo.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   return (
     <motion.header
@@ -92,14 +135,61 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center" className="w-[170px] glass-card gradient-border p-1">
               <DropdownMenuItem
-                onClick={() => setTradingMode("live")}
+                onClick={async () => {
+                  setTradingMode("live");
+                  try {
+                    const state = useCryptoStore.getState();
+                    const res = await fetch("/api/account?mode=live", {
+                      headers: {
+                        'x-binance-api-key': state.binanceApiKey || '',
+                        'x-binance-api-secret': state.binanceApiSecret || '',
+                        'x-binance-testnet': state.binanceTestnet ? 'true' : 'false'
+                      }
+                    });
+                    const result = await res.json();
+                    if (res.ok && result.success && result.data) {
+                      state.setAccount(result.data);
+                      toast({
+                        title: "🟢 Modo Real Conectado",
+                        description: "Conectado e sincronizado com a Binance com sucesso.",
+                      });
+                    } else {
+                      setTradingMode("paper");
+                      toast({
+                        title: "🔴 Falha ao Conectar",
+                        description: result.error || "Chaves de API inválidas ou sem permissão de acesso.",
+                        variant: "destructive",
+                      });
+                    }
+                  } catch (e: any) {
+                    setTradingMode("paper");
+                    toast({
+                      title: "🔴 Erro de Sincronização",
+                      description: e.message || "Erro desconhecido ao conectar com a Binance.",
+                      variant: "destructive",
+                    });
+                  }
+                }}
                 className="flex items-center gap-2.5 cursor-pointer rounded-md py-1.5 px-2 hover:bg-crypto-green/10 focus:bg-crypto-green/10 transition-colors"
               >
                 <span className="w-2 h-2 rounded-full bg-crypto-green shadow-[0_0_8px_#10b981]" />
                 <span className="text-xs font-semibold text-foreground">🟢 Real (Binance)</span>
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => setTradingMode("paper")}
+                onClick={async () => {
+                  setTradingMode("paper");
+                  try {
+                    const res = await fetch("/api/account?mode=paper");
+                    if (res.ok) {
+                      const result = await res.json();
+                      if (result.success && result.data) {
+                        useCryptoStore.getState().setAccount(result.data);
+                      }
+                    }
+                  } catch (e) {
+                    console.error(e);
+                  }
+                }}
                 className="flex items-center gap-2.5 cursor-pointer rounded-md py-1.5 px-2 hover:bg-crypto-cyan/10 focus:bg-crypto-cyan/10 transition-colors"
               >
                 <span className="w-2 h-2 rounded-full bg-crypto-cyan shadow-[0_0_8px_#06b6d4]" />
@@ -111,6 +201,25 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
 
         {/* Right: Controls */}
         <div className="flex items-center gap-1.5 md:gap-2">
+          {/* Sincronizar Button */}
+          {mounted && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 px-2 hover:bg-crypto-cyan/10 text-muted-foreground hover:text-crypto-cyan transition-colors duration-200"
+              onClick={handleSync}
+              disabled={isSyncing}
+              aria-label="Sincronizar saldo da carteira"
+            >
+              {isSyncing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-crypto-cyan" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5" />
+              )}
+              <span className="text-[10px] font-medium hidden md:inline">Sincronizar</span>
+            </Button>
+          )}
+
           {/* Clear Mock Data Button - available on both mobile and desktop */}
           {mounted && (
             <Button
@@ -150,6 +259,30 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
                   <Moon className="w-4 h-4 text-muted-foreground" />
                 )}
               </motion.div>
+            </Button>
+          )}
+
+          {/* Shutdown Button */}
+          {mounted && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 px-2 hover:bg-red-500/15 text-muted-foreground hover:text-red-500 transition-colors duration-200"
+              onClick={async () => {
+                try {
+                  toast({
+                    title: "Desligando a Plataforma",
+                    description: "Os serviços estão sendo finalizados...",
+                  });
+                  await fetch("/api/system/shutdown", { method: "POST" });
+                } catch (e) {
+                  console.error("Shutdown erro:", e);
+                }
+              }}
+              aria-label="Desligar plataforma"
+            >
+              <Power className="w-3.5 h-3.5" />
+              <span className="text-[10px] font-medium hidden md:inline">Desligar</span>
             </Button>
           )}
 

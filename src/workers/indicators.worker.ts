@@ -139,6 +139,100 @@ function calculateSharpeSortino(pnls: number[], initialBalance: number = 10000) 
   };
 }
 
+function calculateVWAP(klines: any[]): number[] {
+  const vwap: number[] = [];
+  let sumPV = 0;
+  let sumV = 0;
+  for (let i = 0; i < klines.length; i++) {
+    const k = klines[i];
+    const high = typeof k.high === 'string' ? parseFloat(k.high) : k.high;
+    const low = typeof k.low === 'string' ? parseFloat(k.low) : k.low;
+    const close = typeof k.close === 'string' ? parseFloat(k.close) : k.close;
+    const volume = typeof k.volume === 'string' ? parseFloat(k.volume) : k.volume;
+
+    const typicalPrice = (high + low + close) / 3;
+    sumPV += typicalPrice * volume;
+    sumV += volume;
+    vwap.push(sumV > 0 ? sumPV / sumV : typicalPrice);
+  }
+  return vwap;
+}
+
+function calculateVolumeProfile(klines: any[], binsCount: number = 12) {
+  if (klines.length === 0) return [];
+  const prices = klines.map(k => typeof k.close === 'string' ? parseFloat(k.close) : k.close);
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const range = maxPrice - minPrice;
+  const binSize = range / binsCount || 1;
+
+  const bins = Array.from({ length: binsCount }, (_, idx) => {
+    const low = minPrice + idx * binSize;
+    const high = low + binSize;
+    return {
+      price: (low + high) / 2,
+      buyVol: 0,
+      sellVol: 0,
+      totalVol: 0,
+      low,
+      high
+    };
+  });
+
+  for (const k of klines) {
+    const high = typeof k.high === 'string' ? parseFloat(k.high) : k.high;
+    const low = typeof k.low === 'string' ? parseFloat(k.low) : k.low;
+    const close = typeof k.close === 'string' ? parseFloat(k.close) : k.close;
+    const open = typeof k.open === 'string' ? parseFloat(k.open) : k.open;
+    const volume = typeof k.volume === 'string' ? parseFloat(k.volume) : k.volume;
+    const isBullish = close >= open;
+
+    const candleLow = low;
+    const candleHigh = high;
+    let added = false;
+
+    for (const bin of bins) {
+      if (candleHigh >= bin.low && candleLow <= bin.high) {
+        const overlapLow = Math.max(candleLow, bin.low);
+        const overlapHigh = Math.min(candleHigh, bin.high);
+        const overlapRatio = (overlapHigh - overlapLow) / (candleHigh - candleLow || 1);
+        const allocatedVol = volume * overlapRatio;
+
+        if (isBullish) {
+          bin.buyVol += allocatedVol;
+        } else {
+          bin.sellVol += allocatedVol;
+        }
+        bin.totalVol += allocatedVol;
+        added = true;
+      }
+    }
+
+    if (!added) {
+      let binIdx = Math.floor((close - minPrice) / binSize);
+      if (binIdx >= binsCount) binIdx = binsCount - 1;
+      if (binIdx < 0) binIdx = 0;
+      if (isBullish) {
+        bins[binIdx].buyVol += volume;
+      } else {
+        bins[binIdx].sellVol += volume;
+      }
+      bins[binIdx].totalVol += volume;
+    }
+  }
+
+  return bins;
+}
+
+function calculateEMARibbon(prices: number[]): Record<number, number[]> {
+  const periods = [20, 25, 30, 35, 40, 45, 50, 55];
+  const ribbon: Record<number, number[]> = {};
+  for (const p of periods) {
+    ribbon[p] = calculateEMA(prices, p);
+  }
+  return ribbon;
+}
+
 // Handle message inputs
 self.onmessage = (e: MessageEvent) => {
   const { id, type, payload } = e.data;
@@ -172,6 +266,24 @@ self.onmessage = (e: MessageEvent) => {
       case "sharpe_sortino": {
         const { pnls, initialBalance } = payload;
         const result = calculateSharpeSortino(pnls, initialBalance);
+        self.postMessage({ id, success: true, result });
+        break;
+      }
+      case "vwap": {
+        const { klines } = payload;
+        const result = calculateVWAP(klines);
+        self.postMessage({ id, success: true, result });
+        break;
+      }
+      case "volume_profile": {
+        const { klines, binsCount } = payload;
+        const result = calculateVolumeProfile(klines, binsCount);
+        self.postMessage({ id, success: true, result });
+        break;
+      }
+      case "ema_ribbon": {
+        const { prices } = payload;
+        const result = calculateEMARibbon(prices);
         self.postMessage({ id, success: true, result });
         break;
       }

@@ -103,17 +103,38 @@ function generatePnLTimeline(portfolioPnl: number, pnlPercent: number, trades: i
   return data;
 }
 
-// Generate breakdown data (deterministic based on portfolio)
-function generateBreakdown(portfolioPnl: number) {
-  // Deterministic breakdown based on portfolio PnL (no Math.random)
-  const todayPnl = portfolioPnl * 0.15 + Math.sin(portfolioPnl) * 10;
-  const weekPnl = portfolioPnl * 0.6 + Math.cos(portfolioPnl * 0.5) * 20;
-  const monthPnl = portfolioPnl * 1.0 + Math.sin(portfolioPnl * 0.3) * 15;
+// Generate breakdown data from actual trade history and current unrealized PnL
+function calculateActualBreakdown(portfolioPnl: number, unrealizedPnl: number, trades: import("@/lib/store").TradeData[] = []) {
+  const now = Date.now();
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  const sevenDaysMs = 7 * oneDayMs;
+  const thirtyDaysMs = 30 * oneDayMs;
 
+  let todayRealized = 0;
+  let weekRealized = 0;
+  let monthRealized = 0;
+
+  for (const trade of trades) {
+    const tradeTime = new Date(trade.timestamp).getTime();
+    const diff = now - tradeTime;
+    if (diff >= 0) {
+      if (diff <= oneDayMs) {
+        todayRealized += trade.pnl || 0;
+      }
+      if (diff <= sevenDaysMs) {
+        weekRealized += trade.pnl || 0;
+      }
+      if (diff <= thirtyDaysMs) {
+        monthRealized += trade.pnl || 0;
+      }
+    }
+  }
+
+  // Net PnL in period = Realized PnL + current open position Unrealized PnL
   return {
-    today: parseFloat(todayPnl.toFixed(2)),
-    week: parseFloat(weekPnl.toFixed(2)),
-    month: parseFloat(monthPnl.toFixed(2)),
+    today: parseFloat((todayRealized + unrealizedPnl).toFixed(2)),
+    week: parseFloat((weekRealized + unrealizedPnl).toFixed(2)),
+    month: parseFloat((monthRealized + unrealizedPnl).toFixed(2)),
   };
 }
 
@@ -168,8 +189,8 @@ export function PnlTracker() {
   );
 
   const breakdown = useMemo(
-    () => generateBreakdown(portfolio.pnl),
-    [portfolio.pnl]
+    () => calculateActualBreakdown(portfolio.pnl, portfolio.unrealizedPnl ?? 0, trades),
+    [portfolio.pnl, portfolio.unrealizedPnl, trades]
   );
 
   const assetPerformance = useMemo(

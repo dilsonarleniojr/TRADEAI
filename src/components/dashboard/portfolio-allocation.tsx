@@ -51,19 +51,19 @@ export function PortfolioAllocation() {
       });
     }
 
-    // Asset allocation
-    if (portfolio.assetBalance > 0) {
-      const symbol = selectedSymbol || botConfig.symbol;
-      const assetName = CRYPTO_SHORTS[symbol] || symbol.replace("USDT", "");
-      const assetColor = CRYPTO_COLORS[symbol] || "#8b5cf6";
+    // Asset allocation for all active positions
+    const list = portfolio.positions ?? [];
+    list.forEach((pos) => {
+      const assetName = CRYPTO_SHORTS[pos.symbol] || pos.symbol.replace("USDT", "");
+      const assetColor = CRYPTO_COLORS[pos.symbol] || "#8b5cf6";
 
       items.push({
         name: assetName,
-        value: portfolio.assetBalance,
+        value: pos.marketValue,
         color: assetColor,
-        percent: (portfolio.assetBalance / total) * 100,
+        percent: (pos.marketValue / total) * 100,
       });
-    }
+    });
 
     // If nothing, show empty state
     if (items.length === 0) {
@@ -76,7 +76,7 @@ export function PortfolioAllocation() {
     }
 
     return items;
-  }, [portfolio, selectedSymbol, botConfig.symbol]);
+  }, [portfolio]);
 
   return (
     <motion.div

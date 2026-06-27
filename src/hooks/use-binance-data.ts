@@ -13,6 +13,7 @@ export function useBinanceData() {
     selectedSymbol,
     setKlines,
     setIsLoading,
+    tradingMode,
   } = useCryptoStore();
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -121,40 +122,12 @@ export function useBinanceData() {
 
   // Setup periodic account/portfolio balance poll via SyncManager
   useEffect(() => {
-    let active = true;
-    const pollAccount = async () => {
-      // Only poll if connectionStatus is not "connected"
-      const status = useCryptoStore.getState().connectionStatus;
-      if (status === "connected") return;
-
-      try {
-        const res = await fetch("/api/account");
-        if (res.ok && active) {
-          const result = await res.json();
-          if (result.success && result.data) {
-            const acc = result.data;
-            useCryptoStore.getState().setAccount({
-              cashBalance: acc.cashBalance,
-              assetQuantity: acc.assetQuantity,
-              symbol: acc.symbol,
-            });
-          }
-          syncManager.onPollingSuccess();
-        }
-      } catch (err) {
-        console.warn("[BinanceData] Account polling failed:", err);
-        syncManager.onPollingFailure();
-      }
-    };
-
-    pollAccount(); // Initial poll
-    const interval = setInterval(pollAccount, 10000); // Poll every 10s
-
+    // Delegate account polling fallback orchestration to the central syncManager
+    syncManager.startPolling();
     return () => {
-      active = false;
-      clearInterval(interval);
+      syncManager.stopPolling();
     };
-  }, []);
+  }, [tradingMode]);
 
   return { fetchTickers, fetchKlines };
 }

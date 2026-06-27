@@ -1,0 +1,63 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1rcmFrZW4tc2hha2Vkb3duLWRvZXNudC1tYWtpbmctc3Rha2luZy1hLXNlY3VyaXR5Mi5qcGc=.jpg" alt="Kraken
+
+3
+00:00:06,000 --> 00:00:09,000
+offers SpaceX IPO access through
+
+4
+00:00:09,000 --> 00:00:12,000
+xStocks" class="type:primaryImage"></p><p>Eligible users in more
+
+5
+00:00:12,000 --> 00:00:15,000
+than 110 markets can register
+
+6
+00:00:15,000 --> 00:00:18,000
+for tokenized SpaceX equity ahead
+
+7
+00:00:18,000 --> 00:00:21,000
+of the company's highly anticipated
+
+8
+00:00:21,000 --> 00:00:24,000
+public listing. </p> **Corpo:** <p
+
+9
+00:00:24,000 --> 00:00:27,000
+style="float:right; margin:0 0 10px 15px;
+
+10
+00:00:27,000 --> 00:00:30,000
+width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1rcmFrZW4tc2hha2Vkb3duLWRvZXNudC1tYWtpbmctc3Rha2luZy1hLXNlY3VyaXR5Mi5qcGc=.jpg" alt="Kraken offers SpaceX
+
+11
+00:00:30,000 --> 00:00:33,000
+IPO access through xStocks" class="type:primaryImage"></p><p>Eligible
+
+12
+00:00:33,000 --> 00:00:36,000
+users in more than 110
+
+13
+00:00:36,000 --> 00:00:39,000
+markets can register for tokenized
+
+14
+00:00:39,000 --> 00:00:42,000
+SpaceX equity ahead of the
+
+15
+00:00:42,000 --> 00:00:45,000
+company's highly anticipated public listing.
+
+16
+00:00:45,000 --> 00:00:48,000
+</p>

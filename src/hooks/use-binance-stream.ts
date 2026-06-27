@@ -18,7 +18,10 @@ export function useBinanceStream() {
     function connectSocket() {
       if (!mounted) return;
 
-      const socket = io({
+      const isProxy = typeof window !== "undefined" && (window.location.port === "81" || window.location.search.includes("XTransformPort"));
+      const socketUrl = isProxy ? "" : "http://localhost:3002";
+
+      const socket = io(socketUrl, {
         transports: ["polling", "websocket"],
         upgrade: true,
         reconnection: true,
@@ -67,7 +70,7 @@ export function useBinanceStream() {
         });
       });
 
-      socket.on("balance-update", (data: { cashBalance: number; assetQuantity: number; symbol: string }) => {
+      socket.on("balance-update", (data: any) => {
         if (!mounted) return;
         console.log("[BinanceStream] Balance updated via Socket.IO:", data);
         useCryptoStore.getState().setAccount(data);
@@ -98,13 +101,7 @@ export function useBinanceStream() {
       socket.on("portfolio-update", (data: any) => {
         if (!mounted) return;
         console.log("[BinanceStream] Portfolio updated via Socket.IO:", data);
-        if (data.cashBalance !== undefined) {
-          useCryptoStore.getState().setAccount({
-            cashBalance: data.cashBalance,
-            assetQuantity: data.assetQuantity ?? 0,
-            symbol: data.symbol ?? "BTCUSDT",
-          });
-        }
+        useCryptoStore.getState().setAccount(data);
       });
 
       socket.on("subscribed", (data: { symbol: string }) => {

@@ -67,12 +67,16 @@ import { OnChainAnalytics } from "@/components/dashboard/on-chain-analytics";
 import { InsightsPanel } from "@/components/dashboard/insights-panel";
 import { OpenOrders } from "@/components/dashboard/open-orders";
 import { RiskModule } from "@/components/dashboard/risk-module";
+import { TelemetryPanel } from "@/components/dashboard/telemetry-panel";
 import { MiniPortfolio } from "@/components/mobile/mini-portfolio";
 import { MiniPnl } from "@/components/mobile/mini-pnl";
 import { MiniBook } from "@/components/mobile/mini-book";
 import { MiniHeatmap } from "@/components/mobile/mini-heatmap";
 
 const DEFAULT_ORDER = [
+  "trading-news",
+  "market-sentiment-highlights",
+  "fear-greed",
   "financial-hub",
   "ai-top-picks",
   "insights-panel",
@@ -80,13 +84,12 @@ const DEFAULT_ORDER = [
   "pnl-tracker",
   "open-orders",
   "risk-module",
+  "telemetry-panel",
   "sltp-calculator",
   "portfolio-rebalancing",
-  "fear-greed",
   "multi-timeframe",
   "market-overview",
   "watchlist-alerts",
-  "market-sentiment-highlights",
   "market-table",
   "funding-rates",
   "correlation-heatmap",
@@ -94,7 +97,6 @@ const DEFAULT_ORDER = [
   "liquidation-heatmap",
   "social-onchain",
   "ai-signals",
-  "trading-news",
   "strategy-comparison",
   "ml-pipeline"
 ];
@@ -137,6 +139,11 @@ const WIDGETS_CONFIG: Record<string, {
   "risk-module": {
     title: "🛡️ Módulo de Risco",
     component: RiskModule,
+    className: "col-span-1",
+  },
+  "telemetry-panel": {
+    title: "⚡ Telemetria & Conectividade",
+    component: TelemetryPanel,
     className: "col-span-1",
   },
   "sltp-calculator": {
@@ -320,7 +327,7 @@ export function DashboardGrid() {
   // Load configuration on client mount
   useEffect(() => {
     setIsClient(true);
-    const savedOrder = localStorage.getItem("tradeai_dashboard_order");
+    const savedOrder = localStorage.getItem("tradeai_dashboard_order_v3");
     const savedVisibility = localStorage.getItem("tradeai_dashboard_visibility");
 
     if (savedOrder) {
@@ -364,7 +371,7 @@ export function DashboardGrid() {
       const newIndex = order.indexOf(over.id as string);
       const newOrder = arrayMove(order, oldIndex, newIndex);
       setOrder(newOrder);
-      localStorage.setItem("tradeai_dashboard_order", JSON.stringify(newOrder));
+      localStorage.setItem("tradeai_dashboard_order_v3", JSON.stringify(newOrder));
     }
   };
 
@@ -379,7 +386,7 @@ export function DashboardGrid() {
     const resetVis: Record<string, boolean> = {};
     DEFAULT_ORDER.forEach((id) => (resetVis[id] = true));
     setVisibility(resetVis);
-    localStorage.removeItem("tradeai_dashboard_order");
+    localStorage.removeItem("tradeai_dashboard_order_v3");
     localStorage.removeItem("tradeai_dashboard_visibility");
   };
 

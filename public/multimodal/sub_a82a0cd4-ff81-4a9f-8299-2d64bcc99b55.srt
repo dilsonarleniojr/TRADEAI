@@ -1,0 +1,87 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1ydXNzaWFzLWxhdy1vbi1jcnlwdG8td2hhdHMtdGhlLWxhdGVzdC0zLnBuZw==.png" alt="Russia
+
+3
+00:00:06,000 --> 00:00:09,000
+targets British 17-year-old for alleging
+
+4
+00:00:09,000 --> 00:00:12,000
+digital assets were skirting sanctions"
+
+5
+00:00:12,000 --> 00:00:15,000
+class="type:primaryImage"></p><p>Political activist Bill Browder, the
+
+6
+00:00:15,000 --> 00:00:18,000
+teenager’s father, said his son
+
+7
+00:00:18,000 --> 00:00:21,000
+was “the first high school
+
+8
+00:00:21,000 --> 00:00:24,000
+student in the world to
+
+9
+00:00:24,000 --> 00:00:27,000
+be sanctioned by an authoritarian
+
+10
+00:00:27,000 --> 00:00:30,000
+regime” over a report on
+
+11
+00:00:30,000 --> 00:00:33,000
+the ruble-pegged stablecoin A7A5.</p> **Corpo:**
+
+12
+00:00:33,000 --> 00:00:36,000
+<p style="float:right; margin:0 0 10px
+
+13
+00:00:36,000 --> 00:00:39,000
+15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1ydXNzaWFzLWxhdy1vbi1jcnlwdG8td2hhdHMtdGhlLWxhdGVzdC0zLnBuZw==.png" alt="Russia targets
+
+14
+00:00:39,000 --> 00:00:42,000
+British 17-year-old for alleging digital
+
+15
+00:00:42,000 --> 00:00:45,000
+assets were skirting sanctions" class="type:primaryImage"></p><p>Political
+
+16
+00:00:45,000 --> 00:00:48,000
+activist Bill Browder, the teenager’s
+
+17
+00:00:48,000 --> 00:00:51,000
+father, said his son was
+
+18
+00:00:51,000 --> 00:00:54,000
+“the first high school student
+
+19
+00:00:54,000 --> 00:00:57,000
+in the world to be
+
+20
+00:00:57,000 --> 00:01:00,000
+sanctioned by an authoritarian regime”
+
+21
+00:01:00,000 --> 00:01:03,000
+over a report on the
+
+22
+00:01:03,000 --> 00:01:06,000
+ruble-pegged stablecoin A7A5.</p>

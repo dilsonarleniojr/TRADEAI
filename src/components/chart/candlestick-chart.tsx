@@ -55,6 +55,15 @@ interface ProcessedCandle {
   kijunSen?: number;
   senkouSpanA?: number;
   senkouSpanB?: number;
+  vwap?: number;
+  ema20?: number;
+  ema25?: number;
+  ema30?: number;
+  ema35?: number;
+  ema40?: number;
+  ema45?: number;
+  ema50?: number;
+  ema55?: number;
 }
 
 interface TooltipData {
@@ -74,6 +83,8 @@ interface CandlestickChartProps {
   showEMA26?: boolean;
   showVolumeProfile?: boolean;
   showIchimoku?: boolean;
+  showVWAP?: boolean;
+  showEMARibbon?: boolean;
   drawingTool?: DrawingTool;
   drawings?: Drawing[];
   onDrawingAdd?: (drawing: Drawing) => void;
@@ -135,6 +146,46 @@ function calculateMidpointHL(highs: number[], lows: number[], period: number): (
   return result;
 }
 
+const calculateVWAPWithWorker = (klines: any[]): Promise<number[]> => {
+  return new Promise((resolve) => {
+    try {
+      const worker = new Worker(new URL("../../workers/indicators.worker.ts", import.meta.url));
+      worker.onmessage = (e) => {
+        if (e.data.success) resolve(e.data.result);
+        else resolve([]);
+        worker.terminate();
+      };
+      worker.onerror = () => {
+        resolve([]);
+        worker.terminate();
+      };
+      worker.postMessage({ id: "vwap", type: "vwap", payload: { klines } });
+    } catch {
+      resolve([]);
+    }
+  });
+};
+
+const calculateEMARibbonWithWorker = (prices: number[]): Promise<Record<number, number[]>> => {
+  return new Promise((resolve) => {
+    try {
+      const worker = new Worker(new URL("../../workers/indicators.worker.ts", import.meta.url));
+      worker.onmessage = (e) => {
+        if (e.data.success) resolve(e.data.result);
+        else resolve({});
+        worker.terminate();
+      };
+      worker.onerror = () => {
+        resolve({});
+        worker.terminate();
+      };
+      worker.postMessage({ id: "ribbon", type: "ema_ribbon", payload: { prices } });
+    } catch {
+      resolve({});
+    }
+  });
+};
+
 export function CandlestickChart({
   symbol,
   interval,
@@ -146,10 +197,13 @@ export function CandlestickChart({
   showEMA26 = false,
   showVolumeProfile = false,
   showIchimoku = false,
+  showVWAP = false,
+  showEMARibbon = false,
   drawingTool = 'crosshair',
   drawings = [],
   onDrawingAdd,
 }: CandlestickChartProps) {
+  const trades = useCryptoStore((s) => s.trades);
   const [candles, setCandles] = useState<ProcessedCandle[]>([]);
   const [loading, setLoading] = useState(true);
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
@@ -242,11 +296,29 @@ export function CandlestickChart({
         processed[i].senkouSpanB = senkouSpanB[i];
       }
 
+      const [vwapData, ribbonData] = await Promise.all([
+        calculateVWAPWithWorker(processed),
+        calculateEMARibbonWithWorker(closes),
+      ]);
+
       processed.forEach((c, i) => {
         c.sma20 = sma20[i];
         c.sma50 = sma50[i];
         c.ema12 = ema12[i];
         c.ema26 = ema26[i];
+        if (vwapData && vwapData[i] !== undefined) {
+          c.vwap = vwapData[i];
+        }
+        if (ribbonData) {
+          c.ema20 = ribbonData[20]?.[i];
+          c.ema25 = ribbonData[25]?.[i];
+          c.ema30 = ribbonData[30]?.[i];
+          c.ema35 = ribbonData[35]?.[i];
+          c.ema40 = ribbonData[40]?.[i];
+          c.ema45 = ribbonData[45]?.[i];
+          c.ema50 = ribbonData[50]?.[i];
+          c.ema55 = ribbonData[55]?.[i];
+        }
       });
 
       setCandles(processed);
@@ -291,6 +363,20 @@ export function CandlestickChart({
       if (c.ema12 !== undefined && c.ema12 > maxPrice) maxPrice = c.ema12;
       if (c.ema26 !== undefined && c.ema26 < minPrice) minPrice = c.ema26;
       if (c.ema26 !== undefined && c.ema26 > maxPrice) maxPrice = c.ema26;
+
+      if (showVWAP && c.vwap !== undefined) {
+        if (c.vwap < minPrice) minPrice = c.vwap;
+        if (c.vwap > maxPrice) maxPrice = c.vwap;
+      }
+      if (showEMARibbon) {
+        const ribbonVals = [c.ema20, c.ema25, c.ema30, c.ema35, c.ema40, c.ema45, c.ema50, c.ema55];
+        for (const v of ribbonVals) {
+          if (v !== undefined) {
+            if (v < minPrice) minPrice = v;
+            if (v > maxPrice) maxPrice = v;
+          }
+        }
+      }
     }
 
     // Include Ichimoku Senkou Span values in price range (shifted: at position i, cloud comes from candle[i-26])
@@ -590,6 +676,8 @@ export function CandlestickChart({
     legendItems.push({ label: 'Cloud A', color: '#22c55e', opacity: 0.5 });
     legendItems.push({ label: 'Cloud B', color: '#ef4444', opacity: 0.5 });
   }
+  if (showVWAP) legendItems.push({ label: 'VWAP', color: '#06b6d4', opacity: 0.8 });
+  if (showEMARibbon) legendItems.push({ label: 'Ribbon (20-55)', color: '#6366f1', opacity: 0.6 });
 
   return (
     <div ref={containerRef} className="w-full h-full min-h-[350px] relative">
@@ -1161,6 +1249,121 @@ export function CandlestickChart({
                 })}
               </>
             )}
+
+            {/* VWAP line */}
+            {showVWAP &&
+              visibleCandles.map((candle, i) => {
+                if (candle.vwap === undefined || i === 0) return null;
+                const prev = visibleCandles[i - 1];
+                if (prev.vwap === undefined) return null;
+                return (
+                  <line
+                    key={`vwap-${i}`}
+                    x1={indexToX(i - 1)}
+                    y1={priceToY(prev.vwap)}
+                    x2={indexToX(i)}
+                    y2={priceToY(candle.vwap)}
+                    stroke="#22d3ee"
+                    strokeWidth={1.5}
+                    opacity={0.8}
+                  />
+                );
+              })}
+
+            {/* EMA Ribbon */}
+            {showEMARibbon &&
+              (() => {
+                const ribbonPeriods = [20, 25, 30, 35, 40, 45, 50, 55];
+                const ribbonColors = [
+                  '#818cf8', '#6366f1', '#4f46e5', '#4338ca',
+                  '#3730a3', '#312e81', '#2e1065', '#1e1b4b'
+                ];
+                return ribbonPeriods.map((period, ribbonIdx) => {
+                  const propName = `ema${period}` as keyof ProcessedCandle;
+                  return visibleCandles.map((candle, i) => {
+                    if (i === 0) return null;
+                    const val = candle[propName] as number | undefined;
+                    const prevVal = visibleCandles[i - 1][propName] as number | undefined;
+                    if (val === undefined || prevVal === undefined) return null;
+                    return (
+                      <line
+                        key={`ribbon-${period}-${i}`}
+                        x1={indexToX(i - 1)}
+                        y1={priceToY(prevVal)}
+                        x2={indexToX(i)}
+                        y2={priceToY(val)}
+                        stroke={ribbonColors[ribbonIdx]}
+                        strokeWidth={1}
+                        opacity={0.4}
+                      />
+                    );
+                  });
+                });
+              })()}
+
+            {/* Trade execution markers */}
+            {(() => {
+              const activeTrades = trades.filter((t) => t.symbol === symbol);
+              return activeTrades.map((trade) => {
+                const tradeTime = new Date(trade.timestamp).getTime();
+                
+                // Find the closest candle
+                if (candles.length === 0) return null;
+                let closestIdx = 0;
+                let minDiff = Infinity;
+                for (let j = 0; j < candles.length; j++) {
+                  const diff = Math.abs(candles[j].time - tradeTime);
+                  if (diff < minDiff) {
+                    minDiff = diff;
+                    closestIdx = j;
+                  }
+                }
+                
+                // Check if in visible window
+                const startOfVisible = candles.length - visibleCandles.length;
+                const relIndex = closestIdx - startOfVisible;
+                if (relIndex < 0 || relIndex >= visibleCandles.length) return null;
+                
+                const x = indexToX(relIndex);
+                const y = priceToY(trade.price);
+                const isBuy = trade.side === "BUY";
+                const color = isBuy ? "#10b981" : "#ef4444";
+                
+                return (
+                  <g key={`marker-${trade.id}`} className="cursor-help">
+                    {isBuy ? (
+                      // Upward pointing green caret/triangle
+                      <polygon
+                        points={`${x},${y - 12} ${x - 6},${y - 4} ${x + 6},${y - 4}`}
+                        fill="#22c55e"
+                        stroke="#10b981"
+                        strokeWidth={1}
+                      />
+                    ) : (
+                      // Downward pointing red caret/triangle
+                      <polygon
+                        points={`${x},${y + 12} ${x - 6},${y + 4} ${x + 6},${y + 4}`}
+                        fill="#ef4444"
+                        stroke="#f43f5e"
+                        strokeWidth={1}
+                      />
+                    )}
+                    {/* Vertical line connecting to trade price */}
+                    <line
+                      x1={x}
+                      y1={y}
+                      x2={x}
+                      y2={isBuy ? y - 4 : y + 4}
+                      stroke={color}
+                      strokeWidth={1}
+                      strokeDasharray="2,2"
+                      opacity={0.6}
+                    />
+                    <title>{`Execução ${trade.side === 'BUY' ? 'Compra' : 'Venda'}\nQtd: ${trade.quantity} ${trade.symbol.replace("USDT", "")}\nPreço: ${formatPrice(trade.price)}\nPnL: ${trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)} USD\nEstratégia: ${trade.strategy}\nModo: ${trade.mode.toUpperCase()}`}</title>
+                  </g>
+                );
+              });
+            })()}
 
             {/* Time labels */}
             {timeLabels.map((label, i) => (

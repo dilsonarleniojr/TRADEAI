@@ -1,0 +1,71 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1jcnlwdG8tdHJhZGluZy1iYXNpY3MtYS1iZWdpbm5lcnMtZ3VpZGUtdG8tY3J5cHRvY3VycmVuY3ktb3JkZXItdHlwZXMxLTIuanBn.jpg" alt="Strategy’s
+
+3
+00:00:06,000 --> 00:00:09,000
+leveraged Bitcoin model has faced
+
+4
+00:00:09,000 --> 00:00:12,000
+its first stress test: Grayscale"
+
+5
+00:00:12,000 --> 00:00:15,000
+class="type:primaryImage"></p><p>“Less Bitcoin on levered DAT
+
+6
+00:00:15,000 --> 00:00:18,000
+balance sheets and more on
+
+7
+00:00:18,000 --> 00:00:21,000
+diversified corporate balance sheets will
+
+8
+00:00:21,000 --> 00:00:24,000
+be a positive,” said Grayscale’s
+
+9
+00:00:24,000 --> 00:00:27,000
+head of research, Zach Pandl.</p>
+
+10
+00:00:27,000 --> 00:00:30,000
+**Corpo:** <p style="float:right; margin:0 0
+
+11
+00:00:30,000 --> 00:00:33,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1jcnlwdG8tdHJhZGluZy1iYXNpY3MtYS1iZWdpbm5lcnMtZ3VpZGUtdG8tY3J5cHRvY3VycmVuY3ktb3JkZXItdHlwZXMxLTIuanBn.jpg" alt="Strategy’s
+
+12
+00:00:33,000 --> 00:00:36,000
+leveraged Bitcoin model has faced
+
+13
+00:00:36,000 --> 00:00:39,000
+its first stress test: Grayscale"
+
+14
+00:00:39,000 --> 00:00:42,000
+class="type:primaryImage"></p><p>“Less Bitcoin on levered DAT
+
+15
+00:00:42,000 --> 00:00:45,000
+balance sheets and more on
+
+16
+00:00:45,000 --> 00:00:48,000
+diversified corporate balance sheets will
+
+17
+00:00:48,000 --> 00:00:51,000
+be a positive,” said Grayscale’s
+
+18
+00:00:51,000 --> 00:00:54,000
+head of research, Zach Pandl.</p>

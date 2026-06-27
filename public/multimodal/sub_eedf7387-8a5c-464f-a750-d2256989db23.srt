@@ -1,0 +1,79 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1ob3ctdG8tYnV5LXB1bXBmdW4tcHVtcC10b2tlbi5qcGc=.jpg" alt="Pump.fun
+
+3
+00:00:06,000 --> 00:00:09,000
+bounty platform pays users to
+
+4
+00:00:09,000 --> 00:00:12,000
+tattoo tokens and chase viral
+
+5
+00:00:12,000 --> 00:00:15,000
+stunts" class="type:primaryImage"></p><p>Pump.fun launched a new
+
+6
+00:00:15,000 --> 00:00:18,000
+bounty platform where users started
+
+7
+00:00:18,000 --> 00:00:21,000
+funding bizarre memecoin marketing stunts,
+
+8
+00:00:21,000 --> 00:00:24,000
+including forehead tattoos, skydiving as
+
+9
+00:00:24,000 --> 00:00:27,000
+a mascot and setting a
+
+10
+00:00:27,000 --> 00:00:30,000
+vehicle on fire.</p> **Corpo:** <p
+
+11
+00:00:30,000 --> 00:00:33,000
+style="float:right; margin:0 0 10px 15px;
+
+12
+00:00:33,000 --> 00:00:36,000
+width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1ob3ctdG8tYnV5LXB1bXBmdW4tcHVtcC10b2tlbi5qcGc=.jpg" alt="Pump.fun bounty platform
+
+13
+00:00:36,000 --> 00:00:39,000
+pays users to tattoo tokens
+
+14
+00:00:39,000 --> 00:00:42,000
+and chase viral stunts" class="type:primaryImage"></p><p>Pump.fun
+
+15
+00:00:42,000 --> 00:00:45,000
+launched a new bounty platform
+
+16
+00:00:45,000 --> 00:00:48,000
+where users started funding bizarre
+
+17
+00:00:48,000 --> 00:00:51,000
+memecoin marketing stunts, including forehead
+
+18
+00:00:51,000 --> 00:00:54,000
+tattoos, skydiving as a mascot
+
+19
+00:00:54,000 --> 00:00:57,000
+and setting a vehicle on
+
+20
+00:00:57,000 --> 00:01:00,000
+fire.</p>

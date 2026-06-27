@@ -1,6 +1,7 @@
 "use client";
 
 import { useCryptoStore } from "@/lib/store";
+import { ALL_SYMBOLS } from "@/lib/crypto-meta";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -22,20 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { runGeneticOptimization, type GeneticChromosome } from "@/lib/bot/quant-engine";
 import { motion } from "framer-motion";
 
-const SYMBOLS = [
-  "BTCUSDT",
-  "ETHUSDT",
-  "BNBUSDT",
-  "SOLUSDT",
-  "XRPUSDT",
-  "ADAUSDT",
-  "DOGEUSDT",
-  "AVAXUSDT",
-  "DOTUSDT",
-  "LINKUSDT",
-  "MATICUSDT",
-  "ATOMUSDT",
-];
+
 
 const STRATEGY_ICONS: Record<string, React.ElementType> = {
   RSI: TrendingUp,
@@ -108,11 +96,33 @@ export function BotConfigForm() {
       if (res.ok && data.success) {
         setBinanceCredentials(localKey, localSecret);
         setBinanceConnected(true);
+        setBinanceTestnet(binanceTestnet);
         localStorage.setItem("binance_api_key", localKey);
         localStorage.setItem("binance_api_secret", localSecret);
         localStorage.setItem("binance_connected", "true");
         localStorage.setItem("binance_testnet", binanceTestnet ? "true" : "false");
         
+        // Auto-switch to live mode and sync balance
+        const state = useCryptoStore.getState();
+        state.setTradingMode("live");
+        try {
+          const accRes = await fetch("/api/account?mode=live", {
+            headers: {
+              'x-binance-api-key': localKey,
+              'x-binance-api-secret': localSecret,
+              'x-binance-testnet': binanceTestnet ? 'true' : 'false'
+            }
+          });
+          if (accRes.ok) {
+            const accResult = await accRes.json();
+            if (accResult.success && accResult.data) {
+              state.setAccount(accResult.data);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to auto-sync account after login:", e);
+        }
+
         toast({
           title: "🎉 Conectado à Binance!",
           description: `Login realizado com sucesso em modo ${binanceTestnet ? "Testnet" : "Produção"}.`,
@@ -328,7 +338,7 @@ export function BotConfigForm() {
               <SelectValue placeholder="Selecionar símbolo" />
             </SelectTrigger>
             <SelectContent>
-              {SYMBOLS.map((sym) => (
+              {ALL_SYMBOLS.map((sym) => (
                 <SelectItem key={sym} value={sym}>
                   {sym.replace("USDT", "/USDT")}
                 </SelectItem>

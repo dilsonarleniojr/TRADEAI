@@ -11,8 +11,22 @@ class TelemetryManager {
   private isProcessing = false;
   private isSimulatedFailed = false;
 
+  get currentQueue() {
+    return this.queue;
+  }
+
+  get simulateFailureMode() {
+    return this.isSimulatedFailed;
+  }
+
   constructor() {
+    this.loadQueue();
     if (typeof window !== "undefined") {
+      // Process loaded queue on startup
+      if (this.queue.length > 0) {
+        setTimeout(() => this.processQueue(), 1000);
+      }
+
       // Start heartbeat every 15 seconds
       setInterval(() => {
         const portfolio = (window as any).useCryptoStore?.getState()?.portfolio;
@@ -23,6 +37,31 @@ class TelemetryManager {
           cashBalance: portfolio?.cashBalance ?? 10000,
         });
       }, 15000);
+    }
+  }
+
+  private loadQueue() {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem('tradeai_telemetry_queue');
+        if (stored) {
+          this.queue = JSON.parse(stored);
+          console.log(`[TelemetryClient] Loaded ${this.queue.length} events from localStorage`);
+        }
+      } catch (e) {
+        console.error('[TelemetryClient] Failed to load queue from localStorage:', e);
+        this.queue = [];
+      }
+    }
+  }
+
+  private saveQueue() {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem('tradeai_telemetry_queue', JSON.stringify(this.queue));
+      } catch (e) {
+        console.error('[TelemetryClient] Failed to save queue to localStorage:', e);
+      }
     }
   }
 
@@ -41,6 +80,7 @@ class TelemetryManager {
     };
     
     this.queue.push(event);
+    this.saveQueue();
     console.log(`[TelemetryClient] Event queued:`, event);
     this.processQueue();
   }
@@ -73,7 +113,13 @@ class TelemetryManager {
 
         if (res.ok) {
           this.queue.shift();
+          this.saveQueue();
           console.log(`[TelemetryClient] Event ${event.id} (${event.type}) sent successfully`);
+          
+          // Trigger a custom event in the DOM to notify the telemetry UI of changes
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("telemetry-queue-updated"));
+          }
         } else {
           throw new Error(`Server returned status ${res.status}`);
         }
@@ -82,6 +128,11 @@ class TelemetryManager {
         const backoffMs = Math.min(1000 * Math.pow(2, event.retryCount), 15000);
         console.error(`[TelemetryClient] Failed to send event ${event.id} (attempt ${event.retryCount}). Retrying in ${backoffMs}ms. Error:`, err.message);
         
+        // Trigger event in DOM so UI shows retry / error state
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("telemetry-queue-updated"));
+        }
+
         this.isProcessing = false;
         setTimeout(() => this.processQueue(), backoffMs);
         return;

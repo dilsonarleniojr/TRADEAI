@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import type { PortfolioData, TickerData, BotConfigData } from "./types";
+import type { PortfolioData, TickerData, BotConfigData, PortfolioPosition } from "./types";
 
 export interface PortfolioSlice {
   // Portfolio
@@ -11,7 +11,12 @@ export interface PortfolioSlice {
     cashBalance: number;
     assetQuantity: number;
     symbol: string;
-    positions?: Array<{ symbol: string; quantity: number; marketValue: number }>;
+    totalValue?: number;
+    pnl?: number;
+    pnlPercent?: number;
+    realizedPnl?: number;
+    unrealizedPnl?: number;
+    positions?: PortfolioPosition[];
   }) => void;
 
   // Bot config (needed for initialBalance reference)
@@ -35,6 +40,9 @@ export const createPortfolioSlice: StateCreator<
     assetQuantity: 0,
     pnl: 0,
     pnlPercent: 0,
+    realizedPnl: 0,
+    unrealizedPnl: 0,
+    positions: [],
   },
   setPortfolio: (portfolio) => set({ portfolio }),
 
@@ -43,10 +51,14 @@ export const createPortfolioSlice: StateCreator<
     const state = get();
     const price = state.tickers[account.symbol]?.price ?? 0;
     const assetBalance = account.assetQuantity * price;
-    const totalValue = account.cashBalance + assetBalance;
-    const initial = state.botConfig.initialBalance || 10000;
-    const pnl = totalValue - initial;
-    const pnlPercent = initial > 0 ? (pnl / initial) * 100 : 0;
+    
+    const totalValue = account.totalValue !== undefined ? account.totalValue : (account.cashBalance + assetBalance);
+    const pnl = account.pnl !== undefined ? account.pnl : (totalValue - (state.botConfig.initialBalance || 10000));
+    const pnlPercent = account.pnlPercent !== undefined ? account.pnlPercent : ((state.botConfig.initialBalance || 10000) > 0 ? (pnl / (state.botConfig.initialBalance || 10000)) * 100 : 0);
+    const realizedPnl = account.realizedPnl !== undefined ? account.realizedPnl : 0;
+    const unrealizedPnl = account.unrealizedPnl !== undefined ? account.unrealizedPnl : 0;
+    const positions = account.positions !== undefined ? account.positions : [];
+
     set({
       portfolio: {
         totalValue,
@@ -55,6 +67,9 @@ export const createPortfolioSlice: StateCreator<
         assetQuantity: account.assetQuantity,
         pnl,
         pnlPercent,
+        realizedPnl,
+        unrealizedPnl,
+        positions,
       },
     });
   },

@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import type { TradeData, AISignalData, ChatMessage } from "./types";
+import type { TradeData, AISignalData, ChatMessage, BotLogEntry } from "./types";
 
 export interface TradeSlice {
   // Bot status
@@ -10,6 +10,10 @@ export interface TradeSlice {
   trades: TradeData[];
   setTrades: (trades: TradeData[]) => void;
   addTrade: (trade: TradeData) => void;
+
+  // Bot Logs
+  botLogs: BotLogEntry[];
+  addBotLog: (log: Omit<BotLogEntry, 'id' | 'timestamp'>) => void;
 
   // AI Signals
   aiSignals: AISignalData[];
@@ -34,6 +38,19 @@ export const createTradeSlice: StateCreator<TradeSlice, [], [], TradeSlice> = (s
     set((state) => ({
       trades: [trade, ...state.trades],
     })),
+
+  // Bot Logs
+  botLogs: [],
+  addBotLog: (log) =>
+    set((state) => {
+      const newLog: BotLogEntry = {
+        ...log,
+        id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: Date.now(),
+      };
+      // Keep only the last 100 logs
+      return { botLogs: [newLog, ...state.botLogs].slice(0, 100) };
+    }),
 
   // AI Signals
   aiSignals: [],

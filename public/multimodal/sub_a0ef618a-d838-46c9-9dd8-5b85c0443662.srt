@@ -1,0 +1,67 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9jeW50aGlhLWx1bW1pcy1wb3J0cmFpdC0xLmpwZw==.jpg" alt="Senate
+
+3
+00:00:06,000 --> 00:00:09,000
+Republicans push finance watchdogs to
+
+4
+00:00:09,000 --> 00:00:12,000
+clarify crypto capital rules" class="type:primaryImage"></p><p>Senator
+
+5
+00:00:12,000 --> 00:00:15,000
+Cynthia Lummis has led a
+
+6
+00:00:15,000 --> 00:00:18,000
+group of lawmakers urging financial
+
+7
+00:00:18,000 --> 00:00:21,000
+regulators for “fair capital treatment
+
+8
+00:00:21,000 --> 00:00:24,000
+for on-balance sheet treatment of
+
+9
+00:00:24,000 --> 00:00:27,000
+digital assets.”</p> **Corpo:** <p style="float:right;
+
+10
+00:00:27,000 --> 00:00:30,000
+margin:0 0 10px 15px; width:240px;"><img
+
+11
+00:00:30,000 --> 00:00:33,000
+src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9jeW50aGlhLWx1bW1pcy1wb3J0cmFpdC0xLmpwZw==.jpg" alt="Senate Republicans push finance
+
+12
+00:00:33,000 --> 00:00:36,000
+watchdogs to clarify crypto capital
+
+13
+00:00:36,000 --> 00:00:39,000
+rules" class="type:primaryImage"></p><p>Senator Cynthia Lummis has
+
+14
+00:00:39,000 --> 00:00:42,000
+led a group of lawmakers
+
+15
+00:00:42,000 --> 00:00:45,000
+urging financial regulators for “fair
+
+16
+00:00:45,000 --> 00:00:48,000
+capital treatment for on-balance sheet
+
+17
+00:00:48,000 --> 00:00:51,000
+treatment of digital assets.”</p>

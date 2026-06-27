@@ -1,0 +1,63 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1taWNoYWVsLXNheWxvcjIuanBn.jpg" alt="Saylor
+
+3
+00:00:06,000 --> 00:00:09,000
+says Bitcoin needs ‘disciplined expansion’
+
+4
+00:00:09,000 --> 00:00:12,000
+as analysts weigh demand reset"
+
+5
+00:00:12,000 --> 00:00:15,000
+class="type:primaryImage"></p><p>Michael Saylor’s essay calls for
+
+6
+00:00:15,000 --> 00:00:18,000
+Bitcoin to expand through banks,
+
+7
+00:00:18,000 --> 00:00:21,000
+credit, securities and higher layers
+
+8
+00:00:21,000 --> 00:00:24,000
+while preserving its base layer.</p>
+
+9
+00:00:24,000 --> 00:00:27,000
+**Corpo:** <p style="float:right; margin:0 0
+
+10
+00:00:27,000 --> 00:00:30,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1taWNoYWVsLXNheWxvcjIuanBn.jpg" alt="Saylor
+
+11
+00:00:30,000 --> 00:00:33,000
+says Bitcoin needs ‘disciplined expansion’
+
+12
+00:00:33,000 --> 00:00:36,000
+as analysts weigh demand reset"
+
+13
+00:00:36,000 --> 00:00:39,000
+class="type:primaryImage"></p><p>Michael Saylor’s essay calls for
+
+14
+00:00:39,000 --> 00:00:42,000
+Bitcoin to expand through banks,
+
+15
+00:00:42,000 --> 00:00:45,000
+credit, securities and higher layers
+
+16
+00:00:45,000 --> 00:00:48,000
+while preserving its base layer.</p>

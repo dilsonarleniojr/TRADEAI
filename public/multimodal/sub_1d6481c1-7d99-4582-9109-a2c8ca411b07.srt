@@ -1,0 +1,71 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9hcnRpY2xlLWNvdmVycy0yMzkzODMtYnRjLXByaWNlLXBhdXNlcy05MGstd2hhdC13aWxsLXRyaWdnZXItbmV3LXllYXItcmFsbHkuanBn.jpg" alt="Bitcoin
+
+3
+00:00:06,000 --> 00:00:09,000
+needs one more thing to
+
+4
+00:00:09,000 --> 00:00:12,000
+happen to spark BTC price
+
+5
+00:00:12,000 --> 00:00:15,000
+'rally:' Analysis" class="type:primaryImage"></p><p>Bitcoin whales flipped
+
+6
+00:00:15,000 --> 00:00:18,000
+to support a BTC price
+
+7
+00:00:18,000 --> 00:00:21,000
+rebound, but analysis warned that
+
+8
+00:00:21,000 --> 00:00:24,000
+the Coinbase and Kimchi Premium
+
+9
+00:00:24,000 --> 00:00:27,000
+still needed to return.</p> **Corpo:**
+
+10
+00:00:27,000 --> 00:00:30,000
+<p style="float:right; margin:0 0 10px
+
+11
+00:00:30,000 --> 00:00:33,000
+15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9hcnRpY2xlLWNvdmVycy0yMzkzODMtYnRjLXByaWNlLXBhdXNlcy05MGstd2hhdC13aWxsLXRyaWdnZXItbmV3LXllYXItcmFsbHkuanBn.jpg" alt="Bitcoin needs
+
+12
+00:00:33,000 --> 00:00:36,000
+one more thing to happen
+
+13
+00:00:36,000 --> 00:00:39,000
+to spark BTC price 'rally:'
+
+14
+00:00:39,000 --> 00:00:42,000
+Analysis" class="type:primaryImage"></p><p>Bitcoin whales flipped to
+
+15
+00:00:42,000 --> 00:00:45,000
+support a BTC price rebound,
+
+16
+00:00:45,000 --> 00:00:48,000
+but analysis warned that the
+
+17
+00:00:48,000 --> 00:00:51,000
+Coinbase and Kimchi Premium still
+
+18
+00:00:51,000 --> 00:00:54,000
+needed to return.</p>

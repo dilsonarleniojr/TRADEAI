@@ -21,7 +21,11 @@ async function main() {
 
   console.log(output);
 
-  const outputPath = "/home/dcorrea/.gemini/antigravity-ide/brain/44b6530d-b50b-4f0c-9276-075b32d99d70/db_snapshot.txt";
+  const artifactDir = process.env.ARTIFACT_DIR || "/home/dcorrea/.gemini/antigravity-ide/brain/b2324724-40b4-4ce4-ae67-d71dc5c5622e";
+  if (!fs.existsSync(artifactDir)) {
+    fs.mkdirSync(artifactDir, { recursive: true });
+  }
+  const outputPath = path.join(artifactDir, "db_snapshot.txt");
   fs.writeFileSync(outputPath, output, "utf-8");
   console.log(`\n💾 Snapshot saved to ${outputPath}`);
 }

@@ -1,0 +1,63 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1jb3VsZC10aG9zZS13aG8tbGVmdC12aXNhLWNvbWUtYmFjay1saXRlY29pbi5wbmc=.png" alt="Visa
+
+3
+00:00:06,000 --> 00:00:09,000
+tests private stablecoin settlement with
+
+4
+00:00:09,000 --> 00:00:12,000
+Brale, Canton" class="type:primaryImage"></p><p>Visa is testing
+
+5
+00:00:12,000 --> 00:00:15,000
+private stablecoin settlement on Canton
+
+6
+00:00:15,000 --> 00:00:18,000
+with Brale, exploring whether institutions
+
+7
+00:00:18,000 --> 00:00:21,000
+can use blockchain without exposing
+
+8
+00:00:21,000 --> 00:00:24,000
+sensitive transaction data.</p> **Corpo:** <p
+
+9
+00:00:24,000 --> 00:00:27,000
+style="float:right; margin:0 0 10px 15px;
+
+10
+00:00:27,000 --> 00:00:30,000
+width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1jb3VsZC10aG9zZS13aG8tbGVmdC12aXNhLWNvbWUtYmFjay1saXRlY29pbi5wbmc=.png" alt="Visa tests private
+
+11
+00:00:30,000 --> 00:00:33,000
+stablecoin settlement with Brale, Canton"
+
+12
+00:00:33,000 --> 00:00:36,000
+class="type:primaryImage"></p><p>Visa is testing private stablecoin
+
+13
+00:00:36,000 --> 00:00:39,000
+settlement on Canton with Brale,
+
+14
+00:00:39,000 --> 00:00:42,000
+exploring whether institutions can use
+
+15
+00:00:42,000 --> 00:00:45,000
+blockchain without exposing sensitive transaction
+
+16
+00:00:45,000 --> 00:00:48,000
+data.</p>

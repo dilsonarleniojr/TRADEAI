@@ -63,8 +63,14 @@ async function fetchInitialTickers(): Promise<Record<string, TickerData>> {
   return tickersMap;
 }
 
-async function fetchInitialAccount() {
-  const res = await fetch("/api/account");
+async function fetchInitialAccount(mode: string, state: any) {
+  const res = await fetch(`/api/account?mode=${mode}`, {
+    headers: {
+      'x-binance-api-key': state.binanceApiKey || '',
+      'x-binance-api-secret': state.binanceApiSecret || '',
+      'x-binance-testnet': state.binanceTestnet ? 'true' : 'false'
+    }
+  });
   if (!res.ok) throw new Error("Failed to fetch account");
   const result = await res.json();
   if (!result.success || !result.data) throw new Error("Invalid account data");
@@ -92,6 +98,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     const store = useCryptoStore.getState();
 
+    // Load credentials and trading mode from localStorage if present
+    if (typeof window !== "undefined") {
+      const key = localStorage.getItem("binance_api_key") || "";
+      const secret = localStorage.getItem("binance_api_secret") || "";
+      const connected = localStorage.getItem("binance_connected") === "true";
+      const testnet = localStorage.getItem("binance_testnet") !== "false";
+      store.setBinanceCredentials(key, secret);
+      store.setBinanceConnected(connected);
+      store.setBinanceTestnet(testnet);
+      
+      const savedMode = localStorage.getItem("trading_mode") as any;
+      if (savedMode === "live" || savedMode === "paper") {
+        store.setTradingMode(savedMode);
+      }
+    }
+
     // Clear any stale mock data
     store.setAiSignals([]);
     store.setBotActive(false);
@@ -113,22 +135,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       // Account data
       try {
-        const acc = await fetchInitialAccount();
+        const currentStore = useCryptoStore.getState();
+        const acc = await fetchInitialAccount(currentStore.tradingMode, currentStore);
         if (mounted) {
-          useCryptoStore.getState().setAccount({
-            cashBalance: acc.cashBalance,
-            assetQuantity: acc.assetQuantity,
-            symbol: acc.symbol,
-          });
+          useCryptoStore.getState().setAccount(acc);
           setState((s) => ({ ...s, accountLoaded: true }));
           console.log("[DataProvider] Account loaded");
         }
       } catch (err) {
         console.error("[DataProvider] Account fetch failed:", err);
         if (mounted) {
-          // Default account on failure
+          const currentStore = useCryptoStore.getState();
+          // Default account on failure (0 for live, 10000 for paper)
           useCryptoStore.getState().setAccount({
-            cashBalance: 10000,
+            cashBalance: currentStore.tradingMode === "live" ? 0 : 10000,
             assetQuantity: 0,
             symbol: "BTCUSDT",
           });
