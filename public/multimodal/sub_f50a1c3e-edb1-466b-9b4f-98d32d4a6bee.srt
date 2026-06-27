@@ -1,0 +1,59 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS10b3AtNS1iaWdnZXN0LW1pbmluZy1mYXJtcy16Y2FzaC5qcGc=.jpg" alt="Zcash
+
+3
+00:00:06,000 --> 00:00:09,000
+weighs new shielded pool after
+
+4
+00:00:09,000 --> 00:00:12,000
+counterfeiting flaw" class="type:primaryImage"></p><p>Zcash developers are
+
+5
+00:00:12,000 --> 00:00:15,000
+weighing a new shielded pool
+
+6
+00:00:15,000 --> 00:00:18,000
+and turnstile accounting after the
+
+7
+00:00:18,000 --> 00:00:21,000
+Orchard bug raised supply verification
+
+8
+00:00:21,000 --> 00:00:24,000
+questions.</p> **Corpo:** <p style="float:right; margin:0
+
+9
+00:00:24,000 --> 00:00:27,000
+0 10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS10b3AtNS1iaWdnZXN0LW1pbmluZy1mYXJtcy16Y2FzaC5qcGc=.jpg"
+
+10
+00:00:27,000 --> 00:00:30,000
+alt="Zcash weighs new shielded pool
+
+11
+00:00:30,000 --> 00:00:33,000
+after counterfeiting flaw" class="type:primaryImage"></p><p>Zcash developers
+
+12
+00:00:33,000 --> 00:00:36,000
+are weighing a new shielded
+
+13
+00:00:36,000 --> 00:00:39,000
+pool and turnstile accounting after
+
+14
+00:00:39,000 --> 00:00:42,000
+the Orchard bug raised supply
+
+15
+00:00:42,000 --> 00:00:45,000
+verification questions.</p>

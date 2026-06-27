@@ -70,7 +70,9 @@ export function ChartSection() {
   const [showEMA26, setShowEMA26] = useState(false);
   const [showVolumeProfile, setShowVolumeProfile] = useState(false);
   const [showIchimoku, setShowIchimoku] = useState(false);
-  const hasActiveOverlay = showSMA20 || showSMA50 || showBollinger || showFibonacci || showEMA12 || showEMA26 || showVolumeProfile || showIchimoku;
+  const [showVWAP, setShowVWAP] = useState(false);
+  const [showEMARibbon, setShowEMARibbon] = useState(false);
+  const hasActiveOverlay = showSMA20 || showSMA50 || showBollinger || showFibonacci || showEMA12 || showEMA26 || showVolumeProfile || showIchimoku || showVWAP || showEMARibbon;
   const [rsiValue, setRsiValue] = useState<number | null>(null);
   const rsiAbortRef = useRef<AbortController | null>(null);
 
@@ -330,6 +332,30 @@ export function ChartSection() {
           >
             Ichimoku
           </Button>
+          <Button
+            variant={showVWAP ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-9 sm:h-7 px-2 text-xs transition-all duration-200 shrink-0  ${
+              showVWAP
+                ? 'bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 scale-[1.02] shadow-sm shadow-cyan-500/10'
+                : 'text-muted-foreground'
+            }`}
+            onClick={() => setShowVWAP(!showVWAP)}
+          >
+            VWAP
+          </Button>
+          <Button
+            variant={showEMARibbon ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-9 sm:h-7 px-2 text-xs transition-all duration-200 shrink-0  ${
+              showEMARibbon
+                ? 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 scale-[1.02] shadow-sm shadow-indigo-500/10'
+                : 'text-muted-foreground'
+            }`}
+            onClick={() => setShowEMARibbon(!showEMARibbon)}
+          >
+            Ribbon
+          </Button>
         </div>
       </div>
 
@@ -357,6 +383,8 @@ export function ChartSection() {
                     showEMA26={showEMA26}
                     showVolumeProfile={showVolumeProfile}
                     showIchimoku={showIchimoku}
+                    showVWAP={showVWAP}
+                    showEMARibbon={showEMARibbon}
                     drawingTool={drawingTool}
                     drawings={drawings}
                     onDrawingAdd={handleDrawingAdd}

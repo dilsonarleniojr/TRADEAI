@@ -23,33 +23,44 @@ async function runSyncTests() {
       "--disable-remote-fonts",
       "--no-sandbox",
       "--disable-setuid-sandbox",
-      "--disable-gpu"
+      "--disable-gpu",
+      "--disable-dev-shm-usage"
     ]
   });
 
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 }
+    viewport: { width: 1280, height: 800 },
+    ignoreHTTPSErrors: true,
   });
 
   const page = await context.newPage();
 
-  // Route & Abort any non-local network requests to prevent API hangs
-  await page.route("**/*", (route) => {
-    const url = route.request().url();
-    if (url.includes("localhost") || url.includes("127.0.0.1") || url.startsWith("data:")) {
-      route.continue();
-    } else {
-      route.abort();
-    }
+  page.on("pageerror", (err) => {
+    console.error("PAGE ERROR:", err.message);
   });
+
+  page.on("requestfailed", (req) => {
+    console.warn("REQUEST FAILED:", req.url(), req.failure()?.errorText);
+  });
+
+
 
   try {
     // Navigate to local site (using Caddy proxy port 81 or fall back to Next.js port 3000)
-    console.log("⏱️ Loading home page...");
-    await page.goto("http://localhost:81/", { waitUntil: "load" }).catch(async () => {
-      console.log("Caddy proxy port 81 offline, trying port 3000 directly...");
-      await page.goto("http://localhost:3000/", { waitUntil: "load" });
-    });
+    let targetUrl = "http://127.0.0.1:3000/";
+    try {
+      console.log("Checking if Caddy proxy on port 81 is available...");
+      const res = await fetch("http://127.0.0.1:81/", { method: "HEAD" });
+      if (res.status < 500) {
+        targetUrl = "http://127.0.0.1:81/";
+        console.log("Using Caddy proxy on port 81");
+      }
+    } catch (e) {
+      console.log("Caddy port 81 is offline, using port 3000 directly");
+    }
+
+    console.log(`⏱️ Loading home page: ${targetUrl}`);
+    await page.goto(targetUrl, { waitUntil: "load" });
 
     // Wait for DOM stabilization
     await page.waitForTimeout(3000);

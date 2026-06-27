@@ -1,0 +1,67 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9ldS1yZWd1bGF0aW9ucy1ldXJvcGUtbmV3LTMzLmpwZw==.jpg" alt="Crypto
+
+3
+00:00:06,000 --> 00:00:09,000
+tax proposals weighed ahead of
+
+4
+00:00:09,000 --> 00:00:12,000
+Tuesday House hearing" class="type:primaryImage"></p><p>Among the
+
+5
+00:00:12,000 --> 00:00:15,000
+issues US lawmakers are expected
+
+6
+00:00:15,000 --> 00:00:18,000
+to discuss in a digital
+
+7
+00:00:18,000 --> 00:00:21,000
+asset taxation hearing are “de
+
+8
+00:00:21,000 --> 00:00:24,000
+minimis” reporting exceptions for crypto
+
+9
+00:00:24,000 --> 00:00:27,000
+transactions.</p> **Corpo:** <p style="float:right; margin:0
+
+10
+00:00:27,000 --> 00:00:30,000
+0 10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9ldS1yZWd1bGF0aW9ucy1ldXJvcGUtbmV3LTMzLmpwZw==.jpg"
+
+11
+00:00:30,000 --> 00:00:33,000
+alt="Crypto tax proposals weighed ahead
+
+12
+00:00:33,000 --> 00:00:36,000
+of Tuesday House hearing" class="type:primaryImage"></p><p>Among
+
+13
+00:00:36,000 --> 00:00:39,000
+the issues US lawmakers are
+
+14
+00:00:39,000 --> 00:00:42,000
+expected to discuss in a
+
+15
+00:00:42,000 --> 00:00:45,000
+digital asset taxation hearing are
+
+16
+00:00:45,000 --> 00:00:48,000
+“de minimis” reporting exceptions for
+
+17
+00:00:48,000 --> 00:00:51,000
+crypto transactions.</p>

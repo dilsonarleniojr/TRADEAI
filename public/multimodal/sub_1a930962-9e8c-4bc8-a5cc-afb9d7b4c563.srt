@@ -1,0 +1,79 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9hcnRpY2xlLWNvdmVycy0yNTkwMjctZXRoZXJldW0tZm91bmRhdGlvbi1uYXByYXZpbGEtdi1zdGVqa2luZy1lc2UtNDYtNjQtbWxuLXYtZWZpcmUuanBn.jpg" alt="ETH
+
+3
+00:00:06,000 --> 00:00:09,000
+falls to 13-month low on
+
+4
+00:00:09,000 --> 00:00:12,000
+Zcash bug news and Bitcoin
+
+5
+00:00:12,000 --> 00:00:15,000
+drop to sub-$60K: Is $1.4K
+
+6
+00:00:15,000 --> 00:00:18,000
+next?" class="type:primaryImage"></p><p>ETH price crashed below
+
+7
+00:00:18,000 --> 00:00:21,000
+$1,600 as a vulnerability in
+
+8
+00:00:21,000 --> 00:00:24,000
+Zcash emerged and Bitcoin sold
+
+9
+00:00:24,000 --> 00:00:27,000
+off below $60,000 for the
+
+10
+00:00:27,000 --> 00:00:30,000
+first time in months. **Corpo:**
+
+11
+00:00:30,000 --> 00:00:33,000
+<p style="float:right; margin:0 0 10px
+
+12
+00:00:33,000 --> 00:00:36,000
+15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9hcnRpY2xlLWNvdmVycy0yNTkwMjctZXRoZXJldW0tZm91bmRhdGlvbi1uYXByYXZpbGEtdi1zdGVqa2luZy1lc2UtNDYtNjQtbWxuLXYtZWZpcmUuanBn.jpg" alt="ETH falls
+
+13
+00:00:36,000 --> 00:00:39,000
+to 13-month low on Zcash
+
+14
+00:00:39,000 --> 00:00:42,000
+bug news and Bitcoin drop
+
+15
+00:00:42,000 --> 00:00:45,000
+to sub-$60K: Is $1.4K next?"
+
+16
+00:00:45,000 --> 00:00:48,000
+class="type:primaryImage"></p><p>ETH price crashed below $1,600
+
+17
+00:00:48,000 --> 00:00:51,000
+as a vulnerability in Zcash
+
+18
+00:00:51,000 --> 00:00:54,000
+emerged and Bitcoin sold off
+
+19
+00:00:54,000 --> 00:00:57,000
+below $60,000 for the first
+
+20
+00:00:57,000 --> 00:01:00,000
+time in months.

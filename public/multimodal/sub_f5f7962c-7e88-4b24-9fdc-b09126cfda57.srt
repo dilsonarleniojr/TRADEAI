@@ -1,0 +1,63 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS10aGUtcmV2aXZhbC1vZi1nZW5lcmFsLXBhcnRuZXJzaGlwcy1pbi10aGUtYWdlLW9mLXRva2Vub21pY3MtcGFydC0zLmpwZw==.jpg" alt="House
+
+3
+00:00:06,000 --> 00:00:09,000
+GOP eyes summer vote on
+
+4
+00:00:09,000 --> 00:00:12,000
+prediction market restrictions for lawmakers"
+
+5
+00:00:12,000 --> 00:00:15,000
+class="type:primaryImage"></p><p>House Republicans plan a summer
+
+6
+00:00:15,000 --> 00:00:18,000
+vote on a congressional stock
+
+7
+00:00:18,000 --> 00:00:21,000
+trading ban and new restrictions
+
+8
+00:00:21,000 --> 00:00:24,000
+on lawmakers’ prediction market activity.</p>
+
+9
+00:00:24,000 --> 00:00:27,000
+**Corpo:** <p style="float:right; margin:0 0
+
+10
+00:00:27,000 --> 00:00:30,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS10aGUtcmV2aXZhbC1vZi1nZW5lcmFsLXBhcnRuZXJzaGlwcy1pbi10aGUtYWdlLW9mLXRva2Vub21pY3MtcGFydC0zLmpwZw==.jpg" alt="House
+
+11
+00:00:30,000 --> 00:00:33,000
+GOP eyes summer vote on
+
+12
+00:00:33,000 --> 00:00:36,000
+prediction market restrictions for lawmakers"
+
+13
+00:00:36,000 --> 00:00:39,000
+class="type:primaryImage"></p><p>House Republicans plan a summer
+
+14
+00:00:39,000 --> 00:00:42,000
+vote on a congressional stock
+
+15
+00:00:42,000 --> 00:00:45,000
+trading ban and new restrictions
+
+16
+00:00:45,000 --> 00:00:48,000
+on lawmakers’ prediction market activity.</p>

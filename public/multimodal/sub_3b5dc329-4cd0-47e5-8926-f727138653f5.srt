@@ -1,0 +1,63 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9wb2xpY2UtY3JpbWUtYmxhY2stYXNpYW4taW5kaWFuLW1hbi13b21hbi1oYWNrLmpwZw==.jpg" alt="South
+
+3
+00:00:06,000 --> 00:00:09,000
+Korea police probe Polymarket users
+
+4
+00:00:09,000 --> 00:00:12,000
+over illegal gambling claims: Report"
+
+5
+00:00:12,000 --> 00:00:15,000
+class="type:primaryImage"></p><p>South Korean police reportedly launched
+
+6
+00:00:15,000 --> 00:00:18,000
+the country’s first illegal gambling
+
+7
+00:00:18,000 --> 00:00:21,000
+probe into local Polymarket users
+
+8
+00:00:21,000 --> 00:00:24,000
+amid election-betting scrutiny.</p> **Corpo:** <p
+
+9
+00:00:24,000 --> 00:00:27,000
+style="float:right; margin:0 0 10px 15px;
+
+10
+00:00:27,000 --> 00:00:30,000
+width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9wb2xpY2UtY3JpbWUtYmxhY2stYXNpYW4taW5kaWFuLW1hbi13b21hbi1oYWNrLmpwZw==.jpg" alt="South Korea police
+
+11
+00:00:30,000 --> 00:00:33,000
+probe Polymarket users over illegal
+
+12
+00:00:33,000 --> 00:00:36,000
+gambling claims: Report" class="type:primaryImage"></p><p>South Korean
+
+13
+00:00:36,000 --> 00:00:39,000
+police reportedly launched the country’s
+
+14
+00:00:39,000 --> 00:00:42,000
+first illegal gambling probe into
+
+15
+00:00:42,000 --> 00:00:45,000
+local Polymarket users amid election-betting
+
+16
+00:00:45,000 --> 00:00:48,000
+scrutiny.</p>

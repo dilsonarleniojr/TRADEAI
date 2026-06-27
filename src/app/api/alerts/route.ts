@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { isRateLimited } from '@/lib/rate-limit';
 
 // GET /api/alerts - Get all price alerts
 export async function GET() {
@@ -24,20 +25,41 @@ export async function GET() {
 // POST /api/alerts - Create a price alert
 export async function POST(request: NextRequest) {
   try {
+    // 1. Rate Limiting Check
+    const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
+    if (isRateLimited(ip, 30)) {
+      return NextResponse.json(
+        { success: false, error: 'Too many requests. Please wait before creating more alerts.' },
+        { status: 429 }
+      );
+    }
+
     const { symbol, targetPrice, direction } = await request.json();
 
-    if (!symbol || !targetPrice || !direction) {
+    if (!symbol || targetPrice === undefined || !direction) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
+    // 2. Input Sanitization and Validation
+    const targetPriceVal = parseFloat(targetPrice);
+    if (isNaN(targetPriceVal) || targetPriceVal <= 0) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid targetPrice. Must be a positive number.' },
+        { status: 400 }
+      );
+    }
+
+    const directionClean = direction === "above" ? "above" : "below";
+    const symbolClean = symbol.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+
     const alert = await db.priceAlert.create({
       data: {
-        symbol,
-        targetPrice: parseFloat(targetPrice),
-        direction,
+        symbol: symbolClean,
+        targetPrice: targetPriceVal,
+        direction: directionClean,
       },
     });
 
@@ -67,7 +89,10 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await db.priceAlert.delete({ where: { id } });
+    // Sanitize alert ID input to prevent malicious string manipulation
+    const idClean = id.replace(/[^a-z0-9_-]/gi, "");
+
+    await db.priceAlert.delete({ where: { id: idClean } });
 
     return NextResponse.json({
       success: true,
@@ -81,3 +106,4 @@ export async function DELETE(request: NextRequest) {
     );
   }
 }
+

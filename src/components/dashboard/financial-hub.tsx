@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { formatPrice, formatPercent } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,10 +20,34 @@ import {
   PieChart,
   History,
   BarChart3,
+  Bell,
+  BellRing,
+  Plus,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useCountUp } from "@/hooks/use-count-up";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ALL_SYMBOLS } from "@/lib/crypto-meta";
 
 function AnimatedValue({ value, prefix = "", suffix = "", decimals = 2 }: {
   value: number;
@@ -40,18 +64,73 @@ function AnimatedValue({ value, prefix = "", suffix = "", decimals = 2 }: {
 }
 
 export function FinancialHub() {
-  const { portfolio, trades, botActive, tickers, connectionStatus, tradingMode } = useCryptoStore();
+  const { portfolio, trades, botActive, tickers, connectionStatus, tradingMode, setActiveSection, addAlert } = useCryptoStore();
+  const [alertDialogOpen, setAlertDialogOpen] = useState(false);
+  const [alertSymbol, setAlertSymbol] = useState("BTCUSDT");
+  const [alertTargetPrice, setAlertTargetPrice] = useState("");
+  const [alertDirection, setAlertDirection] = useState<"above" | "below">("above");
+  const [isSyncing, setIsSyncing] = useState(false);
+  const { toast } = useToast();
 
-  // P&L calculations
-  const realizedPnl = useMemo(() => {
-    return trades
-      .filter((t) => t.side === "SELL" && t.pnl !== 0)
-      .reduce((sum, t) => sum + t.pnl, 0);
-  }, [trades]);
+  const handleCreateAlert = () => {
+    const targetVal = parseFloat(alertTargetPrice);
+    if (isNaN(targetVal) || targetVal <= 0) return;
 
-  const unrealizedPnl = useMemo(() => {
-    return portfolio.pnl - realizedPnl;
-  }, [portfolio.pnl, realizedPnl]);
+    addAlert({
+      id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      symbol: alertSymbol,
+      targetPrice: targetVal,
+      direction: alertDirection,
+      currentPrice: tickers[alertSymbol]?.price || 0,
+      isTriggered: false,
+      createdAt: new Date().toISOString(),
+      type: "price",
+    });
+
+    setAlertTargetPrice("");
+    setAlertDialogOpen(false);
+  };
+
+  const forceSync = async () => {
+    setIsSyncing(true);
+    try {
+      const state = useCryptoStore.getState();
+      const mode = state.tradingMode;
+      const res = await fetch(`/api/account?mode=${mode}`, {
+        headers: {
+          'x-binance-api-key': state.binanceApiKey || '',
+          'x-binance-api-secret': state.binanceApiSecret || '',
+          'x-binance-testnet': state.binanceTestnet ? 'true' : 'false'
+        }
+      });
+      const result = await res.json();
+      if (res.ok && result.success && result.data) {
+        state.setAccount(result.data);
+        toast({
+          title: "Sincronização Concluída",
+          description: `Os dados da conta (${mode === "live" ? "Real" : "Simulado"}) foram atualizados.`,
+        });
+      } else {
+        toast({
+          title: "Erro de Sincronização",
+          description: result.error || "Não foi possível sincronizar os dados da conta.",
+          variant: "destructive",
+        });
+      }
+    } catch (e: any) {
+      toast({
+        title: "Erro de Sincronização",
+        description: e.message || "Ocorreu um erro ao sincronizar.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // P&L calculations (authoritative backend source of truth)
+  const realizedPnl = portfolio.realizedPnl ?? 0;
+  const unrealizedPnl = portfolio.unrealizedPnl ?? 0;
 
   // Recent trades (last 5)
   const recentTrades = useMemo(() => trades.slice(0, 5), [trades]);
@@ -83,6 +162,17 @@ export function FinancialHub() {
               Financial Hub
             </CardTitle>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[10px] font-medium border-border/50 hover:bg-secondary text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1.5"
+                onClick={forceSync}
+                disabled={isSyncing}
+                title="Forçar Sincronização"
+              >
+                <RefreshCw className={cn("w-3 h-3", isSyncing && "animate-spin")} />
+                Sincronizar
+              </Button>
               <DataSourceBadge />
               <SyncModeBadge />
             </div>
@@ -268,6 +358,117 @@ export function FinancialHub() {
               </div>
             </div>
           )}
+
+          {/* Quick Actions Row */}
+          <div className="flex flex-wrap gap-2 border-t border-border/30 pt-3 flex-row justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setActiveSection("chart")}
+              className="h-8 text-[11px] font-semibold border-crypto-green/30 text-crypto-green hover:bg-crypto-green/10 cursor-pointer flex items-center gap-1"
+            >
+              <ArrowUpRight className="w-3.5 h-3.5" />
+              Comprar / Vender
+            </Button>
+
+            <Dialog open={alertDialogOpen} onOpenChange={setAlertDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const activeTicker = tickers[alertSymbol];
+                    if (activeTicker) {
+                      setAlertTargetPrice(activeTicker.price.toFixed(2));
+                    }
+                  }}
+                  className="h-8 text-[11px] font-semibold border-crypto-gold/30 text-crypto-gold hover:bg-crypto-gold/10 cursor-pointer flex items-center gap-1"
+                >
+                  <Bell className="w-3.5 h-3.5" />
+                  Criar Alerta
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-background border-border sm:max-w-md glass">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <BellRing className="w-5 h-5 text-crypto-gold" />
+                    Criar Alerta Rápido
+                  </DialogTitle>
+                  <DialogDescription>
+                    Configure um gatilho de preço para receber notificações instantâneas.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-2 text-xs">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase font-bold text-muted-foreground">Símbolo</label>
+                    <Select value={alertSymbol} onValueChange={(val) => {
+                      setAlertSymbol(val);
+                      const t = tickers[val];
+                      if (t) setAlertTargetPrice(t.price.toFixed(2));
+                    }}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[200px] overflow-y-auto">
+                        {ALL_SYMBOLS.map((sym) => (
+                          <SelectItem key={sym} value={sym}>
+                            {sym.replace("USDT", "")}/USDT
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-bold text-muted-foreground">Direção</label>
+                      <Select value={alertDirection} onValueChange={(val) => setAlertDirection(val as any)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="above">Acima de</SelectItem>
+                          <SelectItem value="below">Abaixo de</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-bold text-muted-foreground">Preço Alvo (USD)</label>
+                      <Input
+                        type="number"
+                        step="any"
+                        placeholder="0.00"
+                        value={alertTargetPrice}
+                        onChange={(e) => setAlertTargetPrice(e.target.value)}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" size="sm" onClick={() => setAlertDialogOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleCreateAlert}
+                    className="bg-crypto-gold text-black hover:bg-crypto-gold/80 font-bold cursor-pointer"
+                  >
+                    Confirmar
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setActiveSection("chart")}
+              className="h-8 text-[11px] font-semibold border-crypto-cyan/30 text-crypto-cyan hover:bg-crypto-cyan/10 cursor-pointer flex items-center gap-1"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              Gráfico Avançado
+            </Button>
+          </div>
 
           {/* Gradient line at bottom */}
           <div className="h-px bg-gradient-to-r from-transparent via-primary/15 to-transparent" />

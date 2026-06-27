@@ -2,7 +2,7 @@ import { spawn, execSync, ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
-const ARTIFACT_DIR = "/home/dcorrea/.gemini/antigravity-ide/brain/44b6530d-b50b-4f0c-9276-075b32d99d70";
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || "/home/dcorrea/.gemini/antigravity-ide/brain/b2324724-40b4-4ce4-ae67-d71dc5c5622e";
 const NEXT_LOG = path.join(ARTIFACT_DIR, "next_service.log");
 const BINANCE_LOG = path.join(ARTIFACT_DIR, "binance_service.log");
 const CADDY_LOG = path.join(ARTIFACT_DIR, "caddy_service.log");

@@ -40,6 +40,16 @@ export interface BotConfigData {
   emaSlow: number;
 }
 
+export interface PortfolioPosition {
+  symbol: string;
+  quantity: number;
+  avgPrice: number;
+  marketPrice: number;
+  marketValue: number;
+  unrealizedPnl: number;
+  realizedPnl: number;
+}
+
 export interface PortfolioData {
   totalValue: number;
   cashBalance: number;
@@ -47,6 +57,9 @@ export interface PortfolioData {
   assetQuantity: number;
   pnl: number;
   pnlPercent: number;
+  realizedPnl: number;
+  unrealizedPnl: number;
+  positions: PortfolioPosition[];
 }
 
 export interface TradeData {
@@ -79,6 +92,13 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+}
+
+export interface BotLogEntry {
+  id: string;
+  timestamp: number;
+  message: string;
+  type: "info" | "buy" | "sell" | "profit" | "loss" | "system" | "warning";
 }
 
 export interface PriceAlert {

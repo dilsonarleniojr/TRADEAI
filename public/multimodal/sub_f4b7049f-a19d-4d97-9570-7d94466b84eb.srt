@@ -1,0 +1,63 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9hcnRpY2xlLWNvdmVycy0xODA1NDEtYml0Y29pbi1wcmljZS10b2RheS0wMy0xMy0yMDI1LWJ0Yy1idWxscy1hcmUtdGlyZWQtYW5kLWNhbnQtYnJlYWstb3V0LW9mLTgzay5qcGc=.jpg" alt="Bitcoin
+
+3
+00:00:06,000 --> 00:00:09,000
+teases 'seller exhaustion' as BTC
+
+4
+00:00:09,000 --> 00:00:12,000
+price downside reaches $60.3K" class="type:primaryImage"></p><p>Bitcoin
+
+5
+00:00:12,000 --> 00:00:15,000
+sellers were losing steam, market
+
+6
+00:00:15,000 --> 00:00:18,000
+analysis said as ongoing BTC
+
+7
+00:00:18,000 --> 00:00:21,000
+price downside brought the market
+
+8
+00:00:21,000 --> 00:00:24,000
+closer to $60,000.</p> **Corpo:** <p
+
+9
+00:00:24,000 --> 00:00:27,000
+style="float:right; margin:0 0 10px 15px;
+
+10
+00:00:27,000 --> 00:00:30,000
+width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9hcnRpY2xlLWNvdmVycy0xODA1NDEtYml0Y29pbi1wcmljZS10b2RheS0wMy0xMy0yMDI1LWJ0Yy1idWxscy1hcmUtdGlyZWQtYW5kLWNhbnQtYnJlYWstb3V0LW9mLTgzay5qcGc=.jpg" alt="Bitcoin teases 'seller
+
+11
+00:00:30,000 --> 00:00:33,000
+exhaustion' as BTC price downside
+
+12
+00:00:33,000 --> 00:00:36,000
+reaches $60.3K" class="type:primaryImage"></p><p>Bitcoin sellers were
+
+13
+00:00:36,000 --> 00:00:39,000
+losing steam, market analysis said
+
+14
+00:00:39,000 --> 00:00:42,000
+as ongoing BTC price downside
+
+15
+00:00:42,000 --> 00:00:45,000
+brought the market closer to
+
+16
+00:00:45,000 --> 00:00:48,000
+$60,000.</p>

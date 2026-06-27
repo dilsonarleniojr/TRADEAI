@@ -1,0 +1,71 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1iaXRjb2luLWV0Zi1pbmZyYXN0cnVjdHVyZS1pbnZlc3RtZW50Mi5qcGc=.jpg" alt="Professional
+
+3
+00:00:06,000 --> 00:00:09,000
+investors dumped 52K BTC worth
+
+4
+00:00:09,000 --> 00:00:12,000
+of ETFs in Q1, filings
+
+5
+00:00:12,000 --> 00:00:15,000
+show" class="type:primaryImage"></p><p>US spot Bitcoin ETF
+
+6
+00:00:15,000 --> 00:00:18,000
+ownership shifted during the market
+
+7
+00:00:18,000 --> 00:00:21,000
+downturn as hedge funds exited
+
+8
+00:00:21,000 --> 00:00:24,000
+positions, while banks and long-term
+
+9
+00:00:24,000 --> 00:00:27,000
+allocators continued building exposure.</p> **Corpo:**
+
+10
+00:00:27,000 --> 00:00:30,000
+<p style="float:right; margin:0 0 10px
+
+11
+00:00:30,000 --> 00:00:33,000
+15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1iaXRjb2luLWV0Zi1pbmZyYXN0cnVjdHVyZS1pbnZlc3RtZW50Mi5qcGc=.jpg" alt="Professional investors
+
+12
+00:00:33,000 --> 00:00:36,000
+dumped 52K BTC worth of
+
+13
+00:00:36,000 --> 00:00:39,000
+ETFs in Q1, filings show"
+
+14
+00:00:39,000 --> 00:00:42,000
+class="type:primaryImage"></p><p>US spot Bitcoin ETF ownership
+
+15
+00:00:42,000 --> 00:00:45,000
+shifted during the market downturn
+
+16
+00:00:45,000 --> 00:00:48,000
+as hedge funds exited positions,
+
+17
+00:00:48,000 --> 00:00:51,000
+while banks and long-term allocators
+
+18
+00:00:51,000 --> 00:00:54,000
+continued building exposure.</p>

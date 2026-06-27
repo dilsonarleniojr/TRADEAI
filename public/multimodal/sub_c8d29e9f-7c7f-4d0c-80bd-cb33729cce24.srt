@@ -1,0 +1,71 @@
+1
+00:00:00,000 --> 00:00:03,000
+**Resumo:** <p style="float:right; margin:0 0
+
+2
+00:00:03,000 --> 00:00:06,000
+10px 15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1jb3VsZC1jcnlwdG8tZW50ZXItdGhlLW1haW5zdHJlYW0tYXMtYS1tZWFucy1vZi1wYXltZXRzLWFmdGVyLWViYXktaW50ZWdyYXRpb24tYW5kLXBheXBhbC1zdGFibGVjb2luLW5ld3MuanBn.jpg" alt="Forward
+
+3
+00:00:06,000 --> 00:00:09,000
+Industries moves $32M in SOL
+
+4
+00:00:09,000 --> 00:00:12,000
+amid $1B paper loss" class="type:primaryImage"></p><p>Forward
+
+5
+00:00:12,000 --> 00:00:15,000
+Industries moved $31.9 million in
+
+6
+00:00:15,000 --> 00:00:18,000
+SOL to Coinbase Prime as
+
+7
+00:00:18,000 --> 00:00:21,000
+its Solana bet sits over
+
+8
+00:00:21,000 --> 00:00:24,000
+70% underwater, underscoring growing strain
+
+9
+00:00:24,000 --> 00:00:27,000
+on corporate crypto treasuries.</p> **Corpo:**
+
+10
+00:00:27,000 --> 00:00:30,000
+<p style="float:right; margin:0 0 10px
+
+11
+00:00:30,000 --> 00:00:33,000
+15px; width:240px;"><img src="https://images.cointelegraph.com/images/528_aHR0cHM6Ly9zMy1pbWFnZXMuY3RtZWRpYS5pby9tZWRpYS9hcnRpY2xlLWNvdmVycy9oaS1jb3VsZC1jcnlwdG8tZW50ZXItdGhlLW1haW5zdHJlYW0tYXMtYS1tZWFucy1vZi1wYXltZXRzLWFmdGVyLWViYXktaW50ZWdyYXRpb24tYW5kLXBheXBhbC1zdGFibGVjb2luLW5ld3MuanBn.jpg" alt="Forward Industries
+
+12
+00:00:33,000 --> 00:00:36,000
+moves $32M in SOL amid
+
+13
+00:00:36,000 --> 00:00:39,000
+$1B paper loss" class="type:primaryImage"></p><p>Forward Industries
+
+14
+00:00:39,000 --> 00:00:42,000
+moved $31.9 million in SOL
+
+15
+00:00:42,000 --> 00:00:45,000
+to Coinbase Prime as its
+
+16
+00:00:45,000 --> 00:00:48,000
+Solana bet sits over 70%
+
+17
+00:00:48,000 --> 00:00:51,000
+underwater, underscoring growing strain on
+
+18
+00:00:51,000 --> 00:00:54,000
+corporate crypto treasuries.</p>

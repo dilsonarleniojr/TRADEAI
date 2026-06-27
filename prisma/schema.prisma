@@ -113,3 +113,39 @@ model Account {
   symbol         String   @default("BTCUSDT")
   updatedAt      DateTime @updatedAt
 }
+
+model NewsEvent {
+  id              String        @id @default(cuid())
+  title           String
+  summary         String
+  confidenceScore Float         @default(0.0)
+  status          String        @default("DRAFT") // "DRAFT" | "PENDING_REVIEW" | "PUBLISHED" | "REJECTED"
+  category        String        @default("Market")
+  audioUrl        String?
+  subtitleUrl     String?
+  videoUrl        String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  articles        NewsArticle[]
+}
+
+model NewsArticle {
+  id          String     @id @default(cuid())
+  eventId     String?
+  source      String
+  sourceUrl   String?
+  title       String
+  content     String
+  publishedAt DateTime
+  factScore   Float      @default(0.0)
+  createdAt   DateTime   @default(now())
+  newsEvent   NewsEvent? @relation(fields: [eventId], references: [id])
+}
+
+model UserPreference {
+  id            String   @id @default("user_demo_123")
+  lang          String   @default("pt-BR")
+  themes        String   @default("Market,Regulation")
+  preferredHour String   @default("09:00")
+  createdAt     DateTime @default(now())
+}

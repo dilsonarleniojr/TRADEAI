@@ -5,62 +5,20 @@ import { useCryptoStore } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Activity, TrendingUp, TrendingDown, DollarSign, Zap } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, DollarSign, Zap, AlertTriangle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import type { BotLogEntry } from "@/lib/store/types";
 
-interface LogEntry {
-  id: string;
-  timestamp: number;
-  message: string;
-  type: "info" | "buy" | "sell" | "profit" | "loss" | "system";
-}
-
-const INITIAL_LOG_ENTRIES: LogEntry[] = [
+const INITIAL_LOG_ENTRIES: BotLogEntry[] = [
   {
     id: "l1",
     timestamp: Date.now() - 3600000,
-    message: "Bot iniciado - Estratégia: AI, Símbolo: BTCUSDT",
+    message: "Bot iniciado e escutando sinais",
     type: "system",
-  },
-  {
-    id: "l2",
-    timestamp: Date.now() - 3500000,
-    message: "Analisando condições de mercado...",
-    type: "info",
-  },
-  {
-    id: "l3",
-    timestamp: Date.now() - 3400000,
-    message: "Sinal: COMPRA BTCUSDT a $78,301.00",
-    type: "buy",
-  },
-  {
-    id: "l4",
-    timestamp: Date.now() - 3300000,
-    message: "Ordem colocada: 0.01 BTC a $78,301.00",
-    type: "buy",
-  },
-  {
-    id: "l5",
-    timestamp: Date.now() - 3000000,
-    message: "Atualização de preço: BTCUSDT a $78,450.00 (+0.19%)",
-    type: "info",
-  },
-  {
-    id: "l6",
-    timestamp: Date.now() - 2400000,
-    message: "Take Profit ativado: +2.3% em BTCUSDT",
-    type: "profit",
-  },
-  {
-    id: "l7",
-    timestamp: Date.now() - 2000000,
-    message: "Sinal: VENDA ETHUSDT a $3,875.20",
-    type: "sell",
   },
 ];
 
-function getLogIcon(type: LogEntry["type"]) {
+function getLogIcon(type: BotLogEntry["type"]) {
   switch (type) {
     case "buy":
       return <TrendingUp className="w-3 h-3 text-crypto-green shrink-0" />;
@@ -72,12 +30,14 @@ function getLogIcon(type: LogEntry["type"]) {
       return <DollarSign className="w-3 h-3 text-crypto-red shrink-0" />;
     case "system":
       return <Zap className="w-3 h-3 text-crypto-cyan shrink-0" />;
+    case "warning":
+      return <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />;
     default:
       return <Activity className="w-3 h-3 text-muted-foreground shrink-0" />;
   }
 }
 
-function getBorderColor(type: LogEntry["type"]) {
+function getBorderColor(type: BotLogEntry["type"]) {
   switch (type) {
     case "buy":
       return "border-l-crypto-green";
@@ -89,12 +49,14 @@ function getBorderColor(type: LogEntry["type"]) {
       return "border-l-crypto-red";
     case "system":
       return "border-l-crypto-cyan";
+    case "warning":
+      return "border-l-amber-500";
     default:
       return "border-l-muted-foreground/30";
   }
 }
 
-function getLogColor(type: LogEntry["type"]) {
+function getLogColor(type: BotLogEntry["type"]) {
   switch (type) {
     case "buy":
       return "text-crypto-green";
@@ -106,6 +68,8 @@ function getLogColor(type: LogEntry["type"]) {
       return "text-crypto-red";
     case "system":
       return "text-crypto-cyan";
+    case "warning":
+      return "text-amber-500";
     default:
       return "text-muted-foreground";
   }
@@ -124,12 +88,11 @@ function getRelativeTime(timestamp: number): string {
 }
 
 export function BotActivityLog() {
-  const { botActive, botConfig, trades } = useCryptoStore();
-  const [systemLogs, setSystemLogs] = useState<LogEntry[]>([]);
+  const { botActive, trades, botLogs } = useCryptoStore();
   const lastTradeIdRef = useRef<string>("");
 
   // Convert recent trades to log entries via useMemo
-  const tradeLogs: LogEntry[] = useMemo(() => {
+  const tradeLogs: BotLogEntry[] = useMemo(() => {
     if (!botActive || trades.length === 0) return [];
     const now = Date.now();
     return trades
@@ -139,13 +102,13 @@ export function BotActivityLog() {
       })
       .flatMap((trade) => {
         const tradeTime = new Date(trade.timestamp).getTime();
-        const baseLog: LogEntry = {
+        const baseLog: BotLogEntry = {
           id: trade.id,
           timestamp: tradeTime,
           message: `${trade.side} ${trade.quantity} ${trade.symbol.split("USDT")[0]} at $${trade.price.toLocaleString()}`,
           type: trade.side === "BUY" ? "buy" : "sell",
         };
-        const pnlLog: LogEntry | null =
+        const pnlLog: BotLogEntry | null =
           trade.pnl !== 0
             ? {
                 id: `${trade.id}-pnl`,
@@ -160,47 +123,20 @@ export function BotActivityLog() {
 
   // Merge all logs
   const allLogs = useMemo(() => {
-    const merged = new Map<string, LogEntry>();
+    const merged = new Map<string, BotLogEntry>();
     for (const log of INITIAL_LOG_ENTRIES) {
       merged.set(log.id, log);
     }
     for (const log of tradeLogs) {
       merged.set(log.id, log);
     }
-    for (const log of systemLogs) {
+    for (const log of botLogs) {
       merged.set(log.id, log);
     }
     return Array.from(merged.values())
       .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 50);
-  }, [tradeLogs, systemLogs]);
-
-  // Simulate system/info log entries when bot is active
-  useEffect(() => {
-    if (!botActive) return;
-
-    const actions: Omit<LogEntry, "id" | "timestamp">[] = [
-      { message: `Analisando condições de mercado de ${botConfig.symbol}...`, type: "info" },
-      { message: `Verificação RSI: ${botConfig.symbol} na zona neutra`, type: "info" },
-      { message: `Verificação stop loss: Todas as posições seguras`, type: "info" },
-      { message: `Cruzamento MACD detectado em ${botConfig.symbol}`, type: "system" },
-      { message: `Alerta de pico de volume em ${botConfig.symbol}`, type: "system" },
-    ];
-
-    const addLog = () => {
-      const action = actions[Math.floor(Math.random() * actions.length)];
-      const newLog: LogEntry = {
-        id: `l-${Date.now()}`,
-        timestamp: Date.now(),
-        ...action,
-      };
-      setSystemLogs((prev) => [newLog, ...prev].slice(0, 50));
-    };
-
-    const interval = setInterval(addLog, 8000);
-
-    return () => clearInterval(interval);
-  }, [botActive, botConfig.symbol]);
+      .slice(0, 100);
+  }, [tradeLogs, botLogs]);
 
   return (
     <Card className="bg-card/60 backdrop-blur-md gradient-border relative overflow-hidden">
@@ -231,8 +167,7 @@ export function BotActivityLog() {
                   className={`flex items-start gap-2 py-1.5 px-2 rounded-md border-l-2 ${getBorderColor(log.type)} hover:bg-secondary/30 transition-colors`}
                   style={{ position: 'relative' }}
                 >
-                  {/* Timeline dot */}
-                  <div className="absolute left-[-5px] top-2 w-1.5 h-1.5 rounded-full bg-card border border-current" style={{ color: log.type === 'buy' || log.type === 'profit' ? '#22c55e' : log.type === 'sell' || log.type === 'loss' ? '#ef4444' : log.type === 'system' ? '#06b6d4' : '#94a3b8' }} />
+                  <div className="absolute left-[-5px] top-2 w-1.5 h-1.5 rounded-full bg-card border border-current" style={{ color: log.type === 'buy' || log.type === 'profit' ? '#22c55e' : log.type === 'sell' || log.type === 'loss' ? '#ef4444' : log.type === 'system' ? '#06b6d4' : log.type === 'warning' ? '#f59e0b' : '#94a3b8' }} />
                   {getLogIcon(log.type)}
                   <div className="flex-1 min-w-0">
                     <span className={`text-xs ${getLogColor(log.type)}`}>

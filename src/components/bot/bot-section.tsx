@@ -58,6 +58,7 @@ export function BotSection() {
     tickers,
     aiSignals,
     klines: activeKlines,
+    addBotLog,
   } = useCryptoStore();
 
   const { toast } = useToast();
@@ -207,6 +208,10 @@ export function BotSection() {
         description: "A volatilidade do mercado está muito alta para operar com segurança.",
         variant: "destructive",
       });
+      addBotLog({
+        message: `Failsafe ativou veto: Volatilidade muito alta em ${botConfig.symbol}`,
+        type: "warning",
+      });
       return null;
     }
 
@@ -252,6 +257,10 @@ export function BotSection() {
           side = "SELL";
           strategyUsed = "Regime-Reversion";
         } else {
+          addBotLog({
+            message: `Regime Reversion em ${chosenSymbol}: Ignorado (RSI ${currentRsi.toFixed(1)} neutro)`,
+            type: "info",
+          });
           return null; // Skip trade - market range-bound and neutral RSI
         }
       } else if (regime === "TREND_FOLLOWING") {
@@ -276,6 +285,10 @@ export function BotSection() {
         });
 
         if (decision === "HOLD") {
+          addBotLog({
+            message: `Comitê Ensemble (${chosenSymbol}): Decisão HOLD (Aguardar melhores sinais)`,
+            type: "info",
+          });
           return null; // Committee vetoes trade (Neutral decision)
         }
         side = decision === "BUY" ? "BUY" : "SELL";
@@ -358,10 +371,24 @@ export function BotSection() {
       if (processedSignalIdsRef.current.has(signal.id)) continue;
 
       // Skip HOLD signals
-      if (signal.action === "HOLD") continue;
+      if (signal.action === "HOLD") {
+        processedSignalIdsRef.current.add(signal.id);
+        addBotLog({
+          message: `Sinal da IA (${signal.symbol}): Avaliado como HOLD (Aguardar)`,
+          type: "info",
+        });
+        continue;
+      }
 
       // Check confidence threshold
-      if (signal.confidence < threshold) continue;
+      if (signal.confidence < threshold) {
+        processedSignalIdsRef.current.add(signal.id);
+        addBotLog({
+          message: `Sinal da IA (${signal.symbol}) ignorado: Confiança (${(signal.confidence * 100).toFixed(0)}%) menor que limite (${(threshold * 100).toFixed(0)}%)`,
+          type: "warning",
+        });
+        continue;
+      }
 
       // Mark as processed
       processedSignalIdsRef.current.add(signal.id);

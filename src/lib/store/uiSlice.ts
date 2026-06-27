@@ -37,16 +37,17 @@ export interface UISlice {
 // Default widget order
 const DEFAULT_DASHBOARD_LAYOUT = [
   "financial-hub",
-  "ai-top-picks",
+  "crypto-news",
+  "market-sentiment",
+  "market-highlights",
   "fear-greed",
+  "ai-top-picks",
   "multi-timeframe",
   "portfolio-pro",
   "pnl-tracker",
   "portfolio-rebalancing",
   "market-overview",
   "funding-rates",
-  "market-sentiment",
-  "market-highlights",
   "market-table",
   "watchlist",
   "price-alerts",
@@ -60,7 +61,6 @@ const DEFAULT_DASHBOARD_LAYOUT = [
   "ai-signals",
   "recent-trades",
   "trading-calculator",
-  "crypto-news",
   "strategy-comparison",
 ];
 
