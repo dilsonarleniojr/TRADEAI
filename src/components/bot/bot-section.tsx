@@ -228,11 +228,28 @@ export function BotSection() {
     const klinesHistory = getKlinesHistoryRecord(tickers, activeKlines, botConfig.symbol);
     const generatedTrades: TradeData[] = [];
 
+    // Read live cash balance from store to prevent insufficient balance errors
+    const availableCash = useCryptoStore.getState().portfolio.cashBalance;
+    const MIN_NOTIONAL = 10.5; // Binance minimum is ~$10, use 10.5 as safe buffer
+
     // Helper to build a single TradeData object for a given symbol/side/strategy
-    const buildTrade = (sym: string, tradeSide: "BUY" | "SELL", strategy: string): TradeData => {
+    // capitalPerTrade is only used for BUY orders; SELL uses fixed $15 size
+    const buildTrade = (sym: string, tradeSide: "BUY" | "SELL", strategy: string, capitalPerTrade = 15.0): TradeData | null => {
       const ticker = tickers[sym];
       const price = ticker?.price ?? 100;
-      const targetTotal = 15.0; // Ensures MIN_NOTIONAL >= $10 on Binance
+
+      // For BUY orders, enforce balance check before creating trade
+      if (tradeSide === "BUY" && capitalPerTrade < MIN_NOTIONAL) {
+        addBotLog({
+          message: `Saldo insuficiente para ${sym}: $${capitalPerTrade.toFixed(2)} disponível (mínimo $${MIN_NOTIONAL})`,
+          type: "warning",
+        });
+        return null;
+      }
+
+      const targetTotal = tradeSide === "BUY" ? Math.min(capitalPerTrade, availableCash * 0.95) : 15.0;
+      if (tradeSide === "BUY" && targetTotal < MIN_NOTIONAL) return null;
+
       const quantity = parseFloat((targetTotal / price).toFixed(6));
       const total = parseFloat((price * quantity).toFixed(2));
       const pnl = tradeSide === "SELL" ? parseFloat(((Math.random() - 0.45) * 60).toFixed(2)) : 0;
@@ -262,15 +279,24 @@ export function BotSection() {
       const activeCandidates = candidates.filter(c => c.direction !== "HOLD");
 
       if (activeCandidates.length > 0) {
+        // Divide available cash equally among BUY candidates (SELL trades use their own asset balance)
+        const buyCandidates = activeCandidates.filter(c => c.direction === "LONG");
+        const capitalPerBuy = buyCandidates.length > 0
+          ? Math.floor((availableCash * 0.9) / buyCandidates.length * 100) / 100
+          : 15.0;
+
         addBotLog({
-          message: `Funil Quant: ${activeCandidates.length} ativo(s) qualificado(s) — executando simultâneamente`,
+          message: `Funil Quant: ${activeCandidates.length} ativo(s) qualificado(s) — capital por compra: $${capitalPerBuy.toFixed(2)}`,
           type: "info",
         });
+
         for (const candidate of activeCandidates) {
           const tradeSide: "BUY" | "SELL" = candidate.direction === "LONG" ? "BUY" : "SELL";
-          generatedTrades.push(buildTrade(candidate.symbol, tradeSide, "Funnel-Quant"));
+          const capital = tradeSide === "BUY" ? capitalPerBuy : 15.0;
+          const trade = buildTrade(candidate.symbol, tradeSide, "Funnel-Quant", capital);
+          if (trade) generatedTrades.push(trade);
         }
-        return generatedTrades;
+        if (generatedTrades.length > 0) return generatedTrades;
       }
     }
 
@@ -335,7 +361,8 @@ export function BotSection() {
     }
 
     // Single-asset fallback trade
-    generatedTrades.push(buildTrade(chosenSymbol, side, strategyUsed));
+    const fallbackTrade = buildTrade(chosenSymbol, side, strategyUsed, 15.0);
+    if (fallbackTrade) generatedTrades.push(fallbackTrade);
     return generatedTrades;
   }, [tickers, activeKlines, botConfig, tradingMode, getKlinesHistoryRecord, calculateRSIForTrading, isVetoActive, toast, scannerPairs]);
 
