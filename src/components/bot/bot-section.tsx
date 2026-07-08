@@ -229,7 +229,7 @@ export function BotSection() {
     
     let chosenSymbol = botConfig.symbol;
     let side: "BUY" | "SELL" = Math.random() > 0.5 ? "BUY" : "SELL";
-    let strategyUsed = botConfig.strategy;
+    let strategyUsed: string = botConfig.strategy;
 
     // 1. Asset Funnel Integration (focus ONLY on the top scanner pairs)
     if (botConfig.useQuantFunnel) {
@@ -308,7 +308,9 @@ export function BotSection() {
 
     const t = tickers[chosenSymbol];
     const price = t?.price ?? 100;
-    const quantity = parseFloat((0.001 + Math.random() * 0.05).toFixed(6));
+    // Ensure total order value is always >= 15.0 USD to satisfy Binance's MIN_NOTIONAL limit (usually 10 USD)
+    const targetTotal = 15.0;
+    const quantity = parseFloat((targetTotal / price).toFixed(6));
     const total = parseFloat((price * quantity).toFixed(2));
     
     // Simulating realistic PnL for closed short trades
@@ -358,7 +360,9 @@ export function BotSection() {
     const initialBalance = config.initialBalance;
     const newPnlPercent = ((newTotalValue - initialBalance) / initialBalance) * 100;
 
-    useCryptoStore.getState().setPortfolio({
+    const store = useCryptoStore.getState();
+    store.setPortfolio({
+      ...store.portfolio,
       totalValue: newTotalValue,
       cashBalance: newCash,
       assetBalance: newAssetBalance,
@@ -458,6 +462,7 @@ export function BotSection() {
 
               console.log("[BotSection AI] Balance updated from API:", result.account);
               store.setPortfolio({
+                ...store.portfolio,
                 totalValue: newTotalValue,
                 cashBalance: result.account.cashBalance,
                 assetBalance: newAssetBalance,
@@ -532,6 +537,7 @@ export function BotSection() {
 
                     console.log("[BotSection Quant] Balance updated from API:", result.account);
                     store.setPortfolio({
+                      ...store.portfolio,
                       totalValue: newTotalValue,
                       cashBalance: result.account.cashBalance,
                       assetBalance: newAssetBalance,
@@ -621,6 +627,7 @@ export function BotSection() {
       // Reset portfolio when starting
       if (trades.length === 0) {
         setPortfolio({
+          ...portfolio,
           totalValue: botConfig.initialBalance,
           cashBalance: botConfig.initialBalance,
           assetBalance: 0,
