@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import type { PriceAlert, TickerData, ActiveSection } from "./types";
+import type { PriceAlert, TickerData, ActiveSection, ScheduledOrder } from "./types";
 
 export interface UISlice {
   // Active section/tab
@@ -11,6 +11,12 @@ export interface UISlice {
   addAlert: (alert: PriceAlert) => void;
   removeAlert: (id: string) => void;
   updateAlertPrices: (tickers: Record<string, TickerData>) => void;
+
+  // Scheduled orders
+  scheduledOrders: ScheduledOrder[];
+  addScheduledOrder: (order: ScheduledOrder) => void;
+  removeScheduledOrder: (id: string) => void;
+  triggerScheduledOrder: (id: string) => void;
 
   // Watchlist
   watchlist: string[];
@@ -97,6 +103,23 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   removeAlert: (id) =>
     set((state) => ({
       alerts: state.alerts.filter((a) => a.id !== id),
+    })),
+
+  // Scheduled orders
+  scheduledOrders: [],
+  addScheduledOrder: (order) =>
+    set((state) => ({
+      scheduledOrders: [...state.scheduledOrders, order],
+    })),
+  removeScheduledOrder: (id) =>
+    set((state) => ({
+      scheduledOrders: state.scheduledOrders.filter((o) => o.id !== id),
+    })),
+  triggerScheduledOrder: (id) =>
+    set((state) => ({
+      scheduledOrders: state.scheduledOrders.map((o) =>
+        o.id === id ? { ...o, isTriggered: true } : o
+      ),
     })),
   updateAlertPrices: (tickers) =>
     set((state) => ({

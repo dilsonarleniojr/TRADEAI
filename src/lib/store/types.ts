@@ -121,3 +121,15 @@ export type ActiveSection = "dashboard" | "chart" | "ai" | "bot" | "backtest" | 
 export type TradingMode = "paper" | "live";
 export type ConnectionStatus = "connected" | "disconnected" | "connecting" | "rest-api";
 export type SyncMode = "realtime" | "polling" | "offline";
+
+export interface ScheduledOrder {
+  id: string;
+  symbol: string;
+  side: "BUY" | "SELL";
+  triggerPrice: number;
+  quantity: number;
+  direction: "above" | "below";
+  isTriggered: boolean;
+  createdAt: string;
+}
+

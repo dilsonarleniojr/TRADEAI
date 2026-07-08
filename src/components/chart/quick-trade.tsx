@@ -7,22 +7,160 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Zap, ShoppingCart, Target, RefreshCw } from "lucide-react";
+import { TrendingUp, TrendingDown, Zap, ShoppingCart, Target, RefreshCw, Trash2, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export function QuickTrade() {
-  const { selectedSymbol, tickers, tradingMode, portfolio, botConfig, binanceApiKey, binanceApiSecret, binanceTestnet } = useCryptoStore();
+  const { 
+    selectedSymbol, 
+    tickers, 
+    tradingMode, 
+    portfolio, 
+    botConfig, 
+    binanceApiKey, 
+    binanceApiSecret, 
+    binanceTestnet,
+    scheduledOrders,
+    addScheduledOrder,
+    removeScheduledOrder,
+    triggerScheduledOrder
+  } = useCryptoStore();
   const [quantity, setQuantity] = useState("");
   const [lastTrade, setLastTrade] = useState<{ side: "BUY" | "SELL"; qty: number; price: number } | null>(null);
   const [sltpData, setSltpData] = useState<{ stopLoss: number; takeProfit: number; riskRewardRatio: number; recommendation: string } | null>(null);
   const [sltpLoading, setSltpLoading] = useState(false);
   const { toast } = useToast();
 
+  // Scheduled orders state
+  const [triggerPrice, setTriggerPrice] = useState("");
+  const [scheduledQty, setScheduledQty] = useState("");
+
   const ticker = tickers[selectedSymbol];
   const currentPrice = ticker?.price ?? 0;
   const isPositive = (ticker?.priceChangePercent ?? 0) >= 0;
+
+  // Scheduled trigger validation hook
+  useEffect(() => {
+    const activeOrders = scheduledOrders.filter((o) => !o.isTriggered && o.symbol === selectedSymbol);
+    if (activeOrders.length === 0 || !ticker || currentPrice <= 0) return;
+
+    activeOrders.forEach(async (order) => {
+      let triggered = false;
+      if (order.direction === "above" && currentPrice >= order.triggerPrice) {
+        triggered = true;
+      } else if (order.direction === "below" && currentPrice <= order.triggerPrice) {
+        triggered = true;
+      }
+
+      if (triggered) {
+        // Mark immediately to avoid duplicate dispatch
+        triggerScheduledOrder(order.id);
+
+        try {
+          const total = order.quantity * currentPrice;
+          const res = await fetch("/api/trades", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-binance-api-key": binanceApiKey || "",
+              "x-binance-api-secret": binanceApiSecret || "",
+              "x-binance-testnet": binanceTestnet ? "true" : "false"
+            },
+            body: JSON.stringify({
+              symbol: order.symbol,
+              side: order.side,
+              price: currentPrice,
+              quantity: order.quantity,
+              total,
+              strategy: "Trigger Programado",
+              mode: tradingMode,
+              pnl: 0,
+            }),
+          });
+
+          const result = await res.json();
+          if (result.success) {
+            const store = useCryptoStore.getState();
+            store.addTrade({
+              id: result.data.id,
+              symbol: result.data.symbol,
+              side: result.data.side,
+              price: result.data.price,
+              quantity: result.data.quantity,
+              total: result.data.total,
+              strategy: result.data.strategy || "Trigger Programado",
+              mode: result.data.mode || tradingMode,
+              pnl: result.data.pnl || 0,
+              timestamp: result.data.timestamp || new Date().toISOString(),
+            });
+
+            if (result.account) {
+              store.setAccount(result.account);
+            }
+
+            toast({
+              title: `⏰ Compra/Venda Programada Executada`,
+              description: `${order.side === "BUY" ? "🟢 Compra" : "🔴 Venda"} programada de ${order.quantity} ${order.symbol.replace("USDT", "")} disparada @ $${formatPrice(currentPrice)}`,
+            });
+            
+            // Emit telemetry
+            try {
+              const { telemetry } = await import('@/lib/telemetry');
+              telemetry.emit("trade", {
+                tradeId: result.data.id,
+                symbol: order.symbol,
+                side: order.side,
+                price: currentPrice,
+                quantity: order.quantity,
+                total,
+                cashBalance: result.account?.cashBalance,
+                assetQuantity: result.account?.assetQuantity,
+              });
+            } catch {}
+          } else {
+            toast({
+              title: "Falha na Ordem Programada",
+              description: result.error || "Erro ao executar ordem programada",
+              variant: "destructive",
+            });
+          }
+        } catch (err: any) {
+          console.error("[ScheduledOrder] Trigger failed:", err.message);
+        }
+      }
+    });
+  }, [tickers, selectedSymbol, scheduledOrders, triggerScheduledOrder, binanceApiKey, binanceApiSecret, binanceTestnet, tradingMode, toast, ticker, currentPrice]);
+
+  const handleScheduleOrder = useCallback((side: "BUY" | "SELL") => {
+    const trigger = parseFloat(triggerPrice);
+    const qty = parseFloat(scheduledQty);
+    if (!trigger || trigger <= 0 || !qty || qty <= 0 || currentPrice <= 0) return;
+
+    const direction = trigger > currentPrice ? "above" : "below";
+
+    addScheduledOrder({
+      id: `sched_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+      symbol: selectedSymbol,
+      side,
+      triggerPrice: trigger,
+      quantity: qty,
+      direction,
+      isTriggered: false,
+      createdAt: new Date().toISOString()
+    });
+
+    setTriggerPrice("");
+    setScheduledQty("");
+
+    toast({
+      title: "Ordem Programada Salva",
+      description: `${side === "BUY" ? "Compra" : "Venda"} programada de ${qty} ${selectedSymbol.replace("USDT", "")} salva @ gatilho $${formatPrice(trigger)}`,
+    });
+  }, [triggerPrice, scheduledQty, currentPrice, selectedSymbol, addScheduledOrder, toast]);
 
   const handleTrade = useCallback(async (side: "BUY" | "SELL") => {
     const qty = parseFloat(quantity);
@@ -192,66 +330,167 @@ export function QuickTrade() {
           </div>
         </div>
 
-        {/* Quantity Input */}
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-muted-foreground">
-            Quantidade
-          </label>
-          <div className="flex gap-2">
-            <Input
-              type="number"
-              step="any"
-              min="0"
-              placeholder="0.00"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              className="flex-1 font-mono bg-background/80 backdrop-blur-sm border-border/50 input-glow focus-visible:ring-crypto-cyan/30"
-            />
-            <div className="flex gap-1">
+        <Tabs defaultValue="instant" className="w-full">
+          <TabsList className="bg-background/80 border border-border/40 grid grid-cols-2 w-full mb-3 h-8 p-[2px]">
+            <TabsTrigger value="instant" className="text-[11px] font-semibold py-1">Instantâneo</TabsTrigger>
+            <TabsTrigger value="scheduled" className="text-[11px] font-semibold py-1 flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              Programado
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="instant" className="space-y-3 outline-none">
+            {/* Quantity Input */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">
+                Quantidade
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder="0.00"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  className="flex-1 font-mono bg-background/80 backdrop-blur-sm border-border/50 input-glow focus-visible:ring-crypto-cyan/30 text-sm"
+                />
+                <div className="flex gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-full text-[10px] px-2 border-border"
+                    onClick={() => setQuantity((portfolio.cashBalance / (currentPrice || 1) * 0.25).toFixed(6))}
+                  >
+                    25%
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-full text-[10px] px-2 border-border"
+                    onClick={() => setQuantity((portfolio.cashBalance / (currentPrice || 1) * 0.5).toFixed(6))}
+                  >
+                    50%
+                  </Button>
+                </div>
+              </div>
+              {totalCost > 0 && (
+                <p className="text-[10px] text-muted-foreground">
+                  Total: ~${formatPrice(totalCost)}
+                </p>
+              )}
+            </div>
+
+            {/* Buy/Sell Buttons */}
+            <div className="grid grid-cols-2 gap-2">
               <Button
-                variant="outline"
-                size="sm"
-                className="h-full text-[10px] px-2 border-border"
-                onClick={() => setQuantity((portfolio.cashBalance / currentPrice * 0.25).toFixed(6))}
+                onClick={() => handleTrade("BUY")}
+                disabled={!quantity || parseFloat(quantity) <= 0}
+                className="bg-crypto-green hover:bg-crypto-green/90 text-white font-semibold h-10 gap-1.5 btn-gradient-green touch-target"
               >
-                25%
+                <TrendingUp className="w-4 h-4" />
+                Comprar
               </Button>
               <Button
-                variant="outline"
-                size="sm"
-                className="h-full text-[10px] px-2 border-border"
-                onClick={() => setQuantity((portfolio.cashBalance / currentPrice * 0.5).toFixed(6))}
+                onClick={() => handleTrade("SELL")}
+                disabled={!quantity || parseFloat(quantity) <= 0}
+                className="bg-crypto-red hover:bg-crypto-red/90 text-white font-semibold h-10 gap-1.5 btn-gradient-red touch-target"
               >
-                50%
+                <TrendingDown className="w-4 h-4" />
+                Vender
               </Button>
             </div>
-          </div>
-          {totalCost > 0 && (
-            <p className="text-[10px] text-muted-foreground">
-              Total: ~${formatPrice(totalCost)}
-            </p>
-          )}
-        </div>
+          </TabsContent>
 
-        {/* Buy/Sell Buttons */}
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            onClick={() => handleTrade("BUY")}
-            disabled={!quantity || parseFloat(quantity) <= 0}
-            className="bg-crypto-green hover:bg-crypto-green/90 text-white font-semibold h-10 gap-1.5 btn-gradient-green touch-target"
-          >
-            <TrendingUp className="w-4 h-4" />
-            Comprar
-          </Button>
-          <Button
-            onClick={() => handleTrade("SELL")}
-            disabled={!quantity || parseFloat(quantity) <= 0}
-            className="bg-crypto-red hover:bg-crypto-red/90 text-white font-semibold h-10 gap-1.5 btn-gradient-red touch-target"
-          >
-            <TrendingDown className="w-4 h-4" />
-            Vender
-          </Button>
-        </div>
+          <TabsContent value="scheduled" className="space-y-3 outline-none">
+            {/* Trigger Price input */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground">Preço Gatilho (USD)</label>
+              <Input
+                type="number"
+                step="any"
+                min="0"
+                placeholder={`Meta Ex: $${formatPrice(currentPrice * 1.05)}`}
+                value={triggerPrice}
+                onChange={(e) => setTriggerPrice(e.target.value)}
+                className="font-mono bg-background/80 backdrop-blur-sm border-border/50 text-xs h-8 focus-visible:ring-crypto-cyan/30"
+              />
+            </div>
+
+            {/* Quantity input */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground">Quantidade</label>
+              <Input
+                type="number"
+                step="any"
+                min="0"
+                placeholder="0.00"
+                value={scheduledQty}
+                onChange={(e) => setScheduledQty(e.target.value)}
+                className="font-mono bg-background/80 backdrop-blur-sm border-border/50 text-xs h-8 focus-visible:ring-crypto-cyan/30"
+              />
+            </div>
+
+            {/* Schedule Buy / Sell buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                onClick={() => handleScheduleOrder("BUY")}
+                disabled={!triggerPrice || !scheduledQty || parseFloat(scheduledQty) <= 0 || parseFloat(triggerPrice) <= 0}
+                size="sm"
+                className="bg-crypto-green hover:bg-crypto-green/90 text-white font-semibold text-xs h-9 btn-gradient-green"
+              >
+                Programar Compra
+              </Button>
+              <Button
+                onClick={() => handleScheduleOrder("SELL")}
+                disabled={!triggerPrice || !scheduledQty || parseFloat(scheduledQty) <= 0 || parseFloat(triggerPrice) <= 0}
+                size="sm"
+                className="bg-crypto-red hover:bg-crypto-red/90 text-white font-semibold text-xs h-9 btn-gradient-red"
+              >
+                Programar Venda
+              </Button>
+            </div>
+
+            {/* Scheduled Orders List */}
+            <div className="space-y-1.5 pt-2">
+              <span className="text-[10px] font-semibold text-muted-foreground block">Agendamentos Ativos</span>
+              <ScrollArea className="h-[120px] w-full border border-border/30 rounded-lg p-2 bg-secondary/10">
+                <div className="space-y-1.5">
+                  {scheduledOrders.filter(o => !o.isTriggered && o.symbol === selectedSymbol).map(order => (
+                    <div key={order.id} className="flex items-center justify-between bg-card/40 border border-border/20 rounded px-2 py-1.5 text-[10px]">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1">
+                          <Badge variant={order.side === "BUY" ? "default" : "secondary"} className={cn(
+                            "text-[8px] px-1 py-0 h-4 border-none",
+                            order.side === "BUY" ? "bg-crypto-green/10 text-crypto-green" : "bg-crypto-red/10 text-crypto-red"
+                          )}>
+                            {order.side === "BUY" ? "COMPRA" : "VENDA"}
+                          </Badge>
+                          <span className="font-mono text-muted-foreground text-[9px]">{order.symbol.replace("USDT", "")}</span>
+                        </div>
+                        <span className="text-muted-foreground block">
+                          Gatilho: {order.direction === "above" ? "≥" : "≤"} ${formatPrice(order.triggerPrice)}
+                        </span>
+                        <span className="text-muted-foreground block font-mono text-[9px]">Qtd: {order.quantity}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-muted-foreground hover:text-crypto-red hover:bg-crypto-red/10"
+                        onClick={() => removeScheduledOrder(order.id)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                  {scheduledOrders.filter(o => !o.isTriggered && o.symbol === selectedSymbol).length === 0 && (
+                    <span className="text-[10px] text-muted-foreground text-center block py-4">Nenhuma ordem programada ativa.</span>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          </TabsContent>
+        </Tabs>
 
         {/* Last Trade Notification */}
         <AnimatePresence>
