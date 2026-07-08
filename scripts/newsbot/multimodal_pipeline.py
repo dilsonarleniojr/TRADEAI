@@ -4,7 +4,7 @@ import json
 import datetime
 
 class MultimodalPipeline:
-    def __init__(self, output_dir="/home/dcorrea/Documentos/Trade/TRADEAI/public/multimodal"):
+    def __init__(self, output_dir="/home/dcorrea/AntigravityApp/TRADEAI/TRADEAI/public/multimodal"):
         self.output_dir = output_dir
         if not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)

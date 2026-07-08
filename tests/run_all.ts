@@ -86,12 +86,12 @@ async function main() {
   } catch {}
 
   // 2. Start Binance service on port 3001, Socket.IO on 3002
-  const binanceCwd = "/home/dcorrea/Documentos/Trade/TRADEAI/mini-services/binance-service";
-  runService("bun", ["run", "dev"], binanceCwd, BINANCE_LOG, "Binance Service");
+  const binanceCwd = "/home/dcorrea/AntigravityApp/TRADEAI/TRADEAI/mini-services/binance-service";
+  runService("npx", ["-y", "bun", "run", "dev"], binanceCwd, BINANCE_LOG, "Binance Service");
 
   // 3. Start Next.js dev server on port 3000
-  const nextCwd = "/home/dcorrea/Documentos/Trade/TRADEAI";
-  runService("bun", ["run", "dev"], nextCwd, NEXT_LOG, "Next.js Dev Server");
+  const nextCwd = "/home/dcorrea/AntigravityApp/TRADEAI/TRADEAI";
+  runService("npx", ["-y", "bun", "run", "dev"], nextCwd, NEXT_LOG, "Next.js Dev Server");
 
   // 4. Start Caddy on port 81 (Docker host network)
   console.log("🚀 Starting Caddy Proxy in Docker container...");
@@ -106,7 +106,7 @@ async function main() {
       "--network",
       "host",
       "-v",
-      "/home/dcorrea/Documentos/Trade/TRADEAI/Caddyfile:/etc/caddy/Caddyfile",
+      "/home/dcorrea/AntigravityApp/TRADEAI/TRADEAI/Caddyfile:/etc/caddy/Caddyfile",
       "caddy",
       "caddy",
       "run",
@@ -134,7 +134,7 @@ async function main() {
   
   let success = false;
   try {
-    execSync("bun run tests/regression.ts", {
+    execSync("npx -y bun run tests/regression.ts", {
       stdio: "inherit",
       env: { ...process.env, PW_TEST_SCREENSHOT_NO_FONTS_READY: "1" }
     });

@@ -99,7 +99,7 @@ async function runRegressionTest() {
   // Ensure DB is initialized
   try {
     console.log("⚙️ Resetting and seeding DB...");
-    execSync("bun run tests/init_db.ts", { stdio: "inherit" });
+    execSync("npx -y bun run tests/init_db.ts", { stdio: "inherit" });
     recordResult("database-seeding", "pass");
   } catch (err: any) {
     recordResult("database-seeding", "fail", err.message);

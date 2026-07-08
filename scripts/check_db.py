@@ -1,6 +1,6 @@
 import sqlite3
 
-DB_PATH = "/home/dcorrea/Documentos/Trade/TRADEAI/db/custom.db"
+DB_PATH = "/home/dcorrea/AntigravityApp/TRADEAI/TRADEAI/db/custom.db"
 
 def check_other_tables():
     conn = sqlite3.connect(DB_PATH)
