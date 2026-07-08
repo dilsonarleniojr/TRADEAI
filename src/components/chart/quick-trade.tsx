@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 
 export function QuickTrade() {
-  const { selectedSymbol, tickers, tradingMode, portfolio, botConfig } = useCryptoStore();
+  const { selectedSymbol, tickers, tradingMode, portfolio, botConfig, binanceApiKey, binanceApiSecret, binanceTestnet } = useCryptoStore();
   const [quantity, setQuantity] = useState("");
   const [lastTrade, setLastTrade] = useState<{ side: "BUY" | "SELL"; qty: number; price: number } | null>(null);
   const [sltpData, setSltpData] = useState<{ stopLoss: number; takeProfit: number; riskRewardRatio: number; recommendation: string } | null>(null);
@@ -33,7 +33,12 @@ export function QuickTrade() {
     try {
       const res = await fetch("/api/trades", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-binance-api-key": binanceApiKey || "",
+          "x-binance-api-secret": binanceApiSecret || "",
+          "x-binance-testnet": binanceTestnet ? "true" : "false"
+        },
         body: JSON.stringify({
           symbol: selectedSymbol,
           side,

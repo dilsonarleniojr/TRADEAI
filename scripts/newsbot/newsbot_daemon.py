@@ -11,7 +11,7 @@ from newsbot.deduplicator import NewsDeduplicator
 from newsbot.fact_scoring import FactScorer
 from newsbot.nlg_engine import NLGEngine
 
-DB_PATH = "/home/dcorrea/Documentos/Trade/TRADEAI/db/custom.db"
+DB_PATH = "/home/dcorrea/AntigravityApp/TRADEAI/TRADEAI/db/custom.db"
 
 def run_pipeline():
     print("🚀 Running Newsbot Daemon Pipeline...")

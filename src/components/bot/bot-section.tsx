@@ -59,6 +59,9 @@ export function BotSection() {
     aiSignals,
     klines: activeKlines,
     addBotLog,
+    binanceApiKey,
+    binanceApiSecret,
+    binanceTestnet,
   } = useCryptoStore();
 
   const { toast } = useToast();
@@ -426,7 +429,12 @@ export function BotSection() {
       // Persist trade to database and sync balance
       fetch("/api/trades", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-binance-api-key": binanceApiKey || "",
+          "x-binance-api-secret": binanceApiSecret || "",
+          "x-binance-testnet": binanceTestnet ? "true" : "false"
+        },
         body: JSON.stringify(trade),
       })
         .then(async (res) => {
@@ -495,7 +503,12 @@ export function BotSection() {
             // Persist trade to database and sync balance
             fetch("/api/trades", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                "x-binance-api-key": binanceApiKey || "",
+                "x-binance-api-secret": binanceApiSecret || "",
+                "x-binance-testnet": binanceTestnet ? "true" : "false"
+              },
               body: JSON.stringify(trade),
             })
               .then(async (res) => {

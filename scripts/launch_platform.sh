@@ -6,7 +6,7 @@ set -euo pipefail
 # Fases 1-6: Clean, Build, Deploy with health checks and logs estruturados
 # =============================================================================
 
-PROJECT_ROOT="/home/dcorrea/Documentos/Trade/TRADEAI"
+PROJECT_ROOT="/home/dcorrea/AntigravityApp/TRADEAI/TRADEAI"
 CADDY_CONTAINER="trade-caddy-proxy"
 CADDYFILE="${PROJECT_ROOT}/Caddyfile"
 LOG_DIR="${PROJECT_ROOT}/logs"
@@ -83,13 +83,13 @@ log "=== Fase 2: Instalando dependências e Prisma ==="
 
 cd "${PROJECT_ROOT}"
 
-bun install
+npx -y bun install
 log "Root dependencies installed"
 
-bun run db:generate
+npx -y bun run db:generate
 log "Prisma Client gerado"
 
-bun run db:push
+npx -y bun run db:push
 log "Schema aplicado ao SQLite"
 
 log "Fase 2 completa"
@@ -99,7 +99,7 @@ log "Fase 2 completa"
 # =============================================================================
 log "=== Fase 3: Building Next.js (standalone) ==="
 
-bun run build
+npx -y bun --bun run build
 
 # Validar e copiar assets (o script de build já faz isso, mas garantimos)
 if [ -d ".next/standalone" ]; then
@@ -121,7 +121,7 @@ log "Fase 3 completa"
 log "=== Fase 4: Instalando Binance mini-service ==="
 
 cd "${PROJECT_ROOT}/mini-services/binance-service"
-bun install
+npx -y bun install
 cd "${PROJECT_ROOT}"
 
 log "Fase 4 completa"
@@ -133,7 +133,7 @@ log "=== Fase 5: Subindo serviços ==="
 
 # 5.1 Binance Service (portas 3001 REST / 3002 Socket.IO)
 log "Iniciando Binance Service..."
-nohup bun --hot "${PROJECT_ROOT}/mini-services/binance-service/index.ts" \
+nohup npx -y bun --hot "${PROJECT_ROOT}/mini-services/binance-service/index.ts" \
   > "${BINANCE_LOG}" 2>&1 &
 BINANCE_PID=$!
 log "Binance Service PID: ${BINANCE_PID}"
@@ -141,7 +141,7 @@ log "Binance Service PID: ${BINANCE_PID}"
 # 5.2 Next.js em produção (porta 3000)
 log "Iniciando Next.js (standalone) em produção..."
 nohup env NODE_ENV=production \
-  bun "${PROJECT_ROOT}/.next/standalone/server.js" \
+  npx -y bun "${PROJECT_ROOT}/.next/standalone/server.js" \
   > "${NEXT_LOG}" 2>&1 &
 NEXT_PID=$!
 log "Next.js PID: ${NEXT_PID}"
