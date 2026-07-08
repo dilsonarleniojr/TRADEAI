@@ -208,8 +208,8 @@ export function BotSection() {
     return () => clearInterval(timer);
   }, [tickers, activeKlines, botConfig.symbol, getKlinesHistoryRecord]);
 
-  const generateQuantTrade = useCallback(() => {
-    if (Object.keys(tickers).length === 0 || activeKlines.length === 0) return null;
+  const generateQuantTrades = useCallback((): TradeData[] => {
+    if (Object.keys(tickers).length === 0 || activeKlines.length === 0) return [];
 
     // Failsafe Risk Veto Block (if active, freeze all buying activity)
     if (isVetoActive) {
@@ -222,35 +222,63 @@ export function BotSection() {
         message: `Failsafe ativou veto: Volatilidade muito alta em ${botConfig.symbol}`,
         type: "warning",
       });
-      return null;
+      return [];
     }
 
     const klinesHistory = getKlinesHistoryRecord(tickers, activeKlines, botConfig.symbol);
-    
-    let chosenSymbol = botConfig.symbol;
-    let side: "BUY" | "SELL" = Math.random() > 0.5 ? "BUY" : "SELL";
-    let strategyUsed: string = botConfig.strategy;
+    const generatedTrades: TradeData[] = [];
 
-    // 1. Asset Funnel Integration (focus ONLY on the top scanner pairs)
+    // Helper to build a single TradeData object for a given symbol/side/strategy
+    const buildTrade = (sym: string, tradeSide: "BUY" | "SELL", strategy: string): TradeData => {
+      const ticker = tickers[sym];
+      const price = ticker?.price ?? 100;
+      const targetTotal = 15.0; // Ensures MIN_NOTIONAL >= $10 on Binance
+      const quantity = parseFloat((targetTotal / price).toFixed(6));
+      const total = parseFloat((price * quantity).toFixed(2));
+      const pnl = tradeSide === "SELL" ? parseFloat(((Math.random() - 0.45) * 60).toFixed(2)) : 0;
+      return {
+        id: `trade-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        symbol: sym,
+        side: tradeSide,
+        price,
+        quantity,
+        total,
+        strategy,
+        mode: tradingMode,
+        pnl,
+        timestamp: new Date().toISOString(),
+      };
+    };
+
+    // 1. Asset Funnel Integration — generates one trade per qualified candidate simultaneously
     if (botConfig.useQuantFunnel) {
       const scannerTickers: Record<string, any> = {};
       const pairsToScan = scannerPairs.length > 0 ? scannerPairs : ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
       for (const sym of pairsToScan) {
-        if (tickers[sym]) {
-          scannerTickers[sym] = tickers[sym];
-        }
+        if (tickers[sym]) scannerTickers[sym] = tickers[sym];
       }
 
       const candidates = runAssetFunnel(scannerTickers, klinesHistory);
       const activeCandidates = candidates.filter(c => c.direction !== "HOLD");
+
       if (activeCandidates.length > 0) {
-        chosenSymbol = activeCandidates[0].symbol;
-        side = activeCandidates[0].direction === "LONG" ? "BUY" : "SELL";
-        strategyUsed = "Funnel-Quant";
+        addBotLog({
+          message: `Funil Quant: ${activeCandidates.length} ativo(s) qualificado(s) — executando simultâneamente`,
+          type: "info",
+        });
+        for (const candidate of activeCandidates) {
+          const tradeSide: "BUY" | "SELL" = candidate.direction === "LONG" ? "BUY" : "SELL";
+          generatedTrades.push(buildTrade(candidate.symbol, tradeSide, "Funnel-Quant"));
+        }
+        return generatedTrades;
       }
     }
 
-    // 2. Market Regime Selector Integration
+    // 2. Market Regime Selector Integration (single symbol fallback)
+    let chosenSymbol = botConfig.symbol;
+    let side: "BUY" | "SELL" = Math.random() > 0.5 ? "BUY" : "SELL";
+    let strategyUsed: string = botConfig.strategy;
+
     if (botConfig.useMarketRegime) {
       const symbolKlines = klinesHistory[chosenSymbol] || activeKlines;
       const regime = detectMarketRegime(symbolKlines);
@@ -271,14 +299,14 @@ export function BotSection() {
             message: `Regime Reversion em ${chosenSymbol}: Ignorado (RSI ${currentRsi.toFixed(1)} neutro)`,
             type: "info",
           });
-          return null; // Skip trade - market range-bound and neutral RSI
+          return []; // Skip trade - neutral RSI
         }
       } else if (regime === "TREND_FOLLOWING") {
         strategyUsed = "Regime-Trend";
       }
     }
 
-    // 3. Ensemble Voting Committee Integration
+    // 3. Ensemble Voting Committee Integration (single symbol fallback)
     if (botConfig.useEnsemble) {
       const t = tickers[chosenSymbol];
       if (t) {
@@ -299,37 +327,16 @@ export function BotSection() {
             message: `Comitê Ensemble (${chosenSymbol}): Decisão HOLD (Aguardar melhores sinais)`,
             type: "info",
           });
-          return null; // Committee vetoes trade (Neutral decision)
+          return [];
         }
         side = decision === "BUY" ? "BUY" : "SELL";
         strategyUsed = "Ensemble-Voted";
       }
     }
 
-    const t = tickers[chosenSymbol];
-    const price = t?.price ?? 100;
-    // Ensure total order value is always >= 15.0 USD to satisfy Binance's MIN_NOTIONAL limit (usually 10 USD)
-    const targetTotal = 15.0;
-    const quantity = parseFloat((targetTotal / price).toFixed(6));
-    const total = parseFloat((price * quantity).toFixed(2));
-    
-    // Simulating realistic PnL for closed short trades
-    const pnl = side === "SELL" ? parseFloat(((Math.random() - 0.45) * 60).toFixed(2)) : 0;
-
-    const trade: TradeData = {
-      id: `trade-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      symbol: chosenSymbol,
-      side,
-      price,
-      quantity,
-      total,
-      strategy: strategyUsed,
-      mode: tradingMode,
-      pnl,
-      timestamp: new Date().toISOString(),
-    };
-
-    return trade;
+    // Single-asset fallback trade
+    generatedTrades.push(buildTrade(chosenSymbol, side, strategyUsed));
+    return generatedTrades;
   }, [tickers, activeKlines, botConfig, tradingMode, getKlinesHistoryRecord, calculateRSIForTrading, isVetoActive, toast, scannerPairs]);
 
   const updatePortfolioWithTrade = useCallback((trade: TradeData) => {
@@ -498,32 +505,35 @@ export function BotSection() {
       // Generate first trade after 5s, then every 10-15s
       const scheduleNextTrade = () => {
         const delay = 10000 + Math.random() * 5000;
-        return setTimeout(() => {
+        return setTimeout(async () => {
           if (!useCryptoStore.getState().botActive) return;
 
-          const trade = generateQuantTrade();
-          if (trade) {
-            addTrade(trade);
-            updatePortfolioWithTrade(trade);
+          const newTrades = generateQuantTrades();
 
-            // Show toast for bot trade
-            toast({
-              title: `🤖 Bot ${trade.side === "BUY" ? "Comprou" : "Vendeu"} ${trade.symbol.replace("USDT", "")}`,
-              description: `${trade.quantity.toFixed(6)} @ $${formatPrice(trade.price)} (${trade.strategy})`,
-            });
+          if (newTrades.length > 0) {
+            // Execute each qualifying trade sequentially to avoid SQLite lock conflicts
+            for (const trade of newTrades) {
+              addTrade(trade);
+              updatePortfolioWithTrade(trade);
 
-            // Persist trade to database and sync balance
-            fetch("/api/trades", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "x-binance-api-key": binanceApiKey || "",
-                "x-binance-api-secret": binanceApiSecret || "",
-                "x-binance-testnet": binanceTestnet ? "true" : "false"
-              },
-              body: JSON.stringify(trade),
-            })
-              .then(async (res) => {
+              toast({
+                title: `🤖 Bot ${trade.side === "BUY" ? "Comprou" : "Vendeu"} ${trade.symbol.replace("USDT", "")}`,
+                description: `${trade.quantity.toFixed(6)} @ $${formatPrice(trade.price)} (${trade.strategy})`,
+              });
+
+              // Persist and sync balance sequentially (await to prevent DB lock conflicts)
+              try {
+                const res = await fetch("/api/trades", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "x-binance-api-key": binanceApiKey || "",
+                    "x-binance-api-secret": binanceApiSecret || "",
+                    "x-binance-testnet": binanceTestnet ? "true" : "false"
+                  },
+                  body: JSON.stringify(trade),
+                });
+
                 if (res.ok) {
                   const result = await res.json();
                   if (result.success && result.account) {
@@ -535,7 +545,7 @@ export function BotSection() {
                     const newPnl = newTotalValue - initialBalance;
                     const newPnlPercent = (newPnl / initialBalance) * 100;
 
-                    console.log("[BotSection Quant] Balance updated from API:", result.account);
+                    console.log(`[BotSection Quant] [${trade.symbol}] Balance updated from API:`, result.account);
                     store.setPortfolio({
                       ...store.portfolio,
                       totalValue: newTotalValue,
@@ -546,7 +556,6 @@ export function BotSection() {
                       pnlPercent: newPnlPercent,
                     });
 
-                    // Emit telemetry event
                     const { telemetry } = await import('@/lib/telemetry');
                     telemetry.emit("trade", {
                       tradeId: result.data.id,
@@ -560,8 +569,10 @@ export function BotSection() {
                     });
                   }
                 }
-              })
-              .catch(() => {});
+              } catch {
+                // Silently ignore network errors for individual trades
+              }
+            }
           }
 
           // Schedule next
