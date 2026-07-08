@@ -7,6 +7,8 @@ import { BacktestResults, BacktestResultData } from "./backtest-results";
 import { BacktestComparison } from "./backtest-comparison";
 import { motion } from "framer-motion";
 import { History, AlertCircle } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { OptimizerSection } from "./optimizer-section";
 
 const DEFAULT_CONFIG: BacktestConfigType = {
   symbol: "BTCUSDT",
@@ -503,70 +505,85 @@ export function BacktestSection() {
       className="space-y-4"
     >
       {/* Section Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-crypto-cyan/10 flex items-center justify-center">
-          <History className="w-5 h-5 text-crypto-cyan" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold">Backtesting de Estratégias</h2>
-          <p className="text-xs text-muted-foreground">
-            Teste suas estratégias de trading contra dados históricos
-          </p>
-        </div>
-      </div>
-
-      {/* Config + Results: stack on mobile, side-by-side on desktop */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Config Panel */}
-        <div className="lg:col-span-1">
-          <BacktestConfig
-            config={config}
-            setConfig={setConfig}
-            onRun={runBacktest}
-            isRunning={isRunning}
-            compareMode={compareMode}
-            setCompareMode={setCompareMode}
-            selectedStrategies={selectedStrategies}
-            setSelectedStrategies={setSelectedStrategies}
-          />
-        </div>
-
-        {/* Results - full width on mobile */}
-        <div className="lg:col-span-2">
-          {error && (
-            <Card className="bg-crypto-red/5 border-crypto-red/20 mb-4">
-              <CardContent className="p-4 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-crypto-red shrink-0" />
-                <span className="text-sm text-crypto-red">{error}</span>
-              </CardContent>
-            </Card>
-          )}
-
-          {compareMode && comparisonResults ? (
-            <BacktestComparison
-              results={comparisonResults}
-              strategies={selectedStrategies}
-            />
-          ) : !compareMode && results ? (
-            <BacktestResults results={results} />
-          ) : (
-            <Card className="bg-card border-border">
-              <CardContent className="p-6 sm:p-8 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-crypto-cyan/10 flex items-center justify-center mx-auto mb-4">
-                  <History className="w-7 h-7 text-crypto-cyan" />
-                </div>
-                <h3 className="text-sm font-medium mb-1">Sem Resultados Ainda</h3>
-                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                  {compareMode
-                    ? "Selecione 2-3 estratégias e clique em \"Comparar Estratégias\" para ver resultados lado a lado."
-                    : "Configure os parâmetros do backtest e clique em \"Executar Backtest\" para ver os resultados de performance da estratégia."
-                  }
-                </p>
-              </CardContent>
-            </Card>
-          )}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-crypto-cyan/10 flex items-center justify-center">
+            <History className="w-5 h-5 text-crypto-cyan" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">Backtesting de Estratégias</h2>
+            <p className="text-xs text-muted-foreground">
+              Teste e otimize suas estratégias de trading contra dados históricos no motor Antigravity
+            </p>
+          </div>
         </div>
       </div>
+
+      <Tabs defaultValue="backtest" className="w-full">
+        <TabsList className="bg-card border border-border/40 grid grid-cols-2 w-full max-w-[400px] mb-4">
+          <TabsTrigger value="backtest" className="text-xs font-semibold">Backtest Simples</TabsTrigger>
+          <TabsTrigger value="optimizer" className="text-xs font-semibold">Otimização de Hiperparâmetros</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="backtest" className="mt-2 outline-none">
+          {/* Config + Results: stack on mobile, side-by-side on desktop */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Config Panel */}
+            <div className="lg:col-span-1">
+              <BacktestConfig
+                config={config}
+                setConfig={setConfig}
+                onRun={runBacktest}
+                isRunning={isRunning}
+                compareMode={compareMode}
+                setCompareMode={setCompareMode}
+                selectedStrategies={selectedStrategies}
+                setSelectedStrategies={setSelectedStrategies}
+              />
+            </div>
+
+            {/* Results - full width on mobile */}
+            <div className="lg:col-span-2">
+              {error && (
+                <Card className="bg-crypto-red/5 border-crypto-red/20 mb-4">
+                  <CardContent className="p-4 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-crypto-red shrink-0" />
+                    <span className="text-sm text-crypto-red">{error}</span>
+                  </CardContent>
+                </Card>
+              )}
+
+              {compareMode && comparisonResults ? (
+                <BacktestComparison
+                  results={comparisonResults}
+                  strategies={selectedStrategies}
+                />
+              ) : !compareMode && results ? (
+                <BacktestResults results={results} />
+              ) : (
+                <Card className="bg-card border-border">
+                  <CardContent className="p-6 sm:p-8 text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-crypto-cyan/10 flex items-center justify-center mx-auto mb-4">
+                      <History className="w-7 h-7 text-crypto-cyan" />
+                    </div>
+                    <h3 className="text-sm font-medium mb-1">Sem Resultados Ainda</h3>
+                    <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                      {compareMode
+                        ? "Selecione 2-3 estratégias e clique em \"Comparar Estratégias\" para ver resultados lado a lado."
+                        : "Configure os parâmetros do backtest e clique em \"Executar Backtest\" para ver os resultados de performance da estratégia."
+                      }
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="optimizer" className="mt-2 outline-none">
+          <OptimizerSection />
+        </TabsContent>
+      </Tabs>
     </motion.div>
   );
 }
