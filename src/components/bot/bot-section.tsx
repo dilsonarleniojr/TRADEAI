@@ -30,6 +30,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { runAssetFunnel, detectMarketRegime, ensembleDecision, ensembleDecisionWithVeto, runMarketScanner, type QuantCandidate } from "@/lib/bot/quant-engine";
+import { useBinanceData } from "@/hooks/use-binance-data";
 
 interface TradeReport {
   totalTrades: number;
@@ -65,6 +66,12 @@ export function BotSection() {
   } = useCryptoStore();
 
   const { toast } = useToast();
+
+  const { fetchKlines } = useBinanceData();
+
+  useEffect(() => {
+    fetchKlines(botConfig.symbol);
+  }, [botConfig.symbol, fetchKlines]);
 
   const [tradeReport, setTradeReport] = useState<TradeReport | null>(null);
   const tradeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
