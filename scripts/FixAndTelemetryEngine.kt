@@ -40,25 +40,26 @@ object FixGateway {
         body.append("40=2").append(SOH)               // OrdType: Limit
         body.append("44=").append(price).append(SOH)    // Price
 
-        val bodyStr = body.toString()
-        val bodyLength = bodyStr.length
+        val bodyLength = body.length
 
-        // Header tags
-        val header = StringBuilder(128)
-        header.append("8=FIX.4.4").append(SOH)          // BeginString
-        header.append("9=").append(bodyLength).append(SOH) // BodyLength
-        header.append("35=D").append(SOH)              // MsgType: NewOrderSingle
-        header.append("34=").append(sequenceNumber++).append(SOH) // MsgSeqNum
-        header.append("49=TRADEAI").append(SOH)        // SenderCompID
-        header.append("56=EXCHANGE").append(SOH)       // TargetCompID
+        // Header tags (reuse body but prepend header)
+        val msg = StringBuilder(256)
+        msg.append("8=FIX.4.4").append(SOH)          // BeginString
+        msg.append("9=").append(bodyLength).append(SOH) // BodyLength
+        msg.append("35=D").append(SOH)              // MsgType: NewOrderSingle
+        msg.append("34=").append(sequenceNumber++).append(SOH) // MsgSeqNum
+        msg.append("49=TRADEAI").append(SOH)        // SenderCompID
+        msg.append("56=EXCHANGE").append(SOH)       // TargetCompID
 
-        val messageWithoutChecksum = header.toString() + bodyStr
-        val checksum = calculateChecksum(messageWithoutChecksum)
+        msg.append(body)
 
-        return messageWithoutChecksum + "10=" + checksum + SOH
+        val checksum = calculateChecksum(msg)
+
+        msg.append("10=").append(checksum).append(SOH)
+        return msg.toString()
     }
 
-    private fun calculateChecksum(data: String): String {
+    private fun calculateChecksum(data: CharSequence): String {
         var sum = 0
         for (i in 0 until data.length) {
             sum += data[i].code
@@ -67,7 +68,8 @@ object FixGateway {
         val d1 = check / 100
         val d2 = (check / 10) % 10
         val d3 = check % 10
-        return "" + d1 + d2 + d3
+        // Use char array for zero-alloc checksum string conversion
+        return String(charArrayOf((d1 + 48).toChar(), (d2 + 48).toChar(), (d3 + 48).toChar()))
     }
 }
 
