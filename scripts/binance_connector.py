@@ -11,6 +11,7 @@ BINANCE_API_SECRET="sua_chave_privada"
 """
 
 import os
+import time
 import asyncio
 import logging
 import functools
@@ -141,32 +142,69 @@ class BinanceConnector:
 
     async def _ticker_stream_loop(self, symbol: str):
         """
-        Conecta ao WebSocket público da Binance e atualiza a cache.
+        Conecta ao WebSocket público da Binance com ping/pong agressivo,
+        failover para URL de backup e reconexão com Exponential Backoff.
         """
-        ws_base = "wss://testnet.binance.vision/ws" if self.testnet else "wss://stream.binance.com:9443/ws"
-        url = f"{ws_base}/{symbol.lower()}@bookTicker"
+        primary_ws = "wss://testnet.binance.vision/ws" if self.testnet else "wss://stream.binance.com:9443/ws"
+        backup_ws = "wss://stream.binance.com:9443/ws" if self.testnet else "wss://testnet.binance.vision/ws"
+        
+        current_url_base = primary_ws
+        attempt = 0
         
         while True:
+            url = f"{current_url_base}/{symbol.lower()}@bookTicker"
+            last_message_time = time.time()
+            
             try:
                 logger.info(f"🔄 Conectando ao WebSocket de Preço para {symbol}: {url}...")
                 async with aiohttp.ClientSession() as session:
-                    async with session.ws_connect(url) as ws:
+                    # Configura ping_interval menor para detecção de queda rápida
+                    async with session.ws_connect(url, ping_interval=2.0, receive_timeout=5.0) as ws:
                         logger.info(f"✅ WebSocket conectado para {symbol}.")
-                        async for msg in ws:
-                            if msg.type == aiohttp.WSMsgType.TEXT:
-                                data = msg.json()
-                                self.prices_cache[symbol] = {
-                                    'bid': float(data.get('b', 0)),
-                                    'ask': float(data.get('a', 0)),
-                                    'last': (float(data.get('b', 0)) + float(data.get('a', 0))) / 2.0
-                                }
-                            elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
-                                break
+                        attempt = 0 # reset backoff
+                        
+                        # Loop de monitoramento de ping/pong agressivo em background
+                        async def monitor_heartbeat():
+                            nonlocal last_message_time
+                            while not ws.closed:
+                                await asyncio.sleep(1.0)
+                                if time.time() - last_message_time > 5.0:
+                                    logger.warning(f"🚨 Heartbeat expirou para {symbol} (>5s sem mensagens). Forçando reconexão...")
+                                    await ws.close()
+                                    break
+                                    
+                        heartbeat_task = asyncio.create_task(monitor_heartbeat())
+                        
+                        try:
+                            async for msg in ws:
+                                if msg.type == aiohttp.WSMsgType.TEXT:
+                                    last_message_time = time.time()
+                                    data = msg.json()
+                                    self.prices_cache[symbol] = {
+                                        'bid': float(data.get('b', 0)),
+                                        'ask': float(data.get('a', 0)),
+                                        'last': (float(data.get('b', 0)) + float(data.get('a', 0))) / 2.0
+                                    }
+                                elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                                    break
+                        finally:
+                            heartbeat_task.cancel()
+                            try:
+                                await heartbeat_task
+                            except asyncio.CancelledError:
+                                pass
+                                
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"❌ Erro no WebSocket de Preço para {symbol}: {e}. Reconectando em 3s...")
-                await asyncio.sleep(3)
+                attempt += 1
+                backoff_delay = min(2 ** attempt, 15)
+                if attempt > 2:
+                    current_url_base = backup_ws if current_url_base == primary_ws else primary_ws
+                    logger.warning(f"🔀 Alternando para URL de backup WebSocket: {current_url_base}")
+                
+                logger.error(f"❌ Erro no WebSocket de Preço para {symbol}: {e}. Reconectando em {backoff_delay}s (Tentativa {attempt})...")
+                await asyncio.sleep(backoff_delay)
 
     async def get_cached_price(self, symbol: str) -> dict:
         """

@@ -163,6 +163,11 @@ class QuantitativeEngineV3:
         logger.info(f"Targeting Dynamic Position: {qty_clean} {symbol} @ Approx ${current_price} (ATR Vol: {atr:.2f})")
 
         # PHASE A: SUBMIT ENTRY SLIPPAGE-PROTECTED BUY ORDER
+        import institutional_modules
+        if institutional_modules.BUY_HALTED:
+            logger.warning("🚨 TRADE ABORTED: BUY order halted due to MACRO PANIC sentiment flag!")
+            return None
+
         time_a = time.perf_counter()
         try:
             logger.info("A) Dispatching Slippage-Protected Buy order to Binance...")

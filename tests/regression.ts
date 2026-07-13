@@ -553,7 +553,7 @@ async function runRegressionTest() {
       console.log("UI backtest button clicked.");
     }
 
-    await page.waitForTimeout(2500); // Backtest processing delay
+    await page.waitForTimeout(4000); // Backtest processing delay
 
     // Take screenshot of backtest results
     await safeScreenshot(page, { path: path.join(SCREENSHOTS_DIR, "backtest_results.png"), timeout: 15000 });
