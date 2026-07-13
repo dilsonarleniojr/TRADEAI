@@ -1,12 +1,11 @@
 package scripts
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +14,9 @@ import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.runtime.*
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -25,6 +27,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 import kotlin.math.roundToInt
 
 /**
@@ -106,6 +110,126 @@ class TradingViewModel : ViewModel() {
 }
 
 open class ViewModel
+
+enum class BotWorkerStatus {
+    RUNNING, PAUSED, ERROR
+}
+
+@Immutable
+data class BotState(
+    val id: String,
+    val name: String,
+    val symbol: String,
+    val pnl: Double,
+    val status: BotWorkerStatus,
+    val parameters: Map<String, String> = emptyMap()
+)
+
+@Immutable
+data class MarginLedgerState(
+    val totalAccount: Double = 1000.0,
+    val allocatedMargin: Double = 0.0,
+    val freeMargin: Double = 1000.0
+)
+
+@Immutable
+data class OrchestratorUiState(
+    val bots: List<BotState> = emptyList(),
+    val marginLedger: MarginLedgerState = MarginLedgerState(),
+    val isFormVisible: Boolean = false,
+    val selectedBotForConfig: String? = null
+)
+
+class OrchestratorViewModel : ViewModel() {
+    private val _uiState = MutableStateFlow(OrchestratorUiState())
+    val uiState: StateFlow<OrchestratorUiState> = _uiState.asStateFlow()
+
+    init {
+        _uiState.value = OrchestratorUiState(
+            bots = listOf(
+                BotState(
+                    id = "bot_1",
+                    name = "ScalpingBTC",
+                    symbol = "BTCUSDT",
+                    pnl = 125.40,
+                    status = BotWorkerStatus.RUNNING,
+                    parameters = mapOf("gridLevels" to "10", "trailingDistance" to "0.005")
+                ),
+                BotState(
+                    id = "bot_2",
+                    name = "GridETH",
+                    symbol = "ETHUSDT",
+                    pnl = -45.20,
+                    status = BotWorkerStatus.PAUSED,
+                    parameters = mapOf("gridLevels" to "20", "stepSize" to "0.01")
+                ),
+                BotState(
+                    id = "bot_3",
+                    name = "MeanReversionSOL",
+                    symbol = "SOLUSDT",
+                    pnl = 0.0,
+                    status = BotWorkerStatus.ERROR,
+                    parameters = mapOf("period" to "14", "deviation" to "2.0")
+                )
+            ),
+            marginLedger = MarginLedgerState(
+                totalAccount = 1000.0,
+                allocatedMargin = 500.0,
+                freeMargin = 500.0
+            )
+        )
+    }
+
+    fun toggleBotStatus(botId: String) {
+        _uiState.update { state ->
+            val updatedBots = state.bots.map { bot ->
+                if (bot.id == botId) {
+                    val newStatus = when (bot.status) {
+                        BotWorkerStatus.RUNNING -> BotWorkerStatus.PAUSED
+                        BotWorkerStatus.PAUSED -> BotWorkerStatus.RUNNING
+                        BotWorkerStatus.ERROR -> BotWorkerStatus.RUNNING
+                    }
+                    bot.copy(status = newStatus)
+                } else {
+                    bot
+                }
+            }
+            state.copy(bots = updatedBots)
+        }
+    }
+
+    fun stopBot(botId: String) {
+        _uiState.update { state ->
+            val updatedBots = state.bots.filter { it.id != botId }
+            val newAllocated = updatedBots.size * 250.0
+            val free = state.marginLedger.totalAccount - newAllocated
+            state.copy(
+                bots = updatedBots,
+                marginLedger = state.marginLedger.copy(
+                    allocatedMargin = newAllocated,
+                    freeMargin = free
+                )
+            )
+        }
+    }
+
+    fun updateBotParameters(botId: String, newParams: Map<String, String>) {
+        _uiState.update { state ->
+            val updatedBots = state.bots.map { bot ->
+                if (bot.id == botId) {
+                    bot.copy(parameters = newParams)
+                } else {
+                    bot
+                }
+            }
+            state.copy(bots = updatedBots)
+        }
+    }
+
+    fun selectBotForConfig(botId: String?) {
+        _uiState.update { it.copy(selectedBotForConfig = botId, isFormVisible = botId != null) }
+    }
+}
 
 // ==============================================================================
 // 2. Feedback Háptico Avançado (Haptic Engine Interface)
@@ -185,14 +309,16 @@ fun TradingTerminalScreen(
     val sheetState = rememberModalBottomSheetState(initialValue = ModalBottomSheetValue.Hidden)
     val coroutineScope = rememberCoroutineScope()
 
+    val orchestratorViewModel = remember { OrchestratorViewModel() }
+    val orchestratorState by orchestratorViewModel.uiState.collectAsState()
+    var currentTab by remember { mutableStateOf(0) } // 0: Terminal HFT, 1: Fleet Orchestrator
+
     ModalBottomSheetLayout(
         sheetState = sheetState,
         sheetBackgroundColor = OledPalette.Surface,
         sheetContentColor = OledPalette.TextPrimary,
         sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         sheetContent = {
-            // Refinement (Phase 3): parâmetros primitivos (Double) são estáveis, permitindo
-            // que o Compose pule a recomposição deste sheet quando os valores não mudam.
             PositionDetailsSheet(
                 entryPrice = state.currentPositionEntry,
                 currentPrice = state.currentPrice,
@@ -207,89 +333,170 @@ fun TradingTerminalScreen(
                 .fillMaxSize()
                 .background(OledPalette.Background)
                 .padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Topo: Indicadores Semânticos e Alerta Pulsante
+            // Tab Selection Header
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 Text(
-                    text = state.symbol,
-                    color = OledPalette.TextPrimary,
-                    fontSize = 24.sp,
+                    text = "TERMINAL HFT",
+                    color = if (currentTab == 0) OledPalette.SignalOrange else OledPalette.TextSecondary,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.clickable { currentTab = 0 }
                 )
-
-                // Refinement (Phase 3): parâmetros primitivos (Long/Boolean) são estáveis por
-                // natureza no Compose, permitindo pular a recomposição quando os valores não
-                // mudam — diferente de lambdas provider recriadas a cada recomposição do pai.
-                LatencyIndicator(
-                    latency = state.apiLatencyMs,
-                    isConnected = state.isWebSocketConnected,
-                    isAnomaly = state.isAnomalyDetected
+                Text(
+                    text = "FLEET ORCHESTRATOR",
+                    color = if (currentTab == 1) OledPalette.SignalOrange else OledPalette.TextSecondary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.clickable { currentTab = 1 }
                 )
             }
 
-            // Lógica de Visibilidade: Exibe Skeleton Loader se os dados estiverem vazios/carregando
-            if (state.candles.isEmpty() || state.currentPrice == 0.0) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .fillMaxHeight()
-                        .background(OledPalette.Surface, shape = RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.Center
+            if (currentTab == 0) {
+                // ==========================================
+                // HFT Terminal View
+                // ==========================================
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = OledPalette.SignalOrange)
-                        Spacer(modifier = Modifier.height(12.dp))
+                    Column {
                         Text(
-                            text = "ASSINANDO WEBSOCKET FEED...",
+                            text = state.symbol,
                             color = OledPalette.TextSecondary,
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        AnimatedPriceTicker(
+                            price = state.currentPrice,
+                            fontSize = 24.sp
+                        )
+                    }
+
+                    LatencyIndicator(
+                        latency = state.apiLatencyMs,
+                        isConnected = state.isWebSocketConnected,
+                        isAnomaly = state.isAnomalyDetected
+                    )
+                }
+
+                if (state.candles.isEmpty() || state.currentPrice == 0.0) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .background(OledPalette.Surface, shape = RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = OledPalette.SignalOrange)
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "ASSINANDO WEBSOCKET FEED...",
+                                color = OledPalette.TextSecondary,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        HighFrequencyChart(
+                            candlesProvider = { state.candles },
+                            currentPriceProvider = { state.currentPrice },
+                            modifier = Modifier
+                                .weight(0.55f)
+                                .fillMaxWidth()
+                        )
+
+                        val mockBids = remember(state.currentPrice) {
+                            listOf(
+                                Pair(state.currentPrice - 1.0, 1.25),
+                                Pair(state.currentPrice - 2.0, 4.80),
+                                Pair(state.currentPrice - 3.0, 10.50),
+                                Pair(state.currentPrice - 4.0, 3.10),
+                                Pair(state.currentPrice - 5.0, 7.65)
+                            )
+                        }
+                        val mockAsks = remember(state.currentPrice) {
+                            listOf(
+                                Pair(state.currentPrice + 1.0, 0.95),
+                                Pair(state.currentPrice + 2.0, 5.15),
+                                Pair(state.currentPrice + 3.0, 8.40),
+                                Pair(state.currentPrice + 4.0, 2.70),
+                                Pair(state.currentPrice + 5.0, 12.05)
+                            )
+                        }
+                        MarketDepthView(
+                            bids = mockBids,
+                            asks = mockAsks,
+                            modifier = Modifier.weight(0.45f)
                         )
                     }
                 }
-            } else {
-                // Refinement (Phase 3): Gráfico com leitura adiada dos dados
-                HighFrequencyChart(
-                    candlesProvider = { state.candles },
-                    currentPriceProvider = { state.currentPrice },
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .fillMaxHeight()
-                        .padding(vertical = 16.dp)
-                )
-            }
 
-            // Refinement (Phase 3): parâmetros primitivos (Double) são estáveis, permitindo
-            // que o Compose pule a recomposição deste card quando os valores não mudam.
-            QuickPositionCard(
-                size = state.currentPositionSize,
-                pnl = state.currentPnL,
-                onClick = { coroutineScope.launch { sheetState.show() } }
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Botão deslizante do Kill Switch
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                // Mesmo padrão de estabilidade: valor primitivo em vez de provider lambda.
-                SwipeToConfirmKillSwitch(
-                    isBuyHalted = state.isBuyHalted,
-                    onConfirmed = {
-                        hapticsManager.triggerFeedback(HapticPattern.EMERGENCY_KILL)
-                        println("🚨 EMERGENCY CRYPTO KILL SWITCH CONFIRMED!")
+                QuickPositionCard(
+                    size = state.currentPositionSize,
+                    pnl = state.currentPnL,
+                    onClick = { coroutineScope.launch { sheetState.show() } },
+                    onDoubleTap = {
+                        println("🎯 DOUBLE TAP DETECTED: Open numerical keyboard to adjust Stop-Loss!")
                     }
+                )
+
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SwipeToConfirmKillSwitch(
+                        isBuyHalted = state.isBuyHalted,
+                        onConfirmed = {
+                            hapticsManager.triggerFeedback(HapticPattern.EMERGENCY_KILL)
+                            println("🚨 EMERGENCY CRYPTO KILL SWITCH CONFIRMED!")
+                        }
+                    )
+                }
+            } else {
+                // ==========================================
+                // Fleet Orchestrator Dashboard View
+                // ==========================================
+                MarginLedgerMeter(ledgerState = orchestratorState.marginLedger)
+
+                if (orchestratorState.isFormVisible && orchestratorState.selectedBotForConfig != null) {
+                    val selectedBot = orchestratorState.bots.find { it.id == orchestratorState.selectedBotForConfig }
+                    if (selectedBot != null) {
+                        DynamicFormBuilder(
+                            bot = selectedBot,
+                            onSave = { newParams ->
+                                orchestratorViewModel.updateBotParameters(selectedBot.id, newParams)
+                                orchestratorViewModel.selectBotForConfig(null)
+                            },
+                            onClose = {
+                                orchestratorViewModel.selectBotForConfig(null)
+                            }
+                        )
+                    }
+                }
+
+                BotFleetDashboard(
+                    uiState = orchestratorState,
+                    onToggleStatus = { botId -> orchestratorViewModel.toggleBotStatus(botId) },
+                    onStopBot = { botId -> orchestratorViewModel.stopBot(botId) },
+                    onSelectConfig = { botId -> orchestratorViewModel.selectBotForConfig(botId) },
+                    modifier = Modifier.weight(1f)
                 )
             }
         }
@@ -339,12 +546,18 @@ fun LatencyIndicator(
 fun QuickPositionCard(
     size: Double,
     pnl: Double,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDoubleTap: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = { onDoubleTap() },
+                    onTap = { onClick() }
+                )
+            },
         backgroundColor = OledPalette.Surface,
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -602,3 +815,530 @@ fun SwipeToConfirmKillSwitch(
         }
     }
 }
+
+// ==============================================================================
+// 12. Margin Ledger Components
+// ==============================================================================
+@Composable
+fun MarginLedgerMeter(
+    ledgerState: MarginLedgerState,
+    modifier: Modifier = Modifier
+) {
+    val usageRatio = if (ledgerState.totalAccount > 0.0) {
+        ledgerState.allocatedMargin / ledgerState.totalAccount
+    } else 0.0
+
+    val isAlert = usageRatio > 0.8
+    val progressColor = if (isAlert) OledPalette.SignalRed else OledPalette.SignalGreen
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        backgroundColor = OledPalette.Surface,
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("LEDGER DE MARGEM GLOBAL", color = OledPalette.TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Total: $${ledgerState.totalAccount}", color = OledPalette.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Box(
+                    modifier = Modifier.size(50.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        progress = usageRatio.toFloat(),
+                        color = progressColor,
+                        strokeWidth = 6.dp,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Text(
+                        text = "${(usageRatio * 100).roundToInt()}%",
+                        color = if (isAlert) OledPalette.SignalRed else OledPalette.TextPrimary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text("Alocado", color = OledPalette.TextSecondary, fontSize = 11.sp)
+                    Text("$${ledgerState.allocatedMargin}", color = progressColor, fontWeight = FontWeight.Bold)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Livre", color = OledPalette.TextSecondary, fontSize = 11.sp)
+                    Text("$${ledgerState.freeMargin}", color = OledPalette.TextPrimary, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            if (isAlert) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().pulsating(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = "Risco Alto",
+                        tint = OledPalette.SignalRed,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "RISCO EXTREMO: EXPOSIÇÃO > 80%",
+                        color = OledPalette.SignalRed,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ==============================================================================
+// 13. Multi-Bot Fleet Dashboard Components
+// ==============================================================================
+@Composable
+fun BotFleetDashboard(
+    uiState: OrchestratorUiState,
+    onToggleStatus: (String) -> Unit,
+    onStopBot: (String) -> Unit,
+    onSelectConfig: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        items(
+            items = uiState.bots,
+            key = { it.id } // Stable key to prevent full list recompositions!
+        ) { bot ->
+            BotStatusCard(
+                bot = bot,
+                onToggle = { onToggleStatus(bot.id) },
+                onStop = { onStopBot(bot.id) },
+                onConfigure = { onSelectConfig(bot.id) }
+            )
+        }
+    }
+}
+
+@Composable
+fun BotStatusCard(
+    bot: BotState,
+    onToggle: () -> Unit,
+    onStop: () -> Unit,
+    onConfigure: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var dragOffsetX by remember { mutableStateOf(0f) }
+    
+    val statusColor = when (bot.status) {
+        BotWorkerStatus.RUNNING -> OledPalette.SignalGreen
+        BotWorkerStatus.PAUSED -> OledPalette.SignalOrange
+        BotWorkerStatus.ERROR -> OledPalette.SignalRed
+    }
+
+    val pnlColor = if (bot.pnl >= 0.0) OledPalette.SignalGreen else OledPalette.SignalRed
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        if (kotlin.math.abs(dragOffsetX) > 250f) {
+                            coroutineScope.launch(Dispatchers.Default) {
+                                onStop()
+                            }
+                        }
+                        dragOffsetX = 0f
+                    },
+                    onHorizontalDrag = { _, dragAmount ->
+                        dragOffsetX += dragAmount
+                    }
+                )
+            }
+            .graphicsLayer {
+                translationX = dragOffsetX
+            },
+        backgroundColor = OledPalette.Surface,
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = bot.name,
+                        color = OledPalette.TextPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = bot.symbol,
+                        color = OledPalette.TextSecondary,
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(statusColor, shape = RoundedCornerShape(4.dp))
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = bot.status.name,
+                        color = statusColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("PnL CORRENTE", color = OledPalette.TextSecondary, fontSize = 11.sp)
+                    Text(
+                        text = (if (bot.pnl >= 0.0) "+$" else "-$") + kotlin.math.abs(bot.pnl),
+                        color = pnlColor,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            coroutineScope.launch(Dispatchers.Default) {
+                                onToggle()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            backgroundColor = OledPalette.Background,
+                            contentColor = OledPalette.TextPrimary
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = if (bot.status == BotWorkerStatus.RUNNING) "PAUSAR" else "RETOMAR",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            coroutineScope.launch(Dispatchers.Default) {
+                                onStop()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            backgroundColor = OledPalette.Background,
+                            contentColor = OledPalette.SignalRed
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "DESTRUIR",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Button(
+                        onClick = onConfigure,
+                        colors = ButtonDefaults.buttonColors(
+                            backgroundColor = OledPalette.Background,
+                            contentColor = OledPalette.SignalOrange
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "CONFIG",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==============================================================================
+// 14. Dynamic Form Builder Component
+// ==============================================================================
+@Composable
+fun DynamicFormBuilder(
+    bot: BotState,
+    onSave: (Map<String, String>) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val tempParams = remember(bot.id) { 
+        bot.parameters.toMutableStateMap() 
+    }
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        backgroundColor = OledPalette.Surface,
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "AJUSTAR PARÂMETROS: ${bot.name}",
+                    color = OledPalette.TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "FECHAR",
+                    color = OledPalette.SignalRed,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { onClose() }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            tempParams.forEach { (key, value) ->
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                    Text(
+                        text = key.uppercase(),
+                        color = OledPalette.TextSecondary,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = value,
+                        onValueChange = { newValue ->
+                            tempParams[key] = newValue
+                        },
+                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                            textColor = OledPalette.TextPrimary,
+                            focusedBorderColor = OledPalette.SignalOrange,
+                            unfocusedBorderColor = OledPalette.Divider
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = {
+                    onSave(tempParams.toMap())
+                },
+                colors = ButtonDefaults.buttonColors(
+                    backgroundColor = OledPalette.SignalOrange,
+                    contentColor = OledPalette.Background
+                ),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "APLICAR ALTERAÇÕES DSL",
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+// ==============================================================================
+// 15. Market Depth (Visual Order Book with Depth Bars)
+// ==============================================================================
+@Composable
+fun MarketDepthView(
+    bids: List<Pair<Double, Double>>,
+    asks: List<Pair<Double, Double>>,
+    modifier: Modifier = Modifier
+) {
+    val maxVolume = remember(bids, asks) {
+        val maxBidVol = bids.maxOfOrNull { it.second } ?: 1.0
+        val maxAskVol = asks.maxOfOrNull { it.second } ?: 1.0
+        maxOf(maxBidVol, maxAskVol, 1.0)
+    }
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        backgroundColor = OledPalette.Surface,
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "LIVRO DE OFERTAS (MARKET DEPTH)",
+                color = OledPalette.TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            asks.take(5).reversed().forEach { (price, volume) ->
+                DepthRow(
+                    price = price,
+                    volume = volume,
+                    maxVolume = maxVolume,
+                    isBid = false
+                )
+            }
+
+            Divider(color = OledPalette.Divider, modifier = Modifier.padding(vertical = 6.dp))
+
+            bids.take(5).forEach { (price, volume) ->
+                DepthRow(
+                    price = price,
+                    volume = volume,
+                    maxVolume = maxVolume,
+                    isBid = true
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun DepthRow(
+    price: Double,
+    volume: Double,
+    maxVolume: Double,
+    isBid: Boolean
+) {
+    val barColor = if (isBid) OledPalette.SignalGreen.copy(alpha = 0.15f) else OledPalette.SignalRed.copy(alpha = 0.15f)
+    val textColor = if (isBid) OledPalette.SignalGreen else OledPalette.SignalRed
+    val fillRatio = (volume / maxVolume).coerceIn(0.0, 1.0).toFloat()
+
+    val tabularTextStyle = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontSize = 12.sp,
+        fontFeatureSettings = "tnum"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(24.dp)
+            .drawBehind {
+                val barWidth = size.width * fillRatio
+                drawRect(
+                    color = barColor,
+                    topLeft = Offset(if (isBid) 0f else size.width - barWidth, 0f),
+                    size = Size(barWidth, size.height)
+                )
+            }
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = String.format("%.2f", price),
+                color = textColor,
+                style = tabularTextStyle
+            )
+            Text(
+                text = String.format("%.4f", volume),
+                color = OledPalette.TextPrimary,
+                style = tabularTextStyle
+            )
+        }
+    }
+}
+
+// ==============================================================================
+// 16. Animated Price Ticker (Odometer Animation per digit)
+// ==============================================================================
+@OptIn(ExperimentalAnimationApi::class)
+@Composable
+fun AnimatedPriceTicker(
+    price: Double,
+    modifier: Modifier = Modifier,
+    color: Color = OledPalette.TextPrimary,
+    fontSize: TextUnit = 24.sp
+) {
+    val priceString = String.format("%.2f", price)
+    
+    val tabularTextStyle = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontSize = fontSize,
+        fontWeight = FontWeight.Bold,
+        fontFeatureSettings = "tnum"
+    )
+
+    Row(modifier = modifier) {
+        priceString.forEachIndexed { index, char ->
+            AnimatedContent(
+                targetState = char,
+                transitionSpec = {
+                    if (targetState > initialState) {
+                        slideInVertically { height -> -height } + fadeIn() with
+                                slideOutVertically { height -> height } + fadeOut()
+                    } else {
+                        slideInVertically { height -> height } + fadeIn() with
+                                slideOutVertically { height -> -height } + fadeOut()
+                    }.using(
+                        SizeTransform(clip = false)
+                    )
+                }
+            ) { targetChar ->
+                Text(
+                    text = targetChar.toString(),
+                    color = color,
+                    style = tabularTextStyle
+                )
+            }
+        }
+    }
+}
+
+
