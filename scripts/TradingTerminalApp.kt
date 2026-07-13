@@ -283,8 +283,9 @@ fun TradingTerminalScreen(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
+                // Mesmo padrão de estabilidade: valor primitivo em vez de provider lambda.
                 SwipeToConfirmKillSwitch(
-                    isBuyHaltedProvider = { state.isBuyHalted },
+                    isBuyHalted = state.isBuyHalted,
                     onConfirmed = {
                         hapticsManager.triggerFeedback(HapticPattern.EMERGENCY_KILL)
                         println("🚨 EMERGENCY CRYPTO KILL SWITCH CONFIRMED!")
@@ -535,15 +536,15 @@ fun HighFrequencyChart(
 private fun abs(value: Float): Float = if (value < 0) -value else value
 
 // ==============================================================================
-// 11. Componente de Kill Switch Deslizante (Mecânico com Leitura Adiada)
+// 11. Componente de Kill Switch Deslizante (parâmetro primitivo estável em vez de
+//    provider lambda — mesma correção aplicada aos demais componentes leves)
 // ==============================================================================
 @Composable
 fun SwipeToConfirmKillSwitch(
-    isBuyHaltedProvider: () -> Boolean,
+    isBuyHalted: Boolean,
     onConfirmed: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isBuyHalted = isBuyHaltedProvider()
     val width = 280.dp
     val dragSize = 64.dp
     val dragSizePx = with(LocalDensity.current) { dragSize.toPx() }
