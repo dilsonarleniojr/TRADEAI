@@ -104,13 +104,16 @@ class RiskManager:
         """
         # Desativa a posição imediatamente
         self.position['active'] = False
-        
+
+        # Fechar um SHORT exige recompra (BUY); fechar um LONG exige venda (SELL).
+        close_side = 'BUY' if self.position['side'] == 'SHORT' else 'SELL'
+
         if self.connector:
             try:
                 logger.warning(f"🚨 DISPARANDO LIQUIDAÇÃO DE RISCO REAL PARA {self.position['symbol']}...")
                 order = await self.connector.create_order(
                     symbol=self.position['symbol'],
-                    side='SELL',
+                    side=close_side,
                     type='MARKET',
                     quantity=self.position['qty']
                 )
@@ -121,7 +124,7 @@ class RiskManager:
             # Simula o envio de uma ordem a mercado em modo de teste off-line
             order = {
                 'timestamp_ns': time.perf_counter_ns(),
-                'side': 'SELL',
+                'side': close_side,
                 'type': 'MARKET',
                 'qty': self.position['qty'],
                 'price': trigger_price,
