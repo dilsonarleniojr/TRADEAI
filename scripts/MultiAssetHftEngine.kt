@@ -4,6 +4,10 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.PriorityBlockingQueue
 import java.util.concurrent.atomic.AtomicDouble
@@ -319,6 +323,105 @@ class BotFleetOrchestrator(val totalCapital: Double) {
     val usedMargins = mutableMapOf<String, Double>()
     val cronTriggers = mutableListOf<CronTrigger>()
     val eventTriggers = mutableListOf<EventTrigger>()
+
+    // Global settings feature toggles & variables
+    var isIcebergProtectionActive = true
+    var isAutoFailoverActive = true
+    var useHalfKellySizing = true
+    var historicalWinRate = 0.55
+    var twapDurationMinutes = 15
+
+    // State flows mirroring fleet status
+    private val _activeBots = MutableStateFlow<List<BotState>>(
+        listOf(
+            BotState(
+                id = "bot_1",
+                name = "ScalpingBTC",
+                symbol = "BTCUSDT",
+                pnl = 125.40,
+                status = BotWorkerStatus.RUNNING,
+                parameters = mapOf("gridLevels" to "10", "useKelly" to "true")
+            ),
+            BotState(
+                id = "bot_2",
+                name = "GridETH",
+                symbol = "ETHUSDT",
+                pnl = -45.20,
+                status = BotWorkerStatus.PAUSED,
+                parameters = mapOf("rsiPeriod" to "14", "buyThreshold" to "30")
+            ),
+            BotState(
+                id = "bot_3",
+                name = "MeanReversionSOL",
+                symbol = "SOLUSDT",
+                pnl = 0.0,
+                status = BotWorkerStatus.ERROR,
+                parameters = mapOf("emaFast" to "9", "emaSlow" to "21")
+            )
+        )
+    )
+    val activeBots: StateFlow<List<BotState>> = _activeBots.asStateFlow()
+
+    private val _marginLedger = MutableStateFlow(
+        MarginLedgerState(
+            totalAccount = totalCapital,
+            allocatedMargin = 750.0,
+            freeMargin = totalCapital - 750.0
+        )
+    )
+    val marginLedger: StateFlow<MarginLedgerState> = _marginLedger.asStateFlow()
+
+    fun toggleBotStatus(botId: String) {
+        _activeBots.update { currentList ->
+            currentList.map { bot ->
+                if (bot.id == botId) {
+                    val newStatus = when (bot.status) {
+                        BotWorkerStatus.RUNNING -> BotWorkerStatus.PAUSED
+                        BotWorkerStatus.PAUSED -> BotWorkerStatus.RUNNING
+                        BotWorkerStatus.ERROR -> BotWorkerStatus.RUNNING
+                    }
+                    bot.copy(status = newStatus)
+                } else {
+                    bot
+                }
+            }
+        }
+    }
+
+    fun stopBot(botId: String) {
+        _activeBots.update { currentList ->
+            currentList.filter { it.id != botId }
+        }
+        updateMarginLedger()
+    }
+
+    fun registerBot(botState: BotState, marginAllocation: Double) {
+        _activeBots.update { currentList ->
+            currentList + botState
+        }
+        updateMarginLedger()
+    }
+
+    fun updateBotParameters(botId: String, newParams: Map<String, String>) {
+        _activeBots.update { currentList ->
+            currentList.map { bot ->
+                if (bot.id == botId) {
+                    bot.copy(parameters = newParams)
+                } else {
+                    bot
+                }
+            }
+        }
+    }
+
+    private fun updateMarginLedger() {
+        val currentList = _activeBots.value
+        val newAllocated = currentList.size * 250.0
+        val free = totalCapital - newAllocated
+        _marginLedger.update { 
+            it.copy(allocatedMargin = newAllocated, freeMargin = free)
+        }
+    }
 
     data class CronTrigger(val timeStr: String, val action: () -> Unit, var lastRun: Double = 0.0)
     data class EventTrigger(val metricName: String, val operator: String, val value: Double, val action: () -> Unit)

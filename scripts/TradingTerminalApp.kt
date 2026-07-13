@@ -221,6 +221,52 @@ fun Modifier.pulsating(durationMs: Int = 1000): Modifier {
     return this.graphicsLayer { this.alpha = alpha }
 }
 
+@Immutable
+data class EngineSettingsState(
+    val isIcebergProtectionEnabled: Boolean = true,
+    val isAutoFailoverEnabled: Boolean = true,
+    val useHalfKellySizing: Boolean = true,
+    val historicalWinRate: Double = 0.55,
+    val twapDurationMinutes: Int = 15
+)
+
+class EngineSettingsViewModel : ViewModel() {
+    private val orchestrator = FleetContainer.orchestrator
+    private val _settingsState = MutableStateFlow(EngineSettingsState(
+        isIcebergProtectionEnabled = orchestrator.isIcebergProtectionActive,
+        isAutoFailoverEnabled = orchestrator.isAutoFailoverActive,
+        useHalfKellySizing = orchestrator.useHalfKellySizing,
+        historicalWinRate = orchestrator.historicalWinRate,
+        twapDurationMinutes = orchestrator.twapDurationMinutes
+    ))
+    val settingsState: StateFlow<EngineSettingsState> = _settingsState.asStateFlow()
+
+    fun toggleIcebergProtection(enabled: Boolean) {
+        _settingsState.update { it.copy(isIcebergProtectionEnabled = enabled) }
+        orchestrator.isIcebergProtectionActive = enabled
+    }
+
+    fun toggleAutoFailover(enabled: Boolean) {
+        _settingsState.update { it.copy(isAutoFailoverEnabled = enabled) }
+        orchestrator.isAutoFailoverActive = enabled
+    }
+
+    fun toggleHalfKelly(enabled: Boolean) {
+        _settingsState.update { it.copy(useHalfKellySizing = enabled) }
+        orchestrator.useHalfKellySizing = enabled
+    }
+
+    fun updateWinRate(rate: Double) {
+        _settingsState.update { it.copy(historicalWinRate = rate) }
+        orchestrator.historicalWinRate = rate
+    }
+
+    fun updateTwapDuration(minutes: Int) {
+        _settingsState.update { it.copy(twapDurationMinutes = minutes) }
+        orchestrator.twapDurationMinutes = minutes
+    }
+}
+
 // ==============================================================================
 // 4. Injeção de Dependências (DI Koin Module Structure)
 // ==============================================================================
@@ -232,6 +278,7 @@ interface KoinModuleBinder {
 fun tradingAppModule(binder: KoinModuleBinder) {
     binder.single { HapticsManager() }
     binder.viewModel { TradingViewModel() }
+    binder.viewModel { EngineSettingsViewModel() }
 }
 
 // ==============================================================================
@@ -244,14 +291,32 @@ interface NavGraphBuilder {
 class AppNavigation(
     private val builder: NavGraphBuilder,
     private val viewModel: TradingViewModel,
-    private val hapticsManager: HapticsManager
+    private val hapticsManager: HapticsManager,
+    private val settingsViewModel: EngineSettingsViewModel
 ) {
     fun registerRoutes() {
         builder.composable("trading_terminal") {
-            TradingTerminalScreen(viewModel = viewModel, hapticsManager = hapticsManager)
+            TradingTerminalScreen(
+                viewModel = viewModel,
+                hapticsManager = hapticsManager,
+                settingsViewModel = settingsViewModel
+            )
+        }
+        builder.composable("engine_settings") {
+            EngineSettingsScreen(viewModel = settingsViewModel)
         }
     }
 }
+
+// ==============================================================================
+// 6. Tela Principal do Terminal HFT com Skeletons de Estado Inicial
+// ==============================================================================
+// Decisions log model
+data class DecisionLog(
+    val timestamp: Long,
+    val message: String,
+    val isRejected: Boolean
+)
 
 // ==============================================================================
 // 6. Tela Principal do Terminal HFT com Skeletons de Estado Inicial
@@ -261,15 +326,47 @@ class AppNavigation(
 fun TradingTerminalScreen(
     viewModel: TradingViewModel,
     hapticsManager: HapticsManager,
+    settingsViewModel: EngineSettingsViewModel,
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
+    val settingsState by settingsViewModel.settingsState.collectAsState()
     val sheetState = rememberModalBottomSheetState(initialValue = ModalBottomSheetValue.Hidden)
     val coroutineScope = rememberCoroutineScope()
 
     val orchestratorViewModel = remember { OrchestratorViewModel() }
     val orchestratorState by orchestratorViewModel.uiState.collectAsState()
-    var currentTab by remember { mutableStateOf(0) } // 0: Terminal HFT, 1: Fleet Orchestrator
+    var currentTab by remember { mutableStateOf(0) } // 0: Terminal HFT, 1: Fleet Orchestrator, 2: Settings
+    var showCreateBotDialog by remember { mutableStateOf(false) }
+
+    val decisionLogs = remember {
+        listOf(
+            DecisionLog(System.currentTimeMillis() - 25000, "Ordem Limitada BTC cancelada: Toxicidade detectada (Spoofing)", true),
+            DecisionLog(System.currentTimeMillis() - 18000, "Ordem Compra ETH preenchida: Iceberg institutional block sweep", false),
+            DecisionLog(System.currentTimeMillis() - 12000, "Entrada Rejeitada NEAR: ATR Volatilidade excede limiar do VaR (Veto)", true),
+            DecisionLog(System.currentTimeMillis() - 5000, "Sizing recalculado Half-Kelly: Win Rate 55% -> 12.5% margem", false)
+        )
+    }
+
+    if (showCreateBotDialog) {
+        NewBotCreationDialog(
+            onDismiss = { showCreateBotDialog = false },
+            onCreate = { name, symbol, strategy, parameters, margin ->
+                val newBot = BotState(
+                    id = "bot_${System.currentTimeMillis()}",
+                    name = name,
+                    symbol = symbol,
+                    pnl = 0.0,
+                    status = BotWorkerStatus.RUNNING,
+                    parameters = parameters
+                )
+                // Register bot to backend orchestrator instance
+                FleetContainer.orchestrator.registerBot(newBot, margin)
+                showCreateBotDialog = false
+                toast = "Bot $name registrado com margem $$margin"
+            }
+        )
+    }
 
     ModalBottomSheetLayout(
         sheetState = sheetState,
@@ -289,177 +386,222 @@ fun TradingTerminalScreen(
         Column(
             modifier = modifier
                 .fillMaxSize()
-                .background(OledPalette.Background)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .background(OledPalette.Background),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            // Tab Selection Header
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(20.dp)
+            // Persistent Telemetry Ribbon at top
+            TelemetryRibbon(state = state, settingsState = settingsState, orchestratorState = orchestratorState)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(
-                    text = "TERMINAL HFT",
-                    color = if (currentTab == 0) OledPalette.SignalOrange else OledPalette.TextSecondary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.clickable { currentTab = 0 }
-                )
-                Text(
-                    text = "FLEET ORCHESTRATOR",
-                    color = if (currentTab == 1) OledPalette.SignalOrange else OledPalette.TextSecondary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.clickable { currentTab = 1 }
-                )
-            }
-
-            if (currentTab == 0) {
-                // ==========================================
-                // HFT Terminal View
-                // ==========================================
+                // Tab Selection Header
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
-                    Column {
-                        Text(
-                            text = state.symbol,
-                            color = OledPalette.TextSecondary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        AnimatedPriceTicker(
-                            price = state.currentPrice,
-                            fontSize = 24.sp
-                        )
-                    }
-
-                    LatencyIndicator(
-                        latency = state.apiLatencyMs,
-                        isConnected = state.isWebSocketConnected,
-                        isAnomaly = state.isAnomalyDetected
+                    Text(
+                        text = "TERMINAL HFT",
+                        color = if (currentTab == 0) OledPalette.SignalOrange else OledPalette.TextSecondary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.clickable { currentTab = 0 }
+                    )
+                    Text(
+                        text = "FLEET ORCHESTRATOR",
+                        color = if (currentTab == 1) OledPalette.SignalOrange else OledPalette.TextSecondary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.clickable { currentTab = 1 }
+                    )
+                    Text(
+                        text = "ENGINE SETTINGS",
+                        color = if (currentTab == 2) OledPalette.SignalOrange else OledPalette.TextSecondary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.clickable { currentTab = 2 }
                     )
                 }
 
-                if (state.candles.isEmpty() || state.currentPrice == 0.0) {
+                if (currentTab == 0) {
+                    // ==========================================
+                    // HFT Terminal View
+                    // ==========================================
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = state.symbol,
+                                color = OledPalette.TextSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            AnimatedPriceTicker(
+                                price = state.currentPrice,
+                                fontSize = 24.sp
+                            )
+                        }
+
+                        LatencyIndicator(
+                            latency = state.apiLatencyMs,
+                            isConnected = state.isWebSocketConnected,
+                            isAnomaly = state.isAnomalyDetected
+                        )
+                    }
+
+                    if (state.candles.isEmpty() || state.currentPrice == 0.0) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .background(OledPalette.Surface, shape = RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(color = OledPalette.SignalOrange)
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "ASSINANDO WEBSOCKET FEED...",
+                                    color = OledPalette.TextSecondary,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold
+                               )
+                            }
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            HighFrequencyChart(
+                                candlesProvider = { state.candles },
+                                currentPriceProvider = { state.currentPrice },
+                                modifier = Modifier
+                                    .weight(0.50f)
+                                    .fillMaxWidth()
+                            )
+
+                            val mockBids = remember(state.currentPrice) {
+                                listOf(
+                                    Pair(state.currentPrice - 1.0, 1.25),
+                                    Pair(state.currentPrice - 2.0, 4.80),
+                                    Pair(state.currentPrice - 3.0, 10.50),
+                                    Pair(state.currentPrice - 4.0, 3.10),
+                                    Pair(state.currentPrice - 5.0, 7.65)
+                                )
+                            }
+                            val mockAsks = remember(state.currentPrice) {
+                                listOf(
+                                    Pair(state.currentPrice + 1.0, 0.95),
+                                    Pair(state.currentPrice + 2.0, 5.15),
+                                    Pair(state.currentPrice + 3.0, 8.40),
+                                    Pair(state.currentPrice + 4.0, 2.70),
+                                    Pair(state.currentPrice + 5.0, 12.05)
+                                )
+                            }
+                            MarketDepthView(
+                                bids = mockBids,
+                                asks = mockAsks,
+                                modifier = Modifier.weight(0.50f)
+                            )
+                        }
+                    }
+
+                    // Decisions logs console
+                    DecisionsAuditConsole(
+                        logs = decisionLogs,
+                        modifier = Modifier.height(120.dp)
+                    )
+
+                    QuickPositionCard(
+                        size = state.currentPositionSize,
+                        pnl = state.currentPnL,
+                        onClick = { coroutineScope.launch { sheetState.show() } },
+                        onDoubleTap = {
+                            println("🎯 DOUBLE TAP DETECTED: Open SL input modal!")
+                        }
+                    )
+
                     Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .background(OledPalette.Surface, shape = RoundedCornerShape(12.dp)),
+                        modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = OledPalette.SignalOrange)
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "ASSINANDO WEBSOCKET FEED...",
-                                color = OledPalette.TextSecondary,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                } else {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        HighFrequencyChart(
-                            candlesProvider = { state.candles },
-                            currentPriceProvider = { state.currentPrice },
-                            modifier = Modifier
-                                .weight(0.55f)
-                                .fillMaxWidth()
-                        )
-
-                        val mockBids = remember(state.currentPrice) {
-                            listOf(
-                                Pair(state.currentPrice - 1.0, 1.25),
-                                Pair(state.currentPrice - 2.0, 4.80),
-                                Pair(state.currentPrice - 3.0, 10.50),
-                                Pair(state.currentPrice - 4.0, 3.10),
-                                Pair(state.currentPrice - 5.0, 7.65)
-                            )
-                        }
-                        val mockAsks = remember(state.currentPrice) {
-                            listOf(
-                                Pair(state.currentPrice + 1.0, 0.95),
-                                Pair(state.currentPrice + 2.0, 5.15),
-                                Pair(state.currentPrice + 3.0, 8.40),
-                                Pair(state.currentPrice + 4.0, 2.70),
-                                Pair(state.currentPrice + 5.0, 12.05)
-                            )
-                        }
-                        MarketDepthView(
-                            bids = mockBids,
-                            asks = mockAsks,
-                            modifier = Modifier.weight(0.45f)
-                        )
-                    }
-                }
-
-                QuickPositionCard(
-                    size = state.currentPositionSize,
-                    pnl = state.currentPnL,
-                    onClick = { coroutineScope.launch { sheetState.show() } },
-                    onDoubleTap = {
-                        println("🎯 DOUBLE TAP DETECTED: Open numerical keyboard to adjust Stop-Loss!")
-                    }
-                )
-
-                Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    SwipeToConfirmKillSwitch(
-                        isBuyHalted = state.isBuyHalted,
-                        onConfirmed = {
-                            hapticsManager.triggerFeedback(HapticPattern.EMERGENCY_KILL)
-                            println("🚨 EMERGENCY CRYPTO KILL SWITCH CONFIRMED!")
-                        }
-                    )
-                }
-            } else {
-                // ==========================================
-                // Fleet Orchestrator Dashboard View
-                // ==========================================
-                MarginLedgerMeter(ledgerState = orchestratorState.marginLedger)
-
-                if (orchestratorState.isFormVisible && orchestratorState.selectedBotForConfig != null) {
-                    val selectedBot = orchestratorState.bots.find { it.id == orchestratorState.selectedBotForConfig }
-                    if (selectedBot != null) {
-                        DynamicFormBuilder(
-                            bot = selectedBot,
-                            onSave = { newParams ->
-                                orchestratorViewModel.updateBotParameters(selectedBot.id, newParams)
-                                orchestratorViewModel.selectBotForConfig(null)
-                            },
-                            onClose = {
-                                orchestratorViewModel.selectBotForConfig(null)
+                        SwipeToConfirmKillSwitch(
+                            isBuyHalted = state.isBuyHalted,
+                            onConfirmed = {
+                                hapticsManager.triggerFeedback(HapticPattern.EMERGENCY_KILL)
+                                println("🚨 EMERGENCY CRYPTO KILL SWITCH CONFIRMED!")
                             }
                         )
                     }
-                }
+                } else if (currentTab == 1) {
+                    // ==========================================
+                    // Fleet Orchestrator Dashboard View
+                    // ==========================================
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        MarginLedgerMeter(ledgerState = orchestratorState.marginLedger, modifier = Modifier.weight(1f))
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Button(
+                            onClick = { showCreateBotDialog = true },
+                            colors = ButtonDefaults.buttonColors(backgroundColor = OledPalette.SignalOrange, contentColor = OledPalette.Background),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("+ CRIAR BOT", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+                    }
 
-                BotFleetDashboard(
-                    uiState = orchestratorState,
-                    onToggleStatus = { botId -> orchestratorViewModel.toggleBotStatus(botId) },
-                    onStopBot = { botId -> orchestratorViewModel.stopBot(botId) },
-                    onSelectConfig = { botId -> orchestratorViewModel.selectBotForConfig(botId) },
-                    modifier = Modifier.weight(1f)
-                )
+                    if (orchestratorState.isFormVisible && orchestratorState.selectedBotForConfig != null) {
+                        val selectedBot = orchestratorState.bots.find { it.id == orchestratorState.selectedBotForConfig }
+                        if (selectedBot != null) {
+                            DynamicFormBuilder(
+                                bot = selectedBot,
+                                onSave = { newParams ->
+                                    orchestratorViewModel.updateBotParameters(selectedBot.id, newParams)
+                                    orchestratorViewModel.selectBotForConfig(null)
+                                },
+                                onClose = {
+                                    orchestratorViewModel.selectBotForConfig(null)
+                                }
+                            )
+                        }
+                    }
+
+                    BotFleetDashboard(
+                        uiState = orchestratorState,
+                        onToggleStatus = { botId -> orchestratorViewModel.toggleBotStatus(botId) },
+                        onStopBot = { botId -> orchestratorViewModel.stopBot(botId) },
+                        onSelectConfig = { botId -> orchestratorViewModel.selectBotForConfig(botId) },
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    // ==========================================
+                    // Engine Settings View
+                    // ==========================================
+                    EngineSettingsScreen(viewModel = settingsViewModel)
+                }
             }
         }
     }
 }
+
+// Global toast indicator helper
+var toast: String = ""
 
 // ==============================================================================
 // 7. Latency Indicator (Componente isolado; parâmetros primitivos estáveis permitem
@@ -1297,6 +1439,421 @@ fun AnimatedPriceTicker(
             }
         }
     }
+}
+
+// ==============================================================================
+// 17. Telemetry Ribbon (Barra de Status Persistente)
+// ==============================================================================
+@Composable
+fun TelemetryRibbon(
+    state: TradingUiState,
+    settingsState: EngineSettingsState,
+    orchestratorState: OrchestratorUiState,
+    modifier: Modifier = Modifier
+) {
+    TopAppBar(
+        backgroundColor = OledPalette.Surface,
+        contentColor = OledPalette.TextPrimary,
+        elevation = 4.dp,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .background(OledPalette.SignalOrange, shape = RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("IA", color = OledPalette.Background, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "CRYPTO IA PRO",
+                    color = OledPalette.TextPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                LatencyIndicator(
+                    latency = state.apiLatencyMs,
+                    isConnected = state.isWebSocketConnected,
+                    isAnomaly = state.isAnomalyDetected
+                )
+
+                val regimeText = if (state.candles.size > 14) "TRENDING" else "CHAOTIC"
+                val regimeColor = if (regimeText == "TRENDING") OledPalette.SignalGreen else OledPalette.SignalOrange
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(6.dp).background(regimeColor, shape = RoundedCornerShape(3.dp)))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "REGIME: $regimeText",
+                        color = regimeColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+
+                val relativeATR = 0.024
+                val totalVaR = orchestratorState.marginLedger.allocatedMargin * relativeATR * 1.65
+                val isVaRHigh = totalVaR > orchestratorState.marginLedger.totalAccount * 0.1
+                val varColor = if (isVaRHigh) OledPalette.SignalRed else OledPalette.SignalGreen
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(6.dp).background(varColor, shape = RoundedCornerShape(3.dp)))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "VaR: $${String.format("%.2f", totalVaR)} (${if (isVaRHigh) "PERIGO" else "BAIXO"})",
+                        color = varColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ==============================================================================
+// 18. Console de Auditoria de Decisões (Logs de Recusa/Aceite)
+// ==============================================================================
+@Composable
+fun DecisionsAuditConsole(
+    logs: List<DecisionLog>,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        backgroundColor = OledPalette.Surface,
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "CONSOLE DE AUDITORIA DE DECISÕES (LOGS)",
+                color = OledPalette.SignalOrange,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(logs) { log ->
+                    val color = if (log.isRejected) OledPalette.SignalRed else OledPalette.SignalGreen
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = log.message,
+                            color = color,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date(log.timestamp)),
+                            color = OledPalette.TextSecondary,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==============================================================================
+// 19. Engine Settings & Feature Toggles Screen
+// ==============================================================================
+@Composable
+fun EngineSettingsScreen(
+    viewModel: EngineSettingsViewModel,
+    modifier: Modifier = Modifier
+) {
+    val settingsState by viewModel.settingsState.collectAsState()
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(OledPalette.Background),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "CONFIGURAÇÕES GLOBAIS DE EXECUÇÃO",
+            color = OledPalette.SignalOrange,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            backgroundColor = OledPalette.Surface,
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("ATIVAR PROTEÇÃO ICEBERG", color = OledPalette.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Rastreia ordens ocultas institucionais e previne sweep.", color = OledPalette.TextSecondary, fontSize = 11.sp)
+                    }
+                    Switch(
+                        checked = settingsState.isIcebergProtectionEnabled,
+                        onCheckedChange = { viewModel.toggleIcebergProtection(it) },
+                        colors = SwitchDefaults.colors(checkedThumbColor = OledPalette.SignalOrange)
+                    )
+                }
+
+                Divider(color = OledPalette.Divider)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("ATIVAR FAILOVER AUTOMÁTICO", color = OledPalette.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Redireciona endpoints em caso de anomalia de latência.", color = OledPalette.TextSecondary, fontSize = 11.sp)
+                    }
+                    Switch(
+                        checked = settingsState.isAutoFailoverEnabled,
+                        onCheckedChange = { viewModel.toggleAutoFailover(it) },
+                        colors = SwitchDefaults.colors(checkedThumbColor = OledPalette.SignalOrange)
+                    )
+                }
+
+                Divider(color = OledPalette.Divider)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("USAR HALF-KELLY PARA SIZING", color = OledPalette.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Reduz a fração Kelly pela metade para controle de ruído.", color = OledPalette.TextSecondary, fontSize = 11.sp)
+                    }
+                    Switch(
+                        checked = settingsState.useHalfKellySizing,
+                        onCheckedChange = { viewModel.toggleHalfKelly(it) },
+                        colors = SwitchDefaults.colors(checkedThumbColor = OledPalette.SignalOrange)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ==============================================================================
+// 20. Diálogo de Criação de Novo Bot com injeção de parâmetros dinâmica (DSL)
+// ==============================================================================
+@Composable
+fun NewBotCreationDialog(
+    onDismiss: () -> Unit,
+    onCreate: (name: String, symbol: String, strategy: String, parameters: Map<String, String>, margin: Double) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var symbol by remember { mutableStateOf("BTCUSDT") }
+    var strategy by remember { mutableStateOf("AI") }
+    var margin by remember { mutableStateOf("250.0") }
+
+    // Dynamic fields depending on strategy type
+    var rsiPeriod by remember { mutableStateOf("14") }
+    var rsiBuyThreshold by remember { mutableStateOf("30") }
+    var rsiSellThreshold by remember { mutableStateOf("70") }
+
+    var emaFast by remember { mutableStateOf("9") }
+    var emaSlow by remember { mutableStateOf("21") }
+
+    var historicalWinRate by remember { mutableStateOf("0.55") }
+    var twapDurationMinutes by remember { mutableStateOf("15") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        backgroundColor = OledPalette.Surface,
+        title = {
+            Text(
+                text = "REGISTRAR NOVA ESTRATÉGIA",
+                color = OledPalette.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Nome do Bot (opcional)", color = OledPalette.TextSecondary) },
+                    colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Strategy selector
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("AI", "RSI", "MACD", "KELLY", "TWAP").forEach { s ->
+                        val selected = strategy == s
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(if (selected) OledPalette.SignalOrange else OledPalette.Background, shape = RoundedCornerShape(4.dp))
+                                .clickable { strategy = s }
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = s,
+                                color = if (selected) OledPalette.Background else OledPalette.TextSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = symbol,
+                    onValueChange = { symbol = it },
+                    label = { Text("Símbolo (Par)", color = OledPalette.TextSecondary) },
+                    colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = margin,
+                    onValueChange = { margin = it },
+                    label = { Text("Margem Alocada ($)", color = OledPalette.TextSecondary) },
+                    colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Dynamic param rendering logic (DSL)
+                if (strategy == "KELLY") {
+                    OutlinedTextField(
+                        value = historicalWinRate,
+                        onValueChange = { historicalWinRate = it },
+                        label = { Text("Win Rate Histórico (ex: 0.55)", color = OledPalette.TextSecondary) },
+                        colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else if (strategy == "TWAP") {
+                    OutlinedTextField(
+                        value = twapDurationMinutes,
+                        onValueChange = { twapDurationMinutes = it },
+                        label = { Text("Duração em Minutos (ex: 15)", color = OledPalette.TextSecondary) },
+                        colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else if (strategy == "RSI") {
+                    OutlinedTextField(
+                        value = rsiPeriod,
+                        onValueChange = { rsiPeriod = it },
+                        label = { Text("Período RSI", color = OledPalette.TextSecondary) },
+                        colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = rsiBuyThreshold,
+                        onValueChange = { rsiBuyThreshold = it },
+                        label = { Text("Compra RSI (<)", color = OledPalette.TextSecondary) },
+                        colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = rsiSellThreshold,
+                        onValueChange = { rsiSellThreshold = it },
+                        label = { Text("Venda RSI (>)", color = OledPalette.TextSecondary) },
+                        colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else if (strategy == "MACD") {
+                    OutlinedTextField(
+                        value = emaFast,
+                        onValueChange = { emaFast = it },
+                        label = { Text("EMA Rápida", color = OledPalette.TextSecondary) },
+                        colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = emaSlow,
+                        onValueChange = { emaSlow = it },
+                        label = { Text("EMA Lenta", color = OledPalette.TextSecondary) },
+                        colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val finalParams = when (strategy) {
+                        "KELLY" -> mapOf("winRate" to historicalWinRate, "useKelly" to "true")
+                        "TWAP" -> mapOf("durationMinutes" to twapDurationMinutes)
+                        "RSI" -> mapOf("rsiPeriod" to rsiPeriod, "buyThreshold" to rsiBuyThreshold, "sellThreshold" to rsiSellThreshold)
+                        "MACD" -> mapOf("emaFast" to emaFast, "emaSlow" to emaSlow)
+                        else -> mapOf("confidence" to "75")
+                    }
+                    onCreate(
+                        name.ifBlank { "${strategy}_${symbol}" },
+                        symbol,
+                        strategy,
+                        finalParams,
+                        margin.toDoubleOrNull() ?: 250.0
+                    )
+                },
+                colors = ButtonDefaults.buttonColors(backgroundColor = OledPalette.SignalOrange)
+            ) {
+                Text("REGISTRAR", color = OledPalette.Background)
+            }
+        },
+        dismissButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(backgroundColor = OledPalette.Surface)
+            ) {
+                Text("CANCELAR", color = OledPalette.TextPrimary)
+            }
+        }
+    )
 }
 
 
