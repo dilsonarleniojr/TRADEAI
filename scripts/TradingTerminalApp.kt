@@ -1032,9 +1032,9 @@ fun BotFleetDashboard(
         ) { bot ->
             BotStatusCard(
                 bot = bot,
-                onToggle = { onToggleStatus(bot.id) },
-                onStop = { onStopBot(bot.id) },
-                onConfigure = { onSelectConfig(bot.id) }
+                onToggle = onToggleStatus,
+                onStop = onStopBot,
+                onConfigure = onSelectConfig
             )
         }
     }
@@ -1043,9 +1043,9 @@ fun BotFleetDashboard(
 @Composable
 fun BotStatusCard(
     bot: BotState,
-    onToggle: () -> Unit,
-    onStop: () -> Unit,
-    onConfigure: () -> Unit,
+    onToggle: (String) -> Unit,
+    onStop: (String) -> Unit,
+    onConfigure: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -1067,7 +1067,7 @@ fun BotStatusCard(
                     onDragEnd = {
                         if (kotlin.math.abs(dragOffsetX) > 250f) {
                             coroutineScope.launch(Dispatchers.Default) {
-                                onStop()
+                                onStop(bot.id)
                             }
                         }
                         dragOffsetX = 0f
@@ -1142,7 +1142,7 @@ fun BotStatusCard(
                     Button(
                         onClick = {
                             coroutineScope.launch(Dispatchers.Default) {
-                                onToggle()
+                                onToggle(bot.id)
                             }
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -1162,7 +1162,7 @@ fun BotStatusCard(
                     Button(
                         onClick = {
                             coroutineScope.launch(Dispatchers.Default) {
-                                onStop()
+                                onStop(bot.id)
                             }
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -1180,7 +1180,7 @@ fun BotStatusCard(
                     }
 
                     Button(
-                        onClick = onConfigure,
+                        onClick = { onConfigure(bot.id) },
                         colors = ButtonDefaults.buttonColors(
                             backgroundColor = OledPalette.Background,
                             contentColor = OledPalette.SignalOrange
@@ -1525,6 +1525,9 @@ fun TelemetryRibbon(
     }
 }
 
+// Formatador estático reutilizável para logs para evitar alocação de objetos no loop de renderização
+private val logTimeFormatter = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+
 // ==============================================================================
 // 18. Console de Auditoria de Decisões (Logs de Recusa/Aceite)
 // ==============================================================================
@@ -1552,8 +1555,17 @@ fun DecisionsAuditConsole(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                items(logs) { log ->
+                items(
+                    items = logs,
+                    key = { it.timestamp } // Chave estável para evitar recomposição desnecessária
+                ) { log ->
                     val color = if (log.isRejected) OledPalette.SignalRed else OledPalette.SignalGreen
+                    
+                    // Pre-format sem alocar novos SimpleDateFormat no loop
+                    val formattedTime = remember(log.timestamp) {
+                        logTimeFormatter.format(java.util.Date(log.timestamp))
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -1567,7 +1579,7 @@ fun DecisionsAuditConsole(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = java.text.SimpleDateFormat("HH:mm:ss").format(java.util.Date(log.timestamp)),
+                            text = formattedTime,
                             color = OledPalette.TextSecondary,
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace
