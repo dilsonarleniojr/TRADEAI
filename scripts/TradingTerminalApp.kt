@@ -1678,28 +1678,199 @@ fun EngineSettingsScreen(
 }
 
 // ==============================================================================
-// 20. Diálogo de Criação de Novo Bot com injeção de parâmetros dinâmica (DSL)
+// 20. Auto-Tuner ViewModel + State Machine (UI → Background Engine Pipeline)
 // ==============================================================================
+
+/** Estado da máquina de estados do Auto-Tuner. */
+sealed class AutoTuneState {
+    /** Aguardando o usuário clicar o botão. */
+    object Idle : AutoTuneState()
+
+    /** Rodando otimização em background. */
+    data class Running(
+        val progress: Float,           // 0.0..1.0
+        val combosCompleted: Int,
+        val totalCombos: Int,
+        val currentPhase: String = "Varrendo combinações..."
+    ) : AutoTuneState()
+
+    /** Otimização concluída com sucesso. */
+    data class Complete(val result: TunedParameters) : AutoTuneState()
+
+    /** Erro durante a otimização. */
+    data class Error(val message: String) : AutoTuneState()
+}
+
+/**
+ * ViewModel dedicado ao Auto-Tuner.
+ * Garante que o backtest massivo rode em [Dispatchers.Default], nunca na UI thread.
+ */
+class AutoTunerViewModel : ViewModel() {
+    private val _autoTuneState = MutableStateFlow<AutoTuneState>(AutoTuneState.Idle)
+    val autoTuneState: StateFlow<AutoTuneState> = _autoTuneState.asStateFlow()
+
+    private val engine = AutoTunerEngine()
+    private var tuningJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Inicia a otimização assíncrona para o par e estratégia fornecidos.
+     * Cancela automaticamente qualquer otimização anterior em andamento.
+     *
+     * @param symbol     Par a otimizar (ex: "BTCUSDT")
+     * @param strategy   Estratégia selecionada ("AI", "RSI", "MACD", etc.)
+     * @param windowDays Janela de otimização (7, 14 ou 30 dias)
+     */
+    fun startAutoTune(
+        symbol: String,
+        strategy: String,
+        windowDays: Int = AutoTunerEngine.DEFAULT_WINDOW_DAYS
+    ) {
+        tuningJob?.cancel()
+        _autoTuneState.value = AutoTuneState.Running(0f, 0, 1, "Preparando dados históricos...")
+
+        tuningJob = viewModelScope.launch(Dispatchers.Default) {
+            try {
+                // ─────────────────────────────────────────────────────────────────
+                // Fase 1: Gerar / buscar dados históricos
+                // Em produção, substituir por: HistoricalDataProvider.fetch(symbol, windowDays)
+                // ─────────────────────────────────────────────────────────────────
+                val ticksPerDay = 1440   // 1 candle de 1min por tick
+                val totalTicks  = ticksPerDay * windowDays
+                val basePrice   = if (symbol.startsWith("BTC")) 60000.0 else 3000.0
+                val history = buildSyntheticHistory(symbol, basePrice, totalTicks)
+
+                _autoTuneState.value = AutoTuneState.Running(
+                    progress         = 0.05f,
+                    combosCompleted  = 0,
+                    totalCombos      = 1,
+                    currentPhase     = "Iniciando Walk-Forward (janela ${windowDays}d)..."
+                )
+
+                // ─────────────────────────────────────────────────────────────────
+                // Fase 2: Otimização combinatória com walk-forward + anti-overfitting
+                // ─────────────────────────────────────────────────────────────────
+                val result = engine.optimizeParametersAsync(
+                    scope       = this,
+                    symbol      = symbol,
+                    history     = history,
+                    orderBook   = null,   // Usa mock com muros de liquidez realistas
+                    windowDays  = windowDays,
+                    onProgress  = { done, total ->
+                        _autoTuneState.value = AutoTuneState.Running(
+                            progress        = 0.05f + (done.toFloat() / total.toFloat()) * 0.90f,
+                            combosCompleted = done,
+                            totalCombos     = total,
+                            currentPhase    = when {
+                                done < total / 3   -> "Walk-Forward in-sample ($done/$total)..."
+                                done < total * 2/3 -> "Testando out-of-sample ($done/$total)..."
+                                else               -> "Aplicando penalidades anti-overfitting..."
+                            }
+                        )
+                    }
+                )
+
+                _autoTuneState.value = AutoTuneState.Complete(result)
+
+            } catch (e: CancellationException) {
+                _autoTuneState.value = AutoTuneState.Idle
+            } catch (e: Exception) {
+                _autoTuneState.value = AutoTuneState.Error("Erro na otimização: ${e.message}")
+                println("❌ [AutoTunerViewModel] Exception: ${e.message}")
+                e.printStackTrace()
+            }
+        }
+    }
+
+    /** Reset para o estado Idle (ex: trocar de símbolo ou estratégia). */
+    fun reset() {
+        tuningJob?.cancel()
+        _autoTuneState.value = AutoTuneState.Idle
+    }
+
+    /**
+     * Gera histórico sintético mas estatisticamente realista via Geometric Brownian Motion.
+     * Em produção: substituir por chamada à Binance klines REST API.
+     */
+    private fun buildSyntheticHistory(symbol: String, basePrice: Double, totalTicks: Int): List<TickData> {
+        val rng = java.util.Random(symbol.hashCode().toLong())
+        val drift = 0.00005
+        val vol   = 0.0008
+        var price = basePrice
+        return List(totalTicks) { i ->
+            val shock = rng.nextGaussian() * vol + drift
+            price *= (1.0 + shock)
+            // Inserir regime de tendência e reversão para variedade
+            if (i % 200 == 0) price *= if (rng.nextBoolean()) 1.005 else 0.995
+            TickData(
+                symbol    = symbol,
+                price     = price,
+                volume    = 1.0 + rng.nextDouble() * 5.0,
+                timestamp = System.currentTimeMillis() - (totalTicks - i) * 60_000L
+            )
+        }
+    }
+}
+
+// ==============================================================================
+// 21. Diálogo de Criação de Novo Bot com Auto-Tuner Integrado (v2.0)
+// ==============================================================================
+
+/**
+ * Diálogo completo de criação de bot com botão "AUTO-TUNE ⚡" assíncrono.
+ *
+ * Fluxo:
+ *  1. Usuário seleciona símbolo e estratégia
+ *  2. Clica "AUTO-TUNE ⚡"
+ *  3. ViewModel lança otimização em Dispatchers.Default
+ *  4. Progress bar exibe progresso (0..1240 combinações)
+ *  5. Ao completar: campos preenchidos automaticamente + card de resultados
+ */
 @Composable
 fun NewBotCreationDialog(
     onDismiss: () -> Unit,
     onCreate: (name: String, symbol: String, strategy: String, parameters: Map<String, String>, margin: Double) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var symbol by remember { mutableStateOf("BTCUSDT") }
+    val autoTunerViewModel = remember { AutoTunerViewModel() }
+    val autoTuneState by autoTunerViewModel.autoTuneState.collectAsState()
+
+    var name     by remember { mutableStateOf("") }
+    var symbol   by remember { mutableStateOf("BTCUSDT") }
     var strategy by remember { mutableStateOf("AI") }
-    var margin by remember { mutableStateOf("250.0") }
+    var margin   by remember { mutableStateOf("250.0") }
 
-    // Dynamic fields depending on strategy type
-    var rsiPeriod by remember { mutableStateOf("14") }
-    var rsiBuyThreshold by remember { mutableStateOf("30") }
+    // Parâmetros de indicadores (preenchíveis pelo Auto-Tuner)
+    var rsiPeriod        by remember { mutableStateOf("14") }
+    var rsiBuyThreshold  by remember { mutableStateOf("30") }
     var rsiSellThreshold by remember { mutableStateOf("70") }
+    var emaFast          by remember { mutableStateOf("9") }
+    var emaSlow          by remember { mutableStateOf("21") }
+    var atrPeriod        by remember { mutableStateOf("14") }
 
-    var emaFast by remember { mutableStateOf("9") }
-    var emaSlow by remember { mutableStateOf("21") }
+    // Saídas dinâmicas (preenchíveis pelo Auto-Tuner)
+    var stopLossField    by remember { mutableStateOf("") }
+    var takeProfitField  by remember { mutableStateOf("") }
 
-    var historicalWinRate by remember { mutableStateOf("0.55") }
-    var twapDurationMinutes by remember { mutableStateOf("15") }
+    var historicalWinRate    by remember { mutableStateOf("0.55") }
+    var twapDurationMinutes  by remember { mutableStateOf("15") }
+
+    // Quando o Auto-Tuner completa: preencher todos os campos automaticamente
+    LaunchedEffect(autoTuneState) {
+        if (autoTuneState is AutoTuneState.Complete) {
+            val tuned = (autoTuneState as AutoTuneState.Complete).result
+            emaFast         = tuned.shortPeriod.toString()
+            emaSlow         = tuned.longPeriod.toString()
+            rsiPeriod       = tuned.rsiPeriod.toString()
+            atrPeriod       = tuned.atrPeriod.toString()
+            stopLossField   = "%.2f".format(tuned.stopLoss)
+            takeProfitField = "%.2f".format(tuned.takeProfit)
+            println("⚡ [Auto-Tuner UI] Preenchimento automático: EMA(${tuned.shortPeriod}/${tuned.longPeriod}), RSI(${tuned.rsiPeriod}), SL=${tuned.stopLoss}, TP=${tuned.takeProfit}, Sharpe=${tuned.expectedSharpe}")
+        }
+    }
+
+    // Resetar auto-tuner quando símbolo ou estratégia mudam
+    LaunchedEffect(symbol, strategy) {
+        autoTunerViewModel.reset()
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1718,16 +1889,20 @@ fun NewBotCreationDialog(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // ── Nome ──────────────────────────────────────────────────────────
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Nome do Bot (opcional)", color = OledPalette.TextSecondary) },
-                    colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        textColor = OledPalette.TextPrimary,
+                        focusedBorderColor = OledPalette.SignalOrange
+                    ),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Strategy selector
+                // ── Seletor de Estratégia ────────────────────────────────────────
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1737,7 +1912,10 @@ fun NewBotCreationDialog(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .background(if (selected) OledPalette.SignalOrange else OledPalette.Background, shape = RoundedCornerShape(4.dp))
+                                .background(
+                                    if (selected) OledPalette.SignalOrange else OledPalette.Background,
+                                    shape = RoundedCornerShape(4.dp)
+                                )
                                 .clickable { strategy = s }
                                 .padding(vertical = 6.dp),
                             contentAlignment = Alignment.Center
@@ -1752,123 +1930,348 @@ fun NewBotCreationDialog(
                     }
                 }
 
+                // ── Símbolo ──────────────────────────────────────────────────────
                 OutlinedTextField(
                     value = symbol,
-                    onValueChange = { symbol = it },
+                    onValueChange = { symbol = it.uppercase() },
                     label = { Text("Símbolo (Par)", color = OledPalette.TextSecondary) },
-                    colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        textColor = OledPalette.TextPrimary,
+                        focusedBorderColor = OledPalette.SignalOrange
+                    ),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Auto-Tuner de Parâmetros
-                Button(
-                    onClick = {
-                        val engine = scripts.AutoTunerEngine()
-                        val mockHistory = List(100) { idx ->
-                            scripts.TickData(
-                                symbol = symbol,
-                                price = 60000.0 + (idx * 15.0) * if (idx % 2 == 0) 1.0 else -1.0,
-                                volume = 1.0,
-                                timestamp = System.currentTimeMillis() - (100 - idx) * 60000
+                // ── Botão AUTO-TUNE com 3 estados visuais ────────────────────────
+                when (val state = autoTuneState) {
+                    is AutoTuneState.Idle -> {
+                        Button(
+                            onClick = {
+                                autoTunerViewModel.startAutoTune(
+                                    symbol      = symbol,
+                                    strategy    = strategy,
+                                    windowDays  = 14
+                                )
+                            },
+                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF16A34A)),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                "AUTO-TUNE ⚡  (Walk-Forward 1.240 Combos)",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp
                             )
                         }
-                        val tuned = engine.optimizeParameters(symbol, mockHistory)
-                        rsiPeriod = tuned.rsiPeriod.toString()
-                        emaFast = tuned.shortPeriod.toString()
-                        emaSlow = tuned.longPeriod.toString()
-                        println("⚡ [Auto-Tuner UI] Configurações de hiperparâmetros sugeridas para as próximas 24h: Média Rápida=${tuned.shortPeriod}, Média Lenta=${tuned.longPeriod}, RSI=${tuned.rsiPeriod} (Sharpe esperado: ${tuned.expectedSharpe})")
-                    },
-                    colors = ButtonDefaults.buttonColors(backgroundColor = OledPalette.SignalGreen),
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("SUGERIR PARÂMETROS (AUTO-TUNE)", color = OledPalette.Background, fontWeight = FontWeight.Bold)
+                    }
+
+                    is AutoTuneState.Running -> {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF0F2318), RoundedCornerShape(8.dp))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "⚡ OPTIMIZANDO...",
+                                    color = OledPalette.SignalGreen,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Text(
+                                    text = "${state.combosCompleted}/${state.totalCombos}",
+                                    color = OledPalette.TextSecondary,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            LinearProgressIndicator(
+                                progress = state.progress,
+                                color = OledPalette.SignalGreen,
+                                backgroundColor = OledPalette.Divider,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                text = state.currentPhase,
+                                color = OledPalette.TextSecondary,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+
+                    is AutoTuneState.Complete -> {
+                        val result = state.result
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF0A2010), RoundedCornerShape(8.dp))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Header
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "✅ PARÂMETROS SUGERIDOS",
+                                    color = OledPalette.SignalGreen,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                // Risk/Reward Badge
+                                val rrColor = when {
+                                    result.riskRewardRatio >= 2.0 -> OledPalette.SignalGreen
+                                    result.riskRewardRatio >= 1.5 -> OledPalette.SignalOrange
+                                    else                          -> OledPalette.SignalRed
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .background(rrColor.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "R/R ${"%.1f".format(result.riskRewardRatio)}:1",
+                                        color = rrColor,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+
+                            // Métricas em grade 2×2
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // Coluna 1
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    AutoTuneMetricRow("Sharpe Esp.", "%.3f".format(result.expectedSharpe),
+                                        if (result.expectedSharpe >= 1.0) OledPalette.SignalGreen else OledPalette.SignalOrange)
+                                    AutoTuneMetricRow("Max Drawdown", "${"%.1f".format(result.expectedMaxDrawdown * 100)}%",
+                                        if (result.expectedMaxDrawdown < 0.10) OledPalette.SignalGreen else OledPalette.SignalRed)
+                                }
+                                // Coluna 2
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    AutoTuneMetricRow("R² Equity", "%.3f".format(result.equityCurveR2),
+                                        if (result.equityCurveR2 >= 0.70) OledPalette.SignalGreen else OledPalette.SignalOrange)
+                                    AutoTuneMetricRow("Trades/Win%", "${result.totalTradesInWindow} / ${"%.0f".format(result.expectedWinRate * 100)}%",
+                                        if (result.totalTradesInWindow >= 10) OledPalette.SignalGreen else OledPalette.SignalOrange)
+                                }
+                            }
+
+                            // Combinações avaliadas
+                            Text(
+                                text = "${result.totalCombosEvaluated} combos varridos • janela ${result.optimizationWindowDays}d",
+                                color = OledPalette.TextSecondary,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+
+                            // SL Rationale
+                            Text(
+                                text = "SL: ${result.stopLossRationale}",
+                                color = Color(0xFF86EFAC),
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "TP: ${result.takeProfitRationale}",
+                                color = Color(0xFF86EFAC),
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+
+                            // Botão para re-rodar
+                            TextButton(
+                                onClick = { autoTunerViewModel.startAutoTune(symbol, strategy) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    "↻ RE-OTIMIZAR",
+                                    color = OledPalette.TextSecondary,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+
+                    is AutoTuneState.Error -> {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF300A0A), RoundedCornerShape(8.dp))
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(imageVector = Icons.Filled.Warning, contentDescription = null, tint = OledPalette.SignalRed)
+                            Text(state.message, color = OledPalette.SignalRed, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    }
                 }
 
+                // ── Margem ────────────────────────────────────────────────────────
                 OutlinedTextField(
                     value = margin,
                     onValueChange = { margin = it },
                     label = { Text("Margem Alocada ($)", color = OledPalette.TextSecondary) },
-                    colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        textColor = OledPalette.TextPrimary,
+                        focusedBorderColor = OledPalette.SignalOrange
+                    ),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Dynamic param rendering logic (DSL)
-                if (strategy == "KELLY") {
-                    OutlinedTextField(
-                        value = historicalWinRate,
-                        onValueChange = { historicalWinRate = it },
-                        label = { Text("Win Rate Histórico (ex: 0.55)", color = OledPalette.TextSecondary) },
-                        colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                } else if (strategy == "TWAP") {
-                    OutlinedTextField(
-                        value = twapDurationMinutes,
-                        onValueChange = { twapDurationMinutes = it },
-                        label = { Text("Duração em Minutos (ex: 15)", color = OledPalette.TextSecondary) },
-                        colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                } else if (strategy == "RSI") {
-                    OutlinedTextField(
-                        value = rsiPeriod,
-                        onValueChange = { rsiPeriod = it },
-                        label = { Text("Período RSI", color = OledPalette.TextSecondary) },
-                        colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = rsiBuyThreshold,
-                        onValueChange = { rsiBuyThreshold = it },
-                        label = { Text("Compra RSI (<)", color = OledPalette.TextSecondary) },
-                        colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = rsiSellThreshold,
-                        onValueChange = { rsiSellThreshold = it },
-                        label = { Text("Venda RSI (>)", color = OledPalette.TextSecondary) },
-                        colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                } else if (strategy == "MACD") {
-                    OutlinedTextField(
-                        value = emaFast,
-                        onValueChange = { emaFast = it },
-                        label = { Text("EMA Rápida", color = OledPalette.TextSecondary) },
-                        colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = emaSlow,
-                        onValueChange = { emaSlow = it },
-                        label = { Text("EMA Lenta", color = OledPalette.TextSecondary) },
-                        colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                // ── Stop Loss Dinâmico (preenchido pelo Auto-Tuner) ──────────────
+                OutlinedTextField(
+                    value = stopLossField,
+                    onValueChange = { stopLossField = it },
+                    label = { Text("Stop Loss (baseado em Liquidez + ATR)", color = OledPalette.TextSecondary) },
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        textColor = OledPalette.SignalRed,
+                        focusedBorderColor = OledPalette.SignalRed,
+                        unfocusedBorderColor = if (stopLossField.isNotEmpty()) OledPalette.SignalRed.copy(0.5f) else OledPalette.Divider
+                    ),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // ── Take Profit Dinâmico (preenchido pelo Auto-Tuner) ────────────
+                OutlinedTextField(
+                    value = takeProfitField,
+                    onValueChange = { takeProfitField = it },
+                    label = { Text("Take Profit (baseado em Resistência + ATR)", color = OledPalette.TextSecondary) },
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        textColor = OledPalette.SignalGreen,
+                        focusedBorderColor = OledPalette.SignalGreen,
+                        unfocusedBorderColor = if (takeProfitField.isNotEmpty()) OledPalette.SignalGreen.copy(0.5f) else OledPalette.Divider
+                    ),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // ── Campos de Indicadores por Estratégia ─────────────────────────
+                when (strategy) {
+                    "KELLY" -> {
+                        OutlinedTextField(
+                            value = historicalWinRate,
+                            onValueChange = { historicalWinRate = it },
+                            label = { Text("Win Rate Histórico (ex: 0.55)", color = OledPalette.TextSecondary) },
+                            colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    "TWAP" -> {
+                        OutlinedTextField(
+                            value = twapDurationMinutes,
+                            onValueChange = { twapDurationMinutes = it },
+                            label = { Text("Duração em Minutos (ex: 15)", color = OledPalette.TextSecondary) },
+                            colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    "RSI" -> {
+                        OutlinedTextField(
+                            value = rsiPeriod,
+                            onValueChange = { rsiPeriod = it },
+                            label = { Text("Período RSI (Auto-Tune: $rsiPeriod)", color = OledPalette.TextSecondary) },
+                            colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = rsiBuyThreshold,
+                            onValueChange = { rsiBuyThreshold = it },
+                            label = { Text("Compra RSI (<)", color = OledPalette.TextSecondary) },
+                            colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = rsiSellThreshold,
+                            onValueChange = { rsiSellThreshold = it },
+                            label = { Text("Venda RSI (>)", color = OledPalette.TextSecondary) },
+                            colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    "MACD", "AI" -> {
+                        OutlinedTextField(
+                            value = emaFast,
+                            onValueChange = { emaFast = it },
+                            label = { Text("EMA Rápida (Auto-Tune: $emaFast)", color = OledPalette.TextSecondary) },
+                            colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = emaSlow,
+                            onValueChange = { emaSlow = it },
+                            label = { Text("EMA Lenta (Auto-Tune: $emaSlow)", color = OledPalette.TextSecondary) },
+                            colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = rsiPeriod,
+                            onValueChange = { rsiPeriod = it },
+                            label = { Text("Período RSI (Auto-Tune: $rsiPeriod)", color = OledPalette.TextSecondary) },
+                            colors = TextFieldDefaults.outlinedTextFieldColors(textColor = OledPalette.TextPrimary, focusedBorderColor = OledPalette.SignalOrange),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val finalParams = when (strategy) {
-                        "KELLY" -> mapOf("winRate" to historicalWinRate, "useKelly" to "true")
-                        "TWAP" -> mapOf("durationMinutes" to twapDurationMinutes)
-                        "RSI" -> mapOf("rsiPeriod" to rsiPeriod, "buyThreshold" to rsiBuyThreshold, "sellThreshold" to rsiSellThreshold)
-                        "MACD" -> mapOf("emaFast" to emaFast, "emaSlow" to emaSlow)
-                        else -> mapOf("confidence" to "75")
+                    val tuneResult = (autoTuneState as? AutoTuneState.Complete)?.result
+                    val finalParams: MutableMap<String, String> = mutableMapOf()
+
+                    // Parâmetros base da estratégia
+                    when (strategy) {
+                        "KELLY" -> { finalParams["winRate"] = historicalWinRate; finalParams["useKelly"] = "true" }
+                        "TWAP"  -> { finalParams["durationMinutes"] = twapDurationMinutes }
+                        "RSI"   -> { finalParams["rsiPeriod"] = rsiPeriod; finalParams["buyThreshold"] = rsiBuyThreshold; finalParams["sellThreshold"] = rsiSellThreshold }
+                        "MACD", "AI" -> { finalParams["emaFast"] = emaFast; finalParams["emaSlow"] = emaSlow; finalParams["rsiPeriod"] = rsiPeriod }
+                        else    -> { finalParams["confidence"] = "75" }
                     }
+
+                    // Saídas dinâmicas (do Auto-Tuner ou manuais)
+                    if (stopLossField.isNotEmpty())   finalParams["stopLoss"]   = stopLossField
+                    if (takeProfitField.isNotEmpty())  finalParams["takeProfit"] = takeProfitField
+
+                    // Métricas de qualidade do Auto-Tuner (para log e auditoria)
+                    if (tuneResult != null) {
+                        finalParams["autoTuneSharpe"]   = "%.3f".format(tuneResult.expectedSharpe)
+                        finalParams["autoTuneDrawdown"] = "%.4f".format(tuneResult.expectedMaxDrawdown)
+                        finalParams["autoTuneR2"]       = "%.3f".format(tuneResult.equityCurveR2)
+                        finalParams["autoTuneRR"]       = "%.2f".format(tuneResult.riskRewardRatio)
+                        finalParams["atrPeriod"]        = tuneResult.atrPeriod.toString()
+                    }
+
                     onCreate(
                         name.ifBlank { "${strategy}_${symbol}" },
                         symbol,
@@ -1879,7 +2282,7 @@ fun NewBotCreationDialog(
                 },
                 colors = ButtonDefaults.buttonColors(backgroundColor = OledPalette.SignalOrange)
             ) {
-                Text("REGISTRAR", color = OledPalette.Background)
+                Text("REGISTRAR", color = OledPalette.Background, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -1891,6 +2294,29 @@ fun NewBotCreationDialog(
             }
         }
     )
+}
+
+/** Helper composable para uma linha de métrica no card de resultado do Auto-Tuner. */
+@Composable
+private fun AutoTuneMetricRow(label: String, value: String, valueColor: Color) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            color = OledPalette.TextSecondary,
+            fontSize = 9.sp,
+            fontFamily = FontFamily.Monospace
+        )
+        Text(
+            text = value,
+            color = valueColor,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace
+        )
+    }
 }
 
 
