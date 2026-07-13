@@ -1,3 +1,9 @@
+# -*- coding: utf-8 -*-
+"""
+TRADEAI — RiskManager
+Implements Volatility-Adjusted Trailing Stop (using ATR) and dynamic microsecond Position Sizing.
+"""
+
 import time
 import logging
 
@@ -8,19 +14,39 @@ class RiskManager:
     """
     Gerenciador de Risco de alta frequência para robôs de trading quantitativo.
     Contém um Kill Switch projetado para liquidar posições imediatamente a mercado
-    em caso de drawdown extremo ou slippage severo.
+    em caso de drawdown extremo ou violação de trailing stop baseado em volatilidade (ATR).
     """
-    def __init__(self, capital: float, max_loss_pct: float = 0.02, connector = None):
+    def __init__(self, capital: float, max_loss_pct: float = 0.02, atr_multiplier: float = 2.5, connector = None):
         self.capital = capital
         self.max_loss_pct = max_loss_pct
+        self.atr_multiplier = atr_multiplier
         self.connector = connector
         self.position = None # Contém dict: {'symbol': str, 'entry_price': float, 'qty': float, 'active': bool}
         self.market_orders = [] # Histórico de ordens emitidas
         self.reaction_time_ns = None # Tempo de reação medido em nanosegundos
+        
+        # Volatility Trailing Stop state
+        self.highest_price = None
+        self.trailing_stop_price = None
 
-    def open_position(self, entry_price: float, qty: float, symbol: str = "BTCUSDT"):
+    def calculate_position_size(self, capital: float, entry_price: float, atr: float, risk_pct: float = 0.01) -> float:
         """
-        Abre uma posição LONG.
+        Mapeia e dimensiona o tamanho da posição com base na volatilidade ATR do mercado (Position Sizing).
+        Execução em microssegundos para HFT.
+        """
+        if atr <= 0:
+            # Fallback seguro caso o ATR seja nulo ou inválido (2% de distância de stop)
+            stop_loss_distance = entry_price * 0.02
+        else:
+            stop_loss_distance = atr * self.atr_multiplier
+            
+        capital_at_risk = capital * risk_pct
+        quantity = capital_at_risk / stop_loss_distance
+        return quantity
+
+    def open_position(self, entry_price: float, qty: float, symbol: str = "BTCUSDT", initial_atr: float = 0.0):
+        """
+        Abre uma posição LONG e define os parâmetros do trailing stop dinâmico.
         """
         self.position = {
             'symbol': symbol,
@@ -29,24 +55,40 @@ class RiskManager:
             'active': True
         }
         self.reaction_time_ns = None
-        logger.info(f"Posição aberta: {symbol} | Preço de entrada = {entry_price}, Qtd = {qty}")
+        self.highest_price = entry_price
+        
+        # Define o trailing stop inicial se o ATR for provido, senão cai no stop fixo
+        if initial_atr > 0:
+            self.trailing_stop_price = entry_price - (initial_atr * self.atr_multiplier)
+            logger.info(f"Posição aberta: {symbol} | Entrada = {entry_price}, Qtd = {qty}, TrailingStopInicial = {self.trailing_stop_price:.2f} (ATR={initial_atr})")
+        else:
+            self.trailing_stop_price = entry_price * (1.0 - self.max_loss_pct)
+            logger.info(f"Posição aberta: {symbol} | Entrada = {entry_price}, Qtd = {qty}, StopFixo = {self.trailing_stop_price:.2f}")
 
-    async def on_tick(self, price: float):
+    async def on_tick(self, price: float, current_atr: float = 0.0):
         """
-        Método chamado em cada tick (atualização de preço) para monitorar risco.
-        Se o preço romper o limite de perda (mesmo pulando o stop exato), aciona o Kill Switch.
+        Monitora o risco a cada tick recebido.
+        Se o preço romper o trailing stop dinâmico (ATR) ou o limite fixo, dispara o Kill Switch.
         """
         start_time = time.perf_counter_ns()
         
         if not self.position or not self.position['active']:
             return
 
-        # Calcular perda percentual
         entry_price = self.position['entry_price']
-        loss_pct = (entry_price - price) / entry_price
         
-        # Rompeu o limite de perda (ex: 2%)?
-        if loss_pct >= self.max_loss_pct:
+        # Atualiza a máxima do preço para trailing stop
+        if price > self.highest_price:
+            self.highest_price = price
+            # Sobe o trailing stop de forma dinâmica acompanhando a máxima
+            if current_atr > 0:
+                self.trailing_stop_price = self.highest_price - (current_atr * self.atr_multiplier)
+            else:
+                self.trailing_stop_price = self.highest_price * (1.0 - self.max_loss_pct)
+
+        # Checa se o preço violou o stop-loss
+        if price <= self.trailing_stop_price:
+            loss_pct = (entry_price - price) / entry_price
             await self._trigger_kill_switch(price, loss_pct, start_time)
 
     async def _trigger_kill_switch(self, trigger_price: float, actual_loss_pct: float, start_time_ns: int):
@@ -69,7 +111,7 @@ class RiskManager:
             except Exception as e:
                 logger.error(f"❌ CRITICAL: Falha ao enviar ordem do Kill Switch: {e}")
         else:
-            # Simula o envio de uma ordem a mercado (Market Order) em modo de teste off-line
+            # Simula o envio de uma ordem a mercado em modo de teste off-line
             order = {
                 'timestamp_ns': time.perf_counter_ns(),
                 'side': 'SELL',
@@ -85,6 +127,6 @@ class RiskManager:
         self.reaction_time_ns = end_time - start_time_ns
         
         logger.warning(
-            f"🚨 KILL SWITCH ATIVADO! Perda de {actual_loss_pct*100:.2f}% excede limite de {self.max_loss_pct*100:.2f}%. "
-            f"Ordem de Mercado emitida a {trigger_price}. Tempo de reação: {self.reaction_time_ns / 1_000_000:.4f} ms."
+            f"🚨 KILL SWITCH ATIVADO! Stop violado a {trigger_price}. "
+            f"Ordem de Mercado emitida. Tempo de reação: {self.reaction_time_ns / 1_000_000:.4f} ms."
         )

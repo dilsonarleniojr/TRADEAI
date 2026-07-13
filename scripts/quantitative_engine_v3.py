@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 # Include scripts folder in path for imports
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from binance_connector import BinanceConnector
+from risk_manager import RiskManager
 
 try:
     import firebase_admin
@@ -116,7 +117,6 @@ class QuantitativeEngineV3:
         time_price_start = time.perf_counter()
         price_data = await self.connector.get_cached_price(symbol)
         current_price = price_data['ask'] # BUY orders execute at the ask
-        timings["price_fetch_ms"] = (time_price_start - time_price_start) * 1000 # dynamic profiling setup
         # Measure cached access time
         time_price_end = time.perf_counter()
         timings["price_fetch_ms"] = (time_price_end - time_price_start) * 1000
@@ -125,31 +125,58 @@ class QuantitativeEngineV3:
         if current_price == 0:
             raise ValueError(f"Could not fetch orderbook price for {symbol}")
 
-        # Round values based on Lot/Step size limits to prevent filters crash
+        # Get symbol limits
         step_size = await self.connector.get_symbol_step_size(symbol)
+
+        # 1. Fetch Volatility ATR dynamically from Binance REST to size the position
+        atr = 0.0
+        try:
+            klines = await self.connector.client.get_klines(symbol=symbol, interval="1m", limit=14)
+            tr_sum = 0.0
+            for i in range(len(klines)):
+                high = float(klines[i][2])
+                low = float(klines[i][3])
+                if i > 0:
+                    prev_close = float(klines[i-1][4])
+                    tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
+                else:
+                    tr = high - low
+                tr_sum += tr
+            atr = tr_sum / len(klines)
+            logger.info(f"   * Calculated real market ATR (14m): {atr:.4f}")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not compute real ATR for position sizing, using default 0.2%: {e}")
+            atr = current_price * 0.002 # Default 0.2% volatility
+
+        # 2. Size position dynamically using RiskManager
+        capital = 10000.0
+        risk_manager = RiskManager(capital=capital, max_loss_pct=sl_pct, atr_multiplier=2.5, connector=self.connector)
+        qty_dynamic = risk_manager.calculate_position_size(capital=capital, entry_price=current_price, atr=atr, risk_pct=0.01)
+        
+        # Clean quantity based on Step size
         precision = max(0, int(-math.log10(step_size))) if step_size > 0 else 5
         factor = 10 ** precision
-        qty_clean = math.floor(quantity * factor) / factor
+        qty_clean = math.floor(qty_dynamic * factor) / factor
         if qty_clean <= 0:
             qty_clean = step_size
             
-        logger.info(f"Targeting: {qty_clean} {symbol} @ Approx ${current_price}")
+        logger.info(f"Targeting Dynamic Position: {qty_clean} {symbol} @ Approx ${current_price} (ATR Vol: {atr:.2f})")
 
-        # PHASE A: SUBMIT ENTRY MARKET BUY ORDER
+        # PHASE A: SUBMIT ENTRY SLIPPAGE-PROTECTED BUY ORDER
         time_a = time.perf_counter()
         try:
-            logger.info("A) Dispatching Market Buy order to Binance...")
-            buy_order = await self.connector.create_order(
+            logger.info("A) Dispatching Slippage-Protected Buy order to Binance...")
+            buy_order = await self.connector.create_slippage_protected_order(
                 symbol=symbol,
                 side="BUY",
-                type="MARKET",
-                quantity=qty_clean
+                quantity=qty_clean,
+                max_slippage_pct=0.005 # limit slippage deviation to 0.5% max
             )
             time_b = time.perf_counter()
             timings["market_dispatch_ms"] = (time_b - time_a) * 1000
-            logger.info(f"   * Market Order Placed. Client latency: {timings['market_dispatch_ms']:.2f} ms")
+            logger.info(f"   * Buy Order Placed. Client latency: {timings['market_dispatch_ms']:.2f} ms")
         except Exception as e:
-            logger.error(f"❌ Failed to dispatch Market order: {e}")
+            logger.error(f"❌ Failed to dispatch Buy order: {e}")
             return None
 
         # PHASE B: RECEIVE FILLED STATUS
