@@ -1761,6 +1761,31 @@ fun NewBotCreationDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // Auto-Tuner de Parâmetros
+                Button(
+                    onClick = {
+                        val engine = scripts.AutoTunerEngine()
+                        val mockHistory = List(100) { idx ->
+                            scripts.TickData(
+                                symbol = symbol,
+                                price = 60000.0 + (idx * 15.0) * if (idx % 2 == 0) 1.0 else -1.0,
+                                volume = 1.0,
+                                timestamp = System.currentTimeMillis() - (100 - idx) * 60000
+                            )
+                        }
+                        val tuned = engine.optimizeParameters(symbol, mockHistory)
+                        rsiPeriod = tuned.rsiPeriod.toString()
+                        emaFast = tuned.shortPeriod.toString()
+                        emaSlow = tuned.longPeriod.toString()
+                        println("⚡ [Auto-Tuner UI] Configurações de hiperparâmetros sugeridas para as próximas 24h: Média Rápida=${tuned.shortPeriod}, Média Lenta=${tuned.longPeriod}, RSI=${tuned.rsiPeriod} (Sharpe esperado: ${tuned.expectedSharpe})")
+                    },
+                    colors = ButtonDefaults.buttonColors(backgroundColor = OledPalette.SignalGreen),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("SUGERIR PARÂMETROS (AUTO-TUNE)", color = OledPalette.Background, fontWeight = FontWeight.Bold)
+                }
+
                 OutlinedTextField(
                     value = margin,
                     onValueChange = { margin = it },

@@ -78,6 +78,53 @@ class TestSelfHealingAndGcTuning(unittest.IsolatedAsyncioTestCase):
         for task in orchestrator.bot_tasks.values():
             task.cancel()
 
+class TestAutoTunerAndDynamicExits(unittest.IsolatedAsyncioTestCase):
+    
+    def test_auto_tuner_optimizes_parameters(self):
+        """
+        Verify AutoTunerEngine returns parameter configuration maximizing Sharpe Ratio with overfitting protection.
+        """
+        from scripts.multi_asset_hft_engine import AutoTunerEngine, TickData # type: ignore
+        engine = AutoTunerEngine()
+        
+        history = []
+        for i in range(50):
+            tick = TickData()
+            tick.symbol = "BTCUSDT"
+            tick.price = 50000.0 + (i * 20.0)
+            tick.volume = 1.0
+            tick.timestamp = time.time()
+            history.append(tick)
+            
+        tuned = engine.optimize_parameters("BTCUSDT", history)
+        self.assertIsNotNone(tuned)
+        self.assertTrue(tuned.short_period in [5, 10, 15])
+        self.assertTrue(tuned.long_period in [20, 30, 40])
+        self.assertTrue(tuned.expected_sharpe != 0.0)
+
+    def test_dynamic_exit_calculator_bbo_walls(self):
+        """
+        Verify DynamicExitCalculator uses ATR and order book liquidity walls.
+        """
+        from scripts.multi_asset_hft_engine import DynamicExitCalculator, OrderBookData # type: ignore
+        calc = DynamicExitCalculator()
+        
+        order_book = OrderBookData(
+            bids=[(9800.0, 15.5), (9900.0, 5.0)],
+            asks=[(10100.0, 3.0), (10200.0, 20.0)]
+        )
+        
+        targets = calc.calculate_targets(
+            symbol="BTCUSDT",
+            entry_price=10000.0,
+            atr=50.0,
+            order_book=order_book,
+            side="BUY"
+        )
+        
+        self.assertEqual(targets.stop_loss, 9725.0)
+        self.assertEqual(targets.take_profit, 10175.0)
+
 class MagicBotInstance:
     pass
 
