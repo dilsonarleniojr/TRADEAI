@@ -68,6 +68,7 @@ export function useBinanceStream() {
           volume: parseFloat(data.volume),
           quoteVolume: parseFloat(data.quoteVolume),
         });
+        useCryptoStore.getState().updateBotPnls(useCryptoStore.getState().tickers);
       });
 
       socket.on("balance-update", (data: any) => {
