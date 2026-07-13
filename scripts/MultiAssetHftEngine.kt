@@ -36,7 +36,16 @@ class WebSocketMultiplexer(
 
     private fun parseSymbolFromStream(stream: String): String {
         // Ex: "btcusdt@bookTicker" -> "BTCUSDT"
-        return stream.split("@")[0].uppercase()
+        val atIndex = stream.indexOf('@')
+        val endIdx = if (atIndex == -1) stream.length else atIndex
+
+        // Use um char array para evitar alocação de substring intermediária e toUpperCase object allocation
+        val chars = CharArray(endIdx)
+        for (i in 0 until endIdx) {
+            val c = stream[i]
+            chars[i] = if (c in 'a'..'z') c - 32 else c
+        }
+        return String(chars)
     }
 }
 

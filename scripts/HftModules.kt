@@ -112,6 +112,7 @@ class PairsTradingEngine(val period: Int = 60) {
     private var idx = 0
     private var count = 0
     private var spreadSum = 0.0
+    private var spreadSumSq = 0.0
 
     /**
      * Calcula o Z-Score do spread em tempo real de forma incremental O(1).
@@ -121,27 +122,25 @@ class PairsTradingEngine(val period: Int = 60) {
         
         if (count < period) {
             spreadBuffer[idx] = spread
-            idx = (idx + 1) % period
             spreadSum += spread
+            spreadSumSq += spread * spread
+            idx = (idx + 1) % period
             count++
             return 0.0
         }
         
-        // Atualização incremental do spread médio
+        // Atualização incremental do spread médio e soma dos quadrados (O(1))
         val oldSpread = spreadBuffer[idx]
         spreadBuffer[idx] = spread
         idx = (idx + 1) % period
+
         spreadSum = spreadSum - oldSpread + spread
+        spreadSumSq = spreadSumSq - (oldSpread * oldSpread) + (spread * spread)
         
         val mean = spreadSum / period
-        
-        // Cálculo rápido da variância
-        var varianceSum = 0.0
-        for (i in 0 until period) {
-            val diff = spreadBuffer[i] - mean
-            varianceSum += diff * diff
-        }
-        val stdDev = sqrt(varianceSum / period)
+        // Variância = E[X^2] - (E[X])^2
+        val variance = (spreadSumSq / period) - (mean * mean)
+        val stdDev = if (variance > 0.0) sqrt(variance) else 0.0
         
         return if (stdDev > 0.0) (spread - mean) / stdDev else 0.0
     }
