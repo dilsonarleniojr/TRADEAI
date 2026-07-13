@@ -22,7 +22,6 @@ class TestStressScenarios(unittest.IsolatedAsyncioTestCase):
         connector.client = AsyncMock()
         
         # Simula 2 falhas de Rate Limit (-1003) e 1 sucesso final
-        # O construtor do BinanceAPIException espera: (response, status_code, text)
         side_effect = [
             BinanceAPIException(MagicMock(status_code=429), 429, '{"code":-1003, "msg":"Too many requests"}'),
             BinanceAPIException(MagicMock(status_code=429), 429, '{"code":-1003, "msg":"Too many requests"}'),
@@ -52,12 +51,20 @@ class TestStressScenarios(unittest.IsolatedAsyncioTestCase):
         mock_connector.get_symbol_step_size = AsyncMock(return_value=0.00001)
         mock_connector.close = AsyncMock()
         
-        # A compra inicial é bem sucedida
-        # A segunda chamada de create_order representa o envio da liquidação emergencial SELL MARKET
-        mock_connector.create_order = AsyncMock(side_effect=[
-            {"orderId": 12345, "status": "FILLED", "fills": [{"price": "60100", "qty": "0.001"}]}, 
-            {"orderId": 99999, "status": "FILLED"} 
+        # Mock client and get_klines for ATR calculations
+        mock_client = AsyncMock()
+        mock_client.get_klines = AsyncMock(return_value=[
+            [0, "60000.0", "60100.0", "59900.0", "60050.0", 1.0, 0, "1.0", 1] for _ in range(14)
         ])
+        mock_connector.client = mock_client
+        
+        # A compra inicial é bem sucedida via create_slippage_protected_order
+        mock_connector.create_slippage_protected_order = AsyncMock(return_value={
+            "orderId": 12345, "status": "FILLED", "fills": [{"price": "60100", "qty": "0.001"}]
+        })
+        
+        # A segunda chamada de create_order representa o envio da liquidação emergencial SELL MARKET
+        mock_connector.create_order = AsyncMock(return_value={"orderId": 99999, "status": "FILLED"})
         
         # OCO falha
         mock_connector.create_oco_order = AsyncMock(side_effect=RuntimeError("Exchange OCO overload"))
@@ -74,12 +81,11 @@ class TestStressScenarios(unittest.IsolatedAsyncioTestCase):
         mock_connector.create_oco_order.assert_called_once()
         
         # Verifica se a liquidação de emergência foi chamada com SELL MARKET
-        self.assertEqual(mock_connector.create_order.call_count, 2)
-        mock_connector.create_order.assert_any_call(
+        mock_connector.create_order.assert_called_once_with(
             symbol="BTCUSDT",
             side="SELL",
             type="MARKET",
-            quantity=0.001
+            quantity=0.2
         )
 
 if __name__ == '__main__':

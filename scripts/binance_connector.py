@@ -331,6 +331,43 @@ class BinanceConnector:
             logger.error(f"❌ Erro de Rede ao criar ordem OCO em {symbol}: {e}")
             raise
 
+    @retry_on_rate_limit_and_timeout()
+    async def create_slippage_protected_order(
+        self, symbol: str, side: str, quantity: float, max_slippage_pct: float = 0.005
+    ) -> dict:
+        """
+        Envia uma ordem protegendo o capital contra slippage extrema.
+        Converte ordens de mercado em ordens LIMIT com Time-In-Force (TIF) = IOC (Immediate Or Cancel)
+        com limite de preço baseado no desvio de slippage aceito.
+        """
+        symbol = symbol.upper()
+        side = side.upper()
+        
+        # 1. Obter preços bid/ask da cache local WebSocket
+        price_data = await self.get_cached_price(symbol)
+        best_price = price_data['ask'] if side == "BUY" else price_data['bid']
+        
+        if best_price <= 0:
+            logger.warning(f"⚠️ Sem preços na cache para {symbol}, enviando Market Order direta...")
+            return await self.create_order(symbol=symbol, side=side, type="MARKET", quantity=quantity)
+            
+        if side == "BUY":
+            limit_price = best_price * (1.0 + max_slippage_pct)
+        else:
+            limit_price = best_price * (1.0 - max_slippage_pct)
+            
+        limit_price_clean = round(limit_price, 2)
+        logger.info(f"🛡️ Proteção Slippage: Enviando LIMIT IOC a {limit_price_clean} (Base BBO: {best_price}) para {side} {quantity} {symbol}")
+        
+        return await self.create_order(
+            symbol=symbol,
+            side=side,
+            type="LIMIT",
+            quantity=quantity,
+            price=limit_price_clean,
+            timeInForce="IOC"
+        )
+
 
 # ==============================================================================
 # Bloco de Teste de Conexão Simulado (Testnet)
