@@ -11,28 +11,6 @@ Includes:
 import asyncio
 import time
 import logging
-import heapq
-
-class AsyncPriorityQueue:
-    """
-    Non-blocking, single-threaded heapq wrapper for asyncio event loops.
-    """
-    def __init__(self):
-        self._queue = []
-
-    def put_nowait(self, item):
-        heapq.heappush(self._queue, item)
-
-    def get_nowait(self):
-        if not self._queue:
-            return None
-        return heapq.heappop(self._queue)
-
-    def empty(self) -> bool:
-        return len(self._queue) == 0
-
-    def qsize(self) -> int:
-        return len(self._queue)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("MultiAssetHftEngine")
@@ -161,7 +139,10 @@ class BatchOrderDispatcher:
     def __init__(self, rate_limit_per_period: int = 50, period_seconds: float = 10.0):
         self.rate_limit = rate_limit_per_period
         self.period = period_seconds
-        self.order_queue = AsyncPriorityQueue()
+        # Use the stdlib's async-native priority queue instead of a bare, unlocked
+        # heapq wrapper: it's already asyncio-safe for the single-event-loop usage
+        # here and avoids re-implementing queue semantics by hand.
+        self.order_queue = asyncio.PriorityQueue()
         self.dispatched_in_window = 0
         self.window_start = time.time()
         self.is_running = False

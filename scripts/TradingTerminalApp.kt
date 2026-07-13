@@ -191,11 +191,13 @@ fun TradingTerminalScreen(
         sheetContentColor = OledPalette.TextPrimary,
         sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         sheetContent = {
+            // Refinement (Phase 3): parâmetros primitivos (Double) são estáveis, permitindo
+            // que o Compose pule a recomposição deste sheet quando os valores não mudam.
             PositionDetailsSheet(
-                entryPriceProvider = { state.currentPositionEntry },
-                currentPriceProvider = { state.currentPrice },
-                trailingStopProvider = { state.currentTrailingStop },
-                pnlProvider = { state.currentPnL },
+                entryPrice = state.currentPositionEntry,
+                currentPrice = state.currentPrice,
+                trailingStop = state.currentTrailingStop,
+                pnl = state.currentPnL,
                 onClose = { coroutineScope.launch { sheetState.hide() } }
             )
         }
@@ -221,11 +223,13 @@ fun TradingTerminalScreen(
                     fontFamily = FontFamily.Monospace
                 )
 
-                // Refinement (Phase 3): Sub-componente com leitura adiada de estado
+                // Refinement (Phase 3): parâmetros primitivos (Long/Boolean) são estáveis por
+                // natureza no Compose, permitindo pular a recomposição quando os valores não
+                // mudam — diferente de lambdas provider recriadas a cada recomposição do pai.
                 LatencyIndicator(
-                    latencyProvider = { state.apiLatencyMs },
-                    isConnectedProvider = { state.isWebSocketConnected },
-                    isAnomalyProvider = { state.isAnomalyDetected }
+                    latency = state.apiLatencyMs,
+                    isConnected = state.isWebSocketConnected,
+                    isAnomaly = state.isAnomalyDetected
                 )
             }
 
@@ -264,10 +268,11 @@ fun TradingTerminalScreen(
                 )
             }
 
-            // Refinement (Phase 3): Card de Posição com leitura adiada
+            // Refinement (Phase 3): parâmetros primitivos (Double) são estáveis, permitindo
+            // que o Compose pule a recomposição deste card quando os valores não mudam.
             QuickPositionCard(
-                sizeProvider = { state.currentPositionSize },
-                pnlProvider = { state.currentPnL },
+                size = state.currentPositionSize,
+                pnl = state.currentPnL,
                 onClick = { coroutineScope.launch { sheetState.show() } }
             )
 
@@ -278,8 +283,9 @@ fun TradingTerminalScreen(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
+                // Mesmo padrão de estabilidade: valor primitivo em vez de provider lambda.
                 SwipeToConfirmKillSwitch(
-                    isBuyHaltedProvider = { state.isBuyHalted },
+                    isBuyHalted = state.isBuyHalted,
                     onConfirmed = {
                         hapticsManager.triggerFeedback(HapticPattern.EMERGENCY_KILL)
                         println("🚨 EMERGENCY CRYPTO KILL SWITCH CONFIRMED!")
@@ -291,17 +297,15 @@ fun TradingTerminalScreen(
 }
 
 // ==============================================================================
-// 7. Latency Indicator (Componente isolado para mitigar recomposição)
+// 7. Latency Indicator (Componente isolado; parâmetros primitivos estáveis permitem
+//    ao Compose pular a recomposição quando os valores não mudam)
 // ==============================================================================
 @Composable
 fun LatencyIndicator(
-    latencyProvider: () -> Long,
-    isConnectedProvider: () -> Boolean,
-    isAnomalyProvider: () -> Boolean
+    latency: Long,
+    isConnected: Boolean,
+    isAnomaly: Boolean
 ) {
-    val latency = latencyProvider()
-    val isConnected = isConnectedProvider()
-    val isAnomaly = isAnomalyProvider()
     val isPulsingRequired = latency > 150 || isAnomaly
 
     Row(
@@ -328,17 +332,15 @@ fun LatencyIndicator(
 }
 
 // ==============================================================================
-// 8. Quick Position Card (Componente isolado para mitigar recomposição)
+// 8. Quick Position Card (Componente isolado; parâmetros primitivos estáveis permitem
+//    ao Compose pular a recomposição quando os valores não mudam)
 // ==============================================================================
 @Composable
 fun QuickPositionCard(
-    sizeProvider: () -> Double,
-    pnlProvider: () -> Double,
+    size: Double,
+    pnl: Double,
     onClick: () -> Unit
 ) {
-    val size = sizeProvider()
-    val pnl = pnlProvider()
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -372,21 +374,17 @@ fun QuickPositionCard(
 }
 
 // ==============================================================================
-// 9. Modal Bottom Sheet Component para Detalhes de Posição (Leitura Adiada)
+// 9. Modal Bottom Sheet Component para Detalhes de Posição (parâmetros primitivos
+//    estáveis permitem ao Compose pular a recomposição quando os valores não mudam)
 // ==============================================================================
 @Composable
 fun PositionDetailsSheet(
-    entryPriceProvider: () -> Double,
-    currentPriceProvider: () -> Double,
-    trailingStopProvider: () -> Double,
-    pnlProvider: () -> Double,
+    entryPrice: Double,
+    currentPrice: Double,
+    trailingStop: Double,
+    pnl: Double,
     onClose: () -> Unit
 ) {
-    val entryPrice = entryPriceProvider()
-    val currentPrice = currentPriceProvider()
-    val trailingStop = trailingStopProvider()
-    val pnl = pnlProvider()
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -462,6 +460,13 @@ fun HighFrequencyChart(
     currentPriceProvider: () -> Double,
     modifier: Modifier = Modifier
 ) {
+    // Alocado uma única vez e reutilizado em todos os frames de desenho — criar um
+    // FloatArray + PathEffect novos a cada frame dentro do Canvas custaria alocações
+    // desnecessárias no orçamento de 16ms, já que o padrão do tracejado é constante.
+    val currentPriceDashEffect = remember {
+        androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+    }
+
     Canvas(modifier = modifier.background(OledPalette.Background)) {
         val candles = candlesProvider()
         val currentPrice = currentPriceProvider()
@@ -522,7 +527,7 @@ fun HighFrequencyChart(
                 start = Offset(0f, yCurrent),
                 end = Offset(canvasWidth, yCurrent),
                 strokeWidth = 2f,
-                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                pathEffect = currentPriceDashEffect
             )
         }
     }
@@ -531,15 +536,15 @@ fun HighFrequencyChart(
 private fun abs(value: Float): Float = if (value < 0) -value else value
 
 // ==============================================================================
-// 11. Componente de Kill Switch Deslizante (Mecânico com Leitura Adiada)
+// 11. Componente de Kill Switch Deslizante (parâmetro primitivo estável em vez de
+//    provider lambda — mesma correção aplicada aos demais componentes leves)
 // ==============================================================================
 @Composable
 fun SwipeToConfirmKillSwitch(
-    isBuyHaltedProvider: () -> Boolean,
+    isBuyHalted: Boolean,
     onConfirmed: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isBuyHalted = isBuyHaltedProvider()
     val width = 280.dp
     val dragSize = 64.dp
     val dragSizePx = with(LocalDensity.current) { dragSize.toPx() }

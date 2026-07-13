@@ -182,9 +182,12 @@ class BinanceConnector:
                                     
                                     try:
                                         try:
-                                            # Fast direct string parsing of BBO prices to minimize latency
+                                            # Fast direct string parsing of BBO prices to minimize latency.
+                                            # msg.data is already a decoded str (aiohttp decodes the TEXT
+                                            # frame once at the protocol layer), so scanning it directly here
+                                            # avoids a second full json.loads()/dict-rebuild on the hot path.
                                             raw_text = msg.data
-                                            
+
                                             b_idx = raw_text.find('"b":')
                                             if b_idx == -1:
                                                 raise ValueError("b tag missing")
@@ -195,7 +198,7 @@ class BinanceConnector:
                                             while end < len(raw_text) and raw_text[end] not in ('"', ','):
                                                 end += 1
                                             bid = float(raw_text[start:end])
-                                            
+
                                             a_idx = raw_text.find('"a":')
                                             if a_idx == -1:
                                                 raise ValueError("a tag missing")
@@ -206,25 +209,38 @@ class BinanceConnector:
                                             while end < len(raw_text) and raw_text[end] not in ('"', ','):
                                                 end += 1
                                             ask = float(raw_text[start:end])
-                                            
-                                            self.prices_cache[symbol] = {
-                                                'bid': bid,
-                                                'ask': ask,
-                                                'last': (bid + ask) / 2.0
-                                            }
                                         except Exception:
-                                            # Safe fallback to standard JSON parser if pattern deviates
+                                            # Safe fallback to standard JSON parser if the fast-path pattern
+                                            # deviates. Index with [] (not .get(key, 0)): a payload that is
+                                            # missing 'b'/'a' is corrupted, not a legitimate zero-price tick,
+                                            # and must be treated as a parse failure (caught below) rather
+                                            # than silently overwriting a good cached price with 0.0.
                                             data = msg.json()
-                                            bid = float(data.get('b', 0))
-                                            ask = float(data.get('a', 0))
+                                            bid = float(data['b'])
+                                            ask = float(data['a'])
+
+                                        # Update the cache in place when possible instead of allocating a
+                                        # brand-new dict per tick - avoids per-message GC churn under
+                                        # high-frequency ticker traffic.
+                                        cached = self.prices_cache.get(symbol)
+                                        if cached is not None:
+                                            cached['bid'] = bid
+                                            cached['ask'] = ask
+                                            cached['last'] = (bid + ask) / 2.0
+                                        else:
                                             self.prices_cache[symbol] = {
                                                 'bid': bid,
                                                 'ask': ask,
                                                 'last': (bid + ask) / 2.0
                                             }
                                     except Exception as parse_err:
-                                        logger.warning(f"⚠️ Discarding corrupted tick payload for {symbol}: {parse_err}")
-                                        
+                                        # A single corrupted/malformed tick must never tear down the whole
+                                        # WebSocket connection (that would force a full reconnect - far more
+                                        # costly in latency than dropping one tick). Log/count and continue.
+                                        self._parse_error_count = getattr(self, '_parse_error_count', 0) + 1
+                                        logger.warning(
+                                            f"⚠️ Descartando payload de tick corrompido para {symbol}: {parse_err}"
+                                        )
                                 elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                                     break
                         finally:
@@ -233,7 +249,20 @@ class BinanceConnector:
                                 await heartbeat_task
                             except asyncio.CancelledError:
                                 pass
-                                
+
+                # If we reach this point, the websocket/session context managers exited
+                # *without* raising - e.g. the server sent CLOSED/ERROR (explicit `break` above)
+                # or the async-for simply ended. That is still a disconnect: without an explicit
+                # backoff here, `while True` would spin reconnecting as fast as the network/mock
+                # allows (a reconnect storm that hammers the exchange endpoint and burns CPU).
+                # Apply the same exponential backoff as the exception path before retrying.
+                attempt += 1
+                backoff_delay = min(2 ** attempt, 15)
+                logger.warning(
+                    f"🔌 WebSocket de Preço para {symbol} desconectado (sem exceção). Reconectando em {backoff_delay}s (Tentativa {attempt})..."
+                )
+                await asyncio.sleep(backoff_delay)
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -242,7 +271,7 @@ class BinanceConnector:
                 if attempt > 2:
                     current_url_base = backup_ws if current_url_base == primary_ws else primary_ws
                     logger.warning(f"🔀 Alternando para URL de backup WebSocket: {current_url_base}")
-                
+
                 logger.error(f"❌ Erro no WebSocket de Preço para {symbol}: {e}. Reconectando em {backoff_delay}s (Tentativa {attempt})...")
                 await asyncio.sleep(backoff_delay)
 
