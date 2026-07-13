@@ -32,9 +32,14 @@ def parse_double_from_bytes(raw_bytes: bytes, key: bytes) -> float:
     # skip quotes, colons, spaces
     while val_idx < len(raw_bytes) and raw_bytes[val_idx] in (58, 32, 34): # 58=:, 32=space, 34="
         val_idx += 1
-    # read digits
+    # read digits (includes '.', '-' and scientific-notation markers 'e'/'E'/'+' as a defensive
+    # measure: exchange price/qty fields are always plain fixed-point decimals today, never
+    # exponential notation, but this avoids silently truncating the value if that ever changes)
     start = val_idx
-    while val_idx < len(raw_bytes) and (48 <= raw_bytes[val_idx] <= 57 or raw_bytes[val_idx] == 46 or raw_bytes[val_idx] == 45): # 48-57=0-9, 46=., 45=-
+    while val_idx < len(raw_bytes) and (
+        48 <= raw_bytes[val_idx] <= 57 or  # 0-9
+        raw_bytes[val_idx] in (46, 45, 43, 101, 69)  # '.', '-', '+', 'e', 'E'
+    ):
         val_idx += 1
     val_str = raw_bytes[start:val_idx].decode('utf-8')
     try:
