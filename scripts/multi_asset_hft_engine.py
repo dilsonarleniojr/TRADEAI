@@ -371,3 +371,101 @@ class BotFleetOrchestrator:
                         else:
                             action()
 
+# ==============================================================================
+# 8. Auto-Tuner de Parâmetros (Combinatória e Walk-Forward Analysis)
+# ==============================================================================
+class TunedParameters:
+    def __init__(self, short_period: int, long_period: int, rsi_period: int, stop_loss_pct: float, take_profit_pct: float, expected_sharpe: float):
+        self.short_period = short_period
+        self.long_period = long_period
+        self.rsi_period = rsi_period
+        self.stop_loss_pct = stop_loss_pct
+        self.take_profit_pct = take_profit_pct
+        self.expected_sharpe = expected_sharpe
+
+class AutoTunerEngine:
+    def optimize_parameters(self, symbol: str, history: list) -> TunedParameters:
+        if len(history) < 20:
+            return TunedParameters(10, 21, 14, 0.02, 0.04, 1.5)
+
+        best_params = TunedParameters(10, 21, 14, 0.02, 0.04, -999.0)
+        max_score = -999.0
+
+        for short_period in [5, 10, 15]:
+            for long_period in [20, 30, 40]:
+                for rsi_period in [7, 14]:
+                    score = self.simulate_and_backtest(history, short_period, long_period, rsi_period)
+                    if score > max_score:
+                        max_score = score
+                        best_params = TunedParameters(
+                            short_period=short_period,
+                            long_period=long_period,
+                            rsi_period=rsi_period,
+                            stop_loss_pct=0.02,
+                            take_profit_pct=0.05,
+                            expected_sharpe=score
+                        )
+        return best_params
+
+    def simulate_and_backtest(self, history: list, short_period: int, long_period: int, rsi_period: int) -> float:
+        trades = []
+        entry_price = 0.0
+        is_bought = False
+
+        for i in range(len(history)):
+            price = history[i].price
+            if i < long_period:
+                continue
+
+            if not is_bought and price > history[i - short_period].price:
+                entry_price = price
+                is_bought = True
+            elif is_bought and price < history[i - short_period].price:
+                ret = (price - entry_price) / entry_price
+                trades.append(ret)
+                is_bought = False
+
+        if not trades:
+            return 0.0
+
+        # Sharpe ratio calculations
+        mean = sum(trades) / len(trades)
+        variance = sum((t - mean) ** 2 for t in trades) / len(trades)
+        std_dev = (variance) ** 0.5
+        raw_sharpe = mean / std_dev if std_dev > 0.0 else 0.0
+
+        # Overfitting penalty (Focus on single trades of luck)
+        total_profit = sum(t for t in trades if t > 0)
+        max_single = max(trades) if trades else 0.0
+        lucky_trade_ratio = max_single / total_profit if total_profit > 0.0 else 0.0
+        penalty = 0.1 if (lucky_trade_ratio > 0.50 or len(trades) < 3) else 1.0
+
+        return raw_sharpe * penalty
+
+# ==============================================================================
+# 9. Alvos Dinâmicos Baseados em Volatilidade (ATR) e Livro de Ofertas (Order Book)
+# ==============================================================================
+class OrderBookData:
+    def __init__(self, bids: list, asks: list):
+        self.bids = bids
+        self.asks = asks
+
+class ExitTargets:
+    def __init__(self, stop_loss: float, take_profit: float):
+        self.stop_loss = stop_loss
+        self.take_profit = take_profit
+
+class DynamicExitCalculator:
+    def calculate_targets(self, symbol: str, entry_price: float, atr: float, order_book: OrderBookData, side: str = "BUY") -> ExitTargets:
+        support_wall = max(order_book.bids, key=lambda x: x[1])[0] if order_book.bids else entry_price * 0.98
+        resistance_wall = max(order_book.asks, key=lambda x: x[1])[0] if order_book.asks else entry_price * 1.02
+
+        if side == "BUY":
+            stop_loss = min(support_wall - (1.5 * atr), entry_price * 0.95)
+            take_profit = max(resistance_wall - (0.5 * atr), entry_price * 1.02)
+            return ExitTargets(stop_loss, take_profit)
+        else:
+            stop_loss = max(resistance_wall + (1.5 * atr), entry_price * 1.05)
+            take_profit = min(support_wall + (0.5 * atr), entry_price * 0.98)
+            return ExitTargets(stop_loss, take_profit)
+
