@@ -32,15 +32,36 @@ def parse_double_from_bytes(raw_bytes: bytes, key: bytes) -> float:
     # skip quotes, colons, spaces
     while val_idx < len(raw_bytes) and raw_bytes[val_idx] in (58, 32, 34): # 58=:, 32=space, 34="
         val_idx += 1
-    # read digits
-    start = val_idx
-    while val_idx < len(raw_bytes) and (48 <= raw_bytes[val_idx] <= 57 or raw_bytes[val_idx] == 46 or raw_bytes[val_idx] == 45): # 48-57=0-9, 46=., 45=-
+    
+    result = 0.0
+    divisor = 1.0
+    decimal_reached = False
+    negative = False
+    
+    if val_idx < len(raw_bytes) and raw_bytes[val_idx] == 45: # 45=-
+        negative = True
         val_idx += 1
-    val_str = raw_bytes[start:val_idx].decode('utf-8')
-    try:
-        return float(val_str)
-    except ValueError:
+        
+    has_digits = False
+    while val_idx < len(raw_bytes):
+        b = raw_bytes[val_idx]
+        if 48 <= b <= 57: # 48-57=0-9
+            has_digits = True
+            digit = b - 48
+            if not decimal_reached:
+                result = result * 10.0 + digit
+            else:
+                divisor *= 10.0
+                result += digit / divisor
+        elif b == 46: # 46=.
+            decimal_reached = True
+        else:
+            break
+        val_idx += 1
+        
+    if not has_digits:
         return 0.0
+    return -result if negative else result
 
 # ==============================================================================
 # 2. Order Book Imbalance (OBI)

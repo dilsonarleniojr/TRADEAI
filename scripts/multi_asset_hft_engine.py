@@ -11,7 +11,28 @@ Includes:
 import asyncio
 import time
 import logging
-from queue import PriorityQueue
+import heapq
+
+class AsyncPriorityQueue:
+    """
+    Non-blocking, single-threaded heapq wrapper for asyncio event loops.
+    """
+    def __init__(self):
+        self._queue = []
+
+    def put_nowait(self, item):
+        heapq.heappush(self._queue, item)
+
+    def get_nowait(self):
+        if not self._queue:
+            return None
+        return heapq.heappop(self._queue)
+
+    def empty(self) -> bool:
+        return len(self._queue) == 0
+
+    def qsize(self) -> int:
+        return len(self._queue)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("MultiAssetHftEngine")
@@ -140,7 +161,7 @@ class BatchOrderDispatcher:
     def __init__(self, rate_limit_per_period: int = 50, period_seconds: float = 10.0):
         self.rate_limit = rate_limit_per_period
         self.period = period_seconds
-        self.order_queue = PriorityQueue()
+        self.order_queue = AsyncPriorityQueue()
         self.dispatched_in_window = 0
         self.window_start = time.time()
         self.is_running = False
@@ -156,9 +177,10 @@ class BatchOrderDispatcher:
 
             if self.dispatched_in_window < self.rate_limit:
                 if not self.order_queue.empty():
-                    order = self.order_queue.get()
-                    await self.dispatch_to_exchange(order)
-                    self.dispatched_in_window += 1
+                    order = self.order_queue.get_nowait()
+                    if order:
+                        await self.dispatch_to_exchange(order)
+                        self.dispatched_in_window += 1
                 else:
                     await asyncio.sleep(0.01) # Small sleep when empty
             else:
@@ -170,7 +192,7 @@ class BatchOrderDispatcher:
         self.is_running = False
 
     def enqueue_order(self, order: PriorityOrder):
-        self.order_queue.put(order)
+        self.order_queue.put_nowait(order)
 
     async def dispatch_to_exchange(self, order: PriorityOrder):
         logger.info(f"📡 [Dispatcher] Executing prioritized order [{order.priority}] on {order.symbol}: {order.side} {order.quantity}")

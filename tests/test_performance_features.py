@@ -71,6 +71,38 @@ class TestPerformanceFeatures(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(risk_manager.position['active'])
         self.assertEqual(len(risk_manager.market_orders), 1)
 
+    async def test_short_position_trailing_stop(self):
+        """
+        Verify Volatility-Adjusted Trailing Stop for SHORT positions.
+        """
+        capital = 10000.0
+        risk_manager = RiskManager(capital=capital, max_loss_pct=0.02, atr_multiplier=2.0)
+        
+        entry_price = 100.0
+        atr = 2.0
+        qty = 25.0
+        
+        # Open SHORT position (entry = 100.0, stop = 100.0 + (2.0 * 2.0) = 104.0)
+        risk_manager.open_position(entry_price=entry_price, qty=qty, symbol="BTCUSDT", initial_atr=atr, side="SHORT")
+        self.assertEqual(risk_manager.trailing_stop_price, 104.0)
+        
+        # Price drops to 95.0. New stop should trail to 95.0 + (2.0 * 2.0) = 99.0
+        await risk_manager.on_tick(95.0, current_atr=2.0)
+        self.assertEqual(risk_manager.best_price, 95.0)
+        self.assertEqual(risk_manager.trailing_stop_price, 99.0)
+        self.assertTrue(risk_manager.position['active'])
+        
+        # Price rises to 97.0. Stop price should remain at 99.0
+        await risk_manager.on_tick(97.0, current_atr=2.0)
+        self.assertEqual(risk_manager.best_price, 95.0)
+        self.assertEqual(risk_manager.trailing_stop_price, 99.0)
+        self.assertTrue(risk_manager.position['active'])
+        
+        # Price spikes to 99.5 (above stop price of 99.0). Should trigger Kill Switch!
+        await risk_manager.on_tick(99.5, current_atr=2.0)
+        self.assertFalse(risk_manager.position['active'])
+        self.assertEqual(len(risk_manager.market_orders), 1)
+
     async def test_slippage_protection(self):
         """
         Verify that BBO cache check correctly creates a LIMIT IOC order.

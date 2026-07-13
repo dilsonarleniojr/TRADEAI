@@ -142,7 +142,6 @@ fun Modifier.pulsating(durationMs: Int = 1000): Modifier {
 // ==============================================================================
 // 4. Injeção de Dependências (DI Koin Module Structure)
 // ==============================================================================
-// Simulação de DSL do Koin para prover injeção limpa no boot
 interface KoinModuleBinder {
     fun single(block: () -> Any)
     fun viewModel(block: () -> ViewModel)
@@ -156,7 +155,6 @@ fun tradingAppModule(binder: KoinModuleBinder) {
 // ==============================================================================
 // 5. Grafo de Navegação Compose (Navigation Destinations)
 // ==============================================================================
-// Representa o NavGraphBuilder de registro de rotas
 interface NavGraphBuilder {
     fun composable(route: String, content: @Composable () -> Unit)
 }
@@ -194,7 +192,10 @@ fun TradingTerminalScreen(
         sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         sheetContent = {
             PositionDetailsSheet(
-                state = state,
+                entryPriceProvider = { state.currentPositionEntry },
+                currentPriceProvider = { state.currentPrice },
+                trailingStopProvider = { state.currentTrailingStop },
+                pnlProvider = { state.currentPnL },
                 onClose = { coroutineScope.launch { sheetState.hide() } }
             )
         }
@@ -220,33 +221,16 @@ fun TradingTerminalScreen(
                     fontFamily = FontFamily.Monospace
                 )
 
-                val isPulsingRequired = state.apiLatencyMs > 150 || state.isAnomalyDetected
-                Row(
-                    modifier = if (isPulsingRequired) Modifier.pulsating() else Modifier,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .background(
-                                color = if (state.isWebSocketConnected) OledPalette.SignalGreen else OledPalette.SignalRed,
-                                shape = RoundedCornerShape(5.dp)
-                            )
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "LATENCY: ${state.apiLatencyMs}ms",
-                        color = if (isPulsingRequired) OledPalette.SignalRed else OledPalette.TextSecondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
+                // Refinement (Phase 3): Sub-componente com leitura adiada de estado
+                LatencyIndicator(
+                    latencyProvider = { state.apiLatencyMs },
+                    isConnectedProvider = { state.isWebSocketConnected },
+                    isAnomalyProvider = { state.isAnomalyDetected }
+                )
             }
 
             // Lógica de Visibilidade: Exibe Skeleton Loader se os dados estiverem vazios/carregando
             if (state.candles.isEmpty() || state.currentPrice == 0.0) {
-                // SKELETON PROGRESS LOADER (Evita colapso de tamanho / altura zero da UI)
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -268,10 +252,10 @@ fun TradingTerminalScreen(
                     }
                 }
             } else {
-                // Gráfico carregado: Ocupa o weight proporcional sem esmagar
+                // Refinement (Phase 3): Gráfico com leitura adiada dos dados
                 HighFrequencyChart(
-                    candles = state.candles,
-                    currentPrice = state.currentPrice,
+                    candlesProvider = { state.candles },
+                    currentPriceProvider = { state.currentPrice },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -280,37 +264,12 @@ fun TradingTerminalScreen(
                 )
             }
 
-            // Painel de Posicionamento Rápido
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { coroutineScope.launch { sheetState.show() } },
-                backgroundColor = OledPalette.Surface,
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("POSIÇÃO ABERTA", color = OledPalette.TextSecondary, fontSize = 11.sp)
-                        Text(
-                            text = "${state.currentPositionSize} BTC",
-                            color = OledPalette.TextPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("PNL CORRENTE", color = OledPalette.TextSecondary, fontSize = 11.sp)
-                        Text(
-                            text = "+$${state.currentPnL}",
-                            color = OledPalette.SignalGreen,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
+            // Refinement (Phase 3): Card de Posição com leitura adiada
+            QuickPositionCard(
+                sizeProvider = { state.currentPositionSize },
+                pnlProvider = { state.currentPnL },
+                onClick = { coroutineScope.launch { sheetState.show() } }
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -320,7 +279,7 @@ fun TradingTerminalScreen(
                 contentAlignment = Alignment.Center
             ) {
                 SwipeToConfirmKillSwitch(
-                    isBuyHalted = state.isBuyHalted,
+                    isBuyHaltedProvider = { state.isBuyHalted },
                     onConfirmed = {
                         hapticsManager.triggerFeedback(HapticPattern.EMERGENCY_KILL)
                         println("🚨 EMERGENCY CRYPTO KILL SWITCH CONFIRMED!")
@@ -332,13 +291,102 @@ fun TradingTerminalScreen(
 }
 
 // ==============================================================================
-// 7. Modal Bottom Sheet Component para Detalhes de Posição
+// 7. Latency Indicator (Componente isolado para mitigar recomposição)
+// ==============================================================================
+@Composable
+fun LatencyIndicator(
+    latencyProvider: () -> Long,
+    isConnectedProvider: () -> Boolean,
+    isAnomalyProvider: () -> Boolean
+) {
+    val latency = latencyProvider()
+    val isConnected = isConnectedProvider()
+    val isAnomaly = isAnomalyProvider()
+    val isPulsingRequired = latency > 150 || isAnomaly
+
+    Row(
+        modifier = if (isPulsingRequired) Modifier.pulsating() else Modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .background(
+                    color = if (isConnected) OledPalette.SignalGreen else OledPalette.SignalRed,
+                    shape = RoundedCornerShape(5.dp)
+                )
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = "LATENCY: ${latency}ms",
+            color = if (isPulsingRequired) OledPalette.SignalRed else OledPalette.TextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
+
+// ==============================================================================
+// 8. Quick Position Card (Componente isolado para mitigar recomposição)
+// ==============================================================================
+@Composable
+fun QuickPositionCard(
+    sizeProvider: () -> Double,
+    pnlProvider: () -> Double,
+    onClick: () -> Unit
+) {
+    val size = sizeProvider()
+    val pnl = pnlProvider()
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        backgroundColor = OledPalette.Surface,
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("POSIÇÃO ABERTA", color = OledPalette.TextSecondary, fontSize = 11.sp)
+                Text(
+                    text = "$size BTC",
+                    color = OledPalette.TextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("PNL CORRENTE", color = OledPalette.TextSecondary, fontSize = 11.sp)
+                Text(
+                    text = "+$$pnl",
+                    color = OledPalette.SignalGreen,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+// ==============================================================================
+// 9. Modal Bottom Sheet Component para Detalhes de Posição (Leitura Adiada)
 // ==============================================================================
 @Composable
 fun PositionDetailsSheet(
-    state: TradingUiState,
+    entryPriceProvider: () -> Double,
+    currentPriceProvider: () -> Double,
+    trailingStopProvider: () -> Double,
+    pnlProvider: () -> Double,
     onClose: () -> Unit
 ) {
+    val entryPrice = entryPriceProvider()
+    val currentPrice = currentPriceProvider()
+    val trailingStop = trailingStopProvider()
+    val pnl = pnlProvider()
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -372,7 +420,7 @@ fun PositionDetailsSheet(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text("Entrada", color = OledPalette.TextSecondary, fontSize = 14.sp)
-            Text("$${state.currentPositionEntry}", color = OledPalette.TextPrimary, fontWeight = FontWeight.Bold)
+            Text("$$entryPrice", color = OledPalette.TextPrimary, fontWeight = FontWeight.Bold)
         }
 
         Row(
@@ -380,7 +428,7 @@ fun PositionDetailsSheet(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text("Preço Corrente", color = OledPalette.TextSecondary, fontSize = 14.sp)
-            Text("$${state.currentPrice}", color = OledPalette.TextPrimary, fontWeight = FontWeight.Bold)
+            Text("$$currentPrice", color = OledPalette.TextPrimary, fontWeight = FontWeight.Bold)
         }
 
         Row(
@@ -388,7 +436,7 @@ fun PositionDetailsSheet(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text("Trailing Stop Ativo (ATR)", color = OledPalette.TextSecondary, fontSize = 14.sp)
-            Text("$${state.currentTrailingStop}", color = OledPalette.SignalOrange, fontWeight = FontWeight.Bold)
+            Text("$$trailingStop", color = OledPalette.SignalOrange, fontWeight = FontWeight.Bold)
         }
 
         Row(
@@ -397,7 +445,7 @@ fun PositionDetailsSheet(
         ) {
             Text("Lucro/Prejuízo Estimado", color = OledPalette.TextSecondary, fontSize = 14.sp)
             Text(
-                text = "+$${state.currentPnL}",
+                text = "+$$pnl",
                 color = OledPalette.SignalGreen,
                 fontWeight = FontWeight.Bold
             )
@@ -406,15 +454,17 @@ fun PositionDetailsSheet(
 }
 
 // ==============================================================================
-// 8. Desenho do Gráfico OLED (Canvas)
+// 10. Desenho do Gráfico OLED (Canvas com Leitura Adiada de dados)
 // ==============================================================================
 @Composable
 fun HighFrequencyChart(
-    candles: List<Candle>,
-    currentPrice: Double,
+    candlesProvider: () -> List<Candle>,
+    currentPriceProvider: () -> Double,
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier.background(OledPalette.Background)) {
+        val candles = candlesProvider()
+        val currentPrice = currentPriceProvider()
         if (candles.isEmpty()) return@Canvas
 
         val canvasWidth = size.width
@@ -481,14 +531,15 @@ fun HighFrequencyChart(
 private fun abs(value: Float): Float = if (value < 0) -value else value
 
 // ==============================================================================
-// 9. Componente de Kill Switch Deslizante (Mecânico)
+// 11. Componente de Kill Switch Deslizante (Mecânico com Leitura Adiada)
 // ==============================================================================
 @Composable
 fun SwipeToConfirmKillSwitch(
-    isBuyHalted: Boolean,
+    isBuyHaltedProvider: () -> Boolean,
     onConfirmed: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isBuyHalted = isBuyHaltedProvider()
     val width = 280.dp
     val dragSize = 64.dp
     val dragSizePx = with(LocalDensity.current) { dragSize.toPx() }
