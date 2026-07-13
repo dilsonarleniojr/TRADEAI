@@ -11,6 +11,7 @@ Includes:
 import asyncio
 import time
 import logging
+import inspect
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("MultiAssetHftEngine")
@@ -339,14 +340,14 @@ class BotFleetOrchestrator:
             'action': action
         })
 
-    async def run_scheduler_tick(self, current_time_str: str, external_metrics: dict = None):
+    async def run_scheduler_tick(self, current_time_str: str, external_metrics: dict | None = None):
         for trigger in self.cron_triggers:
             if trigger['time_str'] == current_time_str:
                 now_ts = time.time()
                 if now_ts - trigger['last_run'] > 60.0:
                     trigger['last_run'] = now_ts
                     action = trigger['action']
-                    if asyncio.iscoroutinefunction(action):
+                    if inspect.iscoroutinefunction(action):
                         await action()
                     else:
                         action()
@@ -365,7 +366,7 @@ class BotFleetOrchestrator:
                     
                     if triggered:
                         action = trigger['action']
-                        if asyncio.iscoroutinefunction(action):
+                        if inspect.iscoroutinefunction(action):
                             await action()
                         else:
                             action()
