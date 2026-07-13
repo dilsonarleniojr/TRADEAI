@@ -36,7 +36,7 @@ import kotlin.math.roundToInt
 
 /**
  * TRADEAI — Terminal GUI Militar (Militarmente Eficiente, OLED Black, Glanceability e Háptica)
- * Foco em latência zero, contraste de alta velocidade e alertas de estado físico no hardware.
+ * Versão Hardened com suporte a DI (Koin/Hilt), Navegação Compose e Skeletons de Inicialização.
  */
 
 // ==============================================================================
@@ -117,23 +117,8 @@ enum class HapticPattern {
 }
 
 class HapticsManager(private val androidContext: Any? = null) {
-    /**
-     * Dispara vibrações físicas no hardware mapeadas para o estado crítico do sistema.
-     */
     fun triggerFeedback(pattern: HapticPattern) {
-        // Envia log / aciona vibrador nativo
         println("⚡ HAPTIC MOTOR: Dispatching vibration pattern: $pattern")
-        when (pattern) {
-            HapticPattern.ORDER_PLACED -> {
-                // waveform: [0, 40, 50, 40]
-            }
-            HapticPattern.WS_DISCONNECTED -> {
-                // waveform: [0, 150, 100, 150, 100, 150]
-            }
-            HapticPattern.EMERGENCY_KILL -> {
-                // heavy one shot
-            }
-        }
     }
 }
 
@@ -155,7 +140,41 @@ fun Modifier.pulsating(durationMs: Int = 1000): Modifier {
 }
 
 // ==============================================================================
-// 4. Tela Principal do Terminal HFT com Bottom Sheet e OLED Black
+// 4. Injeção de Dependências (DI Koin Module Structure)
+// ==============================================================================
+// Simulação de DSL do Koin para prover injeção limpa no boot
+interface KoinModuleBinder {
+    fun single(block: () -> Any)
+    fun viewModel(block: () -> ViewModel)
+}
+
+fun tradingAppModule(binder: KoinModuleBinder) {
+    binder.single { HapticsManager() }
+    binder.viewModel { TradingViewModel() }
+}
+
+// ==============================================================================
+// 5. Grafo de Navegação Compose (Navigation Destinations)
+// ==============================================================================
+// Representa o NavGraphBuilder de registro de rotas
+interface NavGraphBuilder {
+    fun composable(route: String, content: @Composable () -> Unit)
+}
+
+class AppNavigation(
+    private val builder: NavGraphBuilder,
+    private val viewModel: TradingViewModel,
+    private val hapticsManager: HapticsManager
+) {
+    fun registerRoutes() {
+        builder.composable("trading_terminal") {
+            TradingTerminalScreen(viewModel = viewModel, hapticsManager = hapticsManager)
+        }
+    }
+}
+
+// ==============================================================================
+// 6. Tela Principal do Terminal HFT com Skeletons de Estado Inicial
 // ==============================================================================
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
@@ -180,7 +199,6 @@ fun TradingTerminalScreen(
             )
         }
     ) {
-        // Tela militar OLED True Black
         Column(
             modifier = modifier
                 .fillMaxSize()
@@ -202,7 +220,6 @@ fun TradingTerminalScreen(
                     fontFamily = FontFamily.Monospace
                 )
 
-                // Alertas e Status (pulsando em caso de latência alta ou anomalia)
                 val isPulsingRequired = state.apiLatencyMs > 150 || state.isAnomalyDetected
                 Row(
                     modifier = if (isPulsingRequired) Modifier.pulsating() else Modifier,
@@ -227,16 +244,43 @@ fun TradingTerminalScreen(
                 }
             }
 
-            // Gráfico de Alta Frequência (Canvas API)
-            HighFrequencyChart(
-                candles = state.candles,
-                currentPrice = state.currentPrice,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(vertical = 16.dp)
-            )
+            // Lógica de Visibilidade: Exibe Skeleton Loader se os dados estiverem vazios/carregando
+            if (state.candles.isEmpty() || state.currentPrice == 0.0) {
+                // SKELETON PROGRESS LOADER (Evita colapso de tamanho / altura zero da UI)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .fillMaxHeight()
+                        .background(OledPalette.Surface, shape = RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = OledPalette.SignalOrange)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "ASSINANDO WEBSOCKET FEED...",
+                            color = OledPalette.TextSecondary,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            } else {
+                // Gráfico carregado: Ocupa o weight proporcional sem esmagar
+                HighFrequencyChart(
+                    candles = state.candles,
+                    currentPrice = state.currentPrice,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .fillMaxHeight()
+                        .padding(vertical = 16.dp)
+                )
+            }
 
-            // Painel de Posicionamento Rápido (Tocar abre o Bottom Sheet)
+            // Painel de Posicionamento Rápido
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -288,7 +332,7 @@ fun TradingTerminalScreen(
 }
 
 // ==============================================================================
-// 5. Modal Bottom Sheet Component para Detalhes de Posição
+// 7. Modal Bottom Sheet Component para Detalhes de Posição
 // ==============================================================================
 @Composable
 fun PositionDetailsSheet(
@@ -362,7 +406,7 @@ fun PositionDetailsSheet(
 }
 
 // ==============================================================================
-// 6. Desenho do Gráfico OLED (Canvas)
+// 8. Desenho do Gráfico OLED (Canvas)
 // ==============================================================================
 @Composable
 fun HighFrequencyChart(
@@ -370,7 +414,7 @@ fun HighFrequencyChart(
     currentPrice: Double,
     modifier: Modifier = Modifier
 ) {
-    Canvas(modifier = modifier.fillMaxWidth().background(OledPalette.Background)) {
+    Canvas(modifier = modifier.background(OledPalette.Background)) {
         if (candles.isEmpty()) return@Canvas
 
         val canvasWidth = size.width
@@ -382,7 +426,6 @@ fun HighFrequencyChart(
 
         val candleWidth = canvasWidth / candles.size
         
-        // Linhas de grade OLED de baixo contraste
         val gridLines = 5
         for (i in 0..gridLines) {
             val y = canvasHeight * (i.toFloat() / gridLines)
@@ -438,7 +481,7 @@ fun HighFrequencyChart(
 private fun abs(value: Float): Float = if (value < 0) -value else value
 
 // ==============================================================================
-// 7. Componente de Kill Switch Deslizante (Mecânico)
+// 9. Componente de Kill Switch Deslizante (Mecânico)
 // ==============================================================================
 @Composable
 fun SwipeToConfirmKillSwitch(

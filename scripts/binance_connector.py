@@ -179,12 +179,48 @@ class BinanceConnector:
                             async for msg in ws:
                                 if msg.type == aiohttp.WSMsgType.TEXT:
                                     last_message_time = time.time()
-                                    data = msg.json()
-                                    self.prices_cache[symbol] = {
-                                        'bid': float(data.get('b', 0)),
-                                        'ask': float(data.get('a', 0)),
-                                        'last': (float(data.get('b', 0)) + float(data.get('a', 0))) / 2.0
-                                    }
+                                    
+                                    try:
+                                        # Fast direct string parsing of BBO prices to minimize latency
+                                        raw_text = msg.data
+                                        
+                                        b_idx = raw_text.find('"b":')
+                                        if b_idx == -1:
+                                            raise ValueError("b tag missing")
+                                        start = b_idx + 4
+                                        if raw_text[start] == '"':
+                                            start += 1
+                                        end = start
+                                        while end < len(raw_text) and raw_text[end] not in ('"', ','):
+                                            end += 1
+                                        bid = float(raw_text[start:end])
+                                        
+                                        a_idx = raw_text.find('"a":')
+                                        if a_idx == -1:
+                                            raise ValueError("a tag missing")
+                                        start = a_idx + 4
+                                        if raw_text[start] == '"':
+                                            start += 1
+                                        end = start
+                                        while end < len(raw_text) and raw_text[end] not in ('"', ','):
+                                            end += 1
+                                        ask = float(raw_text[start:end])
+                                        
+                                        self.prices_cache[symbol] = {
+                                            'bid': bid,
+                                            'ask': ask,
+                                            'last': (bid + ask) / 2.0
+                                        }
+                                    except Exception:
+                                        # Safe fallback to standard JSON parser if pattern deviates
+                                        data = msg.json()
+                                        bid = float(data.get('b', 0))
+                                        ask = float(data.get('a', 0))
+                                        self.prices_cache[symbol] = {
+                                            'bid': bid,
+                                            'ask': ask,
+                                            'last': (bid + ask) / 2.0
+                                        }
                                 elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                                     break
                         finally:

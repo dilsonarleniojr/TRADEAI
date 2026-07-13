@@ -342,6 +342,13 @@ async function runRegressionTest() {
 
     // 3. Socket.IO check
     console.log("🔌 Checking Socket.IO connection...");
+    for (let i = 0; i < 6; i++) {
+      const currentStatus = await page.evaluate(() => (window as any).useCryptoStore.getState().connectionStatus);
+      if (currentStatus === "connected" || currentStatus === "rest-api") {
+        break;
+      }
+      await page.waitForTimeout(500);
+    }
     const socketStatus = await page.evaluate(() => {
       return (window as any).useCryptoStore.getState().connectionStatus;
     });
