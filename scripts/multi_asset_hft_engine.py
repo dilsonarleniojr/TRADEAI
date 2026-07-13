@@ -181,3 +181,80 @@ class BatchOrderDispatcher:
 
     def get_queue_size(self) -> int:
         return self.order_queue.qsize()
+
+
+# ==============================================================================
+# 5. Bot Fleet Orchestrator & Schedulers
+# ==============================================================================
+class BotFleetOrchestrator:
+    def __init__(self, total_capital: float):
+        self.total_capital = total_capital
+        self.bots = {}
+        self.allocations = {}
+        self.used_margins = {}
+        self.cron_triggers = []
+        self.event_triggers = []
+
+    def register_bot(self, bot_id: str, bot_instance, margin_allocation: float):
+        self.bots[bot_id] = bot_instance
+        self.allocations[bot_id] = margin_allocation
+        self.used_margins[bot_id] = 0.0
+
+    async def try_allocate_bot_margin(self, bot_id: str, amount: float) -> bool:
+        allocated = self.allocations.get(bot_id, 0.0)
+        used = self.used_margins.get(bot_id, 0.0)
+        if used + amount <= allocated:
+            self.used_margins[bot_id] = used + amount
+            return True
+        return False
+
+    def release_bot_margin(self, bot_id: str, amount: float):
+        if bot_id in self.used_margins:
+            self.used_margins[bot_id] = max(0.0, self.used_margins[bot_id] - amount)
+
+    def add_cron_trigger(self, time_str: str, action):
+        self.cron_triggers.append({
+            'time_str': time_str,
+            'action': action,
+            'last_run': 0.0
+        })
+
+    def add_event_trigger(self, metric_name: str, operator: str, value: float, action):
+        self.event_triggers.append({
+            'metric': metric_name,
+            'operator': operator,
+            'value': value,
+            'action': action
+        })
+
+    async def run_scheduler_tick(self, current_time_str: str, external_metrics: dict = None):
+        for trigger in self.cron_triggers:
+            if trigger['time_str'] == current_time_str:
+                now_ts = time.time()
+                if now_ts - trigger['last_run'] > 60.0:
+                    trigger['last_run'] = now_ts
+                    action = trigger['action']
+                    if asyncio.iscoroutinefunction(action):
+                        await action()
+                    else:
+                        action()
+
+        if external_metrics:
+            for trigger in self.event_triggers:
+                metric_val = external_metrics.get(trigger['metric'])
+                if metric_val is not None:
+                    triggered = False
+                    if trigger['operator'] == "<" and metric_val < trigger['value']:
+                        triggered = True
+                    elif trigger['operator'] == ">" and metric_val > trigger['value']:
+                        triggered = True
+                    elif trigger['operator'] == "==" and metric_val == trigger['value']:
+                        triggered = True
+                    
+                    if triggered:
+                        action = trigger['action']
+                        if asyncio.iscoroutinefunction(action):
+                            await action()
+                        else:
+                            action()
+

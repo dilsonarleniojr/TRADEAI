@@ -165,3 +165,156 @@ class TelemetryCache:
             # Reset states
             self.size = 0
             self.head = 0
+
+
+# ==============================================================================
+# 5. Defesa de Microestrutura: Spoofing & Layering Detector
+# ==============================================================================
+class SpoofingDetector:
+    def __init__(self, large_vol_threshold=50.0, time_limit_ms=100.0, price_closeness_pct=0.001):
+        self.large_vol_threshold = large_vol_threshold
+        self.time_limit_ms = time_limit_ms
+        self.price_closeness_pct = price_closeness_pct
+        self.bids_history = {}  # price -> (volume, timestamp_ms)
+        self.asks_history = {}  # price -> (volume, timestamp_ms)
+
+    def process_depth_update(self, new_bids, new_asks, current_price, timestamp_ms, executed_trades_at_prices=None):
+        """
+        new_bids: list of [price, volume]
+        new_asks: list of [price, volume]
+        Returns True if spoofing is detected.
+        """
+        curr_bids = {float(p): float(v) for p, v in new_bids}
+        curr_asks = {float(p): float(v) for p, v in new_asks}
+        
+        spoofing_detected = False
+        
+        # Check Bids
+        for price, vol in curr_bids.items():
+            prev_vol, prev_ts = self.bids_history.get(price, (0.0, 0.0))
+            if vol >= prev_vol + self.large_vol_threshold:
+                self.bids_history[price] = (vol, timestamp_ms)
+            elif vol < prev_vol - self.large_vol_threshold:
+                if prev_ts > 0 and (timestamp_ms - prev_ts) <= self.time_limit_ms:
+                    if abs(current_price - price) / current_price <= self.price_closeness_pct:
+                        trade_vol = executed_trades_at_prices.get(price, 0.0) if executed_trades_at_prices else 0.0
+                        if trade_vol < (prev_vol - vol) * 0.1:
+                            spoofing_detected = True
+                if vol > 0:
+                    self.bids_history[price] = (vol, timestamp_ms)
+                else:
+                    self.bids_history.pop(price, None)
+
+        for price in list(self.bids_history.keys()):
+            if price not in curr_bids:
+                prev_vol, prev_ts = self.bids_history[price]
+                if prev_vol >= self.large_vol_threshold and (timestamp_ms - prev_ts) <= self.time_limit_ms:
+                    if abs(current_price - price) / current_price <= self.price_closeness_pct:
+                        trade_vol = executed_trades_at_prices.get(price, 0.0) if executed_trades_at_prices else 0.0
+                        if trade_vol < prev_vol * 0.1:
+                            spoofing_detected = True
+                self.bids_history.pop(price, None)
+
+        # Check Asks
+        for price, vol in curr_asks.items():
+            prev_vol, prev_ts = self.asks_history.get(price, (0.0, 0.0))
+            if vol >= prev_vol + self.large_vol_threshold:
+                self.asks_history[price] = (vol, timestamp_ms)
+            elif vol < prev_vol - self.large_vol_threshold:
+                if prev_ts > 0 and (timestamp_ms - prev_ts) <= self.time_limit_ms:
+                    if abs(current_price - price) / current_price <= self.price_closeness_pct:
+                        trade_vol = executed_trades_at_prices.get(price, 0.0) if executed_trades_at_prices else 0.0
+                        if trade_vol < (prev_vol - vol) * 0.1:
+                            spoofing_detected = True
+                if vol > 0:
+                    self.asks_history[price] = (vol, timestamp_ms)
+                else:
+                    self.asks_history.pop(price, None)
+
+        for price in list(self.asks_history.keys()):
+            if price not in curr_asks:
+                prev_vol, prev_ts = self.asks_history[price]
+                if prev_vol >= self.large_vol_threshold and (timestamp_ms - prev_ts) <= self.time_limit_ms:
+                    if abs(current_price - price) / current_price <= self.price_closeness_pct:
+                        trade_vol = executed_trades_at_prices.get(price, 0.0) if executed_trades_at_prices else 0.0
+                        if trade_vol < prev_vol * 0.1:
+                            spoofing_detected = True
+                self.asks_history.pop(price, None)
+
+        return spoofing_detected
+
+
+# ==============================================================================
+# 6. Iceberg Order Tracker
+# ==============================================================================
+class IcebergTracker:
+    def __init__(self, min_volume=10.0, time_window_ms=1000.0):
+        self.min_volume = min_volume
+        self.time_window_ms = time_window_ms
+        self.trade_accumulators = {}  # price -> (accum_vol, timestamp_ms)
+        self.last_visible_volumes = {}  # price -> visible_vol
+
+    def update_depth(self, bids, asks):
+        self.last_visible_volumes.clear()
+        for p, v in bids[:5]:
+            self.last_visible_volumes[float(p)] = float(v)
+        for p, v in asks[:5]:
+            self.last_visible_volumes[float(p)] = float(v)
+
+    def process_trade(self, price, volume, timestamp_ms):
+        price = float(price)
+        volume = float(volume)
+        accum, ts = self.trade_accumulators.get(price, (0.0, timestamp_ms))
+        
+        if timestamp_ms - ts > self.time_window_ms:
+            accum = 0.0
+            ts = timestamp_ms
+            
+        accum += volume
+        self.trade_accumulators[price] = (accum, ts)
+        
+        visible_vol = self.last_visible_volumes.get(price, 0.0)
+        if visible_vol > 0.0 and accum >= visible_vol * 1.5 and accum >= self.min_volume:
+            return True
+        return False
+
+
+# ==============================================================================
+# 7. Grid Trading Strategy
+# ==============================================================================
+class GridTradingStrategy:
+    def __init__(self, center_price, grid_span_pct=0.05, num_grids=10, order_qty=0.01):
+        self.center_price = center_price
+        self.grid_span_pct = grid_span_pct
+        self.num_grids = num_grids
+        self.order_qty = order_qty
+        self.buy_orders = []
+        self.sell_orders = []
+        self.setup_grid()
+
+    def setup_grid(self):
+        self.buy_orders.clear()
+        self.sell_orders.clear()
+        half_span = self.center_price * self.grid_span_pct / 2.0
+        lower_bound = self.center_price - half_span
+        upper_bound = self.center_price + half_span
+        step = (upper_bound - lower_bound) / self.num_grids
+        for i in range(self.num_grids // 2):
+            self.buy_orders.append(self.center_price - (i + 1) * step)
+            self.sell_orders.append(self.center_price + (i + 1) * step)
+
+    def on_tick(self, current_price):
+        half_span = self.center_price * self.grid_span_pct / 2.0
+        lower_bound = self.center_price - half_span
+        upper_bound = self.center_price + half_span
+        
+        if current_price > upper_bound:
+            self.center_price = current_price
+            self.setup_grid()
+            return [("SHIFT_UP", self.center_price, self.order_qty)]
+        elif current_price < lower_bound:
+            self.center_price = current_price
+            self.setup_grid()
+            return [("SHIFT_DOWN", self.center_price, self.order_qty)]
+        return []
+

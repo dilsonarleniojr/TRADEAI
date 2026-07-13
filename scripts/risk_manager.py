@@ -6,6 +6,7 @@ Implements Volatility-Adjusted Trailing Stop (using ATR) and dynamic microsecond
 
 import time
 import logging
+import math
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("RiskManager")
@@ -16,7 +17,7 @@ class RiskManager:
     Contém um Kill Switch projetado para liquidar posições imediatamente a mercado
     em caso de drawdown extremo ou violação de trailing stop baseado em volatilidade (ATR).
     """
-    def __init__(self, capital: float, max_loss_pct: float = 0.02, atr_multiplier: float = 2.5, connector = None):
+    def __init__(self, capital: float, max_loss_pct: float = 0.02, atr_multiplier: float = 2.5, connector = None, max_var_limit: float = 0.05):
         self.capital = capital
         self.max_loss_pct = max_loss_pct
         self.atr_multiplier = atr_multiplier
@@ -28,6 +29,11 @@ class RiskManager:
         # Volatility Trailing Stop state
         self.highest_price = None
         self.trailing_stop_price = None
+
+        # VaR tracking state
+        self.price_history = {} # symbol -> list of prices
+        self.max_var_limit = max_var_limit
+        self.deleveraged = False
 
     def calculate_position_size(self, capital: float, entry_price: float, atr: float, risk_pct: float = 0.01) -> float:
         """
@@ -140,3 +146,89 @@ class RiskManager:
             f"🚨 KILL SWITCH ATIVADO! Stop violado a {trigger_price}. "
             f"Ordem de Mercado emitida. Tempo de reação: {self.reaction_time_ns / 1_000_000:.4f} ms."
         )
+
+    def update_market_data(self, symbol: str, price: float):
+        if symbol not in self.price_history:
+            self.price_history[symbol] = []
+        self.price_history[symbol].append(price)
+        if len(self.price_history[symbol]) > 30:
+            self.price_history[symbol].pop(0)
+
+    def calculate_portfolio_var(self, active_positions: dict) -> float:
+        """
+        active_positions: dict of {symbol: qty}
+        Returns calculated portfolio VaR.
+        """
+        if len(active_positions) == 0:
+            return 0.0
+
+        returns_dict = {}
+        current_prices = {}
+        for symbol in active_positions.keys():
+            history = self.price_history.get(symbol, [])
+            if len(history) < 5:
+                return 0.0
+            
+            current_prices[symbol] = history[-1]
+            
+            rets = []
+            for i in range(1, len(history)):
+                rets.append((history[i] - history[i-1]) / history[i-1])
+            returns_dict[symbol] = rets
+
+        symbols = list(active_positions.keys())
+        n_assets = len(symbols)
+        
+        portfolio_values = {}
+        total_portfolio_value = 0.0
+        for sym in symbols:
+            val = abs(active_positions[sym]) * current_prices[sym]
+            portfolio_values[sym] = val
+            total_portfolio_value += val
+
+        if total_portfolio_value == 0.0:
+            return 0.0
+
+        weights = [portfolio_values[sym] / total_portfolio_value for sym in symbols]
+
+        M = len(returns_dict[symbols[0]])
+        for sym in symbols:
+            M = min(M, len(returns_dict[sym]))
+
+        if M < 4:
+            return 0.0
+
+        means = {}
+        for sym in symbols:
+            means[sym] = sum(returns_dict[sym][:M]) / M
+
+        cov_matrix = [[0.0] * n_assets for _ in range(n_assets)]
+        for i in range(n_assets):
+            for j in range(n_assets):
+                sym_i = symbols[i]
+                sym_j = symbols[j]
+                cov_sum = 0.0
+                for t in range(M):
+                    cov_sum += (returns_dict[sym_i][t] - means[sym_i]) * (returns_dict[sym_j][t] - means[sym_j])
+                cov_matrix[i][j] = cov_sum / (M - 1)
+
+        p_var = 0.0
+        for i in range(n_assets):
+            for j in range(n_assets):
+                p_var += weights[i] * weights[j] * cov_matrix[i][j]
+
+        p_var_scaled = p_var * 30.0
+        p_std = math.sqrt(max(0.0, p_var_scaled))
+
+        var_pct = 2.33 * p_std
+        portfolio_var = var_pct * total_portfolio_value
+
+        if portfolio_var > (self.capital * self.max_var_limit):
+            self.deleveraged = True
+            logger.warning(f"🚨 VaR LIMITE EXCEDIDO: VaR = {portfolio_var:.2f} USDT > Limite {self.capital * self.max_var_limit:.2f} USDT. Iniciando De-leveraging!")
+            for sym in list(active_positions.keys()):
+                active_positions[sym] = active_positions[sym] * 0.5
+                logger.warning(f"⬇️ Reduzindo tamanho da posição em {sym} por 50%.")
+            
+        return portfolio_var
+

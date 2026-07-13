@@ -187,3 +187,218 @@ class TelemetryCache(val capacity: Int = 100000) {
         head = 0
     }
 }
+
+// ==============================================================================
+// 5. Defesa de Microestrutura: Spoofing & Layering Detector
+// ==============================================================================
+class SpoofingDetector(
+    val largeVolThreshold: Double = 50.0,
+    val timeLimitMs: Double = 100.0,
+    val priceClosenessPct: Double = 0.001
+) {
+    private val bidsHistory = mutableMapOf<Double, Pair<Double, Double>>() // price -> (volume, timestamp_ms)
+    private val asksHistory = mutableMapOf<Double, Pair<Double, Double>>() // price -> (volume, timestamp_ms)
+
+    fun processDepthUpdate(
+        newBids: DoubleArray, newBidSizes: DoubleArray,
+        newAsks: DoubleArray, newAskSizes: DoubleArray,
+        currentPrice: Double, timestampMs: Double,
+        executedTradesAtPrices: Map<Double, Double>? = null
+    ): Boolean {
+        val currBids = newBids.zip(newBidSizes).toMap()
+        val currAsks = newAsks.zip(newAskSizes).toMap()
+        var spoofingDetected = false
+
+        // Check Bids
+        for ((price, vol) in currBids) {
+            val prev = bidsHistory[price]
+            if (prev == null) {
+                if (vol >= largeVolThreshold) {
+                    bidsHistory[price] = Pair(vol, timestampMs)
+                }
+            } else {
+                val prevVol = prev.first
+                val prevTs = prev.second
+                if (vol >= prevVol + largeVolThreshold) {
+                    bidsHistory[price] = Pair(vol, timestampMs)
+                } else if (vol < prevVol - largeVolThreshold) {
+                    if (timestampMs - prevTs <= timeLimitMs) {
+                        if (kotlin.math.abs(currentPrice - price) / currentPrice <= priceClosenessPct) {
+                            val tradeVol = executedTradesAtPrices?.get(price) ?: 0.0
+                            if (tradeVol < (prevVol - vol) * 0.1) {
+                                spoofingDetected = true
+                            }
+                        }
+                    }
+                    if (vol > 0.0) {
+                        bidsHistory[price] = Pair(vol, timestampMs)
+                    } else {
+                        bidsHistory.remove(price)
+                    }
+                }
+            }
+        }
+        
+        // Remove old bids
+        val bidKeysToRemove = bidsHistory.keys.filter { it !in currBids }
+        for (price in bidKeysToRemove) {
+            val prev = bidsHistory[price]!!
+            val prevVol = prev.first
+            val prevTs = prev.second
+            if (prevVol >= largeVolThreshold && timestampMs - prevTs <= timeLimitMs) {
+                if (kotlin.math.abs(currentPrice - price) / currentPrice <= priceClosenessPct) {
+                    val tradeVol = executedTradesAtPrices?.get(price) ?: 0.0
+                    if (tradeVol < prevVol * 0.1) {
+                        spoofingDetected = true
+                    }
+                }
+            }
+            bidsHistory.remove(price)
+        }
+
+        // Check Asks
+        for ((price, vol) in currAsks) {
+            val prev = asksHistory[price]
+            if (prev == null) {
+                if (vol >= largeVolThreshold) {
+                    asksHistory[price] = Pair(vol, timestampMs)
+                }
+            } else {
+                val prevVol = prev.first
+                val prevTs = prev.second
+                if (vol >= prevVol + largeVolThreshold) {
+                    asksHistory[price] = Pair(vol, timestampMs)
+                } else if (vol < prevVol - largeVolThreshold) {
+                    if (timestampMs - prevTs <= timeLimitMs) {
+                        if (kotlin.math.abs(currentPrice - price) / currentPrice <= priceClosenessPct) {
+                            val tradeVol = executedTradesAtPrices?.get(price) ?: 0.0
+                            if (tradeVol < (prevVol - vol) * 0.1) {
+                                spoofingDetected = true
+                            }
+                        }
+                    }
+                    if (vol > 0.0) {
+                        asksHistory[price] = Pair(vol, timestampMs)
+                    } else {
+                        asksHistory.remove(price)
+                    }
+                }
+            }
+        }
+
+        // Remove old asks
+        val askKeysToRemove = asksHistory.keys.filter { it !in currAsks }
+        for (price in askKeysToRemove) {
+            val prev = asksHistory[price]!!
+            val prevVol = prev.first
+            val prevTs = prev.second
+            if (prevVol >= largeVolThreshold && timestampMs - prevTs <= timeLimitMs) {
+                if (kotlin.math.abs(currentPrice - price) / currentPrice <= priceClosenessPct) {
+                    val tradeVol = executedTradesAtPrices?.get(price) ?: 0.0
+                    if (tradeVol < prevVol * 0.1) {
+                        spoofingDetected = true
+                    }
+                }
+            }
+            asksHistory.remove(price)
+        }
+
+        return spoofingDetected
+    }
+}
+
+// ==============================================================================
+// 6. Iceberg Order Tracker
+// ==============================================================================
+class IcebergTracker(
+    val minVolume: Double = 10.0,
+    val timeWindowMs: Double = 1000.0
+) {
+    private val tradeAccumulators = mutableMapOf<Double, Pair<Double, Double>>() // price -> (accumVol, ts)
+    private val lastVisibleVolumes = mutableMapOf<Double, Double>() // price -> visibleVol
+
+    fun updateDepth(
+        bidPrices: DoubleArray, bidSizes: DoubleArray,
+        askPrices: DoubleArray, askSizes: DoubleArray
+    ) {
+        lastVisibleVolumes.clear()
+        val limitBids = minOf(bidPrices.size, 5)
+        for (i in 0 until limitBids) {
+            lastVisibleVolumes[bidPrices[i]] = bidSizes[i]
+        }
+        val limitAsks = minOf(askPrices.size, 5)
+        for (i in 0 until limitAsks) {
+            lastVisibleVolumes[askPrices[i]] = askSizes[i]
+        }
+    }
+
+    fun processTrade(price: Double, volume: Double, timestampMs: Double): Boolean {
+        val prev = tradeAccumulators[price]
+        var accum = 0.0
+        var ts = timestampMs
+        if (prev != null) {
+            accum = prev.first
+            ts = prev.second
+            if (timestampMs - ts > timeWindowMs) {
+                accum = 0.0
+                ts = timestampMs
+            }
+        }
+        accum += volume
+        tradeAccumulators[price] = Pair(accum, ts)
+
+        val visibleVol = lastVisibleVolumes[price] ?: 0.0
+        if (visibleVol > 0.0 && accum >= visibleVol * 1.5 && accum >= minVolume) {
+            return true
+        }
+        return false
+    }
+}
+
+// ==============================================================================
+// 7. Grid Trading Strategy
+// ==============================================================================
+class GridTradingStrategy(
+    var centerPrice: Double,
+    val gridSpanPct: Double = 0.05,
+    val numGrids: Int = 10,
+    val orderQty: Double = 0.01
+) {
+    val buyOrders = mutableListOf<Double>()
+    val sellOrders = mutableListOf<Double>()
+
+    init {
+        setupGrid()
+    }
+
+    fun setupGrid() {
+        buyOrders.clear()
+        sellOrders.clear()
+        val halfSpan = centerPrice * gridSpanPct / 2.0
+        val lowerBound = centerPrice - halfSpan
+        val upperBound = centerPrice + halfSpan
+        val step = (upperBound - lowerBound) / numGrids
+        for (i in 0 until (numGrids / 2)) {
+            buyOrders.add(centerPrice - (i + 1) * step)
+            sellOrders.add(centerPrice + (i + 1) * step)
+        }
+    }
+
+    fun onTick(currentPrice: Double): List<String> {
+        val halfSpan = centerPrice * gridSpanPct / 2.0
+        val lowerBound = centerPrice - halfSpan
+        val upperBound = centerPrice + halfSpan
+
+        if (currentPrice > upperBound) {
+            centerPrice = currentPrice
+            setupGrid()
+            return listOf("SHIFT_UP")
+        } else if (currentPrice < lowerBound) {
+            centerPrice = currentPrice
+            setupGrid()
+            return listOf("SHIFT_DOWN")
+        }
+        return emptyList()
+    }
+}
+
