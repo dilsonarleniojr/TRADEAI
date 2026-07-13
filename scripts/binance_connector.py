@@ -82,6 +82,8 @@ class BinanceConnector:
         self.testnet = testnet
         self.client = None
         self.step_size_cache = {} # Caching de LOT_SIZE para evitar requests excessivos
+        self.prices_cache = {} # Cache de preços: {symbol: {'bid': float, 'ask': float, 'last': float}}
+        self._ticker_tasks = {} # Tarefas de escuta de ticker
         
         if not self.api_key or not self.api_secret:
             logger.warning("⚠️ Chaves de API (BINANCE_API_KEY / BINANCE_API_SECRET) não detectadas no ambiente.")
@@ -104,12 +106,86 @@ class BinanceConnector:
 
     async def close(self):
         """
-        Fecha a sessão de conexão HTTP do cliente assíncrono.
+        Fecha a sessão de conexão HTTP do cliente assíncrono e encerra as streams.
         """
+        # Cancelar streams de preço em background
+        for symbol, task in list(self._ticker_tasks.items()):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        self._ticker_tasks.clear()
+
         if self.client:
             logger.info("Fechando conexão com a Binance...")
             await self.client.close_connection()
             logger.info("✅ Conexão encerrada.")
+
+    async def start_ticker_stream(self, symbol: str):
+        """
+        Inicia uma tarefa assíncrona em background para escutar o stream de ticker da Binance
+        e manter a cache local de preços atualizada em tempo real (latência O(1) de acesso).
+        """
+        symbol = symbol.upper()
+        if symbol in self._ticker_tasks:
+            return
+        
+        task = asyncio.create_task(self._ticker_stream_loop(symbol))
+        self._ticker_tasks[symbol] = task
+        # Aguarda um pequeno momento para dar tempo do stream inicializar e popular o cache
+        for _ in range(20):
+            if symbol in self.prices_cache:
+                break
+            await asyncio.sleep(0.1)
+
+    async def _ticker_stream_loop(self, symbol: str):
+        """
+        Conecta ao WebSocket público da Binance e atualiza a cache.
+        """
+        ws_base = "wss://testnet.binance.vision/ws" if self.testnet else "wss://stream.binance.com:9443/ws"
+        url = f"{ws_base}/{symbol.lower()}@bookTicker"
+        
+        while True:
+            try:
+                logger.info(f"🔄 Conectando ao WebSocket de Preço para {symbol}: {url}...")
+                async with aiohttp.ClientSession() as session:
+                    async with session.ws_connect(url) as ws:
+                        logger.info(f"✅ WebSocket conectado para {symbol}.")
+                        async for msg in ws:
+                            if msg.type == aiohttp.WSMsgType.TEXT:
+                                data = msg.json()
+                                self.prices_cache[symbol] = {
+                                    'bid': float(data.get('b', 0)),
+                                    'ask': float(data.get('a', 0)),
+                                    'last': (float(data.get('b', 0)) + float(data.get('a', 0))) / 2.0
+                                }
+                            elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                                break
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"❌ Erro no WebSocket de Preço para {symbol}: {e}. Reconectando em 3s...")
+                await asyncio.sleep(3)
+
+    async def get_cached_price(self, symbol: str) -> dict:
+        """
+        Retorna o preço bid/ask/last da cache local de forma síncrona/instantânea.
+        Caso não esteja na cache, faz o fallback rápido via REST.
+        """
+        symbol = symbol.upper()
+        if symbol in self.prices_cache:
+            return self.prices_cache[symbol]
+        
+        logger.warning(f"⚠️ Preço de {symbol} não encontrado na cache. Usando fallback REST...")
+        ticker = await self.get_orderbook_ticker(symbol)
+        price_data = {
+            'bid': float(ticker.get('bidPrice', 0)),
+            'ask': float(ticker.get('askPrice', 0)),
+            'last': (float(ticker.get('bidPrice', 0)) + float(ticker.get('askPrice', 0))) / 2.0
+        }
+        self.prices_cache[symbol] = price_data
+        return price_data
 
     @retry_on_rate_limit_and_timeout()
     async def get_symbol_step_size(self, symbol: str) -> float:

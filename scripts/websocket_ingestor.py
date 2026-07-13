@@ -53,13 +53,10 @@ class WebSocketIngestor:
         """
         while self.is_running:
             try:
-                # wait_for permite checar o flag is_running periodicamente
-                tick = await asyncio.wait_for(self.queue.get(), timeout=0.1)
+                tick = await self.queue.get()
                 self.buffer.append(tick)
                 self.processed_count += 1
                 self.queue.task_done()
-            except asyncio.TimeoutError:
-                continue
             except asyncio.CancelledError:
                 break
             except Exception as e:

@@ -91,7 +91,7 @@ async function main() {
 
   // 3. Start Next.js dev server on port 3000
   const nextCwd = "/home/dcorrea/AntigravityApp/TRADEAI/TRADEAI";
-  runService("npx", ["-y", "bun", "run", "dev"], nextCwd, NEXT_LOG, "Next.js Dev Server");
+  runService("npx", ["-y", "node@20", "node_modules/next/dist/bin/next", "dev", "--webpack", "-p", "3000"], nextCwd, NEXT_LOG, "Next.js Dev Server");
 
   // 4. Start Caddy on port 81 (Docker host network)
   console.log("🚀 Starting Caddy Proxy in Docker container...");
