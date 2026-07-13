@@ -381,3 +381,56 @@ class BotFleetOrchestrator(val totalCapital: Double) {
     }
 }
 
+// ==============================================================================
+// 7. Crypto Screener (Asynchronous Market Scan)
+// ==============================================================================
+class CryptoScreener(val checkIntervalMs: Long = 3600000) {
+    private var isRunning = false
+    private var screenerJob: Job? = null
+    var lastPicks = listOf<String>()
+
+    fun start(scope: CoroutineScope) {
+        isRunning = true
+        screenerJob = scope.launch(Dispatchers.Default) {
+            while (isRunning) {
+                try {
+                    scanMarket()
+                    delay(checkIntervalMs)
+                } catch (e: CancellationException) {
+                    break
+                } catch (e: Exception) {
+                    println("❌ [Screener JVM] Error scanning: ${e.message}")
+                    delay(10000)
+                }
+            }
+        }
+    }
+
+    fun stop() {
+        isRunning = false
+        screenerJob?.cancel()
+    }
+
+    private fun scanMarket(): List<String> {
+        val mockData = listOf(
+            mapOf("symbol" to "BTCUSDT", "change" to "5.5", "volume" to "50000000.0", "volatility" to "0.03"),
+            mapOf("symbol" to "ETHUSDT", "change" to "-2.1", "volume" to "30000000.0", "volatility" to "0.04"),
+            mapOf("symbol" to "SOLUSDT", "change" to "12.4", "volume" to "25000000.0", "volatility" to "0.08"),
+            mapOf("symbol" to "LINKUSDT", "change" to "8.2", "volume" to "12000000.0", "volatility" to "0.06"),
+            mapOf("symbol" to "AVAXUSDT", "change" to "15.0", "volume" to "8000000.0", "volatility" to "0.09")
+        )
+
+        val scored = mockData.map { item ->
+            val sym = item["symbol"] ?: ""
+            val change = item["change"]?.toDoubleOrNull() ?: 0.0
+            val vol = item["volatility"]?.toDoubleOrNull() ?: 0.0
+            Pair(sym, change * vol)
+        }.sortedByDescending { it.second }
+
+        lastPicks = scored.take(3).map { it.first }
+        println("🔥 [Screener JVM] Top 3 setup picks: $lastPicks")
+        return lastPicks
+    }
+}
+
+

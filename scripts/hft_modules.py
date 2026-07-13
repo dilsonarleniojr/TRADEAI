@@ -318,3 +318,51 @@ class GridTradingStrategy:
             return [("SHIFT_DOWN", self.center_price, self.order_qty)]
         return []
 
+
+# ==============================================================================
+# 8. Multi-Factor Confluence Engine
+# ==============================================================================
+class MultiFactorConfluenceEngine:
+    def __init__(self, w_obi=0.4, w_sentiment=0.3, w_zscore=0.3):
+        self.w_obi = w_obi
+        self.w_sentiment = w_sentiment
+        self.w_zscore = w_zscore
+
+    def calculate_confidence(self, obi: float, sentiment_score: float, z_score: float) -> float:
+        norm_z = math.tanh(z_score)
+        combined = (self.w_obi * obi) + (self.w_sentiment * sentiment_score) + (self.w_zscore * norm_z)
+        confidence = (combined + 1.0) / 2.0
+        return max(0.0, min(1.0, confidence))
+
+    def get_trade_direction(self, confidence: float, threshold=0.6) -> str:
+        if confidence >= threshold:
+            return "BUY"
+        elif confidence <= (1.0 - threshold):
+            return "SELL"
+        return "HOLD"
+
+
+# ==============================================================================
+# 9. Kelly Criterion Capital Allocator
+# ==============================================================================
+class KellyAllocator:
+    def __init__(self, kelly_multiplier=0.25):
+        self.kelly_multiplier = kelly_multiplier
+
+    def calculate_position_size(self, capital: float, confidence_score: float, risk_reward_ratio: float) -> float:
+        p = confidence_score
+        b = risk_reward_ratio
+        if b <= 0.0 or p <= 0.0:
+            return 0.0
+            
+        q = 1.0 - p
+        f_star = (b * p - q) / b
+        
+        if f_star <= 0.0:
+            return 0.0
+            
+        allocation_fraction = f_star * self.kelly_multiplier
+        allocation_fraction = min(0.50, allocation_fraction)
+        return capital * allocation_fraction
+
+

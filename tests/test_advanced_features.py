@@ -4,9 +4,10 @@ import sys
 import time
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from scripts.hft_modules import SpoofingDetector, IcebergTracker, GridTradingStrategy
+from scripts.hft_modules import SpoofingDetector, IcebergTracker, GridTradingStrategy, MultiFactorConfluenceEngine, KellyAllocator
 from scripts.risk_manager import RiskManager
 from scripts.multi_asset_hft_engine import BotFleetOrchestrator
+from scripts.market_scanner import AsyncCryptoScreener
 
 class TestAdvancedFeatures(unittest.IsolatedAsyncioTestCase):
 
@@ -112,6 +113,38 @@ class TestAdvancedFeatures(unittest.IsolatedAsyncioTestCase):
         orchestrator.add_event_trigger("BTC.D", "<", 40.0, event_action)
         await orchestrator.run_scheduler_tick("12:00", external_metrics={"BTC.D": 38.0})
         self.assertTrue(event_triggered)
+
+    def test_multi_factor_confluence_engine(self):
+        engine = MultiFactorConfluenceEngine(w_obi=0.4, w_sentiment=0.3, w_zscore=0.3)
+        # OBI=1.0 (bullish), sentiment=1.0 (bullish), z_score=2.0 (bullish)
+        confidence = engine.calculate_confidence(obi=1.0, sentiment_score=1.0, z_score=2.0)
+        self.assertGreater(confidence, 0.7)
+        direction = engine.get_trade_direction(confidence)
+        self.assertEqual(direction, "BUY")
+
+        # Bearish signals
+        confidence_bear = engine.calculate_confidence(obi=-1.0, sentiment_score=-1.0, z_score=-2.0)
+        self.assertLess(confidence_bear, 0.3)
+        direction_bear = engine.get_trade_direction(confidence_bear)
+        self.assertEqual(direction_bear, "SELL")
+
+    def test_kelly_allocator(self):
+        allocator = KellyAllocator(kelly_multiplier=0.25)
+        # 65% win confidence, Risk/Reward = 2.0 (b=2)
+        allocated = allocator.calculate_position_size(capital=10000.0, confidence_score=0.65, risk_reward_ratio=2.0)
+        # Expected f* = (2 * 0.65 - 0.35) / 2 = 0.95 / 2 = 0.475
+        # Under 0.25 multiplier = 0.11875 fraction of 10000 = 1187.5
+        self.assertAlmostEqual(allocated, 1187.5)
+
+        # Negative edge
+        allocated_neg = allocator.calculate_position_size(capital=10000.0, confidence_score=0.30, risk_reward_ratio=1.0)
+        self.assertEqual(allocated_neg, 0.0)
+
+    async def test_async_crypto_screener(self):
+        screener = AsyncCryptoScreener(check_interval_seconds=10)
+        picks = await screener.scan_market()
+        self.assertEqual(len(picks), 3)
+        self.assertTrue(all(isinstance(p, str) for p in picks))
 
 if __name__ == '__main__':
     unittest.main()
