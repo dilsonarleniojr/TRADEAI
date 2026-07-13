@@ -13,6 +13,7 @@ async function main() {
   await prisma.backtestResult.deleteMany({});
   await prisma.botConfig.deleteMany({});
   await prisma.aISignal.deleteMany({});
+  await prisma.account.deleteMany({});
 
   console.log("🌱 Seeding initial watchlist items...");
   

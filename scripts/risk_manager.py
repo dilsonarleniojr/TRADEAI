@@ -10,26 +10,28 @@ class RiskManager:
     Contém um Kill Switch projetado para liquidar posições imediatamente a mercado
     em caso de drawdown extremo ou slippage severo.
     """
-    def __init__(self, capital: float, max_loss_pct: float = 0.02):
+    def __init__(self, capital: float, max_loss_pct: float = 0.02, connector = None):
         self.capital = capital
         self.max_loss_pct = max_loss_pct
-        self.position = None # Contém dict: {'entry_price': float, 'qty': float, 'active': bool}
+        self.connector = connector
+        self.position = None # Contém dict: {'symbol': str, 'entry_price': float, 'qty': float, 'active': bool}
         self.market_orders = [] # Histórico de ordens emitidas
         self.reaction_time_ns = None # Tempo de reação medido em nanosegundos
 
-    def open_position(self, entry_price: float, qty: float):
+    def open_position(self, entry_price: float, qty: float, symbol: str = "BTCUSDT"):
         """
         Abre uma posição LONG.
         """
         self.position = {
+            'symbol': symbol,
             'entry_price': entry_price,
             'qty': qty,
             'active': True
         }
         self.reaction_time_ns = None
-        logger.info(f"Posição aberta: Preço de entrada = {entry_price}, Qtd = {qty}")
+        logger.info(f"Posição aberta: {symbol} | Preço de entrada = {entry_price}, Qtd = {qty}")
 
-    def on_tick(self, price: float):
+    async def on_tick(self, price: float):
         """
         Método chamado em cada tick (atualização de preço) para monitorar risco.
         Se o preço romper o limite de perda (mesmo pulando o stop exato), aciona o Kill Switch.
@@ -45,25 +47,38 @@ class RiskManager:
         
         # Rompeu o limite de perda (ex: 2%)?
         if loss_pct >= self.max_loss_pct:
-            self._trigger_kill_switch(price, loss_pct, start_time)
+            await self._trigger_kill_switch(price, loss_pct, start_time)
 
-    def _trigger_kill_switch(self, trigger_price: float, actual_loss_pct: float, start_time_ns: int):
+    async def _trigger_kill_switch(self, trigger_price: float, actual_loss_pct: float, start_time_ns: int):
         """
         Dispara a ordem a mercado imediatamente para fechar a posição.
         """
         # Desativa a posição imediatamente
         self.position['active'] = False
         
-        # Simula o envio de uma ordem a mercado (Market Order)
-        order = {
-            'timestamp_ns': time.perf_counter_ns(),
-            'side': 'SELL',
-            'type': 'MARKET',
-            'qty': self.position['qty'],
-            'price': trigger_price,
-            'status': 'FILLED'
-        }
-        self.market_orders.append(order)
+        if self.connector:
+            try:
+                logger.warning(f"🚨 DISPARANDO LIQUIDAÇÃO DE RISCO REAL PARA {self.position['symbol']}...")
+                order = await self.connector.create_order(
+                    symbol=self.position['symbol'],
+                    side='SELL',
+                    type='MARKET',
+                    quantity=self.position['qty']
+                )
+                self.market_orders.append(order)
+            except Exception as e:
+                logger.error(f"❌ CRITICAL: Falha ao enviar ordem do Kill Switch: {e}")
+        else:
+            # Simula o envio de uma ordem a mercado (Market Order) em modo de teste off-line
+            order = {
+                'timestamp_ns': time.perf_counter_ns(),
+                'side': 'SELL',
+                'type': 'MARKET',
+                'qty': self.position['qty'],
+                'price': trigger_price,
+                'status': 'FILLED'
+            }
+            self.market_orders.append(order)
         
         # Calcular tempo de reação desde a leitura do tick até o fim da emissão da ordem
         end_time = time.perf_counter_ns()
