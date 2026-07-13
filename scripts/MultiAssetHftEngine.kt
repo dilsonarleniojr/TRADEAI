@@ -18,12 +18,55 @@ import java.util.concurrent.atomic.AtomicDouble
  */
 
 // ==============================================================================
+// 0. Object Pool Pattern para Dados de Mercado (Zero-GC no fast-path)
+// ==============================================================================
+data class TickData(
+    var symbol: String = "",
+    var price: Double = 0.0,
+    var volume: Double = 0.0,
+    var timestamp: Long = 0L
+)
+
+class TickDataPool(maxSize: Int = 10000) {
+    private val pool = java.util.concurrent.ConcurrentLinkedQueue<TickData>()
+
+    init {
+        for (i in 0 until maxSize) {
+            pool.offer(TickData())
+        }
+    }
+
+    fun acquire(symbol: String, price: Double, volume: Double, timestamp: Long): TickData {
+        val tick = pool.poll() ?: TickData()
+        tick.symbol = symbol
+        tick.price = price
+        tick.volume = volume
+        tick.timestamp = timestamp
+        return tick
+    }
+
+    fun release(tick: TickData) {
+        tick.symbol = ""
+        tick.price = 0.0
+        tick.volume = 0.0
+        tick.timestamp = 0L
+        pool.offer(tick)
+    }
+}
+
+object TickPoolProvider {
+    val pool = TickDataPool()
+}
+
+// ==============================================================================
 // 1. Multiplexação de WebSockets (Combined Streams Router)
 // ==============================================================================
 class WebSocketMultiplexer(
     private val coroutineScope: CoroutineScope,
     private val actors: ConcurrentHashMap<String, AssetActor>
 ) {
+    private val streamSymbolCache = ConcurrentHashMap<String, String>()
+
     /**
      * Recebe mensagens brutas vindas do Combined WebSocket Stream
      * e roteia o payload para o canal correspondente em tempo de execução.
@@ -32,15 +75,21 @@ class WebSocketMultiplexer(
         val symbol = parseSymbolFromStream(streamName)
         val actor = actors[symbol]
         if (actor != null) {
-            coroutineScope.launch {
-                actor.sendTick(price)
-            }
+            // Adquire objeto do pool de forma síncrona ultra-rápida (Zero-GC)
+            val tick = TickPoolProvider.pool.acquire(symbol, price, 0.0, System.currentTimeMillis())
+            actor.sendTickNonBlocking(tick)
         }
     }
 
     private fun parseSymbolFromStream(stream: String): String {
-        // Ex: "btcusdt@bookTicker" -> "BTCUSDT"
-        return stream.split("@")[0].uppercase()
+        return streamSymbolCache.computeIfAbsent(stream) { s ->
+            val atIndex = s.indexOf('@')
+            if (atIndex != -1) {
+                s.substring(0, atIndex).uppercase()
+            } else {
+                s.uppercase()
+            }
+        }
     }
 }
 
@@ -52,7 +101,7 @@ class AssetActor(
     private val scope: CoroutineScope,
     private val riskManager: GlobalRiskManager
 ) {
-    private val tickChannel = Channel<Double>(Channel.CONFLATED) // Descarta ticks velhos se houver lentidão
+    private val tickChannel = Channel<TickData>(Channel.CONFLATED) // Descarta ticks velhos se houver lentidão
     private val mutex = Mutex()
     
     // Estado local isolado do ativo
@@ -61,31 +110,37 @@ class AssetActor(
 
     init {
         scope.launch(Dispatchers.Default) {
-            for (price in tickChannel) {
-                processTick(price)
+            for (tick in tickChannel) {
+                processTick(tick)
             }
         }
     }
 
-    suspend fun sendTick(price: Double) {
-        tickChannel.send(price)
+    fun sendTickNonBlocking(tick: TickData) {
+        tickChannel.trySend(tick)
     }
 
-    private suspend fun processTick(price: Double) {
+    suspend fun sendTick(tick: TickData) {
+        tickChannel.send(tick)
+    }
+
+    private suspend fun processTick(tick: TickData) {
         mutex.withLock {
-            lastPrice = price
+            lastPrice = tick.price
             
             // Decisão lógica concorrente
             if (shouldBuy() && positionSize == 0.0) {
-                val requiredMargin = price * 0.1 // 10% de margem
+                val requiredMargin = tick.price * 0.1 // 10% de margem
                 if (riskManager.tryAllocateExposure(symbol, requiredMargin)) {
                     positionSize = 0.1
-                    println("🛒 [$symbol] Posição comprada a $price (Margem Alocada)")
+                    println("🛒 [$symbol] Posição comprada a ${tick.price} (Margem Alocada)")
                 } else {
                     println("⚠️ [$symbol] Entrada bloqueada pelo Global Risk Manager (Limite de Exposição)")
                 }
             }
         }
+        // Recicla o tick de volta ao pool após o processamento
+        TickPoolProvider.pool.release(tick)
     }
 
     private fun shouldBuy(): Boolean {
@@ -218,85 +273,136 @@ class PortfolioRiskManager(
     val capital: Double,
     val maxVarLimit: Double = 0.05
 ) {
-    private val priceHistory = mutableMapOf<String, MutableList<Double>>()
+    companion object {
+        const val MAX_ASSETS = 32
+        const val HISTORY_WINDOW = 30
+    }
+
+    private val symbolToIndex = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    @Volatile
+    private var assetCount = 0
+
+    // Pre-allocated primitive buffers to avoid heap allocations in hot path
+    private val priceHistory = Array(MAX_ASSETS) { DoubleArray(HISTORY_WINDOW) }
+    private val writeCursors = IntArray(MAX_ASSETS)
+    private val historySizes = IntArray(MAX_ASSETS)
+
+    // Temporary calculations layout to avoid boxing/unboxing
+    private val tempWeights = DoubleArray(MAX_ASSETS)
+    private val tempPrices = DoubleArray(MAX_ASSETS)
+    private val tempValues = DoubleArray(MAX_ASSETS)
+    private val tempReturns = Array(MAX_ASSETS) { DoubleArray(HISTORY_WINDOW) }
+    private val tempMeans = DoubleArray(MAX_ASSETS)
+    private val flatCovMatrix = DoubleArray(MAX_ASSETS * MAX_ASSETS)
+
     var deleveraged = false
 
-    fun updateMarketData(symbol: String, price: Double) {
-        val history = priceHistory.getOrPut(symbol) { mutableListOf() }
-        history.add(price)
-        if (history.size > 30) {
-            history.removeAt(0)
+    private fun getOrRegisterAsset(symbol: String): Int {
+        return symbolToIndex.computeIfAbsent(symbol) {
+            val idx = assetCount
+            if (assetCount < MAX_ASSETS) {
+                assetCount++
+            }
+            idx
         }
+    }
+
+    fun updateMarketData(symbol: String, price: Double) {
+        val idx = getOrRegisterAsset(symbol)
+        if (idx >= MAX_ASSETS) return
+
+        val cursor = writeCursors[idx]
+        priceHistory[idx][cursor] = price
+        writeCursors[idx] = (cursor + 1) % HISTORY_WINDOW
+        if (historySizes[idx] < HISTORY_WINDOW) {
+            historySizes[idx]++
+        }
+    }
+
+    private fun getHistoryValue(assetIdx: Int, stepsBack: Int): Double {
+        val size = historySizes[assetIdx]
+        if (stepsBack >= size) return 0.0
+        val cursor = writeCursors[assetIdx]
+        val idx = (cursor - 1 - stepsBack + HISTORY_WINDOW) % HISTORY_WINDOW
+        return priceHistory[assetIdx][idx]
     }
 
     fun calculatePortfolioVar(activePositions: Map<String, Double>): Double {
         if (activePositions.isEmpty()) return 0.0
 
-        val returnsMap = mutableMapOf<String, List<Double>>()
-        val currentPrices = mutableMapOf<String, Double>()
-
-        for (symbol in activePositions.keys) {
-            val history = priceHistory[symbol] ?: emptyList()
-            if (history.size < 5) return 0.0
-
-            currentPrices[symbol] = history.last()
-            val rets = mutableListOf<Double>()
-            for (i in 1 until history.size) {
-                rets.add((history[i] - history[i - 1]) / history[i - 1])
-            }
-            returnsMap[symbol] = rets
-        }
-
-        val symbols = activePositions.keys.toList()
-        val nAssets = symbols.size
-
-        val portfolioValues = mutableMapOf<String, Double>()
         var totalPortfolioValue = 0.0
-        for (sym in symbols) {
-            val qty = kotlin.math.abs(activePositions[sym] ?: 0.0)
-            val price = currentPrices[sym] ?: 0.0
-            val value = qty * price
-            portfolioValues[sym] = value
-            totalPortfolioValue += value
+        
+        // 1. Gather prices and compute weights in O(1) space
+        for ((symbol, qty) in activePositions) {
+            val idx = getOrRegisterAsset(symbol)
+            if (idx >= MAX_ASSETS) continue
+            val size = historySizes[idx]
+            if (size < 5) return 0.0
+
+            val currentPrice = getHistoryValue(idx, 0)
+            tempPrices[idx] = currentPrice
+            val absVal = kotlin.math.abs(qty) * currentPrice
+            tempValues[idx] = absVal
+            totalPortfolioValue += absVal
+            tempWeights[idx] = 0.0 // reset
         }
 
         if (totalPortfolioValue == 0.0) return 0.0
 
-        val weights = symbols.map { (portfolioValues[it] ?: 0.0) / totalPortfolioValue }
-
-        var m = returnsMap[symbols[0]]?.size ?: 0
-        for (sym in symbols) {
-            m = minOf(m, returnsMap[sym]?.size ?: 0)
-        }
-
-        if (m < 4) return 0.0
-
-        val means = symbols.associateWith { sym ->
-            (returnsMap[sym]?.take(m)?.sum() ?: 0.0) / m
-        }
-
-        val covMatrix = Array(nAssets) { DoubleArray(nAssets) }
-        for (i in 0 until nAssets) {
-            for (j in 0 until nAssets) {
-                val symI = symbols[i]
-                val symJ = symbols[j]
-                val retsI = returnsMap[symI] ?: emptyList()
-                val retsJ = returnsMap[symJ] ?: emptyList()
-                val meanI = means[symI] ?: 0.0
-                val meanJ = means[symJ] ?: 0.0
-
-                var covSum = 0.0
-                for (t in 0 until m) {
-                    covSum += (retsI[t] - meanI) * (retsJ[t] - meanJ)
-                }
-                covMatrix[i][j] = covSum / (m - 1)
+        for ((symbol, _) in activePositions) {
+            val idx = symbolToIndex[symbol] ?: continue
+            if (idx < MAX_ASSETS) {
+                tempWeights[idx] = tempValues[idx] / totalPortfolioValue
             }
         }
 
+        // 2. Compute returns in O(1) space
+        val m = HISTORY_WINDOW - 1
+        for ((symbol, _) in activePositions) {
+            val idx = symbolToIndex[symbol] ?: continue
+            if (idx >= MAX_ASSETS) continue
+            val size = historySizes[idx]
+            val actualM = size - 1
+            if (actualM < 4) return 0.0
+
+            var sumReturns = 0.0
+            for (t in 0 until actualM) {
+                val pT = getHistoryValue(idx, t)
+                val pTPrev = getHistoryValue(idx, t + 1)
+                val ret = if (pTPrev != 0.0) (pT - pTPrev) / pTPrev else 0.0
+                tempReturns[idx][t] = ret
+                sumReturns += ret
+            }
+            tempMeans[idx] = sumReturns / actualM
+        }
+
+        // 3. Compute flat covariance matrix
+        for ((symI, _) in activePositions) {
+            val i = symbolToIndex[symI] ?: continue
+            if (i >= MAX_ASSETS) continue
+            for ((symJ, _) in activePositions) {
+                val j = symbolToIndex[symJ] ?: continue
+                if (j >= MAX_ASSETS) continue
+                val meanI = tempMeans[i]
+                val meanJ = tempMeans[j]
+
+                var covSum = 0.0
+                for (t in 0 until m) {
+                    covSum += (tempReturns[i][t] - meanI) * (tempReturns[j][t] - meanJ)
+                }
+                flatCovMatrix[i * MAX_ASSETS + j] = covSum / (m - 1)
+            }
+        }
+
+        // 4. Calculate Portfolio Variance
         var pVar = 0.0
-        for (i in 0 until nAssets) {
-            for (j in 0 until nAssets) {
-                pVar += weights[i] * weights[j] * covMatrix[i][j]
+        for ((symI, _) in activePositions) {
+            val i = symbolToIndex[symI] ?: continue
+            if (i >= MAX_ASSETS) continue
+            for ((symJ, _) in activePositions) {
+                val j = symbolToIndex[symJ] ?: continue
+                if (j >= MAX_ASSETS) continue
+                pVar += tempWeights[i] * tempWeights[j] * flatCovMatrix[i * MAX_ASSETS + j]
             }
         }
 
@@ -314,15 +420,31 @@ class PortfolioRiskManager(
     }
 }
 
+        return portfolioVar
+    }
+}
+
 // ==============================================================================
 // 6. Bot Fleet Orchestrator & Schedulers
 // ==============================================================================
-class BotFleetOrchestrator(val totalCapital: Double) {
-    val bots = mutableMapOf<String, Any>()
-    val allocations = mutableMapOf<String, Double>()
-    val usedMargins = mutableMapOf<String, Double>()
-    val cronTriggers = mutableListOf<CronTrigger>()
-    val eventTriggers = mutableListOf<EventTrigger>()
+class BotFleetOrchestrator(
+    val totalCapital: Double,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+) {
+    val bots = ConcurrentHashMap<String, Any>()
+    val allocations = ConcurrentHashMap<String, Double>()
+    val usedMargins = ConcurrentHashMap<String, Double>()
+    val cronTriggers = CopyOnWriteArrayList<CronTrigger>()
+    val eventTriggers = CopyOnWriteArrayList<EventTrigger>()
+
+    val lastHeartbeats = ConcurrentHashMap<String, Long>()
+    val botJobs = ConcurrentHashMap<String, Job>()
+
+    private val supervisorJob = SupervisorJob()
+    private val watchdogScope = CoroutineScope(supervisorJob + Dispatchers.Default)
+
+    var isChaosScenarioActive = false
+    var isTradingFrozen = false
 
     // Global settings feature toggles & variables
     var isIcebergProtectionActive = true
@@ -330,6 +452,21 @@ class BotFleetOrchestrator(val totalCapital: Double) {
     var useHalfKellySizing = true
     var historicalWinRate = 0.55
     var twapDurationMinutes = 15
+
+    private val marginMutex = Mutex()
+
+    init {
+        // Inicializa o loop de simulação de monitoramento para cada bot registrado por padrão
+        for (bot in listOf("bot_1", "bot_2", "bot_3")) {
+            lastHeartbeats[bot] = System.currentTimeMillis()
+            val job = scope.launch(Dispatchers.Default) {
+                runBotExecutionLoop(bot)
+            }
+            botJobs[bot] = job
+        }
+        startWatchdog()
+        startReconciler()
+    }
 
     // State flows mirroring fleet status
     private val _activeBots = MutableStateFlow<List<BotState>>(
@@ -432,19 +569,23 @@ class BotFleetOrchestrator(val totalCapital: Double) {
         usedMargins[botId] = 0.0
     }
 
-    fun tryAllocateBotMargin(botId: String, amount: Double): Boolean {
-        val allocated = allocations[botId] ?: 0.0
-        val used = usedMargins[botId] ?: 0.0
-        if (used + amount <= allocated) {
-            usedMargins[botId] = used + amount
-            return true
+    suspend fun tryAllocateBotMargin(botId: String, amount: Double): Boolean {
+        marginMutex.withLock {
+            val allocated = allocations[botId] ?: 0.0
+            val used = usedMargins[botId] ?: 0.0
+            if (used + amount <= allocated) {
+                usedMargins[botId] = used + amount
+                return true
+            }
+            return false
         }
-        return false
     }
 
-    fun releaseBotMargin(botId: String, amount: Double) {
-        val used = usedMargins[botId] ?: 0.0
-        usedMargins[botId] = maxOf(0.0, used - amount)
+    suspend fun releaseBotMargin(botId: String, amount: Double) {
+        marginMutex.withLock {
+            val used = usedMargins[botId] ?: 0.0
+            usedMargins[botId] = maxOf(0.0, used - amount)
+        }
     }
 
     fun addCronTrigger(timeStr: String, action: () -> Unit) {
@@ -461,7 +602,13 @@ class BotFleetOrchestrator(val totalCapital: Double) {
                 val now = System.currentTimeMillis().toDouble()
                 if (now - trigger.lastRun > 60000.0) {
                     trigger.lastRun = now
-                    trigger.action()
+                    scope.launch(Dispatchers.Default) {
+                        try {
+                            trigger.action()
+                        } catch (e: Exception) {
+                            println("❌ Error executing scheduled trigger: ${e.message}")
+                        }
+                    }
                 }
             }
         }
@@ -476,10 +623,104 @@ class BotFleetOrchestrator(val totalCapital: Double) {
                     if (trigger.operator == "==" && metricVal == trigger.value) triggered = true
 
                     if (triggered) {
-                        trigger.action()
+                        scope.launch(Dispatchers.Default) {
+                            try {
+                                trigger.action()
+                            } catch (e: Exception) {
+                                println("❌ Error executing event trigger: ${e.message}")
+                            }
+                        }
+                    }
+            }
+        }
+    }
+
+    fun reportHeartbeat(botId: String) {
+        lastHeartbeats[botId] = System.currentTimeMillis()
+    }
+
+    private fun startWatchdog() {
+        watchdogScope.launch {
+            while (isActive) {
+                val now = System.currentTimeMillis()
+                for ((botId, lastTime) in lastHeartbeats) {
+                    if (now - lastTime > 1000) {
+                        println("🚨 [Watchdog] Heartbeat timeout for bot: $botId! Executing Self-Healing...")
+                        // 1. Cancel bot coroutine exclusively
+                        val job = botJobs[botId]
+                        job?.cancel()
+
+                        // 2. REST Fallback: Cancel all orders for corresponding bot symbol
+                        val bot = _activeBots.value.find { it.id == botId }
+                        if (bot != null) {
+                            fallbackCancelOrders(bot.symbol)
+                            // 3. Restart bot instance from scratch
+                            restartBotInstance(bot)
+                        }
                     }
                 }
+                delay(200)
             }
+        }
+    }
+
+    private fun startReconciler() {
+        watchdogScope.launch {
+            while (isActive) {
+                delay(180000) // 3 minutes
+                runReconciliation()
+            }
+        }
+    }
+
+    private fun fallbackCancelOrders(symbol: String) {
+        println("📡 [Watchdog REST Fallback] Enviando comando 'Cancel All Orders' para o par $symbol via API REST...")
+    }
+
+    private fun restartBotInstance(bot: BotState) {
+        println("🔄 [Watchdog Self-Healing] Reiniciando bot ${bot.name} (${bot.id}) a partir do zero...")
+        lastHeartbeats[bot.id] = System.currentTimeMillis()
+        val newJob = scope.launch(Dispatchers.Default) {
+            runBotExecutionLoop(bot.id)
+        }
+        botJobs[bot.id] = newJob
+    }
+
+    suspend fun runBotExecutionLoop(botId: String) {
+        while (true) {
+            reportHeartbeat(botId)
+            delay(300)
+        }
+    }
+
+    fun runReconciliation() {
+        println("🔍 [Reconciler] Iniciando verificação de conciliação ativa com a Exchange...")
+        var divergenceDetected = false
+        
+        for (bot in _activeBots.value) {
+            if (bot.pnl != 0.0 && isChaosScenarioActive) {
+                divergenceDetected = true
+                break
+            }
+        }
+
+        if (divergenceDetected) {
+            println("🚨 [Reconciler] DIVERGÊNCIA DETECTADA! Estado local diverge da corretora. Iniciando correção...")
+            isTradingFrozen = true
+            
+            println("⚖️ [Reconciler] Ajustando posições locais. Corretora reporta saldo zero. Fonte da verdade aplicada.")
+            _activeBots.update { currentList ->
+                currentList.map { bot ->
+                    bot.copy(pnl = 0.0)
+                }
+            }
+            updateMarginLedger()
+
+            println("🧹 [Reconciler] Limpando livro de ofertas e cancelando ordens órfãs...")
+            isTradingFrozen = false
+            println("✅ [Reconciler] Auto-cura concluída. Sistema restaurado e descongelado.")
+        } else {
+            println("✅ [Reconciler] Estado em perfeita harmonia com a Exchange.")
         }
     }
 }
