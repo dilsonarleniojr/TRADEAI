@@ -88,5 +88,98 @@ class TestStressScenarios(unittest.IsolatedAsyncioTestCase):
             quantity=0.2
         )
 
+    async def test_corrupted_payload_discard(self):
+        """
+        Verify that corrupted, malformed, or empty websocket payloads
+        are safely caught and discarded without crashing the receiver loop
+        or forcing a websocket reconnection.
+        """
+        import aiohttp as real_aiohttp
+        import scripts.binance_connector
+        
+        # Simulates WSMsgType text messages
+        class MockWSMsg:
+            def __init__(self, data, is_text=True):
+                self.type = real_aiohttp.WSMsgType.TEXT if is_text else real_aiohttp.WSMsgType.CLOSED
+                self.data = data
+            def json(self):
+                import json
+                return json.loads(self.data)
+
+        # Sequence of messages: 
+        # 1. Valid BBO message
+        # 2. Corrupted JSON (SyntaxError)
+        # 3. Valid BBO message with different price
+        # 4. Truncated fields (KeyError/ValueError)
+        # 5. Closed connection message
+        mock_messages = [
+            MockWSMsg('{"s":"BTCUSDT","b":"60100","a":"60200"}'),
+            MockWSMsg('{"s":"BTCUSDT","b":"invalid_number","a":"60200"}'), # Fast parse will fail on float() or JSON fallback fails
+            MockWSMsg('{"s":"BTCUSDT","b":"60300","a":"60400"}'),
+            MockWSMsg('{"s":"BTCUSDT"}'), # Missing "b" and "a" keys
+            MockWSMsg(None, is_text=False)
+        ]
+
+        class MockWSConnection:
+            def __init__(self):
+                self.closed = False
+                self.msg_idx = 0
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                if self.msg_idx >= len(mock_messages):
+                    raise StopAsyncIteration
+                msg = mock_messages[self.msg_idx]
+                self.msg_idx += 1
+                return msg
+            async def close(self):
+                self.closed = True
+
+        mock_ws = MockWSConnection()
+        
+        # Configure the mocked aiohttp module directly with a real class
+        class MockClientSession:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, exc_type, exc, tb):
+                pass
+            def ws_connect(self, *args, **kwargs):
+                class WSContext:
+                    async def __aenter__(self):
+                        return mock_ws
+                    async def __aexit__(self, exc_type, exc, tb):
+                        pass
+                return WSContext()
+
+        mock_aiohttp = MagicMock()
+        mock_aiohttp.ClientSession = MockClientSession
+        mock_aiohttp.WSMsgType = real_aiohttp.WSMsgType
+        
+        # Swap reference in connector module
+        old_aiohttp = scripts.binance_connector.aiohttp
+        scripts.binance_connector.aiohttp = mock_aiohttp
+        
+        try:
+            connector = BinanceConnector(testnet=True)
+            # Patch logger to verify warnings are logged for corruption
+            with patch('scripts.binance_connector.logger.warning') as mock_warning:
+                # Run stream loop for 0.1s or until finished
+                task = asyncio.create_task(connector.start_ticker_stream("BTCUSDT"))
+                await asyncio.sleep(0.05)
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                
+                # Check that valid messages successfully updated the cache
+                self.assertEqual(connector.prices_cache["BTCUSDT"]["bid"], 60300.0)
+                self.assertEqual(connector.prices_cache["BTCUSDT"]["ask"], 60400.0)
+                
+                # Verify logger was called to log warnings for discarded payloads
+                self.assertTrue(mock_warning.called)
+        finally:
+            scripts.binance_connector.aiohttp = old_aiohttp
+
 if __name__ == '__main__':
     unittest.main()

@@ -44,26 +44,28 @@ class RiskManager:
         quantity = capital_at_risk / stop_loss_distance
         return quantity
 
-    def open_position(self, entry_price: float, qty: float, symbol: str = "BTCUSDT", initial_atr: float = 0.0):
+    def open_position(self, entry_price: float, qty: float, symbol: str = "BTCUSDT", initial_atr: float = 0.0, side: str = "LONG"):
         """
-        Abre uma posição LONG e define os parâmetros do trailing stop dinâmico.
+        Abre uma posição LONG ou SHORT e define os parâmetros do trailing stop dinâmico.
         """
         self.position = {
             'symbol': symbol,
             'entry_price': entry_price,
             'qty': qty,
+            'side': side.upper(),
             'active': True
         }
         self.reaction_time_ns = None
+        self.best_price = entry_price
         self.highest_price = entry_price
         
-        # Define o trailing stop inicial se o ATR for provido, senão cai no stop fixo
-        if initial_atr > 0:
-            self.trailing_stop_price = entry_price - (initial_atr * self.atr_multiplier)
-            logger.info(f"Posição aberta: {symbol} | Entrada = {entry_price}, Qtd = {qty}, TrailingStopInicial = {self.trailing_stop_price:.2f} (ATR={initial_atr})")
+        distance = (initial_atr * self.atr_multiplier) if initial_atr > 0 else (entry_price * self.max_loss_pct)
+        if self.position['side'] == 'LONG':
+            self.trailing_stop_price = entry_price - distance
+            logger.info(f"Posição aberta: {symbol} (LONG) | Entrada = {entry_price}, Qtd = {qty}, StopInicial = {self.trailing_stop_price:.2f}")
         else:
-            self.trailing_stop_price = entry_price * (1.0 - self.max_loss_pct)
-            logger.info(f"Posição aberta: {symbol} | Entrada = {entry_price}, Qtd = {qty}, StopFixo = {self.trailing_stop_price:.2f}")
+            self.trailing_stop_price = entry_price + distance
+            logger.info(f"Posição aberta: {symbol} (SHORT) | Entrada = {entry_price}, Qtd = {qty}, StopInicial = {self.trailing_stop_price:.2f}")
 
     async def on_tick(self, price: float, current_atr: float = 0.0):
         """
@@ -76,20 +78,25 @@ class RiskManager:
             return
 
         entry_price = self.position['entry_price']
+        side = self.position['side']
         
-        # Atualiza a máxima do preço para trailing stop
-        if price > self.highest_price:
-            self.highest_price = price
-            # Sobe o trailing stop de forma dinâmica acompanhando a máxima
-            if current_atr > 0:
-                self.trailing_stop_price = self.highest_price - (current_atr * self.atr_multiplier)
-            else:
-                self.trailing_stop_price = self.highest_price * (1.0 - self.max_loss_pct)
-
-        # Checa se o preço violou o stop-loss
-        if price <= self.trailing_stop_price:
-            loss_pct = (entry_price - price) / entry_price
-            await self._trigger_kill_switch(price, loss_pct, start_time)
+        distance = (current_atr * self.atr_multiplier) if current_atr > 0 else (price * self.max_loss_pct)
+        
+        if side == 'LONG':
+            if price > self.best_price:
+                self.best_price = price
+                self.highest_price = price
+                self.trailing_stop_price = self.best_price - distance
+            if price <= self.trailing_stop_price:
+                loss_pct = (entry_price - price) / entry_price
+                await self._trigger_kill_switch(price, loss_pct, start_time)
+        else: # SHORT
+            if price < self.best_price:
+                self.best_price = price
+                self.trailing_stop_price = self.best_price + distance
+            if price >= self.trailing_stop_price:
+                loss_pct = (price - entry_price) / entry_price
+                await self._trigger_kill_switch(price, loss_pct, start_time)
 
     async def _trigger_kill_switch(self, trigger_price: float, actual_loss_pct: float, start_time_ns: int):
         """
