@@ -30,12 +30,11 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
 import kotlin.math.roundToInt
 
 /**
@@ -109,7 +108,9 @@ class TradingViewModel : ViewModel() {
     }
 }
 
-open class ViewModel
+open class ViewModel {
+    val viewModelScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+}
 
 enum class BotWorkerStatus {
     RUNNING, PAUSED, ERROR
@@ -140,77 +141,34 @@ data class OrchestratorUiState(
     val selectedBotForConfig: String? = null
 )
 
+object FleetContainer {
+    val orchestrator = BotFleetOrchestrator(1000.0)
+}
+
 class OrchestratorViewModel : ViewModel() {
+    private val orchestrator = FleetContainer.orchestrator
     private val _uiState = MutableStateFlow(OrchestratorUiState())
     val uiState: StateFlow<OrchestratorUiState> = _uiState.asStateFlow()
 
     init {
-        _uiState.value = OrchestratorUiState(
-            bots = listOf(
-                BotState(
-                    id = "bot_1",
-                    name = "ScalpingBTC",
-                    symbol = "BTCUSDT",
-                    pnl = 125.40,
-                    status = BotWorkerStatus.RUNNING,
-                    parameters = mapOf("gridLevels" to "10", "trailingDistance" to "0.005")
-                ),
-                BotState(
-                    id = "bot_2",
-                    name = "GridETH",
-                    symbol = "ETHUSDT",
-                    pnl = -45.20,
-                    status = BotWorkerStatus.PAUSED,
-                    parameters = mapOf("gridLevels" to "20", "stepSize" to "0.01")
-                ),
-                BotState(
-                    id = "bot_3",
-                    name = "MeanReversionSOL",
-                    symbol = "SOLUSDT",
-                    pnl = 0.0,
-                    status = BotWorkerStatus.ERROR,
-                    parameters = mapOf("period" to "14", "deviation" to "2.0")
-                )
-            ),
-            marginLedger = MarginLedgerState(
-                totalAccount = 1000.0,
-                allocatedMargin = 500.0,
-                freeMargin = 500.0
-            )
-        )
+        viewModelScope.launch {
+            orchestrator.activeBots.collect { list ->
+                _uiState.update { it.copy(bots = list) }
+            }
+        }
+        viewModelScope.launch {
+            orchestrator.marginLedger.collect { ledger ->
+                _uiState.update { it.copy(marginLedger = ledger) }
+            }
+        }
     }
 
     fun toggleBotStatus(botId: String) {
-        _uiState.update { state ->
-            val updatedBots = state.bots.map { bot ->
-                if (bot.id == botId) {
-                    val newStatus = when (bot.status) {
-                        BotWorkerStatus.RUNNING -> BotWorkerStatus.PAUSED
-                        BotWorkerStatus.PAUSED -> BotWorkerStatus.RUNNING
-                        BotWorkerStatus.ERROR -> BotWorkerStatus.RUNNING
-                    }
-                    bot.copy(status = newStatus)
-                } else {
-                    bot
-                }
-            }
-            state.copy(bots = updatedBots)
-        }
+        orchestrator.toggleBotStatus(botId)
     }
 
     fun stopBot(botId: String) {
-        _uiState.update { state ->
-            val updatedBots = state.bots.filter { it.id != botId }
-            val newAllocated = updatedBots.size * 250.0
-            val free = state.marginLedger.totalAccount - newAllocated
-            state.copy(
-                bots = updatedBots,
-                marginLedger = state.marginLedger.copy(
-                    allocatedMargin = newAllocated,
-                    freeMargin = free
-                )
-            )
-        }
+        orchestrator.stopBot(botId)
     }
 
     fun updateBotParameters(botId: String, newParams: Map<String, String>) {
