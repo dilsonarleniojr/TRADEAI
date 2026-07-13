@@ -206,3 +206,178 @@ class BatchOrderDispatcher(
 
     fun getQueueSize(): Int = orderQueue.size
 }
+
+// ==============================================================================
+// 5. Portfolio Risk Manager (Real-Time VaR)
+// ==============================================================================
+class PortfolioRiskManager(
+    val capital: Double,
+    val maxVarLimit: Double = 0.05
+) {
+    private val priceHistory = mutableMapOf<String, MutableList<Double>>()
+    var deleveraged = false
+
+    fun updateMarketData(symbol: String, price: Double) {
+        val history = priceHistory.getOrPut(symbol) { mutableListOf() }
+        history.add(price)
+        if (history.size > 30) {
+            history.removeAt(0)
+        }
+    }
+
+    fun calculatePortfolioVar(activePositions: Map<String, Double>): Double {
+        if (activePositions.isEmpty()) return 0.0
+
+        val returnsMap = mutableMapOf<String, List<Double>>()
+        val currentPrices = mutableMapOf<String, Double>()
+
+        for (symbol in activePositions.keys) {
+            val history = priceHistory[symbol] ?: emptyList()
+            if (history.size < 5) return 0.0
+
+            currentPrices[symbol] = history.last()
+            val rets = mutableListOf<Double>()
+            for (i in 1 until history.size) {
+                rets.add((history[i] - history[i - 1]) / history[i - 1])
+            }
+            returnsMap[symbol] = rets
+        }
+
+        val symbols = activePositions.keys.toList()
+        val nAssets = symbols.size
+
+        val portfolioValues = mutableMapOf<String, Double>()
+        var totalPortfolioValue = 0.0
+        for (sym in symbols) {
+            val qty = kotlin.math.abs(activePositions[sym] ?: 0.0)
+            val price = currentPrices[sym] ?: 0.0
+            val value = qty * price
+            portfolioValues[sym] = value
+            totalPortfolioValue += value
+        }
+
+        if (totalPortfolioValue == 0.0) return 0.0
+
+        val weights = symbols.map { (portfolioValues[it] ?: 0.0) / totalPortfolioValue }
+
+        var m = returnsMap[symbols[0]]?.size ?: 0
+        for (sym in symbols) {
+            m = minOf(m, returnsMap[sym]?.size ?: 0)
+        }
+
+        if (m < 4) return 0.0
+
+        val means = symbols.associateWith { sym ->
+            (returnsMap[sym]?.take(m)?.sum() ?: 0.0) / m
+        }
+
+        val covMatrix = Array(nAssets) { DoubleArray(nAssets) }
+        for (i in 0 until nAssets) {
+            for (j in 0 until nAssets) {
+                val symI = symbols[i]
+                val symJ = symbols[j]
+                val retsI = returnsMap[symI] ?: emptyList()
+                val retsJ = returnsMap[symJ] ?: emptyList()
+                val meanI = means[symI] ?: 0.0
+                val meanJ = means[symJ] ?: 0.0
+
+                var covSum = 0.0
+                for (t in 0 until m) {
+                    covSum += (retsI[t] - meanI) * (retsJ[t] - meanJ)
+                }
+                covMatrix[i][j] = covSum / (m - 1)
+            }
+        }
+
+        var pVar = 0.0
+        for (i in 0 until nAssets) {
+            for (j in 0 until nAssets) {
+                pVar += weights[i] * weights[j] * covMatrix[i][j]
+            }
+        }
+
+        val pVarScaled = pVar * 30.0
+        val pStd = kotlin.math.sqrt(maxOf(0.0, pVarScaled))
+        val varPct = 2.33 * pStd
+        val portfolioVar = varPct * totalPortfolioValue
+
+        if (portfolioVar > (capital * maxVarLimit)) {
+            deleveraged = true
+            println("🚨 VaR LIMITE EXCEDIDO: VaR = $portfolioVar USDT > Limite ${capital * maxVarLimit} USDT. Iniciando De-leveraging!")
+        }
+
+        return portfolioVar
+    }
+}
+
+// ==============================================================================
+// 6. Bot Fleet Orchestrator & Schedulers
+// ==============================================================================
+class BotFleetOrchestrator(val totalCapital: Double) {
+    val bots = mutableMapOf<String, Any>()
+    val allocations = mutableMapOf<String, Double>()
+    val usedMargins = mutableMapOf<String, Double>()
+    val cronTriggers = mutableListOf<CronTrigger>()
+    val eventTriggers = mutableListOf<EventTrigger>()
+
+    data class CronTrigger(val timeStr: String, val action: () -> Unit, var lastRun: Double = 0.0)
+    data class EventTrigger(val metricName: String, val operator: String, val value: Double, val action: () -> Unit)
+
+    fun registerBot(botId: String, botInstance: Any, marginAllocation: Double) {
+        bots[botId] = botInstance
+        allocations[botId] = marginAllocation
+        usedMargins[botId] = 0.0
+    }
+
+    fun tryAllocateBotMargin(botId: String, amount: Double): Boolean {
+        val allocated = allocations[botId] ?: 0.0
+        val used = usedMargins[botId] ?: 0.0
+        if (used + amount <= allocated) {
+            usedMargins[botId] = used + amount
+            return true
+        }
+        return false
+    }
+
+    fun releaseBotMargin(botId: String, amount: Double) {
+        val used = usedMargins[botId] ?: 0.0
+        usedMargins[botId] = maxOf(0.0, used - amount)
+    }
+
+    fun addCronTrigger(timeStr: String, action: () -> Unit) {
+        cronTriggers.add(CronTrigger(timeStr, action))
+    }
+
+    fun addEventTrigger(metricName: String, operator: String, value: Double, action: () -> Unit) {
+        eventTriggers.add(EventTrigger(metricName, operator, value, action))
+    }
+
+    fun runSchedulerTick(currentTimeStr: String, externalMetrics: Map<String, Double>? = null) {
+        for (trigger in cronTriggers) {
+            if (trigger.timeStr == currentTimeStr) {
+                val now = System.currentTimeMillis().toDouble()
+                if (now - trigger.lastRun > 60000.0) {
+                    trigger.lastRun = now
+                    trigger.action()
+                }
+            }
+        }
+
+        if (externalMetrics != null) {
+            for (trigger in eventTriggers) {
+                val metricVal = externalMetrics[trigger.metricName]
+                if (metricVal != null) {
+                    var triggered = false
+                    if (trigger.operator == "<" && metricVal < trigger.value) triggered = true
+                    if (trigger.operator == ">" && metricVal > trigger.value) triggered = true
+                    if (trigger.operator == "==" && metricVal == trigger.value) triggered = true
+
+                    if (triggered) {
+                        trigger.action()
+                    }
+                }
+            }
+        }
+    }
+}
+
