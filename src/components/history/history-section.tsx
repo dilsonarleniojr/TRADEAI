@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TradeTable } from "./trade-table";
 import { TradeReport } from "./trade-report";
+import { EquityCurve } from "@/components/bot/equity-curve";
 import { exportTradesToCSV } from "@/lib/export-csv";
 import {
   BarChart3,
@@ -280,6 +281,9 @@ export function HistorySection() {
 
       {/* Analytics Trade Report Section */}
       <TradeReport />
+
+      {/* Equity Curve & Replay Section */}
+      <EquityCurve />
     </motion.div>
   );
 }

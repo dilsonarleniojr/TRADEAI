@@ -126,7 +126,7 @@ export function Sidebar() {
                   key={item.id}
                   onClick={() => setActiveSection(item.id)}
                   className="relative flex flex-col items-center justify-center py-2 px-4 rounded-xl transition-all duration-200 select-none min-w-[64px]"
-                  style={{ minHeight: "48px" }}
+                  style={{ minHeight: "48px", minWidth: "64px", flexShrink: 0 }}
                 >
                   {/* Active pill background with layout animation */}
                   {isActive && (
