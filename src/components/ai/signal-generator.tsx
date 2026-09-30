@@ -73,6 +73,8 @@ const TOP_SYMBOLS = [
   "IMXUSDT", "GALAUSDT", "RONINUSDT", "AXSUSDT",
   "FILUSDT", "ARUSDT", "ETHFIUSDT",
   "XRPUSDT", "LTCUSDT", "TRXUSDT", "XLMUSDT",
+  "MOVRUSDT", "STGUSDT", "ZROUSDT", "PUMPUSDT", "BERAUSDT",
+  "PHAUSDT", "NIGHTUSDT", "INITUSDT", "OGUSDT", "QNTUSDT",
 ];
 
 function getEstimateSeconds(symbol: string, uptime: number): number {

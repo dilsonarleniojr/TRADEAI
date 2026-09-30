@@ -4,7 +4,7 @@ import { useState } from "react";
 import { type BotInstance } from "@/lib/store";
 import { useCryptoStore } from "@/lib/store";
 import { formatPrice } from "@/lib/format";
-import { manualCloseBotPosition } from "@/lib/bot/multi-bot-engine";
+import { manualCloseBotPosition, manualOpenBotPosition } from "@/lib/bot/multi-bot-engine";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
   const { toggleBotActive, removeBot, tickers } = useCryptoStore();
   const { toast } = useToast();
   const [isClosing, setIsClosing] = useState(false);
+  const [isOpening, setIsOpening] = useState(false);
 
   const ticker = tickers[bot.symbol];
   const currentPrice = ticker?.price ?? (bot.position?.currentPrice || 0);
@@ -65,6 +66,17 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
       });
     } finally {
       setIsClosing(false);
+    }
+  };
+
+  const handleOpenPositionNow = async () => {
+    setIsOpening(true);
+    try {
+      await manualOpenBotPosition(bot.id, {
+        onToast: (t) => toast(t),
+      });
+    } finally {
+      setIsOpening(false);
     }
   };
 
@@ -254,22 +266,75 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
                 {isClosing ? "Executando..." : `Realizar Lucro Agora (${isProfit ? "+" : ""}$${formatPrice(Math.abs(unrealizedPnlUsdt))})`}
               </Button>
             </motion.div>
-          ) : (
+          ) : bot.active ? (
             <motion.div
               key="scanning"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="bg-secondary/20 rounded-xl p-2.5 border border-border/30 flex items-center justify-between text-xs"
+              className="bg-secondary/20 rounded-xl p-3 border border-border/40 space-y-2.5 text-xs"
             >
-              <div className="flex items-center gap-2">
-                <span className="text-crypto-cyan font-mono text-sm font-bold">${formatPrice(currentPrice)}</span>
-                <span className={`text-[10px] font-semibold ${(ticker?.priceChangePercent || 0) >= 0 ? "text-crypto-green" : "text-crypto-red"}`}>
-                  {(ticker?.priceChangePercent || 0) >= 0 ? "+" : ""}{(ticker?.priceChangePercent || 0).toFixed(2)}%
-                </span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-crypto-cyan font-mono text-sm font-bold">${formatPrice(currentPrice)}</span>
+                  <span className={`text-[10px] font-semibold ${(ticker?.priceChangePercent || 0) >= 0 ? "text-crypto-green" : "text-crypto-red"}`}>
+                    {(ticker?.priceChangePercent || 0) >= 0 ? "+" : ""}{(ticker?.priceChangePercent || 0).toFixed(2)}%
+                  </span>
+                </div>
+                <Badge variant="outline" className="border-crypto-cyan/40 text-crypto-cyan bg-crypto-cyan/10 text-[10px] py-0.5 px-2 font-semibold flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-crypto-cyan animate-ping" />
+                  Escaneando Mercado
+                </Badge>
               </div>
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Clock className="w-3 h-3" />
-                <span>{bot.active ? "Buscando entrada lucrativa" : "Bot inativo"}</span>
+
+              {/* Real-time status / lastAction feedback */}
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground bg-secondary/35 px-2.5 py-1.5 rounded-lg border border-border/20">
+                <Clock className="w-3.5 h-3.5 text-crypto-cyan shrink-0 animate-spin" style={{ animationDuration: "6s" }} />
+                <span className="truncate">{bot.stats.lastAction || "Analisando volatilidade e ponto ideal de entrada..."}</span>
+              </div>
+
+              {/* Instant Manual Entry Trigger Button */}
+              <Button
+                size="sm"
+                onClick={handleOpenPositionNow}
+                disabled={isOpening}
+                className="w-full h-7 text-xs font-semibold bg-gradient-to-r from-crypto-cyan to-blue-600 hover:from-crypto-cyan/90 text-white shadow-sm cursor-pointer"
+              >
+                <Zap className="w-3 h-3 mr-1 fill-current" />
+                {isOpening ? "Executando Entrada..." : "Entrar a Mercado Agora (Comprar)"}
+              </Button>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="paused"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="bg-secondary/15 rounded-xl p-3 border border-border/30 space-y-2 text-xs"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground font-mono text-sm font-semibold">${formatPrice(currentPrice)}</span>
+                  <span className={`text-[10px] font-medium ${(ticker?.priceChangePercent || 0) >= 0 ? "text-crypto-green" : "text-crypto-red"}`}>
+                    {(ticker?.priceChangePercent || 0) >= 0 ? "+" : ""}{(ticker?.priceChangePercent || 0).toFixed(2)}%
+                  </span>
+                </div>
+                <Badge variant="outline" className="border-border text-muted-foreground bg-secondary/20 text-[10px] py-0.5 px-2">
+                  Desligado
+                </Badge>
+              </div>
+
+              <div className="flex items-center justify-between text-[11px] pt-0.5">
+                <span className="text-muted-foreground flex items-center gap-1 truncate max-w-[200px]">
+                  <Clock className="w-3 h-3 shrink-0" />
+                  {bot.stats.lastAction || "Pronto para operar"}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => toggleBotActive(bot.id, true)}
+                  className="h-6 px-2 text-[11px] text-crypto-green hover:bg-crypto-green/10 font-semibold cursor-pointer shrink-0"
+                >
+                  <Play className="w-3 h-3 mr-1 fill-current" /> Iniciar
+                </Button>
               </div>
             </motion.div>
           )}

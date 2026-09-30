@@ -89,6 +89,18 @@ export const CRYPTO_LIST: CryptoMeta[] = [
   { symbol: "LTCUSDT", name: "Litecoin", short: "LTC", color: "#bfbbbb", category: "Exchange", rank: 20, launchYear: 2011, description: "Pagamentos rápidos e baratos" },
   { symbol: "TRXUSDT", name: "TRON", short: "TRX", color: "#ff0013", category: "Exchange", rank: 13, launchYear: 2017, description: "Rede de entretenimento descentralizada" },
   { symbol: "XLMUSDT", name: "Stellar", short: "XLM", color: "#08b5e5", category: "Exchange", rank: 28, launchYear: 2014, description: "Rede de pagamentos transfronteiriços" },
+
+  // === Top Gainers / Novas Moedas em Destaque ===
+  { symbol: "MOVRUSDT", name: "Moonriver", short: "MOVR", color: "#53cbc9", category: "Layer 1", rank: 95, launchYear: 2021, description: "Rede de smart contracts compatível com EVM na Kusama/Polkadot" },
+  { symbol: "STGUSDT", name: "Stargate Finance", short: "STG", color: "#e2538b", category: "DeFi", rank: 85, launchYear: 2022, description: "Protocolo de liquidez e transporte omnichain cross-chain" },
+  { symbol: "ZROUSDT", name: "LayerZero", short: "ZRO", color: "#000000", category: "Infrastructure", rank: 45, launchYear: 2024, description: "Protocolo líder de interoperabilidade e mensagens omnichain" },
+  { symbol: "PUMPUSDT", name: "Pump", short: "PUMP", color: "#10b981", category: "Meme", rank: 90, launchYear: 2024, description: "Meme coin de alta volatilidade e grande engajamento comunitário" },
+  { symbol: "BERAUSDT", name: "Berachain", short: "BERA", color: "#8d5b4c", category: "Layer 1", rank: 48, launchYear: 2024, description: "Blockchain Layer 1 baseada em Proof-of-Liquidity compatível com EVM" },
+  { symbol: "PHAUSDT", name: "Phala Network", short: "PHA", color: "#d1f237", category: "AI", rank: 80, launchYear: 2021, description: "Rede de computação confidencial e coprocessadores para IA autônoma" },
+  { symbol: "NIGHTUSDT", name: "Midnight", short: "NIGHT", color: "#312e81", category: "Infrastructure", rank: 88, launchYear: 2024, description: "Blockchain de proteção de dados e privacidade programável com ZK proofs" },
+  { symbol: "INITUSDT", name: "Initia", short: "INIT", color: "#f97316", category: "Layer 1", rank: 92, launchYear: 2024, description: "Rede de rollups entrelaçados com arquitetura modular de execução" },
+  { symbol: "OGUSDT", name: "OG Fan Token", short: "OG", color: "#8b5cf6", category: "Gaming", rank: 99, launchYear: 2020, description: "Token oficial da lendária organização de eSports bicampeã OG" },
+  { symbol: "QNTUSDT", name: "Quant", short: "QNT", color: "#2563eb", category: "Infrastructure", rank: 35, launchYear: 2018, description: "Sistema operacional Overledger conectando blockchains e redes corporativas" },
 ];
 
 // Lookup maps
