@@ -1,0 +1,10 @@
+# Dockerignore para otimizar o build da imagem
+node_modules
+.next
+.git
+.vscode
+.kilo
+logs
+upload
+download
+*.log

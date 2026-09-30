@@ -21,8 +21,19 @@ export interface KlineData {
   volume: number;
 }
 
+export type BotStrategy =
+  | "AI"
+  | "RSI"
+  | "MACD"
+  | "GRID"
+  | "DCA"
+  | "BREAKOUT"
+  | "MEAN_REVERSION"
+  | "QUANT_ENSEMBLE"
+  | string;
+
 export interface BotConfigData {
-  strategy: "RSI" | "MACD" | "AI";
+  strategy: BotStrategy;
   symbol: string;
   stopLoss: number;
   takeProfit: number;
@@ -38,6 +49,78 @@ export interface BotConfigData {
   rsiPeriod: number;
   emaFast: number;
   emaSlow: number;
+  // Strategy specific params
+  gridLower?: number;
+  gridUpper?: number;
+  gridCount?: number;
+  dcaInterval?: number;
+  dcaAmount?: number;
+  breakoutVolumeMultiplier?: number;
+  bollingerPeriod?: number;
+  bollingerMultiplier?: number;
+}
+
+export interface BotPosition {
+  symbol: string;
+  side: "BUY";
+  entryPrice: number;
+  currentPrice: number;
+  quantity: number;
+  totalCost: number;
+  highestPrice: number; // For trailing stop calculation
+  unrealizedPnl: number;
+  unrealizedPnlPercent: number;
+  entryTime: string;
+}
+
+export interface BotStats {
+  totalTrades: number;
+  buyTrades: number;
+  sellTrades: number;
+  winTrades: number;
+  lossTrades: number;
+  winRate: number;
+  realizedPnl: number;
+  lastAction?: string;
+  lastActionTime?: string;
+}
+
+export interface BotInstance {
+  id: string;
+  name: string;
+  symbol: string;
+  strategy: BotStrategy;
+  active: boolean;
+  status: "idle" | "scanning" | "in_position" | "take_profit" | "stopped";
+  
+  // Profit-seeking parameters
+  takeProfit: number; // Target profit % to trigger sell (e.g. 2.5%, 3.5%)
+  stopLoss: number;   // Max loss % protection (e.g. 1.8%, 2.0%)
+  trailingStop: boolean; // Protect locked profit when pulling back from peak
+  trailingStopDistance: number; // % drop from peak to trigger trailing profit lock
+  
+  // Capital & Sizing
+  allocationAmount: number; // USDT allocated per trade (e.g. 100 USDT)
+  maxDailyTrades: number;
+  
+  // Strategy settings
+  buyThreshold: number;  // e.g. RSI 30
+  sellThreshold: number; // e.g. RSI 70
+  rsiPeriod: number;
+  emaFast: number;
+  emaSlow: number;
+  autoTradeSignals?: boolean;
+  signalConfidenceThreshold?: number;
+  useQuantFunnel?: boolean;
+  useMarketRegime?: boolean;
+  useEnsemble?: boolean;
+
+  // Active position held by this bot
+  position?: BotPosition | null;
+
+  // Real-time statistics
+  stats: BotStats;
+  createdAt: string;
 }
 
 export interface PortfolioPosition {
@@ -57,9 +140,9 @@ export interface PortfolioData {
   assetQuantity: number;
   pnl: number;
   pnlPercent: number;
-  realizedPnl: number;
-  unrealizedPnl: number;
-  positions: PortfolioPosition[];
+  realizedPnl?: number;
+  unrealizedPnl?: number;
+  positions?: PortfolioPosition[];
 }
 
 export interface TradeData {
@@ -73,6 +156,8 @@ export interface TradeData {
   mode: string;
   pnl: number;
   timestamp: string;
+  botId?: string;
+  botName?: string;
 }
 
 export interface AISignalData {
@@ -98,7 +183,9 @@ export interface BotLogEntry {
   id: string;
   timestamp: number;
   message: string;
-  type: "info" | "buy" | "sell" | "profit" | "loss" | "system" | "warning";
+  type: "info" | "buy" | "sell" | "profit" | "loss" | "system" | "warning" | "error" | "success";
+  botId?: string;
+  botName?: string;
 }
 
 export interface PriceAlert {

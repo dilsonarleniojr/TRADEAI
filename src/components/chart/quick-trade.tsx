@@ -168,6 +168,15 @@ export function QuickTrade() {
 
     const total = qty * currentPrice;
 
+    if (tradingMode === "live" && total < 5.0) {
+      toast({
+        title: "Valor Mínimo da Ordem",
+        description: `A Binance exige um valor mínimo de $5.00 USDT por ordem no mercado Spot. O valor atual é $${total.toFixed(2)} USDT.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       const res = await fetch("/api/trades", {
         method: "POST",

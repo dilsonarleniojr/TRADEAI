@@ -313,20 +313,43 @@ export function BotPortfolio() {
           />
         </div>
 
-        {/* Asset Holdings */}
-        {portfolio.assetQuantity > 0 && (
+        {/* Multi-Asset Holdings Across All Simultaneous Bots */}
+        {((portfolio.positions && portfolio.positions.length > 0) || portfolio.assetQuantity > 0) && (
           <div className="bg-secondary/30 rounded-lg p-3 space-y-2">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              Posição em Ativos
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider block font-semibold">
+              Posições em Carteira ({portfolio.positions?.length || (portfolio.assetQuantity > 0 ? 1 : 0)})
             </span>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">
-                {botConfig.symbol.replace("USDT", "")}
-              </span>
-              <span className="text-sm text-muted-foreground">
-                {portfolio.assetQuantity.toFixed(6)}
-              </span>
-            </div>
+            {portfolio.positions && portfolio.positions.length > 0 ? (
+              <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+                {portfolio.positions.map((pos) => {
+                  const symClean = pos.symbol.replace("USDT", "");
+                  const pnl = pos.unrealizedPnl || 0;
+                  return (
+                    <div key={pos.symbol} className="flex items-center justify-between text-xs bg-secondary/40 p-2 rounded-md border border-border/20">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-foreground">{symClean}</span>
+                        <span className="text-[10px] text-muted-foreground">({pos.quantity.toFixed(4)})</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-semibold">${formatPrice(pos.marketValue)}</div>
+                        <div className={`text-[10px] ${pnl >= 0 ? "text-crypto-green" : "text-crypto-red"}`}>
+                          {pnl >= 0 ? "+" : ""}${formatPrice(Math.abs(pnl))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">
+                  {botConfig.symbol.replace("USDT", "")}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  {portfolio.assetQuantity.toFixed(6)}
+                </span>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

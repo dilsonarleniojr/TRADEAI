@@ -9,38 +9,123 @@ async function executeBinanceOrder(
   quantity: number,
   apiKey: string,
   apiSecret: string,
-  testnet: boolean
+  testnet: boolean,
+  totalVal?: number
 ) {
   if (!apiKey || !apiSecret) {
     throw new Error("Chave de API ou segredo da Binance não configurados para Live Trading.");
   }
 
-  // 1. Get step size precision for symbol to round quantity
-  let stepSize = 0.00001; // default fallback
   const baseUrl = testnet
     ? 'https://testnet.binance.vision'
     : 'https://api.binance.com';
+
+  // 1. Fetch symbol exchange filters (LOT_SIZE, NOTIONAL)
+  let stepSize = 0.00001;
+  let minQty = 0.00001;
+  let minNotional = 5.0;
+  let quoteOrderQtyAllowed = true;
 
   try {
     const infoRes = await fetch(`${baseUrl}/api/v3/exchangeInfo?symbol=${symbol}`);
     if (infoRes.ok) {
       const info = await infoRes.json();
       const symbolInfo = info.symbols?.[0];
-      const lotFilter = symbolInfo?.filters?.find((f: any) => f.filterType === 'LOT_SIZE');
-      if (lotFilter) {
-        stepSize = parseFloat(lotFilter.stepSize);
+      if (symbolInfo) {
+        quoteOrderQtyAllowed = !!symbolInfo.quoteOrderQtyMarketAllowed;
+        const lotFilter = symbolInfo.filters?.find((f: any) => f.filterType === 'LOT_SIZE');
+        if (lotFilter) {
+          stepSize = parseFloat(lotFilter.stepSize) || stepSize;
+          minQty = parseFloat(lotFilter.minQty) || minQty;
+        }
+        const notionalFilter = symbolInfo.filters?.find(
+          (f: any) => f.filterType === 'NOTIONAL' || f.filterType === 'MIN_NOTIONAL'
+        );
+        if (notionalFilter) {
+          minNotional = parseFloat(notionalFilter.minNotional) || 5.0;
+        }
       }
     }
   } catch (err: any) {
-    console.warn('[Trades API] Failed to fetch symbol precision:', err.message);
+    console.warn('[Trades API] Failed to fetch symbol filters:', err.message);
   }
 
-  // Round quantity to stepSize precision
-  const precision = Math.max(0, Math.round(-Math.log10(stepSize)));
-  const qtyClean = parseFloat(quantity.toFixed(precision));
+  // 2. Fetch current market price
+  let currentPrice = 0;
+  try {
+    const priceRes = await fetch(`${baseUrl}/api/v3/ticker/price?symbol=${symbol}`);
+    if (priceRes.ok) {
+      const priceData = await priceRes.json();
+      currentPrice = parseFloat(priceData.price) || 0;
+    }
+  } catch (err: any) {
+    console.warn('[Trades API] Failed to fetch ticker price:', err.message);
+  }
 
+  let queryString = "";
   const timestamp = Date.now();
-  const queryString = `symbol=${symbol}&side=${side}&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=60000`;
+
+  if (side === "BUY") {
+    // For MARKET BUY, prefer quoteOrderQty (USDT amount) to naturally satisfy NOTIONAL & LOT_SIZE
+    const desiredTotal = totalVal || (currentPrice > 0 ? quantity * currentPrice : 10.0);
+    const finalSpend = Math.max(minNotional * 1.05, desiredTotal);
+
+    if (quoteOrderQtyAllowed) {
+      const quoteClean = finalSpend.toFixed(2);
+      queryString = `symbol=${symbol}&side=BUY&type=MARKET&quoteOrderQty=${quoteClean}&timestamp=${timestamp}&recvWindow=60000`;
+    } else {
+      // If quoteOrderQty not supported, calculate clean base quantity
+      const refPrice = currentPrice > 0 ? currentPrice : (desiredTotal / quantity);
+      const safeQty = Math.max(quantity, (minNotional * 1.05) / refPrice);
+      const precision = Math.max(0, Math.round(-Math.log10(stepSize)));
+      const qtyClean = Math.max(minQty, parseFloat((Math.ceil(safeQty / stepSize) * stepSize).toFixed(precision)));
+      queryString = `symbol=${symbol}&side=BUY&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=60000`;
+    }
+  } else {
+    // For MARKET SELL: Verify available base asset balance on Binance
+    const baseAsset = symbol.replace(/USDT$|BUSD$|USDC$/, "");
+    try {
+      const accQuery = `timestamp=${Date.now()}&recvWindow=60000`;
+      const accSig = crypto.createHmac('sha256', apiSecret).update(accQuery).digest('hex');
+      const accRes = await fetch(`${baseUrl}/api/v3/account?${accQuery}&signature=${accSig}`, {
+        headers: { 'X-MBX-APIKEY': apiKey },
+      });
+      if (accRes.ok) {
+        const accData = await accRes.json();
+        const assetBal = accData.balances?.find((b: any) => b.asset === baseAsset);
+        const freeQty = assetBal ? parseFloat(assetBal.free) : 0;
+        
+        if (freeQty <= 0) {
+          throw new Error(`Você não possui saldo de ${baseAsset} na sua conta da Binance para vender no mercado Spot.`);
+        }
+
+        const precision = Math.max(0, Math.round(-Math.log10(stepSize)));
+        const maxSellable = Math.floor(freeQty / stepSize) * stepSize;
+        const qtyTarget = Math.min(quantity, maxSellable);
+        const qtyClean = parseFloat(qtyTarget.toFixed(precision));
+
+        if (currentPrice > 0 && qtyClean * currentPrice < minNotional) {
+          throw new Error(
+            `O valor da sua posição de ${baseAsset} ($${(qtyClean * currentPrice).toFixed(2)} USDT) é inferior ao mínimo exigido pela Binance ($${minNotional} USDT).`
+          );
+        }
+
+        queryString = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=60000`;
+      }
+    } catch (accErr: any) {
+      if (accErr.message.includes("Você não possui saldo") || accErr.message.includes("inferior ao mínimo")) {
+        throw accErr;
+      }
+      console.warn('[Trades API] Account balance check bypassed:', accErr.message);
+    }
+
+    if (!queryString) {
+      const precision = Math.max(0, Math.round(-Math.log10(stepSize)));
+      const qtyClean = parseFloat(quantity.toFixed(precision));
+      queryString = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=60000`;
+    }
+  }
+
   const signature = crypto
     .createHmac('sha256', apiSecret)
     .update(queryString)
@@ -60,7 +145,15 @@ async function executeBinanceOrder(
     let errorMsg = errorText;
     try {
       const errJson = JSON.parse(errorText);
-      errorMsg = errJson.msg || errorText;
+      if (errJson.code === -2010) {
+        errorMsg = "Saldo insuficiente na sua conta da Binance para executar a ordem.";
+      } else if (errJson.code === -1013) {
+        errorMsg = `Ordem rejeitada pela Binance: ${errJson.msg || 'Filtro NOTIONAL ou LOT_SIZE violado'}. O valor mínimo por ordem é $${minNotional} USDT.`;
+      } else if (errJson.code === -2015) {
+        errorMsg = "Chave API da Binance inválida, IP não autorizado ou permissão 'Enable Spot Trading' desativada na Binance.";
+      } else {
+        errorMsg = errJson.msg || errorText;
+      }
     } catch {}
     throw new Error(`Erro na API da Binance: ${errorMsg}`);
   }
@@ -139,7 +232,7 @@ export async function POST(request: NextRequest) {
       const binanceApiKey = request.headers.get('x-binance-api-key') || process.env.BINANCE_API_KEY?.replace(/['"]/g, '');
       const binanceApiSecret = request.headers.get('x-binance-api-secret') || process.env.BINANCE_API_SECRET?.replace(/['"]/g, '');
       const binanceTestnetStr = request.headers.get('x-binance-testnet');
-      const isTestnet = binanceTestnetStr ? binanceTestnetStr === 'true' : true;
+      const isTestnet = binanceTestnetStr ? binanceTestnetStr === 'true' : (process.env.APP_ENV !== 'production');
 
       try {
         const binanceOrderResult = await executeBinanceOrder(
@@ -148,7 +241,8 @@ export async function POST(request: NextRequest) {
           qtyVal,
           binanceApiKey || '',
           binanceApiSecret || '',
-          isTestnet
+          isTestnet,
+          totalVal
         );
         // Extract real quantity and executed price if available
         if (binanceOrderResult) {

@@ -45,10 +45,11 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // B: Toggle bot
+      // B: Toggle simultaneous bots fleet
       if (e.key === "b" && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
-        setBotActive(!useCryptoStore.getState().botActive);
+        const state = useCryptoStore.getState();
+        state.toggleAllBots(!state.botActive);
         return;
       }
 

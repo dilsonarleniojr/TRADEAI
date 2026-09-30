@@ -35,7 +35,7 @@ const STRATEGY_LIST = [
 
 export function StrategyPanel() {
   const { botConfig, setBotConfig, trades, botActive } = useCryptoStore();
-  const [selectedId, setSelectedId] = useState(botConfig.strategy);
+  const [selectedId, setSelectedId] = useState<string>(botConfig.strategy);
   
   // Custom inputs state mapped to strategy config
   const [gridLower, setGridLower] = useState("50000");

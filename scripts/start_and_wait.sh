@@ -3,13 +3,23 @@
 # TRADEAI Platform Start & Hold Script
 # Starts all services in the background and keeps the parent process alive.
 # =============================================================================
-set -euo pipefail
+set -eu
+set -o pipefail
 
-PROJECT_ROOT="/home/dcorrea/AntigravityApp/TRADEAI/TRADEAI"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="${PROJECT_ROOT}/logs"
 mkdir -p "${LOG_DIR}"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
+
+cleanup() {
+  log "Platform stopping, cleaning up..."
+  [ -n "${BINANCE_PID:-}" ] && kill -TERM "${BINANCE_PID}" 2>/dev/null || true
+  [ -n "${NEXT_PID:-}" ] && kill -TERM "${NEXT_PID}" 2>/dev/null || true
+  docker kill trade-caddy-proxy 2>/dev/null || true
+  exit 0
+}
+trap cleanup SIGINT SIGTERM SIGHUP
 
 # 1. Stop existing services on key ports
 log "=== Clean existing processes ==="
@@ -30,15 +40,16 @@ cat /dev/null > "${LOG_DIR}/caddy_service.log" || true
 
 # 2. Start Binance Service (ports 3001 / 3002)
 log "=== Starting Binance Service ==="
-nohup npx -y bun --hot "${PROJECT_ROOT}/mini-services/binance-service/index.ts" \
+nohup bun --hot "${PROJECT_ROOT}/mini-services/binance-service/index.ts" \
   > "${LOG_DIR}/binance_service.log" 2>&1 &
 BINANCE_PID=$!
 log "Binance Service PID: ${BINANCE_PID}"
 
 # 3. Start Next.js (port 3000)
 log "=== Starting Next.js Production ==="
-nohup env NODE_ENV=production \
-  npx -y bun "${PROJECT_ROOT}/.next/standalone/server.js" \
+nohup env NODE_ENV=production HOSTNAME="0.0.0.0" PORT="3000" \
+  DATABASE_URL="file:${PROJECT_ROOT}/db/custom.db" \
+  bun "${PROJECT_ROOT}/.next/standalone/server.js" \
   > "${LOG_DIR}/next_service.log" 2>&1 &
 NEXT_PID=$!
 log "Next.js PID: ${NEXT_PID}"
