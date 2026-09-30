@@ -23,7 +23,7 @@ steps:
     with:
       distribution: 'temurin'
       java-version: '11'
-      cache: 'gradle' # or maven, depending on your build system
+      cache: 'maven' # or maven, depending on your build system
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
