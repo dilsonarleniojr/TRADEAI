@@ -55,6 +55,53 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
   const [trailingStopDistance, setTrailingStopDistance] = useState(0.8);
   const [allocationAmount, setAllocationAmount] = useState(100);
   const [active, setActive] = useState(false);
+  const [isAutofilling, setIsAutofilling] = useState(false);
+
+  const handleAiAutofill = async () => {
+    try {
+      setIsAutofilling(true);
+      toast({
+        title: "🤖 Analisando Mercado com IA...",
+        description: `Calculando parâmetros ideais de lucro e risco para ${symbol}...`,
+      });
+
+      const res = await fetch("/api/ai/bot-autofill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol,
+          currentConfig: { name, strategy, takeProfit, stopLoss, allocationAmount },
+        }),
+      });
+
+      if (!res.ok) throw new Error("Erro na requisição da IA");
+      const data = await res.json();
+
+      if (data.success && data.config) {
+        const cfg = data.config;
+        if (cfg.name) setName(cfg.name);
+        if (cfg.strategy) setStrategy(cfg.strategy as BotStrategy);
+        if (typeof cfg.takeProfit === "number") setTakeProfit(cfg.takeProfit);
+        if (typeof cfg.stopLoss === "number") setStopLoss(cfg.stopLoss);
+        if (typeof cfg.trailingStop === "boolean") setTrailingStop(cfg.trailingStop);
+        if (typeof cfg.trailingStopDistance === "number") setTrailingStopDistance(cfg.trailingStopDistance);
+        if (typeof cfg.allocationAmount === "number") setAllocationAmount(cfg.allocationAmount);
+
+        toast({
+          title: "✨ Parâmetros Otimizados pela IA!",
+          description: cfg.reasoning || "Robô configurado com sucesso com base nas métricas atuais.",
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Falha na Análise IA",
+        description: "Não foi possível autopreencher no momento. Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAutofilling(false);
+    }
+  };
 
   useEffect(() => {
     if (botToEdit) {
@@ -163,12 +210,25 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        {/* Quick Presets */}
+        {/* Quick Presets & AI Autofill */}
         <div className="space-y-1.5 pt-1">
-          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
-            Predefinições Rápidas de Lucro
-          </span>
-          <div className="flex gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
+              Predefinições & Otimização por IA
+            </span>
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              disabled={isAutofilling}
+              onClick={handleAiAutofill}
+              className="text-xs h-7 px-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-crypto-cyan text-white font-bold shadow-md hover:opacity-90 transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${isAutofilling ? "animate-spin" : "text-amber-300"}`} />
+              {isAutofilling ? "Analisando..." : "Autopreencher com IA"}
+            </Button>
+          </div>
+          <div className="flex gap-2 pt-0.5">
             <Button
               type="button"
               variant="outline"

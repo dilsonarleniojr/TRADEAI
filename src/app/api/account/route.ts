@@ -76,6 +76,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    if (!account) {
+      return NextResponse.json({ success: false, error: 'Account not found' }, { status: 404 });
+    }
+
     // If live mode, fetch real balance from Binance and override
     if (mode === 'live') {
       try {
