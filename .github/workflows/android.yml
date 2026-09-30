@@ -11,7 +11,23 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    steps:
+
+steps:
+  # 1. Checkout your repository first so files are available on the runner
+  - name: Checkout repository
+    uses: actions/checkout@v4
+
+  # 2. Set up Java (migrated from v4 to v5/v6 as warned)
+  - name: Set up JDK
+    uses: actions/setup-java@v5
+    with:
+      distribution: 'temurin'
+      java-version: '11'
+      cache: 'gradle' # or maven, depending on your build system
+
+  # 3. Your build commands next...
+  
+    
     - uses: actions/checkout@v4
     - name: set up JDK 11
       uses: actions/setup-java@v4
