@@ -11,6 +11,7 @@ BINANCE_API_SECRET="sua_chave_privada"
 """
 
 import os
+import time
 import asyncio
 import logging
 import functools
@@ -82,6 +83,8 @@ class BinanceConnector:
         self.testnet = testnet
         self.client = None
         self.step_size_cache = {} # Caching de LOT_SIZE para evitar requests excessivos
+        self.prices_cache = {} # Cache de preços: {symbol: {'bid': float, 'ask': float, 'last': float}}
+        self._ticker_tasks = {} # Tarefas de escuta de ticker
         
         if not self.api_key or not self.api_secret:
             logger.warning("⚠️ Chaves de API (BINANCE_API_KEY / BINANCE_API_SECRET) não detectadas no ambiente.")
@@ -104,12 +107,192 @@ class BinanceConnector:
 
     async def close(self):
         """
-        Fecha a sessão de conexão HTTP do cliente assíncrono.
+        Fecha a sessão de conexão HTTP do cliente assíncrono e encerra as streams.
         """
+        # Cancelar streams de preço em background
+        for symbol, task in list(self._ticker_tasks.items()):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        self._ticker_tasks.clear()
+
         if self.client:
             logger.info("Fechando conexão com a Binance...")
             await self.client.close_connection()
             logger.info("✅ Conexão encerrada.")
+
+    async def start_ticker_stream(self, symbol: str):
+        """
+        Inicia uma tarefa assíncrona em background para escutar o stream de ticker da Binance
+        e manter a cache local de preços atualizada em tempo real (latência O(1) de acesso).
+        """
+        symbol = symbol.upper()
+        if symbol in self._ticker_tasks:
+            return
+        
+        task = asyncio.create_task(self._ticker_stream_loop(symbol))
+        self._ticker_tasks[symbol] = task
+        # Aguarda um pequeno momento para dar tempo do stream inicializar e popular o cache
+        for _ in range(20):
+            if symbol in self.prices_cache:
+                break
+            await asyncio.sleep(0.1)
+
+    async def _ticker_stream_loop(self, symbol: str):
+        """
+        Conecta ao WebSocket público da Binance com ping/pong agressivo,
+        failover para URL de backup e reconexão com Exponential Backoff.
+        """
+        primary_ws = "wss://testnet.binance.vision/ws" if self.testnet else "wss://stream.binance.com:9443/ws"
+        backup_ws = "wss://stream.binance.com:9443/ws" if self.testnet else "wss://testnet.binance.vision/ws"
+        
+        current_url_base = primary_ws
+        attempt = 0
+        
+        while True:
+            url = f"{current_url_base}/{symbol.lower()}@bookTicker"
+            last_message_time = time.time()
+            
+            try:
+                logger.info(f"🔄 Conectando ao WebSocket de Preço para {symbol}: {url}...")
+                async with aiohttp.ClientSession() as session:
+                    # Configura ping_interval menor para detecção de queda rápida
+                    async with session.ws_connect(url, ping_interval=2.0, receive_timeout=5.0) as ws:
+                        logger.info(f"✅ WebSocket conectado para {symbol}.")
+                        attempt = 0 # reset backoff
+                        
+                        # Loop de monitoramento de ping/pong agressivo em background
+                        async def monitor_heartbeat():
+                            nonlocal last_message_time
+                            while not ws.closed:
+                                await asyncio.sleep(1.0)
+                                if time.time() - last_message_time > 5.0:
+                                    logger.warning(f"🚨 Heartbeat expirou para {symbol} (>5s sem mensagens). Forçando reconexão...")
+                                    await ws.close()
+                                    break
+                                    
+                        heartbeat_task = asyncio.create_task(monitor_heartbeat())
+                        
+                        try:
+                            async for msg in ws:
+                                if msg.type == aiohttp.WSMsgType.TEXT:
+                                    last_message_time = time.time()
+                                    
+                                    try:
+                                        try:
+                                            # Fast direct string parsing of BBO prices to minimize latency.
+                                            # msg.data is already a decoded str (aiohttp decodes the TEXT
+                                            # frame once at the protocol layer), so scanning it directly here
+                                            # avoids a second full json.loads()/dict-rebuild on the hot path.
+                                            raw_text = msg.data
+
+                                            b_idx = raw_text.find('"b":')
+                                            if b_idx == -1:
+                                                raise ValueError("b tag missing")
+                                            start = b_idx + 4
+                                            if raw_text[start] == '"':
+                                                start += 1
+                                            end = start
+                                            while end < len(raw_text) and raw_text[end] not in ('"', ','):
+                                                end += 1
+                                            bid = float(raw_text[start:end])
+
+                                            a_idx = raw_text.find('"a":')
+                                            if a_idx == -1:
+                                                raise ValueError("a tag missing")
+                                            start = a_idx + 4
+                                            if raw_text[start] == '"':
+                                                start += 1
+                                            end = start
+                                            while end < len(raw_text) and raw_text[end] not in ('"', ','):
+                                                end += 1
+                                            ask = float(raw_text[start:end])
+                                        except Exception:
+                                            # Safe fallback to standard JSON parser if the fast-path pattern
+                                            # deviates. Index with [] (not .get(key, 0)): a payload that is
+                                            # missing 'b'/'a' is corrupted, not a legitimate zero-price tick,
+                                            # and must be treated as a parse failure (caught below) rather
+                                            # than silently overwriting a good cached price with 0.0.
+                                            data = msg.json()
+                                            bid = float(data['b'])
+                                            ask = float(data['a'])
+
+                                        # Update the cache in place when possible instead of allocating a
+                                        # brand-new dict per tick - avoids per-message GC churn under
+                                        # high-frequency ticker traffic.
+                                        cached = self.prices_cache.get(symbol)
+                                        if cached is not None:
+                                            cached['bid'] = bid
+                                            cached['ask'] = ask
+                                            cached['last'] = (bid + ask) / 2.0
+                                        else:
+                                            self.prices_cache[symbol] = {
+                                                'bid': bid,
+                                                'ask': ask,
+                                                'last': (bid + ask) / 2.0
+                                            }
+                                    except Exception as parse_err:
+                                        # A single corrupted/malformed tick must never tear down the whole
+                                        # WebSocket connection (that would force a full reconnect - far more
+                                        # costly in latency than dropping one tick). Log/count and continue.
+                                        self._parse_error_count = getattr(self, '_parse_error_count', 0) + 1
+                                        logger.warning(
+                                            f"⚠️ Descartando payload de tick corrompido para {symbol}: {parse_err}"
+                                        )
+                                elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                                    break
+                        finally:
+                            heartbeat_task.cancel()
+                            try:
+                                await heartbeat_task
+                            except asyncio.CancelledError:
+                                pass
+
+                # If we reach this point, the websocket/session context managers exited
+                # *without* raising - e.g. the server sent CLOSED/ERROR (explicit `break` above)
+                # or the async-for simply ended. That is still a disconnect: without an explicit
+                # backoff here, `while True` would spin reconnecting as fast as the network/mock
+                # allows (a reconnect storm that hammers the exchange endpoint and burns CPU).
+                # Apply the same exponential backoff as the exception path before retrying.
+                attempt += 1
+                backoff_delay = min(2 ** attempt, 15)
+                logger.warning(
+                    f"🔌 WebSocket de Preço para {symbol} desconectado (sem exceção). Reconectando em {backoff_delay}s (Tentativa {attempt})..."
+                )
+                await asyncio.sleep(backoff_delay)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                attempt += 1
+                backoff_delay = min(2 ** attempt, 15)
+                if attempt > 2:
+                    current_url_base = backup_ws if current_url_base == primary_ws else primary_ws
+                    logger.warning(f"🔀 Alternando para URL de backup WebSocket: {current_url_base}")
+
+                logger.error(f"❌ Erro no WebSocket de Preço para {symbol}: {e}. Reconectando em {backoff_delay}s (Tentativa {attempt})...")
+                await asyncio.sleep(backoff_delay)
+
+    async def get_cached_price(self, symbol: str) -> dict:
+        """
+        Retorna o preço bid/ask/last da cache local de forma síncrona/instantânea.
+        Caso não esteja na cache, faz o fallback rápido via REST.
+        """
+        symbol = symbol.upper()
+        if symbol in self.prices_cache:
+            return self.prices_cache[symbol]
+        
+        logger.warning(f"⚠️ Preço de {symbol} não encontrado na cache. Usando fallback REST...")
+        ticker = await self.get_orderbook_ticker(symbol)
+        price_data = {
+            'bid': float(ticker.get('bidPrice', 0)),
+            'ask': float(ticker.get('askPrice', 0)),
+            'last': (float(ticker.get('bidPrice', 0)) + float(ticker.get('askPrice', 0))) / 2.0
+        }
+        self.prices_cache[symbol] = price_data
+        return price_data
 
     @retry_on_rate_limit_and_timeout()
     async def get_symbol_step_size(self, symbol: str) -> float:
@@ -254,6 +437,43 @@ class BinanceConnector:
         except Exception as e:
             logger.error(f"❌ Erro de Rede ao criar ordem OCO em {symbol}: {e}")
             raise
+
+    @retry_on_rate_limit_and_timeout()
+    async def create_slippage_protected_order(
+        self, symbol: str, side: str, quantity: float, max_slippage_pct: float = 0.005
+    ) -> dict:
+        """
+        Envia uma ordem protegendo o capital contra slippage extrema.
+        Converte ordens de mercado em ordens LIMIT com Time-In-Force (TIF) = IOC (Immediate Or Cancel)
+        com limite de preço baseado no desvio de slippage aceito.
+        """
+        symbol = symbol.upper()
+        side = side.upper()
+        
+        # 1. Obter preços bid/ask da cache local WebSocket
+        price_data = await self.get_cached_price(symbol)
+        best_price = price_data['ask'] if side == "BUY" else price_data['bid']
+        
+        if best_price <= 0:
+            logger.warning(f"⚠️ Sem preços na cache para {symbol}, enviando Market Order direta...")
+            return await self.create_order(symbol=symbol, side=side, type="MARKET", quantity=quantity)
+            
+        if side == "BUY":
+            limit_price = best_price * (1.0 + max_slippage_pct)
+        else:
+            limit_price = best_price * (1.0 - max_slippage_pct)
+            
+        limit_price_clean = round(limit_price, 2)
+        logger.info(f"🛡️ Proteção Slippage: Enviando LIMIT IOC a {limit_price_clean} (Base BBO: {best_price}) para {side} {quantity} {symbol}")
+        
+        return await self.create_order(
+            symbol=symbol,
+            side=side,
+            type="LIMIT",
+            quantity=quantity,
+            price=limit_price_clean,
+            timeInForce="IOC"
+        )
 
 
 # ==============================================================================

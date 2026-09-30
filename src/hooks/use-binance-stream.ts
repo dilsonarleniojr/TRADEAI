@@ -1,26 +1,38 @@
 "use client";
-
 import { useEffect, useRef, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import { useCryptoStore, type TickerData } from "@/lib/store";
 import { syncManager } from "@/lib/realtime-sync";
 
+let globalSocket: Socket | null = null;
+let activeHookCount = 0;
+
 export function useBinanceStream() {
-  const socketRef = useRef<Socket | null>(null);
-  const { selectedSymbol, updateTicker } = useCryptoStore();
+  const { selectedSymbol } = useCryptoStore();
   const setConnectionStatus = useCryptoStore((s) => s.setConnectionStatus);
   const reconnectAttemptRef = useRef(0);
   const failedRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
+    activeHookCount++;
 
     function connectSocket() {
       if (!mounted) return;
 
+      if (globalSocket) {
+        console.log("[BinanceStream] Reusing global socket instance. Active hooks:", activeHookCount);
+        if (globalSocket.connected) {
+          syncManager.onWSConnected();
+          globalSocket.emit("subscribe", selectedSymbol);
+        }
+        return;
+      }
+
       const isProxy = typeof window !== "undefined" && (window.location.port === "81" || window.location.search.includes("XTransformPort"));
       const socketUrl = isProxy ? "" : "http://localhost:3002";
 
+      console.log("[BinanceStream] Creating new global socket connection to", socketUrl);
       const socket = io(socketUrl, {
         transports: ["polling", "websocket"],
         upgrade: true,
@@ -34,15 +46,14 @@ export function useBinanceStream() {
         withCredentials: false,
       });
 
-      socketRef.current = socket;
+      globalSocket = socket;
 
       socket.on("connect", () => {
-        if (!mounted) return;
         console.log("[BinanceStream] Connected via", socket.io.engine?.transport?.name || "unknown");
         reconnectAttemptRef.current = 0;
         failedRef.current = false;
         syncManager.onWSConnected();
-        socket.emit("subscribe", selectedSymbol);
+        socket.emit("subscribe", useCryptoStore.getState().selectedSymbol);
       });
 
       socket.on("ticker:update", (data: {
@@ -57,8 +68,7 @@ export function useBinanceStream() {
         priceChangePercent: string;
         timestamp: number;
       }) => {
-        if (!mounted) return;
-        updateTicker(data.symbol.toUpperCase(), {
+        useCryptoStore.getState().updateTicker(data.symbol.toUpperCase(), {
           symbol: data.symbol.toUpperCase(),
           price: parseFloat(data.price),
           priceChange: parseFloat(data.priceChange),
@@ -68,19 +78,17 @@ export function useBinanceStream() {
           volume: parseFloat(data.volume),
           quoteVolume: parseFloat(data.quoteVolume),
         });
+        useCryptoStore.getState().updateBotPnls(useCryptoStore.getState().tickers);
       });
 
       socket.on("balance-update", (data: any) => {
-        if (!mounted) return;
         console.log("[BinanceStream] Balance updated via Socket.IO:", data);
         useCryptoStore.getState().setAccount(data);
       });
 
       socket.on("trade-executed", (data: any) => {
-        if (!mounted) return;
         console.log("[BinanceStream] Trade received via Socket.IO:", data);
         const store = useCryptoStore.getState();
-        // Deduplicate by id
         const exists = store.trades.some(t => t.id === data.id);
         if (!exists) {
           store.addTrade({
@@ -99,46 +107,35 @@ export function useBinanceStream() {
       });
 
       socket.on("portfolio-update", (data: any) => {
-        if (!mounted) return;
         console.log("[BinanceStream] Portfolio updated via Socket.IO:", data);
         useCryptoStore.getState().setAccount(data);
       });
 
       socket.on("subscribed", (data: { symbol: string }) => {
-        if (!mounted) return;
         console.log("[BinanceStream] Subscribed to", data.symbol);
       });
 
-      socket.on("unsubscribed", (data: { symbol: string }) => {
-        if (!mounted) return;
-        console.log("[BinanceStream] Unsubscribed from", data.symbol);
-      });
-
       socket.on("disconnect", (reason) => {
-        if (!mounted) return;
         console.log("[BinanceStream] Disconnected:", reason);
         syncManager.onWSDisconnected();
       });
 
       socket.on("reconnect_attempt", (attempt) => {
-        if (!mounted) return;
         reconnectAttemptRef.current = attempt;
         if (attempt === 1 || attempt % 5 === 0) {
           console.log("[BinanceStream] Reconnect attempt:", attempt);
         }
         if (attempt === 1) {
-          setConnectionStatus("connecting");
+          useCryptoStore.getState().setConnectionStatus("connecting");
         }
       });
 
       socket.on("reconnect_failed", () => {
-        if (!mounted) return;
         console.log("[BinanceStream] Reconnect failed — polling fallback active");
         syncManager.onWSDisconnected();
       });
 
       socket.on("connect_error", (err) => {
-        if (!mounted) return;
         const attempt = reconnectAttemptRef.current;
         if (attempt <= 1 || attempt % 10 === 0) {
           console.warn("[BinanceStream] Connection issue (fallback active):", err.message);
@@ -154,29 +151,30 @@ export function useBinanceStream() {
 
     return () => {
       mounted = false;
-      const socket = socketRef.current;
-      if (socket) {
-        socket.emit("unsubscribe", selectedSymbol);
-        socket.disconnect();
-        socketRef.current = null;
+      activeHookCount--;
+      if (activeHookCount <= 0) {
+        console.log("[BinanceStream] No active hooks left, disconnecting global socket");
+        const socket = globalSocket;
+        if (socket) {
+          socket.emit("unsubscribe", useCryptoStore.getState().selectedSymbol);
+          socket.disconnect();
+          globalSocket = null;
+        }
+        setConnectionStatus("rest-api");
+      } else {
+        console.log(`[BinanceStream] Hook unmounted. ${activeHookCount} hooks still active. Keeping socket alive.`);
       }
-      setConnectionStatus("rest-api");
     };
-  }, []); // Connect once on mount
+  }, []);
 
-  // When selectedSymbol changes, subscribe/unsubscribe
   useEffect(() => {
-    const socket = socketRef.current;
+    const socket = globalSocket;
     if (!socket || !socket.connected) return;
 
     socket.emit("subscribe", selectedSymbol);
-
-    return () => {
-      socket.emit("unsubscribe", selectedSymbol);
-    };
   }, [selectedSymbol]);
 
-  const getSocket = useCallback(() => socketRef.current, []);
+  const getSocket = useCallback(() => globalSocket, []);
 
   return { getSocket };
 }

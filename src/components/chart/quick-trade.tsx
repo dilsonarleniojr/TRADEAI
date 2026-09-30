@@ -414,7 +414,16 @@ export function QuickTrade() {
           <TabsContent value="scheduled" className="space-y-3 outline-none">
             {/* Trigger Price input */}
             <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground">Preço Gatilho (USD)</label>
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] font-medium text-muted-foreground">Preço Gatilho (USD)</label>
+                <button
+                  type="button"
+                  onClick={() => setTriggerPrice(currentPrice.toString())}
+                  className="text-[9px] text-crypto-cyan hover:underline cursor-pointer"
+                >
+                  Preço Atual
+                </button>
+              </div>
               <Input
                 type="number"
                 step="any"
@@ -428,7 +437,32 @@ export function QuickTrade() {
 
             {/* Quantity input */}
             <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground">Quantidade</label>
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] font-medium text-muted-foreground">Quantidade</label>
+                <div className="flex gap-1.5 text-[9px]">
+                  <button
+                    type="button"
+                    onClick={() => setScheduledQty((portfolio.cashBalance / (currentPrice || 1) * 0.25).toFixed(6))}
+                    className="text-crypto-cyan hover:underline cursor-pointer"
+                  >
+                    25%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScheduledQty((portfolio.cashBalance / (currentPrice || 1) * 0.50).toFixed(6))}
+                    className="text-crypto-cyan hover:underline cursor-pointer"
+                  >
+                    50%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScheduledQty((portfolio.cashBalance / (currentPrice || 1) * 1.00).toFixed(6))}
+                    className="text-crypto-cyan hover:underline cursor-pointer"
+                  >
+                    MAX
+                  </button>
+                </div>
+              </div>
               <Input
                 type="number"
                 step="any"
@@ -546,8 +580,22 @@ export function QuickTrade() {
           {sltpData ? (
             <>
               <div className="flex items-center justify-between text-[10px]">
-                <span className="text-crypto-red flex items-center gap-0.5">🛑 SL: ${formatPrice(sltpData.stopLoss)}</span>
-                <span className="text-crypto-green flex items-center gap-0.5">✅ TP: ${formatPrice(sltpData.takeProfit)}</span>
+                <button
+                  type="button"
+                  onClick={() => setTriggerPrice(sltpData.stopLoss.toString())}
+                  className="text-crypto-red hover:underline flex items-center gap-0.5 cursor-pointer font-semibold"
+                  title="Preencher Stop Loss no Gatilho"
+                >
+                  🛑 SL: ${formatPrice(sltpData.stopLoss)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTriggerPrice(sltpData.takeProfit.toString())}
+                  className="text-crypto-green hover:underline flex items-center gap-0.5 cursor-pointer font-semibold"
+                  title="Preencher Take Profit no Gatilho"
+                >
+                  ✅ TP: ${formatPrice(sltpData.takeProfit)}
+                </button>
               </div>
               <div className="flex items-center justify-between text-[10px]">
                 <span className={cn(

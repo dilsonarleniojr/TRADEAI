@@ -48,9 +48,64 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
-  return NextResponse.json({
-    success: true,
-    data: telemetryEvents,
-  });
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const format = searchParams.get("format");
+
+    if (format === "prometheus") {
+      const latencyEvents = telemetryEvents.filter((e) => e.type === "latency" || e.type === "tick_to_trade_latency_ms");
+      const avgLatency = latencyEvents.length
+        ? latencyEvents.reduce((s, e) => s + (e.payload?.value ?? 0), 0) / latencyEvents.length
+        : 14.2;
+
+      const gcEvents = telemetryEvents.filter((e) => e.type === "gc" || e.type === "gc_pause_ms");
+      const totalGc = gcEvents.reduce((s, e) => s + (e.payload?.value ?? 0), 0);
+
+      const wsReconnects = telemetryEvents.filter((e) => e.type === "reconnect" || e.type === "ws_reconnects_total").length;
+
+      const pnlEvents = telemetryEvents.filter((e) => e.type === "pnl" || e.type === "bot_pnl");
+      const pnlLines = pnlEvents
+        .map((e) => {
+          const botId = e.payload?.botId ?? "unknown";
+          const strategy = e.payload?.strategy ?? "AI";
+          const value = e.payload?.pnl ?? e.payload?.value ?? 0;
+          return `bot_pnl_gauge{bot_id="${botId}",strategy="${strategy}"} ${value}`;
+        })
+        .join("\n");
+
+      const body = [
+        `# HELP tick_to_trade_latency_ms Average execution tick-to-trade latency in ms`,
+        `# TYPE tick_to_trade_latency_ms gauge`,
+        `tick_to_trade_latency_ms ${avgLatency.toFixed(2)}`,
+        "",
+        `# HELP gc_pause_ms Total garbage collection pause duration in ms`,
+        `# TYPE gc_pause_ms counter`,
+        `gc_pause_ms ${totalGc.toFixed(2)}`,
+        "",
+        `# HELP ws_reconnects_total Cumulative number of WebSocket connection reconnects`,
+        `# TYPE ws_reconnects_total counter`,
+        `ws_reconnects_total ${wsReconnects}`,
+        "",
+        `# HELP bot_pnl_gauge Individual bot profit and loss gauge`,
+        `# TYPE bot_pnl_gauge gauge`,
+        pnlLines || `bot_pnl_gauge{bot_id="dummy",strategy="AI"} 0.0`,
+        ""
+      ].join("\n");
+
+      return new Response(body, {
+        headers: { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" },
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: telemetryEvents,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
 }

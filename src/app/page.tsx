@@ -10,6 +10,7 @@ import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { TickerTape } from "@/components/header/ticker-tape";
+import { TelemetryRibbon } from "@/components/bot/telemetry-ribbon";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
 import { ChatSection } from "@/components/ai/chat-section";
 import { ChartSection } from "@/components/chart/chart-section";
@@ -177,6 +178,7 @@ function HomePageContent() {
         <div className="flex-1 flex flex-col min-w-0">
           <Header onOpenMobileDrawer={() => setMobileDrawerOpen(true)} />
           <TickerTape />
+          <TelemetryRibbon />
           <main className="flex-1 p-3 md:p-5 overflow-y-auto pb-24 md:pb-5 cyan-scrollbar scroll-smooth">
             <AnimatePresence mode="wait">
               {renderContent()}
