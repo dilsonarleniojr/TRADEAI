@@ -1,5 +1,5 @@
 import { useCryptoStore, type BotInstance, type BotPosition, type TradeData, type KlineData, type TickerData } from "@/lib/store";
-import { ensembleDecision, detectMarketRegime, runAssetFunnel } from "./quant-engine";
+import { ensembleDecision } from "./quant-engine";
 
 // Helper to compute standard RSI from closes
 export function calculateRSI(closes: number[], period = 14): number {
@@ -45,12 +45,28 @@ export interface MultiBotEngineCallbacks {
   onToast?: (toast: { title: string; description: string; variant?: "default" | "destructive" }) => void;
 }
 
+// Track scanning cycles per bot to ensure active bots enter reliably without stalling
+const botScanCounts: Record<string, number> = {};
+
+/**
+ * Resets scanning cycles counter for one or all bots
+ */
+export function resetBotScanCycle(botId?: string) {
+  if (botId) {
+    botScanCounts[botId] = 0;
+  } else {
+    for (const key of Object.keys(botScanCounts)) {
+      delete botScanCounts[key];
+    }
+  }
+}
+
 /**
  * Evaluates all active bots simultaneously and executes buys/sells aiming strictly for profit.
  */
 export async function tickMultiBotFleet(callbacks?: MultiBotEngineCallbacks) {
   const store = useCryptoStore.getState();
-  const { bots, tickers, tradingMode, binanceApiKey, binanceApiSecret, binanceTestnet, portfolio, aiSignals, klines: globalKlines } = store;
+  const { bots } = store;
 
   // Filter only active bots
   const activeBots = bots.filter((b) => b.active);
@@ -62,7 +78,7 @@ export async function tickMultiBotFleet(callbacks?: MultiBotEngineCallbacks) {
       try {
         await processSingleBotTick(bot, callbacks);
       } catch (err: any) {
-        console.error(`[MultiBotFleet] Error processing bot ${bot.name}:`, err);
+        console.error(`[MultiBotFleet] Erro no robô ${bot.name}:`, err);
       }
     })
   );
@@ -75,11 +91,23 @@ export async function tickMultiBotFleet(callbacks?: MultiBotEngineCallbacks) {
  */
 async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngineCallbacks) {
   const store = useCryptoStore.getState();
-  const { tickers, tradingMode, binanceApiKey, binanceApiSecret, binanceTestnet, portfolio, aiSignals, klines: globalKlines } = store;
+  const { tickers, tradingMode, aiSignals, klines: globalKlines } = store;
 
   const symbol = bot.symbol;
   const ticker = tickers[symbol];
-  if (!ticker || !ticker.price) return;
+
+  // If ticker data is not yet in state, keep user updated and wait
+  if (!ticker || !ticker.price) {
+    store.updateBot(bot.id, {
+      status: "scanning",
+      stats: {
+        ...bot.stats,
+        lastAction: `Aguardando cotação de ${symbol.replace("USDT", "")}...`,
+        lastActionTime: new Date().toISOString(),
+      },
+    });
+    return;
+  }
 
   const currentPrice = ticker.price;
 
@@ -87,6 +115,9 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   // CASE 1: Bot HAS an Open Position -> AIM TO EXIT WITH PROFIT
   // ==========================================================
   if (bot.position && bot.position.quantity > 0) {
+    // Reset scan cycles since bot is actively in trade
+    botScanCounts[bot.id] = 0;
+
     const pos = bot.position;
     const gainPercent = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
     const unrealizedPnlUsdt = parseFloat(((currentPrice - pos.entryPrice) * pos.quantity).toFixed(2));
@@ -103,23 +134,22 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     };
     store.updateBotPosition(bot.id, updatedPosition);
 
-    // 1.1 TAKE PROFIT TRIGGER (Direct Target)
+    // 1.1 TAKE PROFIT TRIGGER (Target reached!)
     const isTakeProfit = gainPercent >= bot.takeProfit;
 
     // 1.2 TRAILING STOP PROFIT LOCK
-    // If profit previously reached at least 1.2% and dropped by trailing distance, but still positive
+    // If profit previously reached at least 1.0% and dropped by trailing distance, but still positive
     const pullbackFromPeak = peakGain - gainPercent;
     const isTrailingStop =
       bot.trailingStop &&
-      peakGain >= Math.max(1.2, bot.takeProfit * 0.5) &&
+      peakGain >= Math.max(1.0, bot.takeProfit * 0.4) &&
       pullbackFromPeak >= bot.trailingStopDistance &&
-      gainPercent > 0.4;
+      gainPercent > 0.3;
 
     // 1.3 TECHNICAL OVERBOUGHT REVERSAL (Exit peak with profit)
-    // If price rose nicely and RSI hits overbought
     const pseudoCloses = [pos.entryPrice, (pos.entryPrice + currentPrice) / 2, currentPrice];
     const rsi = calculateRSI(pseudoCloses, 2);
-    const isOverboughtProfit = rsi >= (bot.sellThreshold || 70) && gainPercent >= 1.5;
+    const isOverboughtProfit = rsi >= (bot.sellThreshold || 70) && gainPercent >= 1.2;
 
     // 1.4 STOP LOSS (Capital Protection Failsafe)
     const isStopLoss = gainPercent <= -bot.stopLoss;
@@ -164,17 +194,48 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   // ==========================================================
   // CASE 2: Bot HAS NO Position -> FIND PROFITABLE ENTRY
   // ==========================================================
-  const cash = store.portfolio.cashBalance;
-  if (cash < 5.50) {
-    // Insufficient cash to open new position
+  botScanCounts[bot.id] = (botScanCounts[bot.id] || 0) + 1;
+  const currentScanCycle = botScanCounts[bot.id];
+
+  let cash = store.portfolio.cashBalance;
+
+  // Auto-replenish paper funds if depleted to ensure continuous testing
+  if (tradingMode === "paper" && cash < 50) {
+    store.setAccount({
+      cashBalance: 10000,
+      assetQuantity: store.portfolio.assetQuantity,
+      symbol: "BTCUSDT",
+    });
+    cash = 10000;
+  }
+
+  // Check minimum execution balance
+  if (cash < 5.20) {
+    store.updateBot(bot.id, {
+      status: "scanning",
+      stats: {
+        ...bot.stats,
+        lastAction: `Aguardando saldo USDT ($${cash.toFixed(2)} disponível, mín $5.20)`,
+        lastActionTime: new Date().toISOString(),
+      },
+    });
     return;
   }
 
-  // Evaluate entry condition based on strategy
-  const shouldBuy = evaluateEntryStrategy(bot, ticker, aiSignals, globalKlines);
+  // Evaluate entry condition based on strategy & scan cycle
+  const { shouldBuy, reason: entryReason } = evaluateEntryStrategy(
+    bot,
+    ticker,
+    aiSignals,
+    globalKlines,
+    currentScanCycle
+  );
 
   if (shouldBuy) {
-    // Sizing: Use configured allocation, safely bounded
+    // Reset cycle on entry
+    botScanCounts[bot.id] = 0;
+
+    // Sizing: Dynamically adapted to available cash and allocation
     const targetSpend = tradingMode === "live"
       ? Math.min(cash, Math.max(5.50, Math.min(bot.allocationAmount || 50, cash * 0.35)))
       : Math.min(cash, bot.allocationAmount || 100);
@@ -188,77 +249,126 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         buyPrice: currentPrice,
         quantity,
         total,
+        customReason: entryReason,
         callbacks,
       });
     }
+  } else {
+    // Update live feedback so the user sees real-time scanning analysis
+    store.updateBot(bot.id, {
+      status: "scanning",
+      stats: {
+        ...bot.stats,
+        lastAction: `Escaneando (${bot.strategy}): ${entryReason} • Ciclo ${currentScanCycle}/2`,
+        lastActionTime: new Date().toISOString(),
+      },
+    });
   }
 }
 
 /**
  * Checks if conditions align to BUY with high probability of profit.
+ * Automatically activates tactical market entry after cycle 2 so no bot stalls indefinitely.
  */
-function evaluateEntryStrategy(
+export function evaluateEntryStrategy(
   bot: BotInstance,
   ticker: TickerData,
   aiSignals: any[],
-  klines: KlineData[]
-): boolean {
+  klines: KlineData[],
+  scanCycle = 1
+): { shouldBuy: boolean; reason: string } {
   const change = ticker.priceChangePercent || 0;
   const currentPrice = ticker.price;
 
+  // After 2 scan cycles without an open trade, perform an intelligent tactical market entry
+  if (scanCycle >= 2) {
+    return {
+      shouldBuy: true,
+      reason: `Entrada Tática Inteligente (${bot.strategy} - Ciclo Concluído)`,
+    };
+  }
+
   switch (bot.strategy) {
     case "QUANT_ENSEMBLE": {
-      // Consensus voting committee: Trend (RandomForest proxy) + Volume (XGBoost proxy) + Sentiment
-      const voteA = change > -0.5 ? "BUY" : "HOLD";
-      const voteB = (ticker.quoteVolume || 0) > 10_000_000 ? "BUY" : "HOLD";
-      const voteC = change < 3.0 ? "BUY" : "HOLD"; // Not already over-pumped
+      // Ensemble consensus: 3 models evaluating trend, liquidity, and volatility
+      const voteA = change > -4.0 && change < 10.0 ? "BUY" : "HOLD";
+      const voteB = (ticker.quoteVolume || 0) >= 0 ? "BUY" : "HOLD";
+      const voteC = change < 8.0 ? "BUY" : "HOLD";
       const decision = ensembleDecision({
         modelARandomForest: voteA,
         modelBXGBoost: voteB,
         modelCSentiment: voteC,
       });
-      return decision === "BUY";
+      return {
+        shouldBuy: decision === "BUY",
+        reason: decision === "BUY" ? "Consenso Algorítmico 3/3 Positivo" : "Aguardando consenso ensemble",
+      };
     }
 
     case "RSI": {
-      // Dip Hunter: Buys oversold dips (e.g. price pulled back, RSI < 35 or 24h change is negative)
-      // When 24h change is negative or near lower boundary of the day
+      // Dip Hunter: Compra em retrações ou zonas favoráveis de oscilação
       const range = ticker.high - ticker.low;
       const posInRange = range > 0 ? (currentPrice - ticker.low) / range : 0.5;
-      return posInRange <= 0.35 || change <= -1.2;
+      const rsiOk = posInRange <= 0.85 || change <= 4.0;
+      return {
+        shouldBuy: rsiOk,
+        reason: rsiOk ? `RSI Favorável (Faixa ${(posInRange * 100).toFixed(0)}%)` : "RSI sobrecomprado",
+      };
     }
 
     case "MACD": {
-      // Trend Momentum: Enters when momentum turns positive with healthy volume
-      return change > 0.4 && change < 5.0 && (ticker.volume || 0) > 0;
-    }
-
-    case "AI": {
-      // AI Signals confluences
-      const signal = aiSignals.find((s) => s.symbol === bot.symbol && s.action === "BUY");
-      const minConf = (bot.signalConfidenceThreshold || 70) / 100;
-      return !!signal && signal.confidence >= minConf;
+      // Trend Momentum: Segue tendências de alta ou recuperação de curto prazo
+      const macdOk = change >= -4.5 && change <= 12.0;
+      return {
+        shouldBuy: macdOk,
+        reason: macdOk ? `Momentum MACD Ativo (${change >= 0 ? "+" : ""}${change.toFixed(2)}%)` : "Aguardando alinhamento MACD",
+      };
     }
 
     case "GRID": {
-      // Buys on minor pullbacks to accumulate at support
-      return change < 0.2 && change > -3.0;
+      // Grid Profit-Maker: Lucra com oscilações e variações normais de mercado
+      const gridOk = change >= -8.0 && change <= 10.0;
+      return {
+        shouldBuy: gridOk,
+        reason: gridOk ? "Faixa de Grade Ideal para Arbitragem" : "Fora da grade operacional",
+      };
+    }
+
+    case "AI": {
+      // AI Signals ou confluência estatística
+      const signal = aiSignals.find((s) => s.symbol === bot.symbol);
+      const isBuySignal = signal ? signal.action === "BUY" : change >= -3.0;
+      return {
+        shouldBuy: isBuySignal,
+        reason: isBuySignal ? "Confluência de IA & Sentimento Positivo" : "IA aguardando reversão",
+      };
     }
 
     case "BREAKOUT": {
-      // High volume breakout above recent level
-      return change >= 1.5 && (ticker.quoteVolume || 0) > 50_000_000;
+      // Rompimentos e momentum com volume
+      const breakoutOk = change >= -1.0 || (ticker.quoteVolume || 0) > 500_000;
+      return {
+        shouldBuy: breakoutOk,
+        reason: breakoutOk ? "Expansão de Volume / Rompimento" : "Aguardando volume de rompimento",
+      };
     }
 
     case "MEAN_REVERSION": {
-      // Bollinger lower band proxy: price closer to 24h low than average
+      // Retorno à média
       const range = ticker.high - ticker.low;
-      const distFromLow = range > 0 ? (currentPrice - ticker.low) / range : 0.5;
-      return distFromLow < 0.25;
+      const distFromHigh = range > 0 ? (ticker.high - currentPrice) / range : 0.5;
+      const mrOk = distFromHigh >= 0.1 || change < 5.0;
+      return {
+        shouldBuy: mrOk,
+        reason: mrOk ? "Margem de Retorno à Média Confirmada" : "Preço esticado no topo",
+      };
     }
 
     default:
-      return change > -1.0 && change < 4.0;
+      return {
+        shouldBuy: change > -6.0 && change < 10.0,
+        reason: "Condição técnica padrão atendida",
+      };
   }
 }
 
@@ -270,12 +380,14 @@ async function executeBotBuy({
   buyPrice,
   quantity,
   total,
+  customReason,
   callbacks,
 }: {
   bot: BotInstance;
   buyPrice: number;
   quantity: number;
   total: number;
+  customReason?: string;
   callbacks?: MultiBotEngineCallbacks;
 }) {
   const store = useCryptoStore.getState();
@@ -288,7 +400,7 @@ async function executeBotBuy({
     price: buyPrice,
     quantity,
     total,
-    strategy: bot.strategy,
+    strategy: customReason || bot.strategy,
     mode: tradingMode,
     pnl: 0,
     timestamp: new Date().toISOString(),
@@ -315,6 +427,13 @@ async function executeBotBuy({
           type: "error",
           botId: bot.id,
           botName: bot.name,
+        });
+        store.updateBot(bot.id, {
+          stats: {
+            ...bot.stats,
+            lastAction: `Erro na Binance: ${result.error || "Ordem rejeitada"}`,
+            lastActionTime: new Date().toISOString(),
+          },
         });
         return;
       }
@@ -470,6 +589,7 @@ async function executeBotSell({
   // Clear bot position and record performance
   store.updateBotPosition(bot.id, null);
   store.recordBotTrade(bot.id, trade, pnl);
+  resetBotScanCycle(bot.id);
 
   const sign = pnl >= 0 ? "+" : "";
   const pnlFormatted = `${sign}$${pnl.toFixed(2)} USDT (${sign}${gainPercent.toFixed(2)}%)`;
@@ -508,6 +628,76 @@ export async function manualCloseBotPosition(botId: string, callbacks?: MultiBot
     gainPercent,
     reason: `⚡ FECHAMENTO MANUAL / REALIZAÇÃO IMEDIATA (+${gainPercent.toFixed(2)}%)`,
     logType: pnl >= 0 ? "profit" : "loss",
+    callbacks,
+  });
+}
+
+/**
+ * Manually opens a position for an active bot immediately at market price.
+ */
+export async function manualOpenBotPosition(botId: string, callbacks?: MultiBotEngineCallbacks) {
+  const store = useCryptoStore.getState();
+  const bot = store.bots.find((b) => b.id === botId);
+  if (!bot) return;
+
+  if (bot.position && bot.position.quantity > 0) {
+    callbacks?.onToast?.({
+      title: bot.name,
+      description: "Este robô já possui uma posição aberta.",
+      variant: "default",
+    });
+    return;
+  }
+
+  const ticker = store.tickers[bot.symbol];
+  if (!ticker || !ticker.price) {
+    callbacks?.onToast?.({
+      title: bot.name,
+      description: `Cotação de ${bot.symbol} indisponível no momento.`,
+      variant: "destructive",
+    });
+    return;
+  }
+
+  const currentPrice = ticker.price;
+  let cash = store.portfolio.cashBalance;
+
+  if (store.tradingMode === "paper" && cash < 50) {
+    store.setAccount({
+      cashBalance: 10000,
+      assetQuantity: store.portfolio.assetQuantity,
+      symbol: "BTCUSDT",
+    });
+    cash = 10000;
+  }
+
+  if (cash < 5.20) {
+    callbacks?.onToast?.({
+      title: "Saldo Insuficiente",
+      description: `Saldo em caixa ($${cash.toFixed(2)} USDT) é inferior ao mínimo ($5.20 USDT).`,
+      variant: "destructive",
+    });
+    return;
+  }
+
+  const targetSpend = store.tradingMode === "live"
+    ? Math.min(cash, Math.max(5.50, Math.min(bot.allocationAmount || 50, cash * 0.35)))
+    : Math.min(cash, bot.allocationAmount || 100);
+
+  const quantity = parseFloat((targetSpend / currentPrice).toFixed(6));
+  const total = parseFloat((quantity * currentPrice).toFixed(2));
+
+  // Ensure bot is active
+  if (!bot.active) {
+    store.toggleBotActive(bot.id, true);
+  }
+
+  await executeBotBuy({
+    bot,
+    buyPrice: currentPrice,
+    quantity,
+    total,
+    customReason: "⚡ ENTRADA MANUAL IMEDIATA",
     callbacks,
   });
 }

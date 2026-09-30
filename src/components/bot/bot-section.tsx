@@ -38,7 +38,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { runAssetFunnel, detectMarketRegime, ensembleDecisionWithVeto, runMarketScanner, type QuantCandidate } from "@/lib/bot/quant-engine";
-import { tickMultiBotFleet } from "@/lib/bot/multi-bot-engine";
+import { tickMultiBotFleet, resetBotScanCycle } from "@/lib/bot/multi-bot-engine";
 import { useBinanceData } from "@/hooks/use-binance-data";
 
 interface TradeReport {
@@ -210,8 +210,9 @@ export function BotSection() {
   // SIMULTANEOUS MULTI-BOT AUTONOMOUS EXECUTION LOOP
   // Evaluates every active bot in parallel, buys on setup, and takes profit!
   // =========================================================================
+  const isAnyActive = useMemo(() => bots.some((b) => b.active), [bots]);
+
   useEffect(() => {
-    const isAnyActive = bots.some((b) => b.active);
     if (!isAnyActive) return;
 
     if (!botStartTimeRef.current) {
@@ -219,21 +220,20 @@ export function BotSection() {
     }
 
     const runFleetCycle = async () => {
-      if (isVetoActive) return; // Risk failsafe active
       await tickMultiBotFleet({
         onToast: (t) => toast(t),
       });
     };
 
-    // Run first tick after 3s, then repeat every 7s
-    const initialTimer = setTimeout(runFleetCycle, 3000);
-    const intervalTimer = setInterval(runFleetCycle, 7000);
+    // Run first tick after 300ms, then reliably repeat every 3000ms
+    const initialTimer = setTimeout(runFleetCycle, 300);
+    const intervalTimer = setInterval(runFleetCycle, 3000);
 
     return () => {
       clearTimeout(initialTimer);
       clearInterval(intervalTimer);
     };
-  }, [bots, isVetoActive, toast]);
+  }, [isAnyActive, toast]);
 
   // Open dialog to create or edit
   const handleOpenCreateDialog = () => {
@@ -311,7 +311,10 @@ export function BotSection() {
             ) : (
               <Button
                 size="sm"
-                onClick={() => toggleAllBots(true)}
+                onClick={() => {
+                  resetBotScanCycle();
+                  toggleAllBots(true);
+                }}
                 className="h-9 px-3.5 bg-gradient-to-r from-crypto-green to-emerald-600 hover:from-crypto-green/90 text-white text-xs font-semibold shadow-md shadow-crypto-green/20 cursor-pointer"
               >
                 <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />

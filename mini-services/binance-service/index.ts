@@ -36,6 +36,10 @@ const TOP_SYMBOLS = [
 
   // === Stablecoin/Exchange ===
   "XRPUSDT", "LTCUSDT", "TRXUSDT", "XLMUSDT",
+
+  // === Top Gainers / Novas Moedas em Alta ===
+  "MOVRUSDT", "STGUSDT", "ZROUSDT", "PUMPUSDT", "BERAUSDT",
+  "PHAUSDT", "NIGHTUSDT", "INITUSDT", "OGUSDT", "QNTUSDT",
 ];
 
 // ============================================================
@@ -66,6 +70,10 @@ const SYMBOL_CATEGORIES: Record<string, string> = {
   // Stablecoin/Exchange
   XRPUSDT: "Stablecoin/Exchange", LTCUSDT: "Stablecoin/Exchange",
   TRXUSDT: "Stablecoin/Exchange", XLMUSDT: "Stablecoin/Exchange",
+  // Top Gainers / Novas Moedas
+  MOVRUSDT: "Layer 1", STGUSDT: "DeFi", ZROUSDT: "Storage/Infrastructure",
+  PUMPUSDT: "Meme", BERAUSDT: "Layer 1", PHAUSDT: "AI",
+  NIGHTUSDT: "Storage/Infrastructure", INITUSDT: "Layer 1", OGUSDT: "Gaming", QNTUSDT: "Storage/Infrastructure",
 };
 
 // ============================================================
@@ -95,6 +103,10 @@ const SYMBOL_NAMES: Record<string, string> = {
   FILUSDT: "Filecoin", ARUSDT: "Arweave", ETHFIUSDT: "ether.fi",
   // Stablecoin/Exchange
   XRPUSDT: "XRP", LTCUSDT: "Litecoin", TRXUSDT: "TRON", XLMUSDT: "Stellar",
+  // Top Gainers / Novas Moedas
+  MOVRUSDT: "Moonriver", STGUSDT: "Stargate", ZROUSDT: "LayerZero",
+  PUMPUSDT: "Pump", BERAUSDT: "Berachain", PHAUSDT: "Phala Network",
+  NIGHTUSDT: "Midnight", INITUSDT: "Initia", OGUSDT: "OG Fan Token", QNTUSDT: "Quant",
 };
 
 // ============================================================
@@ -224,8 +236,24 @@ const PRIORITY_SYMBOLS = [
 // Extended symbols - fetch after priority
 const EXTENDED_SYMBOLS = TOP_SYMBOLS.filter(s => !PRIORITY_SYMBOLS.includes(s));
 
-// Initial fetch - just priority symbols
+// Initial fetch - all TOP_SYMBOLS in fast batch
 async function fetchInitialTickers(): Promise<any[]> {
+  try {
+    const encoded = encodeURIComponent(JSON.stringify(TOP_SYMBOLS));
+    const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbols=${encoded}`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data) && data.length > 0) {
+        console.log(`[Startup] Batch loaded ${data.length} tickers`);
+        return data;
+      }
+    }
+  } catch (err: any) {
+    console.warn("[Cache] Initial batch fetch failed, using fallback:", err.message);
+  }
+
   try {
     const results = await Promise.all(
       PRIORITY_SYMBOLS.map(async (symbol) => {
@@ -247,18 +275,35 @@ async function fetchInitialTickers(): Promise<any[]> {
 
 async function fetchAllTickers(): Promise<any[]> {
   const now = Date.now();
-  if (tickerCache.length > 0 && now - tickerCacheTime < TICKER_CACHE_TTL) {
+  if (tickerCache.length >= TOP_SYMBOLS.length && now - tickerCacheTime < TICKER_CACHE_TTL) {
     return tickerCache;
   }
 
+  // Try fast-batch fetch first (Binance supports symbols=[...])
   try {
-    // Fetch individual tickers in small batches
+    const encoded = encodeURIComponent(JSON.stringify(TOP_SYMBOLS));
+    const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbols=${encoded}`, {
+      signal: AbortSignal.timeout(6000),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data) && data.length > 0) {
+        tickerCache = data;
+        tickerCacheTime = now;
+        console.log(`[Cache] Fast-batch fetched ${tickerCache.length}/${TOP_SYMBOLS.length} tickers`);
+        return tickerCache;
+      }
+    }
+  } catch (err: any) {
+    console.warn("[Cache] Fast-batch fetch failed, using chunked fallback:", err.message);
+  }
+
+  try {
     const results: any[] = [];
-    const batchSize = 4;
-    const allSymbols = [...PRIORITY_SYMBOLS, ...EXTENDED_SYMBOLS];
+    const batchSize = 6;
     
-    for (let i = 0; i < allSymbols.length; i += batchSize) {
-      const batch = allSymbols.slice(i, i + batchSize);
+    for (let i = 0; i < TOP_SYMBOLS.length; i += batchSize) {
+      const batch = TOP_SYMBOLS.slice(i, i + batchSize);
       const batchResults = await Promise.all(
         batch.map(async (symbol) => {
           try {
@@ -271,83 +316,55 @@ async function fetchAllTickers(): Promise<any[]> {
         })
       );
       results.push(...batchResults.filter(Boolean));
-      // Small delay between batches to avoid rate limiting
-      if (i + batchSize < allSymbols.length) {
-        await new Promise(r => setTimeout(r, 200));
+      if (i + batchSize < TOP_SYMBOLS.length) {
+        await new Promise(r => setTimeout(r, 100));
       }
     }
     tickerCache = results;
     tickerCacheTime = now;
-    console.log(`[Cache] Fetched ${tickerCache.length}/${allSymbols.length} tickers`);
+    console.log(`[Cache] Fetched ${tickerCache.length}/${TOP_SYMBOLS.length} tickers`);
     return tickerCache;
   } catch (err) {
     console.error("[Cache] Ticker fetch error:", err);
-    return tickerCache; // Return stale cache if available
+    return tickerCache;
   }
 }
 
-// Background refresh - incremental, only a few at a time
+// Background refresh - refresh all symbols every 15s using batch
 let refreshInProgress = false;
-let lastRefreshIndex = 0;
 
 async function backgroundRefresh() {
   if (refreshInProgress) return;
   refreshInProgress = true;
   try {
-    // Fetch only 8 symbols per refresh cycle to avoid overloading
-    const symbolsToFetch = TOP_SYMBOLS.slice(lastRefreshIndex, lastRefreshIndex + 8);
-    if (symbolsToFetch.length === 0) {
-      lastRefreshIndex = 0; // Reset to beginning
-      refreshInProgress = false;
-      return;
-    }
-    
-    const results = await Promise.all(
-      symbolsToFetch.map(async (symbol) => {
-        try {
-          const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbol=${symbol}`, {
-            signal: AbortSignal.timeout(8000),
-          });
-          if (resp.ok) return await resp.json();
-          return null;
-        } catch { return null; }
-      })
-    );
-    
-    const validResults = results.filter(Boolean);
-    // Merge with existing cache - update existing or add new
-    for (const ticker of validResults) {
-      const existingIdx = tickerCache.findIndex((t: any) => t.symbol === ticker.symbol);
-      if (existingIdx >= 0) {
-        tickerCache[existingIdx] = ticker;
-      } else {
-        tickerCache.push(ticker);
+    const encoded = encodeURIComponent(JSON.stringify(TOP_SYMBOLS));
+    const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbols=${encoded}`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data) && data.length > 0) {
+        tickerCache = data;
+        tickerCacheTime = Date.now();
+        console.log(`[Refresh] Batch refreshed ${tickerCache.length} tickers`);
+        return;
       }
     }
-    
-    lastRefreshIndex += 8;
-    if (lastRefreshIndex >= TOP_SYMBOLS.length) {
-      lastRefreshIndex = 0; // Full cycle complete, restart
-    }
-    tickerCacheTime = Date.now();
-    console.log(`[Refresh] +${validResults.length} tickers, total: ${tickerCache.length}, next: ${lastRefreshIndex}`);
-  } catch {} finally {
+  } catch (err: any) {
+    console.warn("[Refresh] Batch refresh error:", err.message);
+  } finally {
     refreshInProgress = false;
   }
 }
 
-// Fetch initial data on startup, then start incremental refresh
+// Fetch initial data on startup, then start refresh loop
 fetchInitialTickers().then(initial => {
   tickerCache = initial;
   tickerCacheTime = Date.now();
-  console.log(`[Startup] Loaded ${initial.length} priority tickers`);
+  console.log(`[Startup] Loaded ${initial.length} tickers`);
   
-  // Start incremental refresh every 10 seconds
-  // Each refresh fetches 8 symbols, so full cycle = ~7 refreshes = ~70 seconds
-  setTimeout(() => {
-    backgroundRefresh();
-    setInterval(backgroundRefresh, 10000);
-  }, 5000);
+  // Start refresh every 15 seconds
+  setInterval(backgroundRefresh, 15000);
 });
 
 // ============================================================
