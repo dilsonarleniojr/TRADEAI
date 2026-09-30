@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eu
+set -o pipefail
 
 # =============================================================================
 # TRADEAI Platform Build & Launch Script
 # Fases 1-6: Clean, Build, Deploy with health checks and logs estruturados
 # =============================================================================
 
-PROJECT_ROOT="/home/dcorrea/AntigravityApp/TRADEAI/TRADEAI"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CADDY_CONTAINER="trade-caddy-proxy"
 CADDYFILE="${PROJECT_ROOT}/Caddyfile"
 LOG_DIR="${PROJECT_ROOT}/logs"
@@ -24,8 +25,10 @@ fail() { log "FATAL: $*"; exit 1; }
 
 is_port_open() {
   local port=$1
-  curl -sf --max-time 1 "http://localhost:${port}/" >/dev/null 2>&1 \
-    || curl -sf --max-time 1 "http://localhost:${port}/health" >/dev/null 2>&1
+  curl -sf --max-time 2 "http://127.0.0.1:${port}/" >/dev/null 2>&1 \
+    || curl -sf --max-time 2 "http://127.0.0.1:${port}/health" >/dev/null 2>&1 \
+    || curl -sf --max-time 2 "http://localhost:${port}/" >/dev/null 2>&1 \
+    || curl -sf --max-time 2 "http://localhost:${port}/health" >/dev/null 2>&1
 }
 
 wait_for_port() {
@@ -83,13 +86,13 @@ log "=== Fase 2: Instalando dependências e Prisma ==="
 
 cd "${PROJECT_ROOT}"
 
-npx -y bun install
+bun install
 log "Root dependencies installed"
 
-npx -y bun run db:generate
+bun run db:generate
 log "Prisma Client gerado"
 
-npx -y bun run db:push
+bun run db:push
 log "Schema aplicado ao SQLite"
 
 log "Fase 2 completa"
@@ -99,7 +102,7 @@ log "Fase 2 completa"
 # =============================================================================
 log "=== Fase 3: Building Next.js (standalone) ==="
 
-npx -y bun --bun run build
+bun run build
 
 # Validar e copiar assets (o script de build já faz isso, mas garantimos)
 if [ -d ".next/standalone" ]; then
@@ -121,7 +124,7 @@ log "Fase 3 completa"
 log "=== Fase 4: Instalando Binance mini-service ==="
 
 cd "${PROJECT_ROOT}/mini-services/binance-service"
-npx -y bun install
+bun install
 cd "${PROJECT_ROOT}"
 
 log "Fase 4 completa"
@@ -133,15 +136,16 @@ log "=== Fase 5: Subindo serviços ==="
 
 # 5.1 Binance Service (portas 3001 REST / 3002 Socket.IO)
 log "Iniciando Binance Service..."
-nohup npx -y bun --hot "${PROJECT_ROOT}/mini-services/binance-service/index.ts" \
+nohup bun --hot "${PROJECT_ROOT}/mini-services/binance-service/index.ts" \
   > "${BINANCE_LOG}" 2>&1 &
 BINANCE_PID=$!
 log "Binance Service PID: ${BINANCE_PID}"
 
 # 5.2 Next.js em produção (porta 3000)
 log "Iniciando Next.js (standalone) em produção..."
-nohup env NODE_ENV=production \
-  npx -y bun "${PROJECT_ROOT}/.next/standalone/server.js" \
+nohup env NODE_ENV=production HOSTNAME="0.0.0.0" PORT="3000" \
+  DATABASE_URL="file:${PROJECT_ROOT}/db/custom.db" \
+  bun "${PROJECT_ROOT}/.next/standalone/server.js" \
   > "${NEXT_LOG}" 2>&1 &
 NEXT_PID=$!
 log "Next.js PID: ${NEXT_PID}"

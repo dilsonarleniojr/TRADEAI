@@ -3,6 +3,7 @@ import { createAccountSlice, type AccountSlice } from "./accountSlice";
 import { createPortfolioSlice, type PortfolioSlice } from "./portfolioSlice";
 import { createMarketDataSlice, type MarketDataSlice } from "./marketDataSlice";
 import { createTradeSlice, type TradeSlice } from "./tradeSlice";
+import { createBotSlice, type BotSlice } from "./botSlice";
 import { createTelemetrySlice, type TelemetrySlice } from "./telemetrySlice";
 import { createUISlice, type UISlice } from "./uiSlice";
 
@@ -11,7 +12,12 @@ export type {
   TickerData,
   KlineData,
   BotConfigData,
+  BotInstance,
+  BotPosition,
+  BotStrategy,
+  BotStats,
   PortfolioData,
+  PortfolioPosition,
   TradeData,
   AISignalData,
   ChatMessage,
@@ -27,6 +33,7 @@ export type CryptoStore = AccountSlice &
   PortfolioSlice &
   MarketDataSlice &
   TradeSlice &
+  BotSlice &
   TelemetrySlice &
   UISlice & {
     // Clear all data action
@@ -38,6 +45,7 @@ export const useCryptoStore = create<CryptoStore>()((...a) => ({
   ...createPortfolioSlice(...(a as Parameters<typeof createPortfolioSlice>)),
   ...createMarketDataSlice(...a),
   ...createTradeSlice(...a),
+  ...createBotSlice(...(a as Parameters<typeof createBotSlice>)),
   ...createTelemetrySlice(...a),
   ...createUISlice(...a),
 
@@ -57,7 +65,16 @@ export const useCryptoStore = create<CryptoStore>()((...a) => ({
         assetQuantity: 0,
         pnl: 0,
         pnlPercent: 0,
+        realizedPnl: 0,
+        unrealizedPnl: 0,
+        positions: [],
       },
+      bots: (a[1]() as CryptoStore).bots.map((b) => ({
+        ...b,
+        active: false,
+        status: "stopped",
+        position: null,
+      })),
     });
   },
 }));

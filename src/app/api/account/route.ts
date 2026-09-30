@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     const binanceApiKey = request.headers.get('x-binance-api-key') || process.env.BINANCE_API_KEY?.replace(/['"]/g, '');
     const binanceApiSecret = request.headers.get('x-binance-api-secret') || process.env.BINANCE_API_SECRET?.replace(/['"]/g, '');
     const binanceTestnetStr = request.headers.get('x-binance-testnet');
-    const isTestnet = binanceTestnetStr ? binanceTestnetStr === 'true' : true;
+    const isTestnet = binanceTestnetStr ? binanceTestnetStr === 'true' : (process.env.APP_ENV !== 'production');
 
     // 1. Fetch or create default account in a transaction
     let account = await db.account.findFirst();

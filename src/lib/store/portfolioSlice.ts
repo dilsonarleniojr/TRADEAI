@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import type { PortfolioData, TickerData, BotConfigData, PortfolioPosition } from "./types";
+import type { PortfolioData, TickerData, BotConfigData, PortfolioPosition, TradeData } from "./types";
 
 export interface PortfolioSlice {
   // Portfolio
@@ -22,6 +22,9 @@ export interface PortfolioSlice {
   // Bot config (needed for initialBalance reference)
   botConfig: BotConfigData;
   setBotConfig: (config: BotConfigData) => void;
+
+  // Apply a trade executed by any bot or manually
+  applyTradeToPortfolio: (trade: TradeData) => void;
 }
 
 // This slice needs access to tickers from marketDataSlice.
@@ -69,6 +72,95 @@ export const createPortfolioSlice: StateCreator<
         pnlPercent,
         realizedPnl,
         unrealizedPnl,
+        positions,
+      },
+    });
+  },
+
+  // Apply simulated or executed trade across multi-coin positions
+  applyTradeToPortfolio: (trade) => {
+    const state = get();
+    const currentPort = state.portfolio;
+    const initialBalance = state.botConfig.initialBalance || 10000;
+    let newCash = currentPort.cashBalance;
+    let newRealizedPnl = currentPort.realizedPnl || 0;
+    const positions = [...(currentPort.positions || [])];
+
+    const posIdx = positions.findIndex((p) => p.symbol === trade.symbol);
+    const tickerPrice = state.tickers[trade.symbol]?.price || trade.price;
+
+    if (trade.side === "BUY") {
+      newCash = Math.max(0, newCash - trade.total);
+      if (posIdx >= 0) {
+        const existing = positions[posIdx];
+        const newQty = existing.quantity + trade.quantity;
+        const newAvg = (existing.quantity * existing.avgPrice + trade.total) / (newQty || 1);
+        const marketVal = newQty * tickerPrice;
+        const unrealized = marketVal - (newQty * newAvg);
+        positions[posIdx] = {
+          ...existing,
+          quantity: newQty,
+          avgPrice: newAvg,
+          marketPrice: tickerPrice,
+          marketValue: marketVal,
+          unrealizedPnl: unrealized,
+        };
+      } else {
+        const marketVal = trade.quantity * tickerPrice;
+        positions.push({
+          symbol: trade.symbol,
+          quantity: trade.quantity,
+          avgPrice: trade.price,
+          marketPrice: tickerPrice,
+          marketValue: marketVal,
+          unrealizedPnl: marketVal - trade.total,
+          realizedPnl: 0,
+        });
+      }
+    } else {
+      // SELL: Cash added, position reduced/closed
+      newCash += trade.total;
+      const tradePnl = trade.pnl || 0;
+      newRealizedPnl += tradePnl;
+
+      if (posIdx >= 0) {
+        const existing = positions[posIdx];
+        const remainingQty = Math.max(0, existing.quantity - trade.quantity);
+        if (remainingQty <= 0.00001) {
+          positions.splice(posIdx, 1);
+        } else {
+          const marketVal = remainingQty * tickerPrice;
+          const unrealized = marketVal - (remainingQty * existing.avgPrice);
+          positions[posIdx] = {
+            ...existing,
+            quantity: remainingQty,
+            marketPrice: tickerPrice,
+            marketValue: marketVal,
+            unrealizedPnl: unrealized,
+            realizedPnl: (existing.realizedPnl || 0) + tradePnl,
+          };
+        }
+      }
+    }
+
+    // Recompute portfolio totals
+    const totalAssetBalance = positions.reduce((sum, p) => sum + (p.marketValue || 0), 0);
+    const totalUnrealizedPnl = positions.reduce((sum, p) => sum + (p.unrealizedPnl || 0), 0);
+    const newTotalValue = newCash + totalAssetBalance;
+    const newPnl = newTotalValue - initialBalance;
+    const newPnlPercent = initialBalance > 0 ? (newPnl / initialBalance) * 100 : 0;
+    const primaryAssetQty = positions.find((p) => p.symbol === state.botConfig.symbol)?.quantity || (positions[0]?.quantity || 0);
+
+    set({
+      portfolio: {
+        totalValue: newTotalValue,
+        cashBalance: newCash,
+        assetBalance: totalAssetBalance,
+        assetQuantity: primaryAssetQty,
+        pnl: newPnl,
+        pnlPercent: newPnlPercent,
+        realizedPnl: newRealizedPnl,
+        unrealizedPnl: totalUnrealizedPnl,
         positions,
       },
     });

@@ -25,8 +25,10 @@ function getLogIcon(type: BotLogEntry["type"]) {
     case "sell":
       return <TrendingDown className="w-3 h-3 text-crypto-red shrink-0" />;
     case "profit":
+    case "success":
       return <DollarSign className="w-3 h-3 text-crypto-green shrink-0" />;
     case "loss":
+    case "error":
       return <DollarSign className="w-3 h-3 text-crypto-red shrink-0" />;
     case "system":
       return <Zap className="w-3 h-3 text-crypto-cyan shrink-0" />;
@@ -40,12 +42,12 @@ function getLogIcon(type: BotLogEntry["type"]) {
 function getBorderColor(type: BotLogEntry["type"]) {
   switch (type) {
     case "buy":
+    case "profit":
+    case "success":
       return "border-l-crypto-green";
     case "sell":
-      return "border-l-crypto-red";
-    case "profit":
-      return "border-l-crypto-green";
     case "loss":
+    case "error":
       return "border-l-crypto-red";
     case "system":
       return "border-l-crypto-cyan";
@@ -59,12 +61,12 @@ function getBorderColor(type: BotLogEntry["type"]) {
 function getLogColor(type: BotLogEntry["type"]) {
   switch (type) {
     case "buy":
+    case "profit":
+    case "success":
       return "text-crypto-green";
     case "sell":
-      return "text-crypto-red";
-    case "profit":
-      return "text-crypto-green";
     case "loss":
+    case "error":
       return "text-crypto-red";
     case "system":
       return "text-crypto-cyan";

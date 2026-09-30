@@ -25,6 +25,7 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
     tradingMode,
     setTradingMode,
     botActive,
+    bots,
     connectionStatus,
     clearMockData,
     binanceApiKey,
@@ -287,13 +288,17 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
           )}
 
           {/* Bot active badge - smaller on mobile */}
-          {botActive && (
-            <Badge className="bg-crypto-green/15 text-crypto-green border-crypto-green/30 hover:bg-crypto-green/20 text-[10px] md:text-xs glow-green-sm px-1.5 md:px-2.5 py-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-crypto-green mr-1 pulse-soft" />
-              <span className="hidden md:inline">Bot Ativo</span>
-              <span className="md:hidden">Bot</span>
-            </Badge>
-          )}
+          {(() => {
+            const count = bots ? bots.filter((b) => b.active).length : (botActive ? 1 : 0);
+            if (count === 0) return null;
+            return (
+              <Badge className="bg-crypto-green/15 text-crypto-green border-crypto-green/30 hover:bg-crypto-green/20 text-[10px] md:text-xs glow-green-sm px-1.5 md:px-2.5 py-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-crypto-green mr-1 pulse-soft" />
+                <span className="hidden md:inline">{count} {count === 1 ? "Bot Ativo" : "Bots Ativos"}</span>
+                <span className="md:hidden">{count} {count === 1 ? "Bot" : "Bots"}</span>
+              </Badge>
+            );
+          })()}
 
           {/* Connection status - icon only on mobile */}
           <Button
