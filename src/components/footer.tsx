@@ -10,8 +10,8 @@ import { useShallow } from "zustand/react/shallow";
 
 export function Footer() {
   const { portfolio } = useCryptoStore(
-  useShallow((s) => ({ portfolio: s.portfolio }))
-);
+    useShallow((s) => ({ portfolio: s.portfolio }))
+  );
   const isPositive = portfolio.pnl >= 0;
   const pnlKey = useMemo(
     () => `${portfolio.pnl}-${portfolio.pnlPercent}`,
@@ -70,3 +70,4 @@ export function Footer() {
     </motion.footer>
   );
 }
+
