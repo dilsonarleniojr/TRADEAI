@@ -8,6 +8,7 @@ import { ArrowUpRight, ArrowDownRight, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { ExportTrades } from "@/components/dashboard/export-trades";
+import { useShallow } from "zustand/react/shallow";
 
 function getSideIcon(side: TradeData["side"]) {
   return side === "BUY" ? ArrowUpRight : ArrowDownRight;
@@ -22,7 +23,9 @@ function getSideBg(side: TradeData["side"]) {
 }
 
 export function RecentTrades() {
-  const { trades } = useCryptoStore();
+  const { trades } = useCryptoStore(
+  useShallow((s) => ({ trades: s.trades }))
+);
 
   return (
     <motion.div
@@ -91,6 +94,17 @@ export function RecentTrades() {
                         </Badge>
                         <Badge variant="outline" className="text-[9px] px-1 py-0 text-muted-foreground border-border">
                           {trade.strategy}
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[8px] px-1 py-0 font-medium",
+                            trade.mode === "live"
+                              ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10"
+                              : "border-cyan-500/30 text-cyan-400 bg-cyan-500/10"
+                          )}
+                        >
+                          {trade.mode === "live" ? "Real" : "Simulado"}
                         </Badge>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">

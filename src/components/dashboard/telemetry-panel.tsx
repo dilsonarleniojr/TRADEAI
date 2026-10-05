@@ -18,9 +18,12 @@ import {
   Layers,
 } from "lucide-react";
 import { formatTime } from "@/lib/format";
+import { useShallow } from "zustand/react/shallow";
 
 export function TelemetryPanel() {
-  const { connectionStatus, syncMode, lastSyncAt } = useCryptoStore();
+  const { connectionStatus, syncMode, lastSyncAt } = useCryptoStore(
+  useShallow((s) => ({ connectionStatus: s.connectionStatus, syncMode: s.syncMode, lastSyncAt: s.lastSyncAt }))
+);
   const [queue, setQueue] = useState<any[]>([]);
   const [simulateFail, setSimulateFail] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);

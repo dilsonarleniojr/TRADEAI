@@ -1,19 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import ZAI from 'z-ai-web-dev-sdk';
-
-let zaiInstance: InstanceType<typeof ZAI> | null = null;
-
-async function getZAI() {
-  if (!zaiInstance) {
-    try {
-      zaiInstance = await ZAI.create();
-    } catch (e: any) {
-      console.warn('[ZAI SDK Init Warning]:', e.message);
-      return null;
-    }
-  }
-  return zaiInstance;
-}
+import { askAIOnce, parseJsonLoose } from '@/lib/ai-client';
 
 export async function POST(request: NextRequest) {
   let symbol = 'BTCUSDT';
@@ -46,9 +32,8 @@ export async function POST(request: NextRequest) {
       console.warn('[AI Bot Autofill] Failed to fetch market data:', err.message);
     }
 
-    // 2. Tenta gerar via SDK da IA
-    const zai = await getZAI();
-    if (zai) {
+    // 2. Tenta gerar com o motor de IA ativo
+    {
       try {
         const prompt = `Você é um gestor quantitativo especialista em robôs de trade.
 Analise os dados do ativo ${symbol} e sugira a configuração ideal e mais lucrativa para um robô de trading automatizado.
@@ -74,24 +59,17 @@ Responda APENAS com um objeto JSON no seguinte formato:
   "reasoning": "Breve justificativa técnica em português (1-2 frases)"
 }`;
 
-        const completion = await zai.chat.completions.create({
-          messages: [
-            {
-              role: 'assistant',
-              content: 'Você é um engenheiro de algoritmos de trading. Responda apenas com JSON válido.',
-            },
-            { role: 'user', content: prompt },
-          ],
-          thinking: { type: 'disabled' },
-        });
+        const response = await askAIOnce(
+          'Você é um engenheiro de algoritmos de trading. Responda apenas com JSON válido.',
+          prompt,
+          { maxTokens: 2000 }
+        );
 
-        const response = completion.choices[0]?.message?.content || '';
-        const cleanedResponse = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-
-        const config = JSON.parse(cleanedResponse);
+        const config = parseJsonLoose<Record<string, unknown>>(response);
+        if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('JSON inválido');
         return NextResponse.json({ success: true, config });
       } catch (aiErr: any) {
-        console.warn('[AI Bot Autofill] SDK inference error, using algorithmic fallback:', aiErr.message);
+        console.warn('[AI Bot Autofill] IA indisponível, usando fallback algorítmico:', aiErr.message);
       }
     }
 

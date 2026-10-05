@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { CRYPTO_BY_SYMBOL } from "@/lib/crypto-meta";
 import { cn } from "@/lib/utils";
+import { useShallow } from "zustand/react/shallow";
 
 interface SharpeSortinoResult {
   sharpe: number;
@@ -35,7 +36,9 @@ const workerCreator = () =>
   new Worker(new URL("../../workers/indicators.worker.ts", import.meta.url));
 
 export function RiskModule() {
-  const { portfolio, trades, tickers } = useCryptoStore();
+  const { portfolio, trades, tickers } = useCryptoStore(
+  useShallow((s) => ({ portfolio: s.portfolio, trades: s.trades, tickers: s.tickers }))
+);
   const [metrics, setMetrics] = useState<SharpeSortinoResult | null>(null);
   const [workerError, setWorkerError] = useState<string | null>(null);
 

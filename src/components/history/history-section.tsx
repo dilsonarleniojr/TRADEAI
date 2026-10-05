@@ -20,9 +20,12 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
 export function HistorySection() {
-  const { trades } = useCryptoStore();
+  const { trades } = useCryptoStore(
+  useShallow((s) => ({ trades: s.trades }))
+);
 
   // Filter states
   const [symbolSearch, setSymbolSearch] = useState("");

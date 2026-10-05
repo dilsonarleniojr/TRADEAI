@@ -16,6 +16,7 @@ export type {
   BotPosition,
   BotStrategy,
   BotStats,
+  BotEntryCheck,
   PortfolioData,
   PortfolioPosition,
   TradeData,
@@ -36,8 +37,9 @@ export type CryptoStore = AccountSlice &
   BotSlice &
   TelemetrySlice &
   UISlice & {
-    // Clear all data action
+    // Clear mock/simulated data
     clearMockData: () => void;
+    clearSimulatedData: () => Promise<void>;
   };
 
 export const useCryptoStore = create<CryptoStore>()((...a) => ({
@@ -49,14 +51,41 @@ export const useCryptoStore = create<CryptoStore>()((...a) => ({
   ...createTelemetrySlice(...a),
   ...createUISlice(...a),
 
-  // Clear all mock/simulated data
+  // Clear all mock/simulated data in memory
   clearMockData: () => {
     const set = a[0];
+    const get = a[1] as () => CryptoStore;
+    const current = get();
+
+    // Mantém trades que sejam comprovadamente do modo real, limpa os simulados
+    const remainingTrades = current.trades.filter((t) => t.mode === "live");
+
+    const cleanedBots = current.bots.map((b) => ({
+      ...b,
+      active: false,
+      status: "stopped" as const,
+      position: null,
+      stats: {
+        totalTrades: 0,
+        buyTrades: 0,
+        sellTrades: 0,
+        winTrades: 0,
+        lossTrades: 0,
+        winRate: 0,
+        realizedPnl: 0,
+        lastAction: "Dados simulados limpos",
+        lastActionTime: new Date().toISOString(),
+        entryChecks: undefined,
+      },
+    }));
+
     set({
-      trades: [],
+      trades: remainingTrades,
       aiSignals: [],
       chatMessages: [],
       alerts: [],
+      botLogs: [],
+      scheduledOrders: [],
       botActive: false,
       portfolio: {
         totalValue: 10000,
@@ -69,13 +98,36 @@ export const useCryptoStore = create<CryptoStore>()((...a) => ({
         unrealizedPnl: 0,
         positions: [],
       },
-      bots: (a[1]() as CryptoStore).bots.map((b) => ({
-        ...b,
-        active: false,
-        status: "stopped",
-        position: null,
-      })),
+      bots: cleanedBots,
     });
+
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(
+          "tradeai_bots_v1",
+          JSON.stringify({
+            version: 1,
+            savedAt: Date.now(),
+            bots: cleanedBots,
+            selectedBotId: current.selectedBotId,
+          })
+        );
+      } catch {}
+    }
+  },
+
+  // Clear simulated data both locally and in backend SQLite
+  clearSimulatedData: async () => {
+    const get = a[1] as () => CryptoStore;
+    get().clearMockData();
+    try {
+      await Promise.all([
+        fetch("/api/trades?mode=paper", { method: "DELETE" }),
+        fetch("/api/account", { method: "DELETE" }),
+      ]);
+    } catch (err) {
+      console.warn("[Store] Erro ao limpar dados simulados no servidor:", err);
+    }
   },
 }));
 

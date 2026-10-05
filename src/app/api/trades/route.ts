@@ -1,7 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { getBinanceCredentials } from '@/lib/binance-session';
 import { isRateLimited } from '@/lib/rate-limit';
 import crypto from 'crypto';
+
+// Limites de segurança para ordens em dinheiro real (em USDT). Configuráveis por variável de ambiente.
+const MAX_ORDER_USD = Number(process.env.MAX_LIVE_ORDER_USD) || 500;
+const MAX_DAILY_BUY_USD = Number(process.env.MAX_LIVE_DAILY_USD) || 2000;
+
+// Preço de referência buscado pelo servidor na Binance: o preço enviado pelo navegador não é confiável.
+async function fetchReferencePrice(symbol: string, testnet: boolean): Promise<number | null> {
+  const baseUrl = testnet ? 'https://testnet.binance.vision' : 'https://api.binance.com';
+  try {
+    const res = await fetch(`${baseUrl}/api/v3/ticker/price?symbol=${symbol}`, {
+      signal: AbortSignal.timeout(3000),
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const price = parseFloat(data.price);
+    return Number.isFinite(price) && price > 0 ? price : null;
+  } catch {
+    return null;
+  }
+}
 
 async function executeBinanceOrder(
   symbol: string,
@@ -161,15 +183,20 @@ async function executeBinanceOrder(
   return await response.json();
 }
 
-// GET /api/trades - Get all trades
+// GET /api/trades - Get all trades (com suporte a filtro por modo e símbolo)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '50');
     const symbol = searchParams.get('symbol');
+    const mode = searchParams.get('mode'); // 'paper' | 'live'
+
+    const where: any = {};
+    if (symbol) where.symbol = symbol;
+    if (mode && (mode === 'paper' || mode === 'live')) where.mode = mode;
 
     const trades = await db.trade.findMany({
-      where: symbol ? { symbol } : undefined,
+      where: Object.keys(where).length > 0 ? where : undefined,
       orderBy: { timestamp: 'desc' },
       take: limit,
     });
@@ -229,10 +256,56 @@ export async function POST(request: NextRequest) {
 
     // If live mode, run trade order on Binance first
     if (modeClean === "live") {
-      const binanceApiKey = request.headers.get('x-binance-api-key') || process.env.BINANCE_API_KEY?.replace(/['"]/g, '');
-      const binanceApiSecret = request.headers.get('x-binance-api-secret') || process.env.BINANCE_API_SECRET?.replace(/['"]/g, '');
-      const binanceTestnetStr = request.headers.get('x-binance-testnet');
-      const isTestnet = binanceTestnetStr ? binanceTestnetStr === 'true' : (process.env.APP_ENV !== 'production');
+      const { apiKey: binanceApiKey, apiSecret: binanceApiSecret, testnet: isTestnet } = getBinanceCredentials(request);
+
+      // Trava de risco só vale para dinheiro real (testnet é fictícia).
+      // Usa o maior entre o total informado, preço × quantidade e o preço atual do servidor × quantidade.
+      if (!isTestnet) {
+        // Falha fechada: sem preço de referência do servidor, a ordem não passa pela trava.
+        const refPrice = await fetchReferencePrice(symbolClean, isTestnet);
+        if (refPrice === null) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Não foi possível obter o preço atual na Binance para validar os limites. Tente novamente.',
+              code: 'PRICE_UNAVAILABLE',
+            },
+            { status: 503 }
+          );
+        }
+        const notional = Math.max(totalVal, priceVal * qtyVal, refPrice * qtyVal);
+
+        if (notional > MAX_ORDER_USD) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Ordem de ${notional.toFixed(2)} USDT excede o limite por ordem de ${MAX_ORDER_USD} USDT.`,
+              code: 'ORDER_LIMIT_EXCEEDED',
+            },
+            { status: 400 }
+          );
+        }
+
+        if (sideClean === 'BUY') {
+          const startOfDay = new Date();
+          startOfDay.setHours(0, 0, 0, 0);
+          const spent = await db.trade.aggregate({
+            _sum: { total: true },
+            where: { mode: 'live', side: 'BUY', timestamp: { gte: startOfDay } },
+          });
+          const spentToday = spent._sum.total || 0;
+          if (spentToday + notional > MAX_DAILY_BUY_USD) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: `Limite diário de compras (${MAX_DAILY_BUY_USD} USDT) seria excedido. Já usado hoje: ${spentToday.toFixed(2)} USDT.`,
+                code: 'DAILY_LIMIT_EXCEEDED',
+              },
+              { status: 400 }
+            );
+          }
+        }
+      }
 
       try {
         const binanceOrderResult = await executeBinanceOrder(
@@ -387,24 +460,42 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE /api/trades - Clear all trades and reset balance
-export async function DELETE() {
+// DELETE /api/trades - Clear trades and reset balance (supports ?mode=paper, ?mode=live or all)
+export async function DELETE(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const mode = searchParams.get('mode'); // 'paper' | 'live' | undefined ('all')
+
+    const whereClause: any = {};
+    if (mode === 'paper' || mode === 'live') {
+      whereClause.mode = mode;
+    }
+
     const updatedAccount = await db.$transaction(async (tx) => {
-      await tx.trade.deleteMany({});
-      return await tx.account.upsert({
-        where: { id: "user-account" },
-        update: {
-          cashBalance: 10000.0,
-          assetQuantity: 0.0,
-        },
-        create: {
-          id: "user-account",
-          userId: "binance_live_user",
-          cashBalance: 10000.0,
-          assetQuantity: 0.0,
-        },
+      // 1. Deleta trades de acordo com o modo solicitado
+      await tx.trade.deleteMany({
+        where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
       });
+
+      // 2. Se a limpeza foi do modo simulado (paper) ou geral (all), reseta o saldo virtual da Account
+      if (!mode || mode === 'paper' || mode === 'all') {
+        return await tx.account.upsert({
+          where: { id: "user-account" },
+          update: {
+            cashBalance: 10000.0,
+            assetQuantity: 0.0,
+          },
+          create: {
+            id: "user-account",
+            userId: "binance_live_user",
+            cashBalance: 10000.0,
+            assetQuantity: 0.0,
+          },
+        });
+      }
+
+      // Se foi apenas live, mantém o registro de Account
+      return await tx.account.findFirst();
     });
 
     try {
@@ -415,10 +506,17 @@ export async function DELETE() {
         timeout: 2000,
       });
       socket.on('connect', () => {
-        socket.emit('balance-update', {
-          cashBalance: updatedAccount.cashBalance,
-          assetQuantity: updatedAccount.assetQuantity,
-          symbol: updatedAccount.symbol,
+        if (updatedAccount) {
+          socket.emit('balance-update', {
+            cashBalance: updatedAccount.cashBalance,
+            assetQuantity: updatedAccount.assetQuantity,
+            symbol: updatedAccount.symbol,
+          });
+        }
+        socket.emit('telemetry:event', {
+          type: 'trades-cleared',
+          timestamp: new Date().toISOString(),
+          payload: { mode: mode || 'all' },
         });
         socket.disconnect();
       });
@@ -429,7 +527,11 @@ export async function DELETE() {
 
     return NextResponse.json({
       success: true,
-      message: 'All trades cleared and balance reset',
+      message: mode === 'paper' 
+        ? 'Dados do modo simulado limpos com sucesso'
+        : mode === 'live'
+        ? 'Histórico do modo real limpo com sucesso'
+        : 'Todos os trades limpos e saldo redefinido',
       data: updatedAccount,
     });
   } catch (error: any) {

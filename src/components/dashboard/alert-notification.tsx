@@ -6,6 +6,7 @@ import { formatPrice } from "@/lib/format";
 import { X, ArrowUp, ArrowDown, BellRing } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useShallow } from "zustand/react/shallow";
 
 // Play a short notification beep using Web Audio API
 function playAlertSound() {
@@ -44,7 +45,7 @@ function AlertNotificationCard({ alert, onDismiss }: AlertNotificationProps) {
   if (!alert) return null;
 
   const isAbove = alert.direction === "above";
-  const priceDiff = Math.abs(alert.currentPrice - alert.targetPrice);
+  const priceDiff = Math.abs(alert.currentPrice - (alert.targetPrice ?? 0));
 
   return (
     <motion.div
@@ -115,7 +116,7 @@ function AlertNotificationCard({ alert, onDismiss }: AlertNotificationProps) {
               {isAbove ? "Above" : "Below"}
             </div>
             <span className="text-xs text-muted-foreground">
-              ${formatPrice(alert.targetPrice)}
+              ${formatPrice(alert.targetPrice ?? 0)}
             </span>
           </div>
 
@@ -155,7 +156,9 @@ function AlertNotificationCard({ alert, onDismiss }: AlertNotificationProps) {
 }
 
 export function AlertNotification() {
-  const { alerts } = useCryptoStore();
+  const { alerts } = useCryptoStore(
+  useShallow((s) => ({ alerts: s.alerts }))
+);
   const [currentNotification, setCurrentNotification] = useState<PriceAlert | null>(null);
   const previouslyTriggeredIdsRef = useRef<Set<string>>(new Set());
   const pendingAlertsRef = useRef<PriceAlert[]>([]);

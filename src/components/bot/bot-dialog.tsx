@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { type BotInstance, type BotStrategy, useCryptoStore } from "@/lib/store";
 import { CRYPTO_LIST } from "@/lib/crypto-meta";
 import {
@@ -23,9 +23,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { Bot, Sparkles, Target, ShieldAlert, DollarSign, Brain, Layers, Activity, TrendingUp, Grid, Zap } from "lucide-react";
+import { Bot, Sparkles, Target, ShieldAlert, DollarSign, Search, ChevronDown, Dna, Loader2 } from "lucide-react";
+import { STRATEGY_CATALOG, ENGINE_FILTERS, getStrategy } from "@/lib/bot/strategy-catalog";
+import { runGeneticOptimization, type GeneticChromosome } from "@/lib/bot/quant-engine";
+import { getSymbolKlines } from "@/lib/bot/kline-cache";
 import { useToast } from "@/hooks/use-toast";
+import { useShallow } from "zustand/react/shallow";
 
 interface BotDialogProps {
   open: boolean;
@@ -33,17 +42,10 @@ interface BotDialogProps {
   botToEdit?: BotInstance | null;
 }
 
-const STRATEGIES: { id: BotStrategy; name: string; desc: string; icon: any }[] = [
-  { id: "QUANT_ENSEMBLE", name: "Quant Ensemble (AI)", desc: "Comitê neural com consenso de múltiplos modelos e sentimento", icon: Brain },
-  { id: "RSI", name: "RSI Dip Hunter", desc: "Compre em sobrevenda (<30) e venda em alvos de lucro calculados", icon: TrendingUp },
-  { id: "MACD", name: "MACD Momentum", desc: "Siga tendências fortes com confirmação de cruzamento e volume", icon: Activity },
-  { id: "GRID", name: "Grid Scalper", desc: "Captura oscilações em faixas de preço no mercado lateral", icon: Grid },
-  { id: "BREAKOUT", name: "Volume Breakout", desc: "Rompimento de resistências chave com volume institucional", icon: Zap },
-  { id: "MEAN_REVERSION", name: "Bollinger Reversion", desc: "Retorno à média com compras na banda inferior", icon: Layers },
-];
-
 export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
-  const { addBot, updateBot } = useCryptoStore();
+  const { addBot, updateBot } = useCryptoStore(
+  useShallow((s) => ({ addBot: s.addBot, updateBot: s.updateBot }))
+);
   const { toast } = useToast();
 
   const [name, setName] = useState("");
@@ -55,7 +57,29 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
   const [trailingStopDistance, setTrailingStopDistance] = useState(0.8);
   const [allocationAmount, setAllocationAmount] = useState(100);
   const [active, setActive] = useState(false);
+  const [useMarketRegime, setUseMarketRegime] = useState(true);
+  const [useQuantFunnel, setUseQuantFunnel] = useState(false);
+  const [useEnsemble, setUseEnsemble] = useState(false);
+  const [rsiPeriod, setRsiPeriod] = useState(14);
+  const [buyThreshold, setBuyThreshold] = useState(30);
+  const [sellThreshold, setSellThreshold] = useState(70);
+  const [emaFast, setEmaFast] = useState(12);
+  const [emaSlow, setEmaSlow] = useState(26);
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimized, setOptimized] = useState<GeneticChromosome | null>(null);
   const [isAutofilling, setIsAutofilling] = useState(false);
+  const [symbolSelectOpen, setSymbolSelectOpen] = useState(false);
+  const [symbolSearch, setSymbolSearch] = useState("");
+
+  const filteredCryptoList = useMemo(() => {
+    const q = symbolSearch.toLowerCase().trim();
+    if (!q) return CRYPTO_LIST.slice(0, 50);
+    return CRYPTO_LIST.filter((c) =>
+      c.symbol.toLowerCase().includes(q) ||
+      c.name.toLowerCase().includes(q) ||
+      c.short.toLowerCase().includes(q)
+    ).slice(0, 60);
+  }, [symbolSearch, CRYPTO_LIST.length]);
 
   const handleAiAutofill = async () => {
     try {
@@ -114,6 +138,14 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setTrailingStopDistance(botToEdit.trailingStopDistance);
       setAllocationAmount(botToEdit.allocationAmount);
       setActive(botToEdit.active);
+      setUseMarketRegime(botToEdit.useMarketRegime ?? false);
+      setUseQuantFunnel(botToEdit.useQuantFunnel ?? false);
+      setUseEnsemble(botToEdit.useEnsemble ?? false);
+      setRsiPeriod(botToEdit.rsiPeriod ?? 14);
+      setBuyThreshold(botToEdit.buyThreshold ?? 30);
+      setSellThreshold(botToEdit.sellThreshold ?? 70);
+      setEmaFast(botToEdit.emaFast ?? 12);
+      setEmaSlow(botToEdit.emaSlow ?? 26);
     } else {
       setName("Novo Robô de Lucro");
       setSymbol("SOLUSDT");
@@ -124,7 +156,16 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setTrailingStopDistance(0.8);
       setAllocationAmount(80);
       setActive(false);
+      setUseMarketRegime(true);
+      setUseQuantFunnel(false);
+      setUseEnsemble(false);
+      setRsiPeriod(14);
+      setBuyThreshold(30);
+      setSellThreshold(70);
+      setEmaFast(12);
+      setEmaSlow(26);
     }
+    setOptimized(null);
   }, [botToEdit, open]);
 
   const handleApplyPreset = (preset: "scalp" | "swing" | "dips") => {
@@ -150,6 +191,50 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
     }
   };
 
+  const gaMode = strategy === "RSI" ? "RSI" : strategy === "MACD" ? "MACD" : null;
+
+  const handleOptimize = async () => {
+    if (!gaMode) return;
+    setIsOptimizing(true);
+    try {
+      const klines = await getSymbolKlines(symbol);
+      if (klines.length < 40) {
+        toast({
+          title: "Dados insuficientes",
+          description: `Só há ${klines.length} candles de ${symbol}; o otimizador precisa de pelo menos 40.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      // Roda fora do clique para a interface atualizar o estado "otimizando" antes do cálculo.
+      await new Promise((r) => setTimeout(r, 30));
+      const best = runGeneticOptimization(klines, gaMode);
+      if ((best.fitness ?? -999) <= -999) {
+        toast({
+          title: "Sem resultado confiável",
+          description: "Nenhuma combinação gerou operações suficientes no histórico recente. Mantive seus parâmetros.",
+        });
+        return;
+      }
+      setOptimized(best);
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
+  const applyOptimized = () => {
+    if (!optimized) return;
+    if (gaMode === "RSI") {
+      setRsiPeriod(optimized.rsiPeriod);
+      setBuyThreshold(optimized.rsiBuyThreshold);
+      setSellThreshold(optimized.rsiSellThreshold);
+    } else {
+      setEmaFast(optimized.emaFast);
+      setEmaSlow(optimized.emaSlow);
+    }
+    setOptimized(null);
+  };
+
   const handleSave = () => {
     if (!name.trim()) {
       toast({
@@ -171,6 +256,14 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
         trailingStopDistance,
         allocationAmount,
         active,
+        useMarketRegime,
+        useQuantFunnel,
+        useEnsemble,
+        rsiPeriod,
+        buyThreshold,
+        sellThreshold,
+        emaFast,
+        emaSlow,
       });
       toast({
         title: "Robô Atualizado!",
@@ -187,6 +280,14 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
         trailingStopDistance,
         allocationAmount,
         active,
+        useMarketRegime,
+        useQuantFunnel,
+        useEnsemble,
+        rsiPeriod,
+        buyThreshold,
+        sellThreshold,
+        emaFast,
+        emaSlow,
       });
       toast({
         title: "🎉 Robô Criado com Sucesso!",
@@ -199,8 +300,8 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[550px] bg-card/95 backdrop-blur-xl border border-border/80 text-foreground max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="w-[calc(100vw-1.5rem)] sm:max-w-[720px] max-h-[92vh] p-0 gap-0 flex flex-col overflow-hidden bg-card/95 backdrop-blur-xl border border-border/80 text-foreground">
+        <DialogHeader className="px-5 pt-5 pb-3 pr-10 border-b border-border/40 shrink-0">
           <DialogTitle className="flex items-center gap-2 text-base font-bold">
             <Bot className="w-5 h-5 text-crypto-cyan" />
             {botToEdit ? `Editar ${botToEdit.name}` : "Criar Novo Robô de Lucro Simultâneo"}
@@ -210,9 +311,11 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
+        {/* Corpo rolável: só esta parte rola, cabeçalho e botões ficam fixos */}
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-5 py-4 space-y-4">
         {/* Quick Presets & AI Autofill */}
-        <div className="space-y-1.5 pt-1">
-          <div className="flex items-center justify-between">
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
               Predefinições & Otimização por IA
             </span>
@@ -228,7 +331,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
               {isAutofilling ? "Analisando..." : "Autopreencher com IA"}
             </Button>
           </div>
-          <div className="flex gap-2 pt-0.5">
+          <div className="flex flex-wrap gap-2 pt-0.5">
             <Button
               type="button"
               variant="outline"
@@ -259,7 +362,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
           </div>
         </div>
 
-        <div className="space-y-4 py-2">
+        <div className="space-y-4">
           {/* Bot Name & Active Toggle */}
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2 space-y-1.5">
@@ -285,21 +388,58 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Par de Moeda (Ativo)</Label>
-              <Select value={symbol} onValueChange={setSymbol}>
-                <SelectTrigger className="h-9 text-xs bg-secondary/30">
-                  <SelectValue placeholder="Selecione a moeda" />
-                </SelectTrigger>
-                <SelectContent className="max-h-[220px]">
-                  {CRYPTO_LIST.map((c) => (
-                    <SelectItem key={c.symbol} value={c.symbol} className="text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold">{c.short}</span>
-                        <span className="text-muted-foreground text-[10px]">({c.name})</span>
+              <Popover open={symbolSelectOpen} onOpenChange={setSymbolSelectOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full h-9 text-xs bg-secondary/30 border-border justify-between px-2.5 font-bold"
+                  >
+                    <span>{symbol.replace("USDT", "/USDT")}</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0 ml-1" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[240px] p-0 glass border-border/50" align="start">
+                  <div className="p-2 border-b border-border/30">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar moeda Binance..."
+                        value={symbolSearch}
+                        onChange={(e) => setSymbolSearch(e.target.value)}
+                        className="h-7 pl-7 text-xs bg-secondary/30 border-border/50"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-[220px] overflow-y-auto cyan-scrollbar p-1">
+                    {filteredCryptoList.map((c) => (
+                      <button
+                        type="button"
+                        key={c.symbol}
+                        onClick={() => {
+                          setSymbol(c.symbol);
+                          setSymbolSelectOpen(false);
+                          setSymbolSearch("");
+                        }}
+                        className={`w-full text-left px-2 py-1.5 text-xs rounded hover:bg-secondary/40 flex items-center justify-between transition-colors ${
+                          c.symbol === symbol ? "bg-crypto-cyan/15 text-crypto-cyan font-bold" : ""
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="font-bold">{c.short}</span>
+                          <span className="text-muted-foreground text-[10px] truncate">({c.name})</span>
+                        </div>
+                      </button>
+                    ))}
+                    {filteredCryptoList.length === 0 && (
+                      <div className="p-3 text-center text-xs text-muted-foreground">
+                        Nenhuma moeda encontrada
                       </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="space-y-1.5">
@@ -319,12 +459,11 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
             </div>
           </div>
 
-          {/* Strategy Selector */}
+          {/* 1. Estratégia: quando o robô compra */}
           <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Estratégia de Entrada Lucrativa</Label>
+            <Label className="text-xs font-semibold">1. Estratégia — quando o robô compra</Label>
             <div className="grid grid-cols-2 gap-2">
-              {STRATEGIES.map((strat) => {
-                const Icon = strat.icon;
+              {STRATEGY_CATALOG.map((strat) => {
                 const isSelected = strategy === strat.id;
                 return (
                   <div
@@ -336,19 +475,99 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
                         : "bg-secondary/20 border-border/30 hover:bg-secondary/40"
                     }`}
                   >
-                    <div className="flex items-center gap-1.5">
-                      <Icon className={`w-3.5 h-3.5 ${isSelected ? "text-crypto-cyan" : "text-muted-foreground"}`} />
-                      <span className={`text-xs font-bold ${isSelected ? "text-crypto-cyan" : "text-foreground"}`}>
-                        {strat.name}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground line-clamp-1 leading-snug">
-                      {strat.desc}
-                    </p>
+                    <span className={`text-xs font-bold ${isSelected ? "text-crypto-cyan" : "text-foreground"}`}>
+                      {strat.name}
+                    </span>
+                    <p className="text-[10px] text-muted-foreground leading-snug">{strat.summary}</p>
                   </div>
                 );
               })}
             </div>
+            <p className="text-[10px] text-muted-foreground bg-secondary/20 rounded-md p-2 border border-border/30">
+              <strong className="text-foreground">Regra exata:</strong> {getStrategy(strategy)?.rule}
+            </p>
+          </div>
+
+          {/* Parâmetros da estratégia (só os que ela realmente usa) */}
+          {gaMode && (
+            <div className="bg-secondary/25 p-3 rounded-xl border border-border/40 space-y-3">
+              <span className="text-xs font-bold">Parâmetros de {gaMode === "RSI" ? "RSI" : "MACD"}</span>
+              {gaMode === "RSI" ? (
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">Período</Label>
+                    <Input type="number" min={5} max={30} value={rsiPeriod} onChange={(e) => setRsiPeriod(Math.min(30, Math.max(5, parseInt(e.target.value) || 14)))} className="h-8 text-xs" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">Compra se RSI ≤</Label>
+                    <Input type="number" min={10} max={50} value={buyThreshold} onChange={(e) => setBuyThreshold(Math.min(50, Math.max(10, parseFloat(e.target.value) || 30)))} className="h-8 text-xs" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">Realiza lucro se RSI ≥</Label>
+                    <Input type="number" min={55} max={95} value={sellThreshold} onChange={(e) => setSellThreshold(Math.min(95, Math.max(55, parseFloat(e.target.value) || 70)))} className="h-8 text-xs" />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">EMA rápida</Label>
+                    <Input type="number" min={3} max={30} value={emaFast} onChange={(e) => setEmaFast(Math.min(30, Math.max(3, parseInt(e.target.value) || 12)))} className="h-8 text-xs" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">EMA lenta</Label>
+                    <Input type="number" min={10} max={80} value={emaSlow} onChange={(e) => setEmaSlow(Math.min(80, Math.max(10, parseInt(e.target.value) || 26)))} className="h-8 text-xs" />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/30">
+                <p className="text-[10px] text-muted-foreground">
+                  Otimizador genético: testa combinações no histórico de 1h de {symbol.replace("USDT", "")} e sugere os melhores valores.
+                </p>
+                <Button type="button" size="sm" variant="outline" onClick={handleOptimize} disabled={isOptimizing} className="h-7 text-xs shrink-0 border-crypto-gold/40 text-crypto-gold hover:bg-crypto-gold/10">
+                  {isOptimizing ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Dna className="w-3 h-3 mr-1" />}
+                  {isOptimizing ? "Otimizando..." : "Otimizar"}
+                </Button>
+              </div>
+
+              {optimized && (
+                <div className="bg-crypto-gold/5 border border-crypto-gold/20 rounded-lg p-2.5 flex items-center justify-between gap-2">
+                  <span className="text-[11px]">
+                    {gaMode === "RSI"
+                      ? `Período ${optimized.rsiPeriod} · compra ≤ ${optimized.rsiBuyThreshold} · lucro ≥ ${optimized.rsiSellThreshold}`
+                      : `EMA ${optimized.emaFast} / ${optimized.emaSlow}`}
+                    <span className="text-muted-foreground"> (pontuação {(optimized.fitness ?? 0).toFixed(1)})</span>
+                  </span>
+                  <Button type="button" size="sm" onClick={applyOptimized} className="h-7 text-xs bg-crypto-gold text-black hover:bg-crypto-gold/80 font-bold">
+                    Aplicar
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 2. Filtros do motor: quando o robô NÃO compra */}
+          <div className="bg-secondary/25 p-3 rounded-xl border border-border/40 space-y-3">
+            <div>
+              <span className="text-xs font-bold">2. Filtros de segurança — quando o robô NÃO compra</span>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Filtros só bloqueiam compras; nunca forçam uma. Além deles, o robô sempre bloqueia compras com volatilidade (ATR) ≥ 5%.
+              </p>
+            </div>
+            {ENGINE_FILTERS.map((f) => {
+              const checked = f.key === "useMarketRegime" ? useMarketRegime : f.key === "useQuantFunnel" ? useQuantFunnel : useEnsemble;
+              const set = f.key === "useMarketRegime" ? setUseMarketRegime : f.key === "useQuantFunnel" ? setUseQuantFunnel : setUseEnsemble;
+              const moot = f.key === "useEnsemble" && strategy === "QUANT_ENSEMBLE";
+              return (
+                <div key={f.key} className={`flex items-start justify-between gap-3 ${moot ? "opacity-50" : ""}`}>
+                  <div className="space-y-0.5">
+                    <Label className="text-xs font-medium">{f.name}</Label>
+                    <p className="text-[10px] text-muted-foreground leading-snug">{f.description}</p>
+                  </div>
+                  <Switch checked={moot ? true : checked} disabled={moot} onCheckedChange={set} className="mt-0.5" />
+                </div>
+              );
+            })}
           </div>
 
           {/* Profit & Risk Rules */}
@@ -426,8 +645,9 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
             </div>
           </div>
         </div>
+        </div>
 
-        <DialogFooter className="pt-2 gap-2">
+        <DialogFooter className="px-5 py-3 gap-2 border-t border-border/40 shrink-0">
           <Button
             type="button"
             variant="outline"

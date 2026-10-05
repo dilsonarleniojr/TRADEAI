@@ -8,6 +8,7 @@ import { Scale, Shield, AlertTriangle, TrendingUp, ArrowRight, CheckCircle2, X }
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { useShallow } from "zustand/react/shallow";
 
 const MARKET_CAP_WEIGHTS: Record<string, number> = {
   BTCUSDT: 0.52, ETHUSDT: 0.18, BNBUSDT: 0.05, SOLUSDT: 0.04,
@@ -87,7 +88,9 @@ const actionColor = (a: string) =>
   a === "SELL" ? "bg-crypto-red/10 text-crypto-red" : "bg-secondary text-muted-foreground";
 
 export function PortfolioRebalancing() {
-  const { portfolio, tickers, selectedSymbol } = useCryptoStore();
+  const { portfolio, tickers, selectedSymbol } = useCryptoStore(
+  useShallow((s) => ({ portfolio: s.portfolio, tickers: s.tickers, selectedSymbol: s.selectedSymbol }))
+);
   const [showConfirm, setShowConfirm] = useState(false);
   const [applied, setApplied] = useState(false);
   const risk = useMemo(() => computeRisk(portfolio, tickers), [portfolio, tickers]);

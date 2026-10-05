@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { BookOpen, RefreshCw, Minimize2, Maximize2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { getOrFetch, CACHE_TTL, invalidateCache } from "@/lib/cache";
+import { useShallow } from "zustand/react/shallow";
 
 interface OrderBookLevel {
   price: number;
@@ -72,13 +73,14 @@ function formatBookVolume(vol: number): string {
 }
 
 export function OrderBook() {
-  const { selectedSymbol, tickers } = useCryptoStore();
+  const { selectedSymbol, tickers } = useCryptoStore(
+  useShallow((s) => ({ selectedSymbol: s.selectedSymbol, tickers: s.tickers }))
+);
   const [orderBook, setOrderBook] = useState<OrderBookData | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const midPriceRef = useRef<HTMLDivElement | null>(null);
 
   const currentPrice = tickers[selectedSymbol]?.price ?? 0;
   const levels = isCompact ? 8 : 15;
@@ -117,13 +119,6 @@ export function OrderBook() {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [refreshOrderBook]);
-
-  // Auto-scroll to mid-price on data load
-  useEffect(() => {
-    if (orderBook && midPriceRef.current) {
-      midPriceRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  }, [orderBook?.spread]);
 
   if (error && !orderBook) {
     return (
@@ -273,7 +268,6 @@ export function OrderBook() {
 
         {/* Current Price Divider */}
         <div
-          ref={midPriceRef}
           className="flex items-center gap-2 py-1.5 px-1 my-1 bg-crypto-cyan/5 border-y border-crypto-cyan/20 rounded-sm mid-price-pulse"
         >
           <span className="text-sm font-bold text-crypto-cyan">

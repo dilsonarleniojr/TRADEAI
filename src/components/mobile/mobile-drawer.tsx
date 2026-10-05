@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSyncExternalStore, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 
 const TOP_SYMBOLS = [
   "BTCUSDT",
@@ -60,8 +61,11 @@ export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
     botActive,
     portfolio,
     clearMockData,
+    clearSimulatedData,
     setActiveSection,
-  } = useCryptoStore();
+  } = useCryptoStore(
+  useShallow((s) => ({ tradingMode: s.tradingMode, setTradingMode: s.setTradingMode, selectedSymbol: s.selectedSymbol, setSelectedSymbol: s.setSelectedSymbol, connectionStatus: s.connectionStatus, botActive: s.botActive, portfolio: s.portfolio, clearMockData: s.clearMockData, clearSimulatedData: s.clearSimulatedData, setActiveSection: s.setActiveSection }))
+);
 
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(
@@ -150,9 +154,20 @@ export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
                 </span>
                 <Switch
                   checked={tradingMode === "live"}
-                  onCheckedChange={(checked) =>
-                    setTradingMode(checked ? "live" : "paper")
-                  }
+                  onCheckedChange={async (checked) => {
+                    const nextMode = checked ? "live" : "paper";
+                    setTradingMode(nextMode);
+                    try {
+                      const [accRes, tradesRes] = await Promise.all([
+                        fetch(`/api/account?mode=${nextMode}`),
+                        fetch(`/api/trades?mode=${nextMode}`),
+                      ]);
+                      const acc = await accRes.json();
+                      const trs = await tradesRes.json();
+                      if (acc.success && acc.data) useCryptoStore.getState().setAccount(acc.data);
+                      if (trs.success && Array.isArray(trs.data)) useCryptoStore.getState().setTrades(trs.data);
+                    } catch {}
+                  }}
                   className="data-[state=checked]:bg-crypto-red data-[state=unchecked]:bg-crypto-cyan"
                 />
                 <span
@@ -355,9 +370,8 @@ export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
             <Button
               variant="ghost"
               className="w-full h-9 gap-2 text-crypto-red hover:bg-crypto-red/10 hover:text-crypto-red rounded-lg text-xs font-medium"
-              onClick={() => {
-                clearMockData();
-                fetch("/api/trades", { method: "DELETE" }).catch(() => {});
+              onClick={async () => {
+                await clearSimulatedData();
                 onOpenChange(false);
               }}
             >

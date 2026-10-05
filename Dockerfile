@@ -47,6 +47,6 @@ COPY --from=binance-builder /app/mini-services/binance-service/node_modules /app
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
-EXPOSE 3000 3001
+EXPOSE 3000 3001 3002
 
 CMD ["/app/start.sh"]

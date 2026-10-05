@@ -9,7 +9,9 @@ export type CryptoCategory =
   | "Gaming" 
   | "Infrastructure" 
   | "Exchange"
-  | "Stablecoin";
+  | "Stablecoin"
+  | "Inovação"
+  | "Outros";
 
 export interface CryptoMeta {
   symbol: string;       // e.g., "BTCUSDT"
@@ -133,7 +135,78 @@ export const CATEGORY_META: Record<CryptoCategory, { label: string; emoji: strin
   "Infrastructure": { label: "Infraestrutura", emoji: "🔧", color: "#0090ff" },
   "Exchange": { label: "Exchange", emoji: "💱", color: "#00aae4" },
   "Stablecoin": { label: "Stablecoin", emoji: "💲", color: "#26a17b" },
+  "Inovação": { label: "Inovação", emoji: "✨", color: "#ec4899" },
+  "Outros": { label: "Outros", emoji: "🌐", color: "#64748b" },
 };
+
+// Generate deterministic vibrant HSL color for any new coin
+export function generateColorForSymbol(sym: string): string {
+  let hash = 0;
+  for (let i = 0; i < sym.length; i++) {
+    hash = sym.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h = Math.abs(hash % 360);
+  return `hsl(${h}, 75%, 52%)`;
+}
+
+// Dynamically register new symbols fetched from Binance
+export function registerDynamicSymbols(
+  symbols: Array<{ symbol: string; name?: string; short?: string; category?: string }>
+) {
+  for (const item of symbols) {
+    const sym = item.symbol;
+    if (!CRYPTO_BY_SYMBOL[sym]) {
+      const short = item.short || sym.replace(/USDT$/, "");
+      const name = item.name && item.name !== sym ? item.name : short;
+      const category = (item.category as CryptoCategory) || "Inovação";
+      const color = generateColorForSymbol(sym);
+
+      const meta: CryptoMeta = {
+        symbol: sym,
+        name,
+        short,
+        color,
+        category,
+        description: `Par ${short}/USDT negociado na Binance`,
+        rank: 999,
+      };
+
+      CRYPTO_LIST.push(meta);
+      CRYPTO_BY_SYMBOL[sym] = meta;
+      CRYPTO_COLORS[sym] = color;
+      CRYPTO_NAMES[sym] = name;
+      CRYPTO_CATEGORIES[sym] = category;
+      CRYPTO_SHORTS[sym] = short;
+      if (!ALL_SYMBOLS.includes(sym)) {
+        ALL_SYMBOLS.push(sym);
+      }
+    }
+  }
+}
+
+// Get or create metadata for any symbol on the fly
+export function getCryptoMeta(symbol: string): CryptoMeta {
+  if (CRYPTO_BY_SYMBOL[symbol]) return CRYPTO_BY_SYMBOL[symbol];
+  const short = symbol.replace(/USDT$/, "");
+  const color = generateColorForSymbol(symbol);
+  const meta: CryptoMeta = {
+    symbol,
+    name: short,
+    short,
+    color,
+    category: "Inovação",
+    rank: 999,
+    description: `Par ${short}/USDT negociado na Binance`,
+  };
+  CRYPTO_LIST.push(meta);
+  CRYPTO_BY_SYMBOL[symbol] = meta;
+  CRYPTO_COLORS[symbol] = color;
+  CRYPTO_NAMES[symbol] = short;
+  CRYPTO_CATEGORIES[symbol] = "Inovação";
+  CRYPTO_SHORTS[symbol] = short;
+  if (!ALL_SYMBOLS.includes(symbol)) ALL_SYMBOLS.push(symbol);
+  return meta;
+}
 
 // Get symbols by category
 export function getSymbolsByCategory(category: CryptoCategory): string[] {

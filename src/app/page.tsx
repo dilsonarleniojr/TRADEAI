@@ -10,11 +10,13 @@ import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { TickerTape } from "@/components/header/ticker-tape";
-import { TelemetryRibbon } from "@/components/bot/telemetry-ribbon";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
 import { ChatSection } from "@/components/ai/chat-section";
 import { ChartSection } from "@/components/chart/chart-section";
 import { BotSection } from "@/components/bot/bot-section";
+import { BotBackgroundRunner } from "@/components/bot/bot-background-runner";
+import { HistoryBootstrap } from "@/components/bot/history-bootstrap";
+import { BotReadinessWatcher } from "@/components/bot/bot-readiness";
 import { HistorySection } from "@/components/history/history-section";
 import { BacktestSection } from "@/components/backtest/backtest-section";
 import { EducationSection } from "@/components/education/education-section";
@@ -24,6 +26,7 @@ import { AlertNotification } from "@/components/dashboard/alert-notification";
 import { ShortcutsHint } from "@/components/dashboard/shortcuts-hint";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 
 // Stagger animation container for dashboard cards
 const containerVariants = {
@@ -71,7 +74,9 @@ function DashboardSkeleton() {
 }
 
 function HomePageContent() {
-  const { activeSection } = useCryptoStore();
+  const { activeSection } = useCryptoStore(
+  useShallow((s) => ({ activeSection: s.activeSection }))
+);
   const { dataReady } = useDataProvider();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
@@ -171,18 +176,22 @@ function HomePageContent() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background crypto-dot-grid">
+    <div className="min-h-screen md:h-screen md:overflow-hidden flex flex-col bg-background crypto-dot-grid">
       <AlertNotification />
-      <div className="flex flex-1">
+      <BotBackgroundRunner />
+      <HistoryBootstrap />
+      <BotReadinessWatcher />
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         <Sidebar />
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <Header onOpenMobileDrawer={() => setMobileDrawerOpen(true)} />
           <TickerTape />
-          <TelemetryRibbon />
-          <main className="flex-1 p-3 md:p-5 overflow-y-auto pb-24 md:pb-5 cyan-scrollbar scroll-smooth">
-            <AnimatePresence mode="wait">
-              {renderContent()}
-            </AnimatePresence>
+          <main className="flex-1 p-2.5 sm:p-3 md:p-4 overflow-y-auto pb-24 md:pb-4 pro-scrollbar scroll-smooth">
+            <div className="max-w-[1920px] mx-auto w-full">
+              <AnimatePresence mode="wait">
+                {renderContent()}
+              </AnimatePresence>
+            </div>
           </main>
           <Footer />
         </div>

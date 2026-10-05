@@ -97,7 +97,7 @@ const METRICS: MetricRow[] = [
 ];
 
 function getMetricValue(result: BacktestResultData, key: string): number | string | null {
-  return (result as Record<string, unknown>)[key] as number | string | null;
+  return (result as unknown as Record<string, unknown>)[key] as number | string | null;
 }
 
 export function BacktestComparison({ results, strategies }: BacktestComparisonProps) {

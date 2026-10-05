@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { useTheme } from "next-themes";
+import { useShallow } from "zustand/react/shallow";
 
 type SectionKey = "dashboard" | "chart" | "ai" | "bot" | "backtest" | "history";
 
@@ -22,7 +23,9 @@ const SYMBOLS = [
 ];
 
 export function useKeyboardShortcuts() {
-  const { setActiveSection, setBotActive, botActive, setSelectedSymbol, selectedSymbol, tradingMode, setTradingMode } = useCryptoStore();
+  const { setActiveSection, setBotActive, botActive, setSelectedSymbol, selectedSymbol, tradingMode, setTradingMode } = useCryptoStore(
+  useShallow((s) => ({ setActiveSection: s.setActiveSection, setBotActive: s.setBotActive, botActive: s.botActive, setSelectedSymbol: s.setSelectedSymbol, selectedSymbol: s.selectedSymbol, tradingMode: s.tradingMode, setTradingMode: s.setTradingMode }))
+);
   const { theme, setTheme } = useTheme();
 
   useEffect(() => {
@@ -64,7 +67,19 @@ export function useKeyboardShortcuts() {
       if (e.key === "m" && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         const current = useCryptoStore.getState().tradingMode;
-        setTradingMode(current === "paper" ? "live" : "paper");
+        const nextMode = current === "paper" ? "live" : "paper";
+        setTradingMode(nextMode);
+        Promise.all([
+          fetch(`/api/account?mode=${nextMode}`),
+          fetch(`/api/trades?mode=${nextMode}`),
+        ])
+          .then(async ([accRes, tradesRes]) => {
+            const accData = await accRes.json();
+            const tradesData = await tradesRes.json();
+            if (accData.success && accData.data) useCryptoStore.getState().setAccount(accData.data);
+            if (tradesData.success && Array.isArray(tradesData.data)) useCryptoStore.getState().setTrades(tradesData.data);
+          })
+          .catch(() => {});
         return;
       }
 

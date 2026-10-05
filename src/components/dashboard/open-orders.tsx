@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { ALL_SYMBOLS } from "@/lib/crypto-meta";
 import { useToast } from "@/hooks/use-toast";
+import { useShallow } from "zustand/react/shallow";
 
 export interface OpenOrder {
   id: string;
@@ -97,7 +98,9 @@ const executeTriggeredOrder = async (order: OpenOrder, fillPrice: number) => {
 };
 
 export function OpenOrders() {
-  const { tickers, tradingMode } = useCryptoStore();
+  const { tickers, tradingMode } = useCryptoStore(
+  useShallow((s) => ({ tickers: s.tickers, tradingMode: s.tradingMode }))
+);
   const { toast } = useToast();
   const [orders, setOrders] = useState<OpenOrder[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);

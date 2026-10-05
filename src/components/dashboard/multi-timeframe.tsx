@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock, BarChart2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
 interface TimeframeData {
   timeframe: string;
@@ -127,7 +128,9 @@ function getOverallStyle(signal: string) {
 }
 
 export function MultiTimeframeAnalysis() {
-  const { selectedSymbol, tickers } = useCryptoStore();
+  const { selectedSymbol, tickers } = useCryptoStore(
+  useShallow((s) => ({ selectedSymbol: s.selectedSymbol, tickers: s.tickers }))
+);
 
   const timeframeData = useMemo(
     () => generateTimeframeData(selectedSymbol, tickers),

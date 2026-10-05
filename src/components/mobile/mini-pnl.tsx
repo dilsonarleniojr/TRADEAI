@@ -8,9 +8,12 @@ import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer";
 import { PnlTracker } from "@/components/dashboard/pnl-tracker";
 import { ChevronRight, TrendingUp, TrendingDown, DollarSign } from "lucide-react";
 import { motion } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
 export function MiniPnl() {
-  const { portfolio } = useCryptoStore();
+  const { portfolio } = useCryptoStore(
+  useShallow((s) => ({ portfolio: s.portfolio }))
+);
   const [open, setOpen] = useState(false);
   const isPositive = portfolio.pnl >= 0;
 

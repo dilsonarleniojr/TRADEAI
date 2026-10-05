@@ -113,13 +113,7 @@ class RealTimeSyncManagerImpl {
       }
 
       try {
-        const headers: Record<string, string> = {};
-        if (store.binanceApiKey) {
-          headers['x-binance-api-key'] = store.binanceApiKey;
-          headers['x-binance-api-secret'] = store.binanceApiSecret;
-          headers['x-binance-testnet'] = store.binanceTestnet ? 'true' : 'false';
-        }
-        const accountRes = await fetch(`/api/account?mode=${store.tradingMode}`, { headers });
+        const accountRes = await fetch(`/api/account?mode=${store.tradingMode}`);
         if (accountRes.ok) {
           const result = await accountRes.json();
           if (result.success && result.data) {

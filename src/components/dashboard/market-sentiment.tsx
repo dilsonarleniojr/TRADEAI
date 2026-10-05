@@ -6,9 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import { Gauge, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useShallow } from "zustand/react/shallow";
 
 export function MarketSentiment() {
-  const { tickers } = useCryptoStore();
+  const { tickers } = useCryptoStore(
+  useShallow((s) => ({ tickers: s.tickers }))
+);
 
   const sentiment = useMemo(() => {
     const tickerValues = Object.values(tickers);

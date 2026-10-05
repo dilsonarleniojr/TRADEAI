@@ -3,12 +3,15 @@ import { useEffect, useRef, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import { useCryptoStore, type TickerData } from "@/lib/store";
 import { syncManager } from "@/lib/realtime-sync";
+import { useShallow } from "zustand/react/shallow";
 
 let globalSocket: Socket | null = null;
 let activeHookCount = 0;
 
 export function useBinanceStream() {
-  const { selectedSymbol } = useCryptoStore();
+  const { selectedSymbol } = useCryptoStore(
+  useShallow((s) => ({ selectedSymbol: s.selectedSymbol }))
+);
   const setConnectionStatus = useCryptoStore((s) => s.setConnectionStatus);
   const reconnectAttemptRef = useRef(0);
   const failedRef = useRef(false);
@@ -78,7 +81,9 @@ export function useBinanceStream() {
           volume: parseFloat(data.volume),
           quoteVolume: parseFloat(data.quoteVolume),
         });
-        useCryptoStore.getState().updateBotPnls(useCryptoStore.getState().tickers);
+        const store = useCryptoStore.getState();
+        store.updateBotPnls(store.tickers);
+        store.updateBotPositionsRealtime(store.tickers);
       });
 
       socket.on("balance-update", (data: any) => {

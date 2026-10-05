@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useCryptoStore } from "@/lib/store";
 import {
   LayoutDashboard,
@@ -8,6 +9,9 @@ import {
   Bot,
   History,
   BookOpen,
+  SlidersHorizontal,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   Tooltip,
@@ -17,161 +21,228 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
-// Desktop: all 6 items including backtest
+// Desktop items with descriptive labels, subtitles and shortcut indicators
 const desktopNavItems = [
-  { id: "dashboard" as const, icon: LayoutDashboard, label: "Painel" },
-  { id: "chart" as const, icon: BarChart3, label: "Gráfico & Análise" },
-  { id: "ai" as const, icon: Brain, label: "Assistente IA" },
-  { id: "bot" as const, icon: Bot, label: "Robô de Trading" },
-  { id: "backtest" as const, icon: History, label: "Backtesting" },
-  { id: "history" as const, icon: History, label: "Histórico" },
-  { id: "education" as const, icon: BookOpen, label: "Educação" },
+  { id: "dashboard" as const, icon: LayoutDashboard, label: "Painel Principal", desc: "Visão geral e mercado", shortcut: "1" },
+  { id: "chart" as const, icon: BarChart3, label: "Gráfico & Trading", desc: "Candles e livro de ofertas", shortcut: "2" },
+  { id: "bot" as const, icon: Bot, label: "Robôs de Lucro", desc: "Automação simultânea", shortcut: "3" },
+  { id: "ai" as const, icon: Brain, label: "Assistente IA", desc: "Análise e previsões", shortcut: "4" },
+  { id: "history" as const, icon: History, label: "Histórico & Ordens", desc: "Operações e relatórios", shortcut: "5" },
+  { id: "backtest" as const, icon: SlidersHorizontal, label: "Backtesting", desc: "Simulação de estratégias", shortcut: "6" },
+  { id: "education" as const, icon: BookOpen, label: "Academia Cripto", desc: "Guias e tutoriais", shortcut: "7" },
 ];
 
-// Mobile: 5 items (combined backtest + history into "Histórico")
+// Mobile: 5 core items
 const mobileNavItems = [
   { id: "dashboard" as const, icon: LayoutDashboard, label: "Painel" },
   { id: "chart" as const, icon: BarChart3, label: "Gráfico" },
+  { id: "bot" as const, icon: Bot, label: "Robôs" },
   { id: "ai" as const, icon: Brain, label: "IA" },
-  { id: "bot" as const, icon: Bot, label: "Bot" },
   { id: "history" as const, icon: History, label: "Histórico" },
 ];
 
 export function Sidebar() {
-  const { activeSection, setActiveSection } = useCryptoStore();
+  const { activeSection, setActiveSection, alerts, tradingMode, binanceConnected, binanceTestnet, connectionStatus } = useCryptoStore(
+  useShallow((s) => ({ activeSection: s.activeSection, setActiveSection: s.setActiveSection, alerts: s.alerts, tradingMode: s.tradingMode, binanceConnected: s.binanceConnected, binanceTestnet: s.binanceTestnet, connectionStatus: s.connectionStatus }))
+);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Restore sidebar state from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("tradeai_sidebar_expanded");
+      if (saved !== null) {
+        setIsExpanded(saved === "true");
+      }
+    }
+  }, []);
+
+  const toggleExpand = () => {
+    setIsExpanded((prev) => {
+      const next = !prev;
+      localStorage.setItem("tradeai_sidebar_expanded", String(next));
+      return next;
+    });
+  };
+
+  const triggeredCount = alerts.filter((a) => a.isTriggered).length;
+
+  // Status real da conexão
+  const binanceStatus =
+    tradingMode === "live" && binanceConnected
+      ? { label: binanceTestnet ? "Binance Testnet" : "Binance Spot Live", dot: binanceTestnet ? "bg-crypto-gold" : "bg-crypto-green", ping: "24ms" }
+      : connectionStatus === "disconnected"
+        ? { label: "Offline", dot: "bg-crypto-red", ping: "--" }
+        : connectionStatus === "connecting"
+          ? { label: "Conectando...", dot: "bg-crypto-gold", ping: "..." }
+          : { label: "Modo Simulado", dot: "bg-crypto-cyan", ping: "Local" };
 
   return (
-    <TooltipProvider delayDuration={0}>
+    <TooltipProvider delayDuration={150}>
       {/* Desktop Sidebar */}
       <motion.aside
-        initial={{ x: -80 }}
-        animate={{ x: 0 }}
-        className="hidden md:flex flex-col items-center w-16 min-w-16 glass border-r border-border/50 py-4 gap-1 relative"
+        initial={false}
+        animate={{ width: isExpanded ? 230 : 64 }}
+        transition={{ duration: 0.22, ease: "easeInOut" }}
+        className={cn(
+          "hidden md:flex flex-col bg-[#090d14] border-r border-white/[0.07] py-3 relative z-30 select-none overflow-hidden",
+          isExpanded ? "px-3 items-stretch" : "items-center px-2"
+        )}
       >
-        {/* Logo with subtle animation */}
-        <motion.div
-          whileHover={{ scale: 1.08, rotate: 2 }}
-          whileTap={{ scale: 0.95 }}
-          className="w-10 h-10 rounded-lg bg-gradient-to-br from-crypto-cyan to-crypto-green flex items-center justify-center mb-2 shadow-[0_0_16px_oklch(0.75_0.15_195/20%)] cursor-pointer"
-        >
-          <span className="text-white font-bold text-sm">IA</span>
-        </motion.div>
+        {/* Header / Logo */}
+        <div className={cn("flex items-center gap-2 mb-3.5", isExpanded ? "px-1 justify-between" : "justify-center")}>
+          <div
+            onClick={() => setActiveSection("dashboard")}
+            className="flex items-center gap-2.5 cursor-pointer group"
+          >
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 via-teal-500 to-emerald-500 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform shrink-0 ring-1 ring-white/10">
+              <span className="text-white font-black text-[11px] tracking-wider font-mono">AI</span>
+            </div>
+            {isExpanded && (
+              <div className="flex flex-col truncate">
+                <span className="text-xs font-bold text-slate-100 tracking-tight leading-tight flex items-center gap-1.5">
+                  TRADEAI
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-semibold font-mono">PRO</span>
+                </span>
+                <span className="text-[9px] text-slate-400 uppercase font-medium">Terminal V3.8</span>
+              </div>
+            )}
+          </div>
 
-        {/* Gradient line separator */}
-        <div className="w-8 h-px bg-gradient-to-r from-transparent via-crypto-cyan/40 to-transparent mb-4" />
+          {/* Toggle expand/collapse button */}
+          <button
+            onClick={toggleExpand}
+            className="p-1 rounded-md text-slate-400 hover:text-slate-200 hover:bg-white/[0.06] transition-colors cursor-pointer"
+            title={isExpanded ? "Recolher menu lateral" : "Expandir menu lateral"}
+            aria-label={isExpanded ? "Recolher menu" : "Expandir menu"}
+          >
+            {isExpanded ? (
+              <ChevronLeft className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5" />
+            )}
+          </button>
+        </div>
+
+        {/* Separator */}
+        <div className="w-full h-px bg-white/[0.07] mb-2.5" />
 
         {/* Nav Items */}
         <nav className="flex flex-col gap-1 flex-1">
           {desktopNavItems.map((item) => {
             const isActive = activeSection === item.id;
+
+            const buttonContent = (
+              <button
+                onClick={() => setActiveSection(item.id)}
+                className={cn(
+                  "relative rounded-lg flex items-center transition-all duration-150 text-left w-full group cursor-pointer",
+                  isExpanded ? "px-2.5 py-2 gap-2.5" : "w-10 h-10 justify-center mx-auto",
+                  isActive
+                    ? "bg-cyan-500/15 text-cyan-400 font-semibold border border-cyan-500/30 shadow-sm"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
+                )}
+              >
+                <item.icon className={cn("w-4 h-4 shrink-0 transition-transform group-hover:scale-105", isActive ? "text-cyan-400" : "text-slate-400")} />
+
+                {isExpanded && (
+                  <div className="flex flex-col min-w-0 leading-tight flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium truncate">{item.label}</span>
+                      <span className="text-[9px] font-mono text-slate-400 bg-white/[0.04] px-1 rounded border border-white/[0.06]">[{item.shortcut}]</span>
+                    </div>
+                    <span className="text-[9px] text-slate-500 truncate">{item.desc}</span>
+                  </div>
+                )}
+
+                {item.id === "history" && triggeredCount > 0 && (
+                  <span className={cn("flex h-1.5 w-1.5 rounded-full bg-rose-500", isExpanded ? "ml-auto" : "absolute top-1.5 right-1.5")} />
+                )}
+              </button>
+            );
+
+            if (isExpanded) {
+              return <div key={item.id}>{buttonContent}</div>;
+            }
+
             return (
               <Tooltip key={item.id}>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => setActiveSection(item.id)}
-                    className={cn(
-                      "relative w-11 h-11 rounded-lg flex items-center justify-center transition-all duration-300",
-                      "hover:bg-accent hover:text-accent-foreground hover:scale-105",
-                      isActive
-                        ? "bg-primary/15 text-primary glow-cyan-sm border-l-2 border-crypto-cyan"
-                        : "text-muted-foreground"
-                    )}
-                  >
-                    {/* Active background glow */}
-                    {isActive && (
-                      <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-primary/10 to-transparent" />
-                    )}
-                    {isActive && (
-                      <motion.div
-                        layoutId="sidebar-active"
-                        className="absolute w-2 h-2 rounded-full bg-primary left-1.5 glow-cyan-sm"
-                        style={{ boxShadow: "0 0 8px #06b6d4" }}
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                      />
-                    )}
-                    <item.icon className="w-5 h-5 relative z-10" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="right" sideOffset={8}>
-                  <p>{item.label}</p>
+                <TooltipTrigger asChild>{buttonContent}</TooltipTrigger>
+                <TooltipContent side="right" sideOffset={12} className="glass border-border/60 py-1.5 px-2.5">
+                  <div className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-xs text-foreground">{item.label}</span>
+                      <span className="text-[9px] font-mono text-crypto-cyan bg-crypto-cyan/10 px-1 rounded border border-crypto-cyan/20">[{item.shortcut}]</span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">{item.desc}</span>
+                  </div>
                 </TooltipContent>
               </Tooltip>
             );
           })}
         </nav>
 
-        {/* Bottom indicator with glow */}
-        <div className="mt-auto">
-          <div className="w-2 h-2 rounded-full bg-crypto-green animate-pulse shadow-[0_0_8px_#22c55e]" />
+        {/* Bottom system status */}
+        <div className={cn("mt-auto pt-2.5 border-t border-white/[0.07] flex items-center gap-2", isExpanded ? "px-1 justify-between" : "justify-center")}>
+          <div className="flex items-center gap-2">
+            <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", binanceStatus.dot)} role="img" aria-label={binanceStatus.label} title={binanceStatus.label} />
+            {isExpanded && (
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-300 font-medium leading-none">{binanceStatus.label}</span>
+                <span className="text-[9px] text-slate-500 font-mono mt-0.5">{binanceStatus.ping}</span>
+              </div>
+            )}
+          </div>
+          {isExpanded && (
+            <button
+              onClick={toggleExpand}
+              className="text-[10px] text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
+              title="Recolher"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </motion.aside>
 
-      {/* Mobile Bottom Nav - Modern Binance Pro style redesign */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 safe-bottom">
-        {/* Gradient top border line */}
-        <div className="h-px bg-gradient-to-r from-crypto-cyan/40 via-transparent to-crypto-cyan/40" />
-
-        <div className="glass backdrop-blur-xl py-2 px-1 pb-3 shadow-[0_-4px_20px_rgba(0,0,0,0.4)]">
+      {/* Mobile Bottom Nav */}
+      <nav aria-label="Navegação principal" className="md:hidden fixed bottom-0 left-0 right-0 z-50 safe-bottom">
+        <div className="h-px bg-white/[0.08]" />
+        <div className="bg-[#090d14]/95 backdrop-blur-2xl py-1 px-1 pb-3 shadow-2xl">
           <div className="flex items-center justify-around">
             {mobileNavItems.map((item) => {
               const isActive = activeSection === item.id;
-              
-              // Dynamic alerts badge for History/Dashboard
-              const alerts = useCryptoStore.getState().alerts;
-              const triggeredCount = alerts.filter((a) => a.isTriggered).length;
 
               return (
                 <button
                   key={item.id}
                   onClick={() => setActiveSection(item.id)}
-                  className="relative flex flex-col items-center justify-center py-2 px-4 rounded-xl transition-all duration-200 select-none min-w-[64px]"
-                  style={{ minHeight: "48px", minWidth: "64px", flexShrink: 0 }}
+                  aria-label={item.label}
+                  aria-current={isActive ? "page" : undefined}
+                  className="relative flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition-all select-none min-w-[56px] min-h-[48px] focus-visible:outline-2 focus-visible:outline-cyan-400 cursor-pointer"
                 >
-                  {/* Active pill background with layout animation */}
+                  {item.id === "history" && triggeredCount > 0 && (
+                    <span className="absolute top-1.5 right-3 z-10 h-1.5 w-1.5 rounded-full bg-rose-500" aria-label="Alertas disparados" />
+                  )}
                   {isActive && (
                     <motion.div
                       layoutId="mobile-nav-pill"
-                      className="absolute inset-0 bg-crypto-cyan/15 rounded-xl border border-crypto-cyan/10"
-                      transition={{
-                        type: "spring",
-                        stiffness: 400,
-                        damping: 30,
-                      }}
+                      className="absolute inset-0 bg-cyan-500/15 rounded-xl border border-cyan-500/30"
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
                     />
                   )}
-
-                  {/* Icon */}
-                  <motion.div
-                    whileTap={{ scale: 0.85 }}
-                    transition={{ duration: 0.1 }}
-                    className="relative"
-                  >
-                    <item.icon
-                      className={cn(
-                        "relative z-10 transition-all duration-200",
-                        isActive
-                          ? "w-6 h-6 text-crypto-cyan scale-110"
-                          : "w-5 h-5 text-muted-foreground"
-                      )}
-                    />
-                    
-                    {/* Alerts Notification Badge */}
-                    {item.id === "history" && triggeredCount > 0 && (
-                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5 z-20">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-crypto-red opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-crypto-red shadow-[0_0_8px_#ef4444]"></span>
-                      </span>
+                  <item.icon
+                    className={cn(
+                      "relative z-10 transition-all",
+                      isActive ? "w-5 h-5 text-cyan-400 scale-110" : "w-4 h-4 text-slate-400"
                     )}
-                  </motion.div>
-
-                  {/* Label */}
+                  />
                   <span
                     className={cn(
-                      "relative z-10 leading-tight mt-1 transition-all duration-200 font-sans tracking-wide",
-                      isActive
-                        ? "text-[10px] font-bold text-crypto-cyan"
-                        : "text-[9px] text-muted-foreground font-medium"
+                      "relative z-10 mt-1 transition-all",
+                      isActive ? "text-[11px] font-bold text-cyan-400" : "text-[10px] text-slate-400"
                     )}
                   >
                     {item.label}

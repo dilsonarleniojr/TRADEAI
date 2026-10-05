@@ -5,9 +5,12 @@ import { useCryptoStore } from "@/lib/store";
 import { formatPrice, formatPercent } from "@/lib/format";
 import { Wallet, TrendingUp, TrendingDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
 export function MobilePortfolioBar() {
-  const { portfolio } = useCryptoStore();
+  const { portfolio } = useCryptoStore(
+  useShallow((s) => ({ portfolio: s.portfolio }))
+);
   const isPositive = portfolio.pnl >= 0;
   const [isVisible, setIsVisible] = useState(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

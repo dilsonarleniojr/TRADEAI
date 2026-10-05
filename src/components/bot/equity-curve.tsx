@@ -28,9 +28,12 @@ import {
   Info,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
 export function EquityCurve() {
-  const { trades, marginLedger } = useCryptoStore();
+  const { trades, marginLedger } = useCryptoStore(
+  useShallow((s) => ({ trades: s.trades, marginLedger: s.marginLedger }))
+);
   const [selectedTradeIndex, setSelectedTradeIndex] = useState<number | null>(null);
   const [replaySpeed, setReplaySpeed] = useState<"1x" | "2x" | "4x">("1x");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -51,7 +54,7 @@ export function EquityCurve() {
       currentEquity = marginLedger.totalAccount;
     }
 
-    const points = [];
+    const points: { index: number; timestamp: number; equity: number; pnl: number; symbol: string; side: string; tradeId?: string }[] = [];
     let initialBalance = currentEquity - trades.reduce((sum, t) => sum + t.pnl, 0);
     
     // Initial starting point

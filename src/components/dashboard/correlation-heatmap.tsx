@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { Grid3X3, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CRYPTO_SHORTS } from "@/lib/crypto-meta";
+import { useShallow } from "zustand/react/shallow";
 
 interface KlineRaw {
   openTime: number;
@@ -89,7 +90,9 @@ const SYMBOLS_TO_COMPARE = [
 ];
 
 export function CorrelationHeatmap() {
-  const { tickers } = useCryptoStore();
+  const { tickers } = useCryptoStore(
+  useShallow((s) => ({ tickers: s.tickers }))
+);
   const [klineData, setKlineData] = useState<Record<string, number[]>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

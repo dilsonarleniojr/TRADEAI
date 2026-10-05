@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Activity, TrendingUp, TrendingDown, DollarSign, Zap, AlertTriangle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { BotLogEntry } from "@/lib/store/types";
+import { useShallow } from "zustand/react/shallow";
 
 const INITIAL_LOG_ENTRIES: BotLogEntry[] = [
   {
@@ -90,7 +91,9 @@ function getRelativeTime(timestamp: number): string {
 }
 
 export function BotActivityLog() {
-  const { botActive, trades, botLogs } = useCryptoStore();
+  const { botActive, trades, botLogs } = useCryptoStore(
+  useShallow((s) => ({ botActive: s.botActive, trades: s.trades, botLogs: s.botLogs }))
+);
   const lastTradeIdRef = useRef<string>("");
 
   // Convert recent trades to log entries via useMemo

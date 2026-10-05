@@ -1,14 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import ZAI from 'z-ai-web-dev-sdk';
-
-let zaiInstance: InstanceType<typeof ZAI> | null = null;
-
-async function getZAI() {
-  if (!zaiInstance) {
-    zaiInstance = await ZAI.create();
-  }
-  return zaiInstance;
-}
+import { askAIOnce } from '@/lib/ai-client';
 
 // Cache SL/TP results to avoid excessive AI API calls (429 rate limiting)
 const sltpCache = new Map<string, { data: Record<string, unknown>; timestamp: number }>();
@@ -298,16 +289,13 @@ export async function POST(request: NextRequest) {
 Explique em 1-2 frases em português brasileiro por que esses valores de SL/TP são adequados.`;
 
       try {
-        const zai = await getZAI();
         lastAICallTime = Date.now();
-        const completion = await zai.chat.completions.create({
-          messages: [
-            { role: 'assistant', content: 'Você é um analista técnico de criptomoedas. Responda de forma concisa em português brasileiro.' },
-            { role: 'user', content: reasoningPrompt }
-          ],
-          thinking: { type: 'disabled' }
-        });
-        reasoning = completion.choices[0]?.message?.content || '';
+        reasoning = await askAIOnce(
+          'Você é um analista técnico de criptomoedas. Responda de forma concisa em português brasileiro.',
+          reasoningPrompt,
+          { maxTokens: 1500 }
+        );
+        if (!reasoning) throw new Error('resposta vazia');
       } catch {
         reasoning = recommendation === 'COMPRA'
           ? `SL baseado em suporte ($${sr.nearestSupport.toFixed(2)}) e ATR, TP baseado em resistência ($${sr.nearestResistance.toFixed(2)}). Risco/Recompensa de 1:${riskRewardRatio.toFixed(1)}.`

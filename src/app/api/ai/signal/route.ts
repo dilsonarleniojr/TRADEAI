@@ -1,20 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import ZAI from 'z-ai-web-dev-sdk';
-
-let zaiInstance: InstanceType<typeof ZAI> | null = null;
-
-async function getZAI() {
-  if (!zaiInstance) {
-    zaiInstance = await ZAI.create();
-  }
-  return zaiInstance;
-}
+import { AIUnavailableError, askAIOnce, parseJsonLoose } from '@/lib/ai-client';
 
 export async function POST(request: NextRequest) {
   try {
     const { symbol, price, priceChange24h, volume, high24h, low24h } = await request.json();
-
-    const zai = await getZAI();
 
     const prompt = `Analise os seguintes dados de criptomoeda e forneça um sinal de trading:
 
@@ -36,22 +25,16 @@ IMPORTANTE: Sempre sugira valores de stopLoss e takeProfit realistas baseados em
 
 Responda APENAS com o objeto JSON, sem texto adicional.`;
 
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: 'assistant', content: 'Você é um analista de trading de criptomoedas. Responda apenas com JSON válido. Sempre inclua stopLoss e takeProfit realistas.' },
-        { role: 'user', content: prompt }
-      ],
-      thinking: { type: 'disabled' }
-    });
+    const response = await askAIOnce(
+      'Você é um analista de trading de criptomoedas. Responda apenas com JSON válido. Sempre inclua stopLoss e takeProfit realistas.',
+      prompt,
+      { maxTokens: 2000 }
+    );
 
-    const response = completion.choices[0]?.message?.content || '';
-
-    try {
-      // Try to parse the JSON response
-      const cleanedResponse = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const signal = JSON.parse(cleanedResponse);
+    const signal = parseJsonLoose<Record<string, unknown>>(response);
+    if (signal && typeof signal === 'object' && !Array.isArray(signal)) {
       return NextResponse.json({ success: true, signal });
-    } catch {
+    } else {
       // If parsing fails, return a HOLD signal
       return NextResponse.json({
         success: true,
@@ -69,7 +52,7 @@ Responda APENAS com o objeto JSON, sem texto adicional.`;
     console.error('AI Signal error:', error);
     return NextResponse.json(
       { error: 'Falha ao gerar sinal', details: message },
-      { status: 500 }
+      { status: error instanceof AIUnavailableError ? 503 : 500 }
     );
   }
 }

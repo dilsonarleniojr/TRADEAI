@@ -6,17 +6,24 @@ export interface PortfolioSlice {
   portfolio: PortfolioData;
   setPortfolio: (portfolio: PortfolioData) => void;
 
+  /** Última sincronização do saldo com o servidor e de onde veio ("paper", "binance", "binance-testnet"). */
+  accountSyncedAt: number | null;
+  accountSource: string | null;
+
   // Account from backend — authoritative source
   setAccount: (account: {
     cashBalance: number;
     assetQuantity: number;
     symbol: string;
     totalValue?: number;
+    /** Valor total em moedas (todas as posições). */
+    assetBalance?: number;
     pnl?: number;
     pnlPercent?: number;
     realizedPnl?: number;
     unrealizedPnl?: number;
     positions?: PortfolioPosition[];
+    source?: string;
   }) => void;
 
   // Bot config (needed for initialBalance reference)
@@ -49,11 +56,18 @@ export const createPortfolioSlice: StateCreator<
   },
   setPortfolio: (portfolio) => set({ portfolio }),
 
+  accountSyncedAt: null,
+  accountSource: null,
+
   // Account from backend — single source of truth for balance
   setAccount: (account) => {
     const state = get();
-    const price = state.tickers[account.symbol]?.price ?? 0;
-    const assetBalance = account.assetQuantity * price;
+    // Valor em moedas: o do servidor (todas as posições) > soma das posições > moeda principal.
+    const assetBalance =
+      account.assetBalance ??
+      (account.positions
+        ? account.positions.reduce((sum, p) => sum + (p.marketValue || 0), 0)
+        : account.assetQuantity * (state.tickers[account.symbol]?.price ?? 0));
     
     const totalValue = account.totalValue !== undefined ? account.totalValue : (account.cashBalance + assetBalance);
     const pnl = account.pnl !== undefined ? account.pnl : (totalValue - (state.botConfig.initialBalance || 10000));
@@ -63,6 +77,8 @@ export const createPortfolioSlice: StateCreator<
     const positions = account.positions !== undefined ? account.positions : [];
 
     set({
+      accountSyncedAt: Date.now(),
+      accountSource: account.source ?? null,
       portfolio: {
         totalValue,
         cashBalance: account.cashBalance,

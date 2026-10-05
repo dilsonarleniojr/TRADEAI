@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import type { BotInstance, BotPosition, BotStrategy, TradeData } from "./types";
+import type { BotInstance, BotPosition, BotStrategy, TickerData, TradeData } from "./types";
 
 export interface BotSlice {
   // Fleet of simultaneous bots
@@ -17,9 +17,12 @@ export interface BotSlice {
   updateBot: (botId: string, partial: Partial<BotInstance>) => void;
   removeBot: (botId: string) => void;
   resetBotStats: (botId: string) => void;
+  resetAllBotStats: () => void;
+  clearSimulatedPositions: () => void;
 
   // Live Position & Trade updates
   updateBotPosition: (botId: string, position: BotPosition | null) => void;
+  updateBotPositionsRealtime: (tickers: Record<string, TickerData>) => void;
   recordBotTrade: (botId: string, trade: TradeData, pnl: number) => void;
 }
 
@@ -47,13 +50,13 @@ const DEFAULT_BOTS: BotInstance[] = [
     useQuantFunnel: false,
     position: null,
     stats: {
-      totalTrades: 12,
-      buyTrades: 7,
-      sellTrades: 5,
-      winTrades: 5,
+      totalTrades: 0,
+      buyTrades: 0,
+      sellTrades: 0,
+      winTrades: 0,
       lossTrades: 0,
-      winRate: 100,
-      realizedPnl: 48.20,
+      winRate: 0,
+      realizedPnl: 0,
       lastAction: "Aguardando ativação (Desligado)",
       lastActionTime: new Date().toISOString(),
     },
@@ -79,13 +82,13 @@ const DEFAULT_BOTS: BotInstance[] = [
     emaSlow: 26,
     position: null,
     stats: {
-      totalTrades: 9,
-      buyTrades: 5,
-      sellTrades: 4,
-      winTrades: 4,
+      totalTrades: 0,
+      buyTrades: 0,
+      sellTrades: 0,
+      winTrades: 0,
       lossTrades: 0,
-      winRate: 100,
-      realizedPnl: 34.50,
+      winRate: 0,
+      realizedPnl: 0,
       lastAction: "Aguardando ativação (Desligado)",
       lastActionTime: new Date().toISOString(),
     },
@@ -111,13 +114,13 @@ const DEFAULT_BOTS: BotInstance[] = [
     emaSlow: 21,
     position: null,
     stats: {
-      totalTrades: 8,
-      buyTrades: 4,
-      sellTrades: 4,
-      winTrades: 4,
+      totalTrades: 0,
+      buyTrades: 0,
+      sellTrades: 0,
+      winTrades: 0,
       lossTrades: 0,
-      winRate: 100,
-      realizedPnl: 27.90,
+      winRate: 0,
+      realizedPnl: 0,
       lastAction: "Aguardando ativação (Desligado)",
       lastActionTime: new Date().toISOString(),
     },
@@ -143,13 +146,13 @@ const DEFAULT_BOTS: BotInstance[] = [
     emaSlow: 21,
     position: null,
     stats: {
-      totalTrades: 6,
-      buyTrades: 3,
-      sellTrades: 3,
-      winTrades: 3,
+      totalTrades: 0,
+      buyTrades: 0,
+      sellTrades: 0,
+      winTrades: 0,
       lossTrades: 0,
-      winRate: 100,
-      realizedPnl: 18.40,
+      winRate: 0,
+      realizedPnl: 0,
       lastAction: "Aguardando ativação (Desligado)",
       lastActionTime: new Date().toISOString(),
     },
@@ -238,7 +241,7 @@ export const createBotSlice: StateCreator<
       signalConfidenceThreshold: botData.signalConfidenceThreshold ?? 75,
       useQuantFunnel: botData.useQuantFunnel ?? false,
       useMarketRegime: botData.useMarketRegime ?? true,
-      useEnsemble: botData.useEnsemble ?? (botData.strategy === "QUANT_ENSEMBLE" || botData.strategy === "AI"),
+      useEnsemble: botData.useEnsemble ?? false,
       position: null,
       stats: {
         totalTrades: 0,
@@ -309,6 +312,47 @@ export const createBotSlice: StateCreator<
     }));
   },
 
+  resetAllBotStats: () => {
+    set((state) => ({
+      bots: state.bots.map((b) => ({
+        ...b,
+        position: null,
+        stats: {
+          totalTrades: 0,
+          buyTrades: 0,
+          sellTrades: 0,
+          winTrades: 0,
+          lossTrades: 0,
+          winRate: 0,
+          realizedPnl: 0,
+          lastAction: "Métricas reiniciadas",
+          lastActionTime: new Date().toISOString(),
+        },
+      })),
+    }));
+  },
+
+  clearSimulatedPositions: () => {
+    set((state) => ({
+      bots: state.bots.map((b) => {
+        // Se a posição aberta do bot é simulada (ou sem modo explícito = paper), fecha ela
+        if (b.position && (b.position.mode === "paper" || !b.position.mode)) {
+          return {
+            ...b,
+            position: null,
+            status: b.active ? "scanning" : "stopped",
+            stats: {
+              ...b.stats,
+              lastAction: "Posição simulada limpa",
+              lastActionTime: new Date().toISOString(),
+            },
+          };
+        }
+        return b;
+      }),
+    }));
+  },
+
   updateBotPosition: (botId, position) => {
     set((state) => ({
       bots: state.bots.map((b) => {
@@ -325,6 +369,39 @@ export const createBotSlice: StateCreator<
         };
       }),
     }));
+  },
+
+  updateBotPositionsRealtime: (tickers) => {
+    set((state) => {
+      let hasChanges = false;
+      const updatedBots = state.bots.map((b) => {
+        if (!b.position || b.position.quantity <= 0) return b;
+        const ticker = tickers[b.symbol];
+        if (!ticker || !ticker.price) return b;
+
+        const currentPrice = ticker.price;
+        const entryPrice = b.position.entryPrice;
+        if (entryPrice <= 0) return b;
+
+        const gainPercent = ((currentPrice - entryPrice) / entryPrice) * 100;
+        const unrealizedPnlUsdt = parseFloat(((currentPrice - entryPrice) * b.position.quantity).toFixed(2));
+        const highestPrice = Math.max(b.position.highestPrice || entryPrice, currentPrice);
+
+        hasChanges = true;
+        return {
+          ...b,
+          position: {
+            ...b.position,
+            currentPrice,
+            highestPrice,
+            unrealizedPnl: unrealizedPnlUsdt,
+            unrealizedPnlPercent: parseFloat(gainPercent.toFixed(2)),
+          },
+        };
+      });
+
+      return hasChanges ? { bots: updatedBots } : state;
+    });
   },
 
   recordBotTrade: (botId, trade, pnl) => {

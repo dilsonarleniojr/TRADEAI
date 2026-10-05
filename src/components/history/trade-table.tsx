@@ -143,7 +143,7 @@ export function TradeTable({ trades }: { trades: TradeData[] }) {
                 const isBuy = trade.side === "BUY";
 
                 // Strategy badge styling
-                let strategyBadge = null;
+                let strategyBadge: React.ReactNode = null;
                 if (trade.strategy === "AI") {
                   strategyBadge = (
                     <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-400 border-purple-500/30 flex items-center gap-1 w-fit">

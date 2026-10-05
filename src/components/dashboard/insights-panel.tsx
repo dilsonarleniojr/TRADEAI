@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatPercent, formatPrice } from "@/lib/format";
 import { CRYPTO_BY_SYMBOL } from "@/lib/crypto-meta";
+import { useShallow } from "zustand/react/shallow";
 
 interface Insight {
   id: string;
@@ -26,7 +27,9 @@ interface Insight {
 }
 
 export function InsightsPanel() {
-  const { portfolio, trades, tickers, selectedSymbol, botConfig } = useCryptoStore();
+  const { portfolio, trades, tickers, selectedSymbol, botConfig } = useCryptoStore(
+  useShallow((s) => ({ portfolio: s.portfolio, trades: s.trades, tickers: s.tickers, selectedSymbol: s.selectedSymbol, botConfig: s.botConfig }))
+);
 
   const insights = useMemo(() => {
     const list: Insight[] = [];

@@ -1,0 +1,317 @@
+// Motor de decisão de entrada. É o ÚNICO lugar que decide se um robô compra.
+// A frota (multi-bot-engine) e o painel "Motores" usam as mesmas funções,
+// então o que o painel mostra é exatamente o que o robô enxerga.
+
+import type { AISignalData, BotEntryCheck, BotInstance, KlineData, TickerData } from "@/lib/store";
+import {
+  averageVolume,
+  calculateBollinger,
+  calculateMACD,
+  calculateRSI,
+  emaSeries,
+  relativeATR,
+  calculateADX,
+} from "./indicators";
+import {
+  checkRelativeStrength,
+  ensembleDecision,
+  regimeFromADX,
+  ADX_RANGE,
+  ADX_TREND,
+  type MarketRegime,
+  type ModelVotes,
+  type QuantVote,
+  type StrengthCheck,
+} from "./quant-engine";
+import { getStrategy, VOLATILITY_VETO_LIMIT } from "./strategy-catalog";
+
+export const MIN_CANDLES = 25;
+
+export interface MarketAnalysis {
+  ready: boolean;
+  adx: number | null;
+  regime: MarketRegime;
+  relATR: number;
+  vetoed: boolean;
+  votes: ModelVotes;
+  voteDetails: { trend: string; momentum: string; flow: string };
+  committee: QuantVote;
+  strength: StrengthCheck;
+  rsi: number;
+}
+
+const DEFAULT_FAST = 9;
+const DEFAULT_SLOW = 21;
+
+/** Leitura completa do ativo: regime, risco, votos do comitê e força vs BTC. */
+export function analyzeMarket(
+  symbol: string,
+  ticker: TickerData,
+  btcTicker: TickerData | undefined,
+  klines: KlineData[],
+  params: { emaFast?: number; emaSlow?: number; rsiPeriod?: number } = {}
+): MarketAnalysis {
+  const strength = checkRelativeStrength(symbol, ticker, btcTicker);
+  const empty: MarketAnalysis = {
+    ready: false,
+    adx: null,
+    regime: "NEUTRAL",
+    relATR: 0,
+    vetoed: false,
+    votes: { trend: "HOLD", momentum: "HOLD", flow: "HOLD" },
+    voteDetails: { trend: "sem dados", momentum: "sem dados", flow: "sem dados" },
+    committee: "HOLD",
+    strength,
+    rsi: 50,
+  };
+  if (klines.length < MIN_CANDLES) return empty;
+
+  const closes = klines.map((k) => k.close);
+  const last = klines[klines.length - 1];
+  const prevCandle = klines.length >= 2 ? klines[klines.length - 2] : last;
+  const fastP = params.emaFast ?? DEFAULT_FAST;
+  const slowP = params.emaSlow ?? DEFAULT_SLOW;
+
+  const adx = calculateADX(klines, 14);
+  const atr = relativeATR(klines);
+  const rsi = calculateRSI(closes, params.rsiPeriod ?? 14);
+
+  // Tendência: EMA rápida vs lenta
+  const fast = emaSeries(closes, fastP);
+  const slow = emaSeries(closes, slowP);
+  const fastNow = fast[fast.length - 1];
+  const slowNow = slow[slow.length - 1];
+  const trend: QuantVote = fastNow > slowNow ? "BUY" : fastNow < slowNow ? "SELL" : "HOLD";
+
+  // Momentum: histograma MACD + RSI fora da sobrecompra extrema
+  const macd = calculateMACD(closes, 12, 26, 9);
+  const hist = macd?.histogram ?? 0;
+  const momentum: QuantVote = macd
+    ? hist > 0 && rsi < 72
+      ? "BUY"
+      : hist < 0
+        ? "SELL"
+        : "HOLD"
+    : "HOLD";
+
+  // Fluxo: avalia volume e direção considerando o candle fechado anterior e a formação atual
+  const avgVol = averageVolume(klines, 20, 1);
+  const prevStrong = avgVol > 0 && prevCandle.volume >= avgVol * 0.7 && prevCandle.close >= prevCandle.open;
+  const currentGreen = last.close >= last.open;
+  const currentVolumeGood = avgVol > 0 && last.volume >= avgVol * 0.35;
+  const flow: QuantVote = (prevStrong || (currentGreen && currentVolumeGood) || currentGreen) ? "BUY" : (last.close < last.open ? "SELL" : "HOLD");
+
+  const votes: ModelVotes = { trend, momentum, flow };
+
+  return {
+    ready: true,
+    adx,
+    regime: regimeFromADX(adx),
+    relATR: atr,
+    vetoed: atr >= VOLATILITY_VETO_LIMIT,
+    votes,
+    voteDetails: {
+      trend: `EMA${fastP} ${fastNow >= slowNow ? ">" : "<"} EMA${slowP}`,
+      momentum: macd ? `MACD ${hist >= 0 ? "+" : ""}${hist.toFixed(4)} · RSI ${rsi.toFixed(0)}` : "poucos candles",
+      flow: avgVol > 0 ? `Vol ${(last.volume / avgVol).toFixed(1)}× média · ${currentGreen ? "verde" : "vermelho"}` : "sem volume",
+    },
+    committee: ensembleDecision(votes),
+    strength,
+    rsi,
+  };
+}
+
+interface SignalResult {
+  ok: boolean;
+  detail: string;
+}
+
+/** Regra de compra da estratégia escolhida no robô (ver strategy-catalog.ts). */
+export function evaluateStrategySignal(
+  bot: Pick<
+    BotInstance,
+    "strategy" | "symbol" | "buyThreshold" | "rsiPeriod" | "emaFast" | "emaSlow" | "signalConfidenceThreshold"
+  >,
+  klines: KlineData[],
+  analysis: MarketAnalysis,
+  aiSignals: AISignalData[]
+): SignalResult {
+  const closes = klines.map((k) => k.close);
+  const last = klines[klines.length - 1];
+
+  switch (bot.strategy) {
+    case "QUANT_ENSEMBLE": {
+      const { votes } = analysis;
+      const buys = [votes.trend, votes.momentum, votes.flow].filter((v) => v === "BUY").length;
+      return { ok: analysis.committee === "BUY", detail: `${buys}/3 análises favoráveis (precisa de 2)` };
+    }
+
+    case "RSI": {
+      const period = bot.rsiPeriod || 14;
+      const rsi = calculateRSI(closes, period);
+      const limit = bot.buyThreshold || 35;
+      const isOversold = rsi <= limit;
+      const isRebound = rsi <= limit + 10 && last.close >= last.open;
+      const ok = isOversold || isRebound;
+      return {
+        ok,
+        detail: isOversold
+          ? `RSI(${period}) ${rsi.toFixed(1)} em sobrevenda (≤ ${limit})`
+          : isRebound
+            ? `RSI(${period}) ${rsi.toFixed(1)} com repique altista (≤ ${limit + 10})`
+            : `RSI(${period}) ${rsi.toFixed(1)} — aguarda sobrevenda (≤ ${limit}) ou repique`,
+      };
+    }
+
+    case "MACD": {
+      const macd = calculateMACD(closes, bot.emaFast || 12, bot.emaSlow || 26, 9);
+      if (!macd) return { ok: false, detail: "poucos candles para o MACD" };
+      const crossed = macd.prevHistogram <= 0 && macd.histogram > 0;
+      const bullishMomentum = macd.histogram > 0 && macd.macd >= macd.signal;
+      const ok = crossed || bullishMomentum;
+      return {
+        ok,
+        detail: crossed
+          ? "MACD cruzou para cima da linha de sinal"
+          : bullishMomentum
+            ? `Momento altista MACD (+${macd.histogram.toFixed(4)}) acima do sinal`
+            : `histograma ${macd.histogram >= 0 ? "+" : ""}${macd.histogram.toFixed(4)} — aguarda momento altista`,
+      };
+    }
+
+    case "BREAKOUT": {
+      const prev = klines.slice(-21, -1);
+      const resistance = Math.max(...prev.map((k) => k.high));
+      const avgVol = averageVolume(klines, 20, 1);
+      const volMult = avgVol > 0 ? last.volume / avgVol : 0;
+      const prevVolMult = avgVol > 0 && klines.length >= 2 ? klines[klines.length - 2].volume / avgVol : 0;
+      const broke = last.close >= resistance * 0.998;
+      const strong = volMult >= 0.7 || prevVolMult >= 1.0;
+      return {
+        ok: broke && strong,
+        detail: `${broke ? "rompimento de" : "abaixo da"} máxima de 20 candles de 1m · volume ${Math.max(volMult, prevVolMult).toFixed(1)}×`,
+      };
+    }
+
+    case "MEAN_REVERSION": {
+      const boll = calculateBollinger(closes, 20, 2);
+      if (!boll) return { ok: false, detail: "poucos candles para Bollinger" };
+      const inBuyZone = boll.percentB <= 0.25 || last.close <= boll.lower * 1.01;
+      return {
+        ok: inBuyZone,
+        detail: `posição na banda ${(boll.percentB * 100).toFixed(0)}% — zona inferior de compra (≤ 25%)`,
+      };
+    }
+
+    case "GRID": {
+      const window = klines.slice(-60);
+      const lo = Math.min(...window.map((k) => k.low));
+      const hi = Math.max(...window.map((k) => k.high));
+      const rangePct = lo > 0 ? ((hi - lo) / lo) * 100 : 0;
+      const pos = hi > lo ? (last.close - lo) / (hi - lo) : 0.5;
+      const sideways = rangePct <= 10;
+      const inBuyZone = pos <= 0.50;
+      return {
+        ok: sideways && inBuyZone,
+        detail: `faixa de 60 candles de 1m: ${rangePct.toFixed(1)}% ${sideways ? "(canal 1m válido)" : "(muito ampla > 10%)"} · preço em ${(pos * 100).toFixed(0)}% (compra ≤ 50%)`,
+      };
+    }
+
+    case "AI": {
+      const minConf = bot.signalConfidenceThreshold ?? 70; // em %
+      const signal = aiSignals.find((s) => s.symbol === bot.symbol);
+      if (!signal) return { ok: false, detail: "nenhum sinal da IA para este ativo" };
+      // O store guarda a confiança dos sinais em 0–1; aceita também 0–100 por segurança.
+      const confPct = signal.confidence <= 1 ? signal.confidence * 100 : signal.confidence;
+      const ok = signal.action === "BUY" && confPct >= minConf;
+      return { ok, detail: `IA: ${signal.action} com ${confPct.toFixed(0)}% de confiança (precisa de COMPRA ≥ ${minConf}%)` };
+    }
+
+    default:
+      return { ok: false, detail: `estratégia "${bot.strategy}" sem regra no motor` };
+  }
+}
+
+export interface EntryDecision {
+  shouldBuy: boolean;
+  /** Frase curta para o cartão do robô e para o log. */
+  reason: string;
+  checks: BotEntryCheck[];
+}
+
+/**
+ * Decisão final de entrada: sinal da estratégia + veto de volatilidade (sempre)
+ * + filtros opcionais do robô. Todo filtro só pode BLOQUEAR; nenhum força uma compra.
+ */
+export function evaluateEntry(
+  bot: BotInstance,
+  ticker: TickerData,
+  btcTicker: TickerData | undefined,
+  klines: KlineData[],
+  aiSignals: AISignalData[]
+): EntryDecision {
+  const analysis = analyzeMarket(bot.symbol, ticker, btcTicker, klines, {
+    emaFast: bot.emaFast,
+    emaSlow: bot.emaSlow,
+    rsiPeriod: bot.rsiPeriod,
+  });
+
+  if (!analysis.ready) {
+    const checks = [{ label: "Dados", ok: false, detail: `aguardando ${MIN_CANDLES} candles de 1m (tem ${klines.length})` }];
+    return { shouldBuy: false, reason: checks[0].detail, checks };
+  }
+
+  const checks: BotEntryCheck[] = [];
+
+  const signal = evaluateStrategySignal(bot, klines, analysis, aiSignals);
+  checks.push({ label: "Estratégia", ok: signal.ok, detail: signal.detail });
+
+  checks.push({
+    label: "Veto de volatilidade",
+    ok: !analysis.vetoed,
+    detail: `ATR ${(analysis.relATR * 100).toFixed(1)}% (bloqueia ≥ ${VOLATILITY_VETO_LIMIT * 100}%)`,
+  });
+
+  if (bot.useMarketRegime) {
+    const style = getStrategy(bot.strategy)?.style ?? "HYBRID";
+    const adx = analysis.adx;
+    const adxText = adx === null ? "ADX indisponível" : `ADX ${adx.toFixed(0)}`;
+    let ok = true;
+    if (adx !== null && style === "TREND") ok = adx >= 18;
+    if (adx !== null && style === "REVERSION") ok = adx <= 28;
+    checks.push({
+      label: "Regime",
+      ok,
+      detail:
+        style === "HYBRID"
+          ? `${adxText} (estratégia funciona em qualquer regime)`
+          : `${adxText} — estratégia de ${style === "TREND" ? `tendência precisa de ADX ≥ 18` : `reversão precisa de ADX ≤ 28`}`,
+    });
+  }
+
+  if (bot.useQuantFunnel) {
+    const s = analysis.strength;
+    checks.push({
+      label: "Força vs BTC",
+      ok: s.ok,
+      detail: s.liquid
+        ? `${s.relativeStrength >= 0 ? "+" : ""}${s.relativeStrength.toFixed(1)} p.p. vs BTC em 24h (precisa ≥ -2)`
+        : `volume 24h de US$ ${(s.volume24h / 1e6).toFixed(0)} mi (precisa ≥ 50 mi)`,
+    });
+  }
+
+  if (bot.useEnsemble && bot.strategy !== "QUANT_ENSEMBLE") {
+    checks.push({
+      label: "Comitê",
+      ok: analysis.committee === "BUY",
+      detail: `comitê: ${analysis.committee === "BUY" ? "COMPRA" : analysis.committee === "SELL" ? "VENDA" : "NEUTRO"} (precisa de 2/3)`,
+    });
+  }
+
+  const blocker = checks.find((c) => !c.ok);
+  return {
+    shouldBuy: !blocker,
+    reason: blocker ? `${blocker.label}: ${blocker.detail}` : `Entrada confirmada — ${signal.detail}`,
+    checks,
+  };
+}

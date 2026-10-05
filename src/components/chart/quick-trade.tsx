@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useShallow } from "zustand/react/shallow";
 
 export function QuickTrade() {
   const { 
@@ -21,14 +22,14 @@ export function QuickTrade() {
     tradingMode, 
     portfolio, 
     botConfig, 
-    binanceApiKey, 
-    binanceApiSecret, 
     binanceTestnet,
     scheduledOrders,
     addScheduledOrder,
     removeScheduledOrder,
     triggerScheduledOrder
-  } = useCryptoStore();
+  } = useCryptoStore(
+  useShallow((s) => ({ selectedSymbol: s.selectedSymbol, tickers: s.tickers, tradingMode: s.tradingMode, portfolio: s.portfolio, botConfig: s.botConfig, binanceTestnet: s.binanceTestnet, scheduledOrders: s.scheduledOrders, addScheduledOrder: s.addScheduledOrder, removeScheduledOrder: s.removeScheduledOrder, triggerScheduledOrder: s.triggerScheduledOrder }))
+);
   const [quantity, setQuantity] = useState("");
   const [lastTrade, setLastTrade] = useState<{ side: "BUY" | "SELL"; qty: number; price: number } | null>(null);
   const [sltpData, setSltpData] = useState<{ stopLoss: number; takeProfit: number; riskRewardRatio: number; recommendation: string } | null>(null);
@@ -66,9 +67,6 @@ export function QuickTrade() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "x-binance-api-key": binanceApiKey || "",
-              "x-binance-api-secret": binanceApiSecret || "",
-              "x-binance-testnet": binanceTestnet ? "true" : "false"
             },
             body: JSON.stringify({
               symbol: order.symbol,
@@ -133,7 +131,7 @@ export function QuickTrade() {
         }
       }
     });
-  }, [tickers, selectedSymbol, scheduledOrders, triggerScheduledOrder, binanceApiKey, binanceApiSecret, binanceTestnet, tradingMode, toast, ticker, currentPrice]);
+  }, [tickers, selectedSymbol, scheduledOrders, triggerScheduledOrder, tradingMode, toast, ticker, currentPrice]);
 
   const handleScheduleOrder = useCallback((side: "BUY" | "SELL") => {
     const trigger = parseFloat(triggerPrice);
@@ -182,9 +180,6 @@ export function QuickTrade() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-binance-api-key": binanceApiKey || "",
-          "x-binance-api-secret": binanceApiSecret || "",
-          "x-binance-testnet": binanceTestnet ? "true" : "false"
         },
         body: JSON.stringify({
           symbol: selectedSymbol,

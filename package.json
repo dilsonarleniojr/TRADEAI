@@ -13,6 +13,7 @@
     "db:reset": "prisma migrate reset"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -61,6 +62,7 @@
     "next-auth": "^4.24.11",
     "next-intl": "^4.3.4",
     "next-themes": "^0.4.6",
+    "openai": "^7.27.0",
     "prisma": "^6.11.1",
     "react": "^19.0.0",
     "react-day-picker": "^9.8.0",
