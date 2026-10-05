@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { askAIOnce, parseJsonLoose } from '@/lib/ai-client';
+import { askAI, parseJsonLoose } from '@/lib/ai-client';
+import { getProvider, AI_PROVIDERS, type AIProviderId } from '@/lib/ai/providers';
+import { getActiveProvidersList, getModel, resolveApiKey } from '@/lib/ai/settings';
 
 export interface AIBotRecommendation {
   id: string;
@@ -19,6 +21,10 @@ export interface AIBotRecommendation {
   marketRegime: "ALTA_FORTE" | "TENDENCIA_ALTA" | "LATERAL_ACUMULACAO" | "CORRECAO_SOBREVENDA" | "ALTA_VOLATILIDADE";
   technicalReasoning: string;
   riskRewardRatio: string;
+  // Identificação da IA de origem para permitir comparação e seleção
+  aiProvider: string; // "claude" | "gemini" | "openai" | "qwen" | "algorithmic_quant"
+  aiProviderName: string; // "Claude (Anthropic)" | "Google Gemini" | "OpenAI" | "Algoritmo Quant"
+  aiModel: string; // "claude-3-5-sonnet-latest" | "gemini-2.0-flash" | ...
 }
 
 // Moedas estáveis ou atreladas que NÃO devem ser operadas por robôs direcionais/volatilidade
@@ -90,7 +96,6 @@ export async function POST(request: NextRequest) {
       .sort((a, b) => b.volume - a.volume);
 
     // 3. Montar uma cesta balanceada e dinâmica de candidatos
-    // Sorteamos candidatos dos grupos para garantir que a cada "Recalcular" o usuário veja moedas diferentes
     const selectedSymbols = new Set<string>();
     const diversePool: typeof allValid = [];
 
@@ -110,7 +115,7 @@ export async function POST(request: NextRequest) {
     addFromList(volatile, 3);
     addFromList(blueChips, 3);
 
-    // Se o pool for pequeno (ex: dados iniciais ainda carregando), adicionar lista de fallback rica e variada
+    // Se o pool for pequeno, adicionar lista padrão rica
     if (diversePool.length < 4) {
       const defaultVaried = [
         { symbol: 'BTCUSDT', price: 65000, change24h: 1.8, volume: 1500000000, high: 66000, low: 64200 },
@@ -125,7 +130,7 @@ export async function POST(request: NextRequest) {
       diversePool.push(...defaultVaried.filter((d) => !selectedSymbols.has(d.symbol)));
     }
 
-    // 4. Montar resumo para o motor de IA
+    // 4. Montar resumo para as IAs
     const marketSummary = diversePool
       .slice(0, 10)
       .map((c) => `${c.symbol}: Preço $${c.price.toLocaleString()}, Variação 24h: ${c.change24h > 0 ? '+' : ''}${c.change24h.toFixed(2)}%, Vol 24h: $${(c.volume / 1e6).toFixed(1)}M`)
@@ -156,8 +161,8 @@ Responda APENAS com um array JSON com 6 objetos no formato:
     "name": "Nome descritivo e poderoso para o robô",
     "symbol": "SUIUSDT",
     "strategy": "BREAKOUT",
-    "allocationAmount": número em USDT,
-    "allocationPct": porcentagem do capital total,
+    "allocationAmount": 50,
+    "allocationPct": 5.0,
     "operationalTimeframe": "15m",
     "estimatedDuration": "Scalping Rápido (15-45 min)",
     "timeHorizonType": "SCALPING",
@@ -172,32 +177,107 @@ Responda APENAS com um array JSON com 6 objetos no formato:
   }
 ]`;
 
-    try {
-      const response = await askAIOnce(
-        'Você é um especialista em robôs de trading quantitativo. Responda apenas com JSON válido.',
-        prompt,
-        { maxTokens: 4000 }
-      );
+    // 5. Execução Multi-IA Simultânea (Paralela)
+    // Identificar os provedores ativos que possuem chaves configuradas
+    const activeProviderIds = getActiveProvidersList();
+    const providersToQuery: AIProviderId[] = activeProviderIds.filter((p) => !!resolveApiKey(p).key);
 
-      const parsed = parseJsonLoose<AIBotRecommendation[]>(response);
-      if (Array.isArray(parsed) && parsed.length >= 3) {
-        // Garantir que nenhuma stablecoin escapou
-        const validAiRecs = parsed.filter((rec) => isTradableCrypto(rec.symbol));
-        if (validAiRecs.length >= 3) {
-          const enriched = validAiRecs.map((item, idx) => ({
-            ...item,
-            id: `ai-rec-${Date.now()}-${idx}`,
-            allocationAmount: Math.max(10, Math.min(availableCash * 0.4, Number(item.allocationAmount) || 50)),
-          }));
-          return NextResponse.json({ success: true, recommendations: enriched, source: 'ai' });
+    // Se nenhum provedor ativo tiver chave, checar se algum outro configurado possui chave
+    if (providersToQuery.length === 0) {
+      for (const p of AI_PROVIDERS) {
+        if (resolveApiKey(p.id).key && !providersToQuery.includes(p.id)) {
+          providersToQuery.push(p.id);
         }
       }
-    } catch (aiErr: any) {
-      console.warn('[AI Bot Recommendations] IA externa indisponível ou sem chave. Acionando motor quantitativo algorítmico:', aiErr.message);
     }
 
-    // 5. Motor Quantitativo de Fallback — Diversificado, Dinâmico e Sem Stablecoins
-    // Selecionamos 6 moedas distintas de diferentes perfis para cobrir Scalping, Day Trade e Swing
+    const collectedRecommendations: AIBotRecommendation[] = [];
+    const queryResultsSummary: { id: string; name: string; model: string; count: number; error?: string }[] = [];
+
+    if (providersToQuery.length > 0) {
+      // Dispara consultas em paralelo usando Promise.allSettled
+      const queries = providersToQuery.map(async (providerId) => {
+        const pInfo = getProvider(providerId);
+        const pModel = getModel(providerId);
+        try {
+          const res = await askAI({
+            system: 'Você é um especialista em robôs de trading quantitativo. Responda apenas com array JSON válido, sem texto explicativo adicional.',
+            messages: [{ role: 'user', content: prompt }],
+            maxTokens: 4000,
+            provider: providerId,
+          });
+
+          const parsed = parseJsonLoose<any[]>(res.text);
+          if (Array.isArray(parsed) && parsed.length >= 2) {
+            const validRecs = parsed.filter((rec) => isTradableCrypto(rec.symbol));
+            if (validRecs.length > 0) {
+              const enriched: AIBotRecommendation[] = validRecs.map((item, idx) => {
+                const amount = Math.max(10, Math.min(availableCash * 0.4, Number(item.allocationAmount) || 50));
+                return {
+                  ...item,
+                  id: `rec-${providerId}-${Date.now()}-${idx}-${item.symbol}`,
+                  allocationAmount: amount,
+                  allocationPct: parseFloat(((amount / Math.max(1, availableCash)) * 100).toFixed(1)),
+                  aiProvider: providerId,
+                  aiProviderName: pInfo.name,
+                  aiModel: res.model || pModel,
+                };
+              });
+
+              return {
+                providerId,
+                name: pInfo.name,
+                model: res.model || pModel,
+                recs: enriched,
+              };
+            }
+          }
+          throw new Error('Resposta da IA não continha recomendações válidas.');
+        } catch (err: any) {
+          console.warn(`[AI Recommendations] Falha ao consultar ${pInfo.name} (${providerId}):`, err.message);
+          throw new Error(err.message || 'Erro de comunicação');
+        }
+      });
+
+      const settled = await Promise.allSettled(queries);
+
+      for (let i = 0; i < settled.length; i++) {
+        const provId = providersToQuery[i];
+        const pInfo = getProvider(provId);
+        const result = settled[i];
+
+        if (result.status === 'fulfilled') {
+          collectedRecommendations.push(...result.value.recs);
+          queryResultsSummary.push({
+            id: provId,
+            name: pInfo.name,
+            model: result.value.model,
+            count: result.value.recs.length,
+          });
+        } else {
+          queryResultsSummary.push({
+            id: provId,
+            name: pInfo.name,
+            model: getModel(provId),
+            count: 0,
+            error: result.reason?.message || 'Falha na requisição',
+          });
+        }
+      }
+    }
+
+    // Se pelo menos uma IA retornou recomendações, devolve as recomendações combinadas
+    if (collectedRecommendations.length > 0) {
+      return NextResponse.json({
+        success: true,
+        recommendations: collectedRecommendations,
+        source: 'ai_multi',
+        providers: queryResultsSummary,
+        multiAi: providersToQuery.length > 1,
+      });
+    }
+
+    // 6. Motor Quantitativo Algorítmico de Fallback (usado se nenhuma IA externa estiver acessível)
     const pickUnique = (list: typeof allValid, used: Set<string>, fallbackList: typeof allValid) => {
       const available = list.filter((c) => !used.has(c.symbol));
       if (available.length > 0) {
@@ -238,9 +318,7 @@ Responda APENAS com um array JSON com 6 objetos no formato:
       let allocAmount = Math.max(15, Math.min(400, Math.round(availableCash * 0.08)));
       let reasoning = "";
 
-      // Distribuir de forma variada e inteligente entre os cards
       if (idx === 0) {
-        // Perfil 1: Scalping de Rompimento / Alta Volatilidade
         strategy = "BREAKOUT";
         timeframe = "15m";
         estimatedDuration = "Scalping Rápido (15 a 45 min)";
@@ -252,7 +330,6 @@ Responda APENAS com um array JSON com 6 objetos no formato:
         allocAmount = Math.max(15, Math.round(availableCash * 0.06));
         reasoning = `Fluxo comprador e volatilidade em expansão em ${cleanSym} (${coin.change24h > 0 ? '+' : ''}${coin.change24h.toFixed(1)}% nas 24h). Rompimento de pivô em 15m ideal para captura rápida de momentum.`;
       } else if (idx === 1) {
-        // Perfil 2: Repique de Sobrevenda / Dip Hunter
         strategy = "RSI";
         timeframe = "15m";
         estimatedDuration = "Scalping em Fundo / Repique (30 a 90 min)";
@@ -264,7 +341,6 @@ Responda APENAS com um array JSON com 6 objetos no formato:
         allocAmount = Math.max(15, Math.round(availableCash * 0.07));
         reasoning = `${cleanSym} atingiu sobrevenda técnica no curto prazo (${coin.change24h.toFixed(1)}% nas 24h). Probabilidade elevada de reversão à média com risco assimétrico controlado.`;
       } else if (idx === 2) {
-        // Perfil 3: Day Trade de Momentum / Seguidor de Tendência
         strategy = "MACD";
         timeframe = "1h";
         estimatedDuration = "Day Trade de Momentum (2h a 6h)";
@@ -276,7 +352,6 @@ Responda APENAS com um array JSON com 6 objetos no formato:
         allocAmount = Math.max(20, Math.round(availableCash * 0.10));
         reasoning = `Cruzamento altista sustentado por volume em ${cleanSym}. Operação horária com relação risco/retorno favorável em continuação de tendência.`;
       } else if (idx === 3) {
-        // Perfil 4: Day Trade Quantitativo Multissinal
         strategy = "QUANT_ENSEMBLE";
         timeframe = "1h";
         estimatedDuration = "Day Trade Algorítmico (3h a 8h)";
@@ -288,7 +363,6 @@ Responda APENAS com um array JSON com 6 objetos no formato:
         allocAmount = Math.max(20, Math.round(availableCash * 0.10));
         reasoning = `Modelo de ensemble combinando fluxo de ordens e momentum em ${cleanSym}. Confluência de 4 indicadores técnicos apontando alta taxa de acerto.`;
       } else if (idx === 4) {
-        // Perfil 5: Grid de Intervalo / Swing
         strategy = "GRID";
         timeframe = "4h";
         estimatedDuration = "Grid Contínuo de Faixa (1 a 3 dias)";
@@ -300,7 +374,6 @@ Responda APENAS com um array JSON com 6 objetos no formato:
         allocAmount = Math.max(25, Math.round(availableCash * 0.12));
         reasoning = `${cleanSym} consolidando em canal lateral bem definido. Algoritmo de Grid escalona ordens para capturar lucros fracionados repetidos na oscilação.`;
       } else {
-        // Perfil 6: Swing de Médio Prazo
         strategy = "MEAN_REVERSION";
         timeframe = "4h";
         estimatedDuration = "Swing de Reversão (1 a 4 dias)";
@@ -331,6 +404,9 @@ Responda APENAS com um array JSON com 6 objetos no formato:
         marketRegime: regime,
         technicalReasoning: reasoning,
         riskRewardRatio: `${(tp / sl).toFixed(1)}:1`,
+        aiProvider: 'algorithmic_quant',
+        aiProviderName: 'Algoritmo Quant',
+        aiModel: 'Motor Matemático Interno',
       };
     });
 
@@ -338,6 +414,10 @@ Responda APENAS com um array JSON com 6 objetos no formato:
       success: true,
       recommendations: fallbackRecommendations,
       source: 'algorithmic_quant',
+      providers: queryResultsSummary.length > 0 ? queryResultsSummary : [
+        { id: 'algorithmic_quant', name: 'Algoritmo Quant', model: 'Motor Matemático Interno', count: fallbackRecommendations.length }
+      ],
+      multiAi: false,
     });
   } catch (error: any) {
     console.error('[AI Bot Recommendations] Erro geral:', error.message);

@@ -157,6 +157,14 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
                 {strategyName(bot.strategy)}
               </Badge>
 
+              {/* AI Engine Badge */}
+              {bot.aiEngine && (
+                <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-purple-500/30 text-purple-300 bg-purple-500/10 flex items-center gap-1">
+                  <Sparkles className="w-2.5 h-2.5 text-purple-400" />
+                  {bot.aiEngine}
+                </Badge>
+              )}
+
               {/* Allocation Amount */}
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-secondary/50 text-muted-foreground">
                 ${bot.allocationAmount} USDT
@@ -261,7 +269,7 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
                   {isProfit ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
                   <span>{isProfit ? "+" : ""}{gainPercent.toFixed(2)}%</span>
                   <span className="text-[10px] opacity-80">
-                    ({isProfit ? "+" : ""}${formatPrice(Math.abs(unrealizedPnlUsdt))})
+                    ({isProfit ? "+" : "-"}${Math.abs(unrealizedPnlUsdt).toFixed(2)})
                   </span>
                 </div>
               </div>
@@ -292,15 +300,27 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
                 <Progress value={tpProgress} className="h-1.5 bg-secondary/50" />
               </div>
 
-              {/* Quick Take Profit Button */}
+              {/* Quick Close / Take Profit / Stop Loss Button */}
               <Button
                 size="sm"
                 onClick={handleTakeProfitNow}
                 disabled={isClosing}
-                className="w-full h-7 text-xs font-semibold bg-gradient-to-r from-crypto-green to-emerald-500 hover:from-crypto-green/90 hover:to-emerald-500/90 text-white shadow-sm cursor-pointer"
+                className={`w-full h-7 text-xs font-semibold text-white shadow-sm cursor-pointer transition-colors ${
+                  isProfit
+                    ? "bg-gradient-to-r from-crypto-green to-emerald-500 hover:from-crypto-green/90 hover:to-emerald-500/90"
+                    : "bg-gradient-to-r from-crypto-red to-rose-600 hover:from-crypto-red/90 hover:to-rose-600/90"
+                }`}
               >
-                <Sparkles className="w-3 h-3 mr-1" />
-                {isClosing ? "Executando..." : `Realizar Lucro Agora (${isProfit ? "+" : ""}$${formatPrice(Math.abs(unrealizedPnlUsdt))})`}
+                {isProfit ? (
+                  <Sparkles className="w-3 h-3 mr-1" />
+                ) : (
+                  <TrendingDown className="w-3 h-3 mr-1" />
+                )}
+                {isClosing
+                  ? "Executando..."
+                  : isProfit
+                    ? `Realizar Lucro Agora (+$${Math.abs(unrealizedPnlUsdt).toFixed(2)})`
+                    : `Realizar Prejuízo Agora (-$${Math.abs(unrealizedPnlUsdt).toFixed(2)})`}
               </Button>
             </motion.div>
           ) : bot.active ? (

@@ -128,6 +128,9 @@ export interface BotInstance {
   // Active position held by this bot
   position?: BotPosition | null;
 
+  // AI provenance
+  aiEngine?: string;
+
   // Real-time statistics
   stats: BotStats;
   createdAt: string;

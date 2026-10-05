@@ -91,7 +91,7 @@ class RealTimeSyncManagerImpl {
     store.incrementPollingFailures();
 
     const failures = store.pollingFailures + 1; // incrementPollingFailures is async
-    if (failures >= this.maxPollingFailures) {
+    if (failures >= this.maxPollingFailures && store.connectionStatus !== "connected") {
       console.warn(`[SyncManager] ${failures} polling failures → offline mode`);
       store.setConnectionStatus("disconnected");
     }

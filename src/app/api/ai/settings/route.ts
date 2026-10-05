@@ -37,6 +37,12 @@ export async function PUT(request: NextRequest) {
     }
     update.apiKey = body.apiKey;
   }
+  if (Array.isArray(body.activeProviders)) {
+    update.activeProviders = body.activeProviders.filter(isProviderId);
+  }
+  if (typeof body.multiAiEnabled === "boolean") {
+    update.multiAiEnabled = body.multiAiEnabled;
+  }
   if (body.clearKey === true) update.clearKey = true;
 
   try {

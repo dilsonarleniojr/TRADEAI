@@ -172,8 +172,12 @@ async function downloadForward(
  */
 export async function backfill(symbol: string, interval: Interval, days: number): Promise<BackfillResult> {
   const step = INTERVAL_MS[interval];
-  const wantedFrom = Math.floor((Date.now() - days * 86_400_000) / step) * step;
   const budget = MAX_CANDLES_PER_SYMBOL;
+  // Limita o alcance inicial à capacidade máxima para garantir que os candles mais recentes até hoje sejam baixados
+  const maxSpanMs = budget * step;
+  const requestedSpanMs = days * 86_400_000;
+  const actualSpanMs = Math.min(requestedSpanMs, maxSpanMs);
+  const wantedFrom = Math.floor((Date.now() - actualSpanMs) / step) * step;
   let fetched = 0;
 
   try {

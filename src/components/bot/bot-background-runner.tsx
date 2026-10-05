@@ -60,10 +60,12 @@ export function BotBackgroundRunner() {
       const s = useBackgroundSettings.getState();
 
       if (s.hiddenSince !== null) {
-        const allowed = s.enabled;
-        const expired = allowed && Date.now() - s.hiddenSince >= s.limitMinutes * 60_000;
+        // Se houver qualquer posição aberta (especialmente real), NUNCA abandona o monitoramento para proteger o capital
+        const hasOpen = useCryptoStore.getState().bots.some((b) => b.active && !!b.position && b.position.quantity > 0);
+        const allowed = s.enabled || hasOpen;
+        const expired = s.enabled && Date.now() - s.hiddenSince >= s.limitMinutes * 60_000;
         if (!allowed) return; // background execution disabled: wait until user returns
-        if (expired) {
+        if (expired && !hasOpen) {
           useCryptoStore.getState().toggleAllBots(false);
           s.setExpiredNotice(true);
           return;

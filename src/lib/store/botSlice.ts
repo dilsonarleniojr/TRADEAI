@@ -242,6 +242,7 @@ export const createBotSlice: StateCreator<
       useQuantFunnel: botData.useQuantFunnel ?? false,
       useMarketRegime: botData.useMarketRegime ?? true,
       useEnsemble: botData.useEnsemble ?? false,
+      aiEngine: botData.aiEngine,
       position: null,
       stats: {
         totalTrades: 0,

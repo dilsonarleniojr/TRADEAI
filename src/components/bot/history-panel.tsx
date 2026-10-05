@@ -29,9 +29,9 @@ interface BackfillRow {
   error?: string;
 }
 
-const DAY_OPTIONS = [30, 90, 180, 365];
+const DAY_OPTIONS = [1, 3, 7, 15, 30, 90, 180, 365];
 const MAX_SYMBOLS = 25; // limite da API /api/market/history
-const INTERVAL_OPTIONS = ["15m", "1h", "4h", "1d"];
+const INTERVAL_OPTIONS = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"];
 
 const fmtDate = (ms: number) => new Date(ms).toLocaleDateString("pt-BR");
 
@@ -42,8 +42,8 @@ export function HistoryPanel() {
   );
   const { toast } = useToast();
 
-  const [days, setDays] = useState("90");
-  const [interval, setInterval_] = useState("1h");
+  const [days, setDays] = useState("7");
+  const [interval, setInterval_] = useState("1m");
   const [loading, setLoading] = useState(false);
   const [coverage, setCoverage] = useState<CoverageRow[]>([]);
 
@@ -132,8 +132,7 @@ export function HistoryPanel() {
           Histórico de candles (Binance)
         </CardTitle>
         <p className="text-[11px] text-muted-foreground">
-          Escolha as moedas, o intervalo e o período, e os candles passados ficam guardados no banco local. O motor, o otimizador e as leituras de
-          mercado passam a usar até 500 candles de 1h em vez de 100. Candles já baixados não são baixados de novo.
+          Escolha as moedas, o intervalo (incluindo velas rápidas de 1m para estratégias de alta frequência) e o período. O histórico fica guardado no banco local para o motor dos robôs e análises técnicas. Candles já baixados não são baixados de novo.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -222,14 +221,22 @@ export function HistoryPanel() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <Select value={interval} onValueChange={setInterval_}>
-            <SelectTrigger className="h-8 w-[90px] text-xs">
+          <Select
+            value={interval}
+            onValueChange={(val) => {
+              setInterval_(val);
+              if ((val === "1m" || val === "5m") && Number(days) > 30) {
+                setDays("7");
+              }
+            }}
+          >
+            <SelectTrigger className="h-8 w-[95px] text-xs font-semibold">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {INTERVAL_OPTIONS.map((i) => (
-                <SelectItem key={i} value={i}>
-                  {i}
+                <SelectItem key={i} value={i} className="text-xs font-medium">
+                  {i} {i === "1m" ? "(Robôs)" : ""}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -241,7 +248,7 @@ export function HistoryPanel() {
             <SelectContent>
               {DAY_OPTIONS.map((d) => (
                 <SelectItem key={d} value={String(d)}>
-                  Últimos {d} dias
+                  Últimos {d} dia{d === 1 ? "" : "s"}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -255,7 +262,9 @@ export function HistoryPanel() {
             {loading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Download className="w-3.5 h-3.5 mr-1.5" />}
             {loading ? "Baixando..." : `Baixar histórico (${symbols.length} moeda${symbols.length === 1 ? "" : "s"})`}
           </Button>
-          <span className="text-[10px] text-muted-foreground">O motor dos robôs usa candles de 1h.</span>
+          <span className="text-[10px] text-muted-foreground">
+            O motor dos robôs opera com candles de 1m para entradas rápidas e alta precisão.
+          </span>
         </div>
 
         {coverage.length > 0 ? (
@@ -274,7 +283,17 @@ export function HistoryPanel() {
                 {coverage.map((r) => (
                   <tr key={`${r.symbol}-${r.interval}`} className="border-t border-border/20">
                     <td className="px-2.5 py-1 font-semibold">{r.symbol.replace("USDT", "/USDT")}</td>
-                    <td className="px-2.5 py-1">{r.interval}</td>
+                    <td className="px-2.5 py-1">
+                      <span
+                        className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          r.interval === "1m"
+                            ? "bg-crypto-cyan/20 text-crypto-cyan border border-crypto-cyan/30"
+                            : "bg-secondary/40 text-foreground"
+                        }`}
+                      >
+                        {r.interval}
+                      </span>
+                    </td>
                     <td className="px-2.5 py-1 text-right font-mono">{r.total.toLocaleString("pt-BR")}</td>
                     <td className="px-2.5 py-1 text-right text-muted-foreground">
                       {fmtDate(r.from)} → {fmtDate(r.to)}

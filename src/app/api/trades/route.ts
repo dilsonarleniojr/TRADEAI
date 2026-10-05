@@ -88,9 +88,53 @@ async function executeBinanceOrder(
   const timestamp = Date.now();
 
   if (side === "BUY") {
-    // For MARKET BUY, prefer quoteOrderQty (USDT amount) to naturally satisfy NOTIONAL & LOT_SIZE
+    // 1. Verificar saldo Spot livre da moeda de cotação (ex: USDT) na Binance
+    const quoteAsset = symbol.endsWith("USDT") ? "USDT" : symbol.endsWith("USDC") ? "USDC" : "USDT";
+    let freeQuote = -1;
+    let lockedQuote = 0;
+    try {
+      const accQuery = `omitZeroBalances=true&timestamp=${Date.now()}&recvWindow=60000`;
+      const accSig = crypto.createHmac('sha256', apiSecret).update(accQuery).digest('hex');
+      const accRes = await fetch(`${baseUrl}/api/v3/account?${accQuery}&signature=${accSig}`, {
+        headers: { 'X-MBX-APIKEY': apiKey },
+      });
+      if (accRes.ok) {
+        const accData = await accRes.json();
+        const qBal = accData.balances?.find((b: any) => b.asset === quoteAsset);
+        if (qBal) {
+          freeQuote = parseFloat(qBal.free) || 0;
+          lockedQuote = parseFloat(qBal.locked) || 0;
+        }
+      } else {
+        const errText = await accRes.text().catch(() => '');
+        console.warn('[Trades API] Pre-buy account check failed:', accRes.status, errText);
+      }
+    } catch (e: any) {
+      console.warn('[Trades API] Pre-buy account check warning:', e.message);
+    }
+
     const desiredTotal = totalVal || (currentPrice > 0 ? quantity * currentPrice : 10.0);
-    const finalSpend = Math.max(minNotional * 1.05, desiredTotal);
+    let finalSpend = Math.max(minNotional * 1.05, desiredTotal);
+
+    // Se conseguimos ler o saldo Spot da Binance:
+    if (freeQuote >= 0) {
+      if (freeQuote < minNotional) {
+        if (lockedQuote > 0 && freeQuote + lockedQuote >= minNotional) {
+          throw new Error(
+            `Saldo livre de ${quoteAsset} na Carteira Spot da Binance é de $${freeQuote.toFixed(2)} ($${lockedQuote.toFixed(2)} está travado em ordens abertas). Cancele ordens em aberto na Binance para liberar margem.`
+          );
+        }
+        throw new Error(
+          `Saldo livre na Carteira Spot da Binance é de apenas $${freeQuote.toFixed(2)} ${quoteAsset}, inferior ao mínimo para compra ($${minNotional.toFixed(2)} ${quoteAsset}). Se você possui USDT na Binance, certifique-se de transferi-los da Carteira de 'Fundos' (Funding) ou 'Earn/Ganhos' para a Carteira 'Spot'.`
+        );
+      }
+
+      // IMPORTANTE: Deixar sempre margem de segurança (mínimo 2%) para taxas e buffer de oscilação a mercado da Binance
+      const maxSpendable = parseFloat((freeQuote * 0.98).toFixed(2));
+      if (finalSpend > maxSpendable) {
+        finalSpend = Math.max(minNotional * 1.05, maxSpendable);
+      }
+    }
 
     if (quoteOrderQtyAllowed) {
       const quoteClean = finalSpend.toFixed(2);
@@ -107,7 +151,7 @@ async function executeBinanceOrder(
     // For MARKET SELL: Verify available base asset balance on Binance
     const baseAsset = symbol.replace(/USDT$|BUSD$|USDC$/, "");
     try {
-      const accQuery = `timestamp=${Date.now()}&recvWindow=60000`;
+      const accQuery = `omitZeroBalances=true&timestamp=${Date.now()}&recvWindow=60000`;
       const accSig = crypto.createHmac('sha256', apiSecret).update(accQuery).digest('hex');
       const accRes = await fetch(`${baseUrl}/api/v3/account?${accQuery}&signature=${accSig}`, {
         headers: { 'X-MBX-APIKEY': apiKey },
@@ -168,7 +212,7 @@ async function executeBinanceOrder(
     try {
       const errJson = JSON.parse(errorText);
       if (errJson.code === -2010) {
-        errorMsg = "Saldo insuficiente na sua conta da Binance para executar a ordem.";
+        errorMsg = "Saldo insuficiente na Carteira Spot da Binance. Na Binance, o saldo para robôs precisa estar na Carteira 'Spot' (Fiat e Spot). Se seus USDT estiverem na Carteira de 'Fundos' (Funding) ou no 'Simple Earn' (Ganhos), faça uma transferência interna gratuita para a Carteira 'Spot' na Binance.";
       } else if (errJson.code === -1013) {
         errorMsg = `Ordem rejeitada pela Binance: ${errJson.msg || 'Filtro NOTIONAL ou LOT_SIZE violado'}. O valor mínimo por ordem é $${minNotional} USDT.`;
       } else if (errJson.code === -2015) {
