@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
 // Custom tooltip for P&L chart
 function PnLTooltip({
@@ -78,7 +79,9 @@ function VolumeTooltip({
 }
 
 export function BotPerformanceChart() {
-  const { trades } = useCryptoStore();
+  const { trades } = useCryptoStore(
+  useShallow((s) => ({ trades: s.trades }))
+);
 
   // Calculate data from trades
   const { pnlOverTime, winLossData, volumeByHour, stats } = useMemo(() => {

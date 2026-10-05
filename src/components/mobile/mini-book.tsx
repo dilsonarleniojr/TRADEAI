@@ -9,6 +9,7 @@ import { OrderBook } from "@/components/chart/order-book";
 import { BookOpen, ChevronRight, BarChart2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { getOrFetch, CACHE_TTL } from "@/lib/cache";
+import { useShallow } from "zustand/react/shallow";
 
 interface OrderBookLevel {
   price: number;
@@ -52,7 +53,9 @@ async function fetchMiniBookData(symbol: string): Promise<MiniBookData> {
 }
 
 export function MiniBook() {
-  const { selectedSymbol, tickers } = useCryptoStore();
+  const { selectedSymbol, tickers } = useCryptoStore(
+  useShallow((s) => ({ selectedSymbol: s.selectedSymbol, tickers: s.tickers }))
+);
   const [open, setOpen] = useState(false);
   const [bookData, setBookData] = useState<MiniBookData | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);

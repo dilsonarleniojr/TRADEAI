@@ -28,9 +28,12 @@ import {
   Layers,
   Activity,
   Grid,
+  RotateCcw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
+import { strategyName } from "@/lib/bot/strategy-catalog";
 
 interface BotCardProps {
   bot: BotInstance;
@@ -38,7 +41,9 @@ interface BotCardProps {
 }
 
 export function BotCard({ bot, onEdit }: BotCardProps) {
-  const { toggleBotActive, removeBot, tickers } = useCryptoStore();
+  const { toggleBotActive, removeBot, resetBotStats, tickers, tradingMode } = useCryptoStore(
+  useShallow((s) => ({ toggleBotActive: s.toggleBotActive, removeBot: s.removeBot, resetBotStats: s.resetBotStats, tickers: s.tickers, tradingMode: s.tradingMode }))
+);
   const { toast } = useToast();
   const [isClosing, setIsClosing] = useState(false);
   const [isOpening, setIsOpening] = useState(false);
@@ -149,13 +154,27 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
               {/* Strategy Badge */}
               <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-border/60 bg-secondary/20 flex items-center gap-1">
                 {getStrategyIcon(bot.strategy)}
-                {bot.strategy}
+                {strategyName(bot.strategy)}
               </Badge>
 
               {/* Allocation Amount */}
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-secondary/50 text-muted-foreground">
                 ${bot.allocationAmount} USDT
               </Badge>
+
+              {/* Position Mode Badge */}
+              {hasPosition && (
+                <Badge
+                  variant="outline"
+                  className={`text-[9px] px-1.5 py-0 font-bold ${
+                    bot.position?.mode === "live"
+                      ? "border-emerald-500/50 text-emerald-400 bg-emerald-500/10"
+                      : "border-cyan-500/50 text-cyan-400 bg-cyan-500/10"
+                  }`}
+                >
+                  {bot.position?.mode === "live" ? "REAL (BINANCE)" : "SIMULADO"}
+                </Badge>
+              )}
             </div>
           </div>
 
@@ -183,6 +202,24 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
               title="Configurar Parâmetros de Lucro"
             >
               <Settings className="w-3.5 h-3.5" />
+            </Button>
+
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-muted-foreground hover:text-amber-400 hover:bg-amber-400/10 cursor-pointer"
+              onClick={() => {
+                if (confirm(`Deseja zerar as métricas do ${bot.name}?`)) {
+                  resetBotStats(bot.id);
+                  toast({
+                    title: "Métricas Zeradas",
+                    description: `As métricas do ${bot.name} foram reiniciadas com sucesso.`,
+                  });
+                }
+              }}
+              title="Zerar métricas deste robô"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
             </Button>
 
             <Button
@@ -291,6 +328,25 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
                 <Clock className="w-3.5 h-3.5 text-crypto-cyan shrink-0 animate-spin" style={{ animationDuration: "6s" }} />
                 <span className="truncate">{bot.stats.lastAction || "Analisando volatilidade e ponto ideal de entrada..."}</span>
               </div>
+
+              {/* Por que o robô ainda não comprou: cada verificação do motor */}
+              {bot.stats.entryChecks && bot.stats.entryChecks.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {bot.stats.entryChecks.map((c) => (
+                    <span
+                      key={c.label}
+                      title={c.detail}
+                      className={`text-[9px] px-1.5 py-0.5 rounded border ${
+                        c.ok
+                          ? "border-crypto-green/30 bg-crypto-green/10 text-crypto-green"
+                          : "border-crypto-red/30 bg-crypto-red/10 text-crypto-red"
+                      }`}
+                    >
+                      {c.ok ? "✓" : "✕"} {c.label}
+                    </span>
+                  ))}
+                </div>
+              )}
 
               {/* Instant Manual Entry Trigger Button */}
               <Button

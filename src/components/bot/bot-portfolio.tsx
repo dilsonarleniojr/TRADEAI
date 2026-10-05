@@ -29,6 +29,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
+import { useShallow } from "zustand/react/shallow";
 
 interface PortfolioHistoryPoint {
   time: string;
@@ -36,7 +37,9 @@ interface PortfolioHistoryPoint {
 }
 
 export function BotPortfolio() {
-  const { portfolio, botConfig, trades, botActive, tickers } = useCryptoStore();
+  const { portfolio, botConfig, trades, botActive, tickers } = useCryptoStore(
+  useShallow((s) => ({ portfolio: s.portfolio, botConfig: s.botConfig, trades: s.trades, botActive: s.botActive, tickers: s.tickers }))
+);
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioHistoryPoint[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const { toast } = useToast();
@@ -62,13 +65,7 @@ export function BotPortfolio() {
     try {
       const state = useCryptoStore.getState();
       const mode = state.tradingMode;
-      const res = await fetch(`/api/account?mode=${mode}`, {
-        headers: {
-          'x-binance-api-key': state.binanceApiKey || '',
-          'x-binance-api-secret': state.binanceApiSecret || '',
-          'x-binance-testnet': state.binanceTestnet ? 'true' : 'false'
-        }
-      });
+      const res = await fetch(`/api/account?mode=${mode}`);
       const result = await res.json();
       if (res.ok && result.success && result.data) {
         state.setAccount(result.data);

@@ -10,10 +10,13 @@ import { Badge } from "@/components/ui/badge";
 import { Calculator, Target, Layers, DollarSign, Percent, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
 /* ─── Position Size Tab ─── */
 function PositionSizeTab() {
-  const { tickers, selectedSymbol } = useCryptoStore();
+  const { tickers, selectedSymbol } = useCryptoStore(
+  useShallow((s) => ({ tickers: s.tickers, selectedSymbol: s.selectedSymbol }))
+);
   const currentPrice = tickers[selectedSymbol]?.price ?? 0;
 
   const [balance, setBalance] = useState<string>("10000");
@@ -130,7 +133,9 @@ function PositionSizeTab() {
 
 /* ─── Risk/Reward Tab ─── */
 function RiskRewardTab() {
-  const { tickers, selectedSymbol } = useCryptoStore();
+  const { tickers, selectedSymbol } = useCryptoStore(
+  useShallow((s) => ({ tickers: s.tickers, selectedSymbol: s.selectedSymbol }))
+);
   const currentPrice = tickers[selectedSymbol]?.price ?? 0;
 
   const [entryPrice, setEntryPrice] = useState<string>(currentPrice ? String(currentPrice) : "0");
@@ -304,7 +309,9 @@ interface DCAOrder {
 }
 
 function DCACalculatorTab() {
-  const { tickers, selectedSymbol } = useCryptoStore();
+  const { tickers, selectedSymbol } = useCryptoStore(
+  useShallow((s) => ({ tickers: s.tickers, selectedSymbol: s.selectedSymbol }))
+);
   const currentPrice = tickers[selectedSymbol]?.price ?? 0;
 
   const [investmentAmount, setInvestmentAmount] = useState<string>("500");

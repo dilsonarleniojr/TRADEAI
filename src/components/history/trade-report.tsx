@@ -18,6 +18,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
 interface ReportData {
   totalTrades: number;
@@ -33,7 +34,9 @@ interface ReportData {
 }
 
 export function TradeReport() {
-  const { trades, botActive, portfolio } = useCryptoStore();
+  const { trades, botActive, portfolio } = useCryptoStore(
+  useShallow((s) => ({ trades: s.trades, botActive: s.botActive, portfolio: s.portfolio }))
+);
   const [showReport, setShowReport] = useState(false);
   const [report, setReport] = useState<ReportData | null>(null);
 

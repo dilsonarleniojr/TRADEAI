@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
 interface SLTPData {
   symbol: string;
@@ -41,7 +42,9 @@ interface SLTPData {
 }
 
 export function SLTPCalculator() {
-  const { selectedSymbol, tickers } = useCryptoStore();
+  const { selectedSymbol, tickers } = useCryptoStore(
+  useShallow((s) => ({ selectedSymbol: s.selectedSymbol, tickers: s.tickers }))
+);
   const [data, setData] = useState<SLTPData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { motion, AnimatePresence } from "framer-motion";
 import { Flame, Clock, ArrowUpDown, Info } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 
 interface FundingData {
   symbol: string;
@@ -117,7 +118,9 @@ type SortField = "fundingRate" | "openInterest" | "lsRatio";
 type SortDir = "asc" | "desc";
 
 export function FundingRates() {
-  const { tickers } = useCryptoStore();
+  const { tickers } = useCryptoStore(
+  useShallow((s) => ({ tickers: s.tickers }))
+);
   const [sortField, setSortField] = useState<SortField>("fundingRate");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 

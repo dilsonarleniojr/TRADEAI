@@ -8,9 +8,12 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from 
 import { PortfolioPro } from "@/components/dashboard/portfolio-pro";
 import { Wallet, ChevronRight, Briefcase } from "lucide-react";
 import { motion } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
 export function MiniPortfolio() {
-  const { portfolio } = useCryptoStore();
+  const { portfolio } = useCryptoStore(
+  useShallow((s) => ({ portfolio: s.portfolio }))
+);
   const [open, setOpen] = useState(false);
   const isPositive = portfolio.pnl >= 0;
 

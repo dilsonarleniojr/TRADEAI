@@ -7,6 +7,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { Gauge, TrendingUp, TrendingDown, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
 // Seeded pseudo-random number generator for deterministic values
 function seededRandom(seed: number) {
@@ -59,7 +60,7 @@ function computeFearGreedIndex(tickers: Record<string, import("@/lib/store").Tic
 
 // Generate 7-day history data
 function generateHistory(currentValue: number) {
-  const history = [];
+  const history: { day: string; value: number; label: string; color: string }[] = [];
   const daySeed = Math.floor(Date.now() / 86400000);
 
   for (let i = 6; i >= 0; i--) {
@@ -94,7 +95,9 @@ function getFgColor(value: number): string {
 }
 
 export function FearGreedIndex() {
-  const { tickers } = useCryptoStore();
+  const { tickers } = useCryptoStore(
+  useShallow((s) => ({ tickers: s.tickers }))
+);
 
   const fearGreed = useMemo(() => computeFearGreedIndex(tickers), [tickers]);
   const history = useMemo(() => generateHistory(fearGreed.value), [fearGreed.value]);

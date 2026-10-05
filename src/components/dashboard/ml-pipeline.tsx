@@ -57,6 +57,7 @@ import {
   type MLPipelineResult,
   type KlinePoint,
 } from "@/lib/ml/engine";
+import { useShallow } from "zustand/react/shallow";
 
 const FEATURE_LABELS: Record<string, string> = {
   rsi: "RSI (14)",
@@ -84,7 +85,9 @@ interface KlineRaw {
 }
 
 export function MLPipeline() {
-  const { selectedSymbol, tickers } = useCryptoStore();
+  const { selectedSymbol, tickers } = useCryptoStore(
+  useShallow((s) => ({ selectedSymbol: s.selectedSymbol, tickers: s.tickers }))
+);
   const [config, setConfig] = useState<TrainingConfig>({
     ...DEFAULT_CONFIG,
     features: [...DEFAULT_CONFIG.features],

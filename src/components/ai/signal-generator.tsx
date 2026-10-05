@@ -19,6 +19,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useShallow } from "zustand/react/shallow";
 
 interface SignalResult {
   action: 'BUY' | 'SELL' | 'HOLD';
@@ -104,7 +105,9 @@ function getEstimateSeconds(symbol: string, uptime: number): number {
 }
 
 export function SignalGenerator() {
-  const { selectedSymbol, tickers, addAiSignal } = useCryptoStore();
+  const { selectedSymbol, tickers, addAiSignal } = useCryptoStore(
+  useShallow((s) => ({ selectedSymbol: s.selectedSymbol, tickers: s.tickers, addAiSignal: s.addAiSignal }))
+);
   const [signal, setSignal] = useState<SignalResult | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);

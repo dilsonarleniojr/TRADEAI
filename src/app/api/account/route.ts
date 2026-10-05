@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { getBinanceCredentials } from '@/lib/binance-session';
+import crypto from 'crypto';
 
 const BINANCE_SERVICE = 'http://localhost:3001';
 
@@ -11,7 +13,20 @@ interface PositionCalc {
   realizedPnl: number;
 }
 
-import crypto from 'crypto';
+interface PositionOut {
+  symbol: string;
+  quantity: number;
+  avgPrice: number;
+  marketPrice: number;
+  marketValue: number;
+  unrealizedPnl: number;
+  realizedPnl: number;
+  /** false quando não há histórico de compra no app (preço médio desconhecido). */
+  costKnown: boolean;
+}
+
+// Posições abaixo deste valor (poeira de taxas/arredondamento) não aparecem na lista, mas entram no total.
+const DUST_USD = 0.5;
 
 async function fetchBinanceAccount(apiKey: string, apiSecret: string, testnet: boolean) {
   if (!apiKey || !apiSecret) {
@@ -19,7 +34,8 @@ async function fetchBinanceAccount(apiKey: string, apiSecret: string, testnet: b
   }
 
   const timestamp = Date.now();
-  const queryString = `timestamp=${timestamp}&recvWindow=60000`;
+  // omitZeroBalances: devolve só os ativos com saldo
+  const queryString = `omitZeroBalances=true&timestamp=${timestamp}&recvWindow=60000`;
   const signature = crypto
     .createHmac('sha256', apiSecret)
     .update(queryString)
@@ -34,6 +50,7 @@ async function fetchBinanceAccount(apiKey: string, apiSecret: string, testnet: b
     headers: {
       'X-MBX-APIKEY': apiKey,
     },
+    cache: 'no-store',
   });
 
   if (!response.ok) {
@@ -44,205 +61,89 @@ async function fetchBinanceAccount(apiKey: string, apiSecret: string, testnet: b
   return await response.json();
 }
 
-export async function GET(request: NextRequest) {
+/** Preço de todos os pares: microserviço local; se falhar, direto da Binance. */
+async function fetchAllPrices(testnet: boolean): Promise<Record<string, number>> {
+  const prices: Record<string, number> = {};
   try {
-    const mode = request.nextUrl.searchParams.get('mode') || 'paper';
-    
-    // Extract headers for Binance API
-    const binanceApiKey = request.headers.get('x-binance-api-key') || process.env.BINANCE_API_KEY?.replace(/['"]/g, '');
-    const binanceApiSecret = request.headers.get('x-binance-api-secret') || process.env.BINANCE_API_SECRET?.replace(/['"]/g, '');
-    const binanceTestnetStr = request.headers.get('x-binance-testnet');
-    const isTestnet = binanceTestnetStr ? binanceTestnetStr === 'true' : (process.env.APP_ENV !== 'production');
-
-    // 1. Fetch or create default account in a transaction
-    let account = await db.account.findFirst();
-    if (!account) {
-      try {
-        account = await db.account.create({
-          data: {
-            id: "user-account",
-            userId: "binance_live_user",
-            cashBalance: 10000.0,
-            assetQuantity: 0.0,
-            symbol: "BTCUSDT",
-          },
-        });
-      } catch (createError: any) {
-        console.warn('[Account API] Concurrency conflict during account creation, refetching:', createError.message);
-        account = await db.account.findFirst();
-        if (!account) {
-          throw createError;
-        }
+    const res = await fetch(`${BINANCE_SERVICE}/api/market/ticker`, { signal: AbortSignal.timeout(2000) });
+    if (res.ok) {
+      const result = await res.json();
+      if (Array.isArray(result.data)) {
+        for (const item of result.data) prices[item.symbol] = parseFloat(item.lastPrice);
       }
     }
-
-    if (!account) {
-      return NextResponse.json({ success: false, error: 'Account not found' }, { status: 404 });
-    }
-
-    // If live mode, fetch real balance from Binance and override
-    if (mode === 'live') {
-      try {
-        const binanceAcc = await fetchBinanceAccount(binanceApiKey || '', binanceApiSecret || '', isTestnet);
-        const usdtBalance = binanceAcc.balances.find((b: any) => b.asset === 'USDT');
-        const cashBalance = usdtBalance ? parseFloat(usdtBalance.free) + parseFloat(usdtBalance.locked) : 0.0;
-        
-        const activeSymbol = account?.symbol || 'BTCUSDT';
-        const baseAsset = activeSymbol.replace('USDT', '');
-        const assetObj = binanceAcc.balances.find((b: any) => b.asset === baseAsset);
-        const assetQuantity = assetObj ? parseFloat(assetObj.free) + parseFloat(assetObj.locked) : 0.0;
-        
-        // In-memory only — DO NOT persist to DB (would overwrite paper account)
-        account = {
-          id: "user-account",
-          userId: "binance_live_user",
-          cashBalance,
-          assetQuantity,
-          symbol: activeSymbol,
-        } as any;
-      } catch (err: any) {
-        console.error('[Account API] Failed to fetch real Binance account balance:', err.message);
-        throw new Error(`Conexão Binance falhou: ${err.message}`);
-      }
-    }
-
-    // 2. Fetch all trades to calculate average price, positions, and realized PnL
-    const trades = await db.trade.findMany({
-      orderBy: { timestamp: 'asc' },
-    });
-
-    const positionsMap: Record<string, PositionCalc> = {};
-
-    for (const trade of trades) {
-      const sym = trade.symbol;
-      if (!positionsMap[sym]) {
-        positionsMap[sym] = {
-          symbol: sym,
-          quantity: 0,
-          avgPrice: 0,
-          totalCost: 0,
-          realizedPnl: 0,
-        };
-      }
-      const pos = positionsMap[sym];
-      if (trade.side === "BUY") {
-        pos.quantity += trade.quantity;
-        pos.totalCost += trade.quantity * trade.price;
-        pos.avgPrice = pos.quantity > 0 ? pos.totalCost / pos.quantity : 0;
-      } else if (trade.side === "SELL") {
-        const tradePnl = trade.quantity * (trade.price - pos.avgPrice);
-        pos.realizedPnl += tradePnl;
-        pos.quantity -= trade.quantity;
-        pos.totalCost = pos.quantity * pos.avgPrice;
-        if (pos.quantity <= 0) {
-          pos.quantity = 0;
-          pos.totalCost = 0;
-          pos.avgPrice = 0;
-        }
-      }
-    }
-
-    // 3. Fetch ticker prices from Binance microservice
-    const tickerPrices: Record<string, number> = {};
+  } catch (err: any) {
+    console.warn('[Account API] Ticker do microserviço falhou:', err.message);
+  }
+  if (Object.keys(prices).length === 0) {
     try {
-      const tickerRes = await fetch(`${BINANCE_SERVICE}/api/market/ticker`, {
-        signal: AbortSignal.timeout(2000),
-      });
-      if (tickerRes.ok) {
-        const result = await tickerRes.json();
-        if (Array.isArray(result.data)) {
-          for (const item of result.data) {
-            tickerPrices[item.symbol] = parseFloat(item.lastPrice);
-          }
-        }
+      const base = testnet ? 'https://testnet.binance.vision' : 'https://api.binance.com';
+      const res = await fetch(`${base}/api/v3/ticker/price`, { signal: AbortSignal.timeout(5000), cache: 'no-store' });
+      if (res.ok) {
+        const list: { symbol: string; price: string }[] = await res.json();
+        for (const item of list) prices[item.symbol] = parseFloat(item.price);
       }
     } catch (err: any) {
-      console.warn('[Account API] Ticker fetch failed, using fallback:', err.message);
+      console.warn('[Account API] Ticker direto da Binance falhou:', err.message);
     }
+  }
+  return prices;
+}
 
-    // Ensure active symbol has price
-    let activePrice = tickerPrices[account.symbol];
-    if (activePrice === undefined) {
-      try {
-        const priceRes = await fetch(`${BINANCE_SERVICE}/api/market/price?symbol=${account.symbol}`, {
-          signal: AbortSignal.timeout(1000),
-        });
-        if (priceRes.ok) {
-          const result = await priceRes.json();
-          activePrice = parseFloat(result.data.price);
-        }
-      } catch (err: any) {
-        console.warn(`[Account API] Price fetch failed for ${account.symbol}:`, err.message);
+/** Preço médio e PnL realizado por par a partir dos trades salvos de um modo (live ou paper). */
+function buildCostBasis(trades: { symbol: string; side: string; quantity: number; price: number }[]) {
+  const map: Record<string, PositionCalc> = {};
+  for (const trade of trades) {
+    const pos = (map[trade.symbol] ??= { symbol: trade.symbol, quantity: 0, avgPrice: 0, totalCost: 0, realizedPnl: 0 });
+    if (trade.side === "BUY") {
+      pos.quantity += trade.quantity;
+      pos.totalCost += trade.quantity * trade.price;
+      pos.avgPrice = pos.quantity > 0 ? pos.totalCost / pos.quantity : 0;
+    } else if (trade.side === "SELL") {
+      pos.realizedPnl += trade.quantity * (trade.price - pos.avgPrice);
+      pos.quantity -= trade.quantity;
+      pos.totalCost = pos.quantity * pos.avgPrice;
+      if (pos.quantity <= 0) {
+        pos.quantity = 0;
+        pos.totalCost = 0;
+        pos.avgPrice = 0;
       }
     }
-    if (activePrice === undefined) {
-      const lastTrade = trades.filter(t => t.symbol === account!.symbol).pop();
-      activePrice = lastTrade ? lastTrade.price : 0;
-    }
-    tickerPrices[account.symbol] = activePrice;
+  }
+  return map;
+}
 
-    // 4. Calculate realized, unrealized PnL, and positions list
-    let totalRealizedPnl = 0;
-    let totalUnrealizedPnl = 0;
-    
-    // Ensure the main account symbol is included even if no trades exist yet
-    if (account.assetQuantity > 0 && !positionsMap[account.symbol]) {
-      positionsMap[account.symbol] = {
-        symbol: account.symbol,
-        quantity: account.assetQuantity,
-        avgPrice: activePrice, // assume current price if no history
-        totalCost: account.assetQuantity * activePrice,
-        realizedPnl: 0,
-      };
-    }
+/** Valor em USDT de um ativo da carteira. Trata Simple Earn ("LDxxx") como o ativo de origem. */
+function priceAsset(asset: string, prices: Record<string, number>): { symbol: string; price: number } | null {
+  if (asset === 'USDT') return { symbol: 'USDT', price: 1 };
+  const direct = prices[`${asset}USDT`];
+  if (direct) return { symbol: `${asset}USDT`, price: direct };
+  if (asset.startsWith('LD') && asset.length > 2) {
+    const base = asset.slice(2);
+    if (base === 'USDT') return { symbol: 'USDT', price: 1 };
+    const p = prices[`${base}USDT`];
+    if (p) return { symbol: `${base}USDT`, price: p };
+  }
+  const inverse = prices[`USDT${asset}`]; // ex.: USDTBRL
+  if (inverse) return { symbol: `USDT${asset}`, price: 1 / inverse };
+  return null;
+}
 
-    // Sync quantities in positionsMap with the Account table for the active symbol
-    if (positionsMap[account.symbol]) {
-      positionsMap[account.symbol].quantity = account.assetQuantity;
-      positionsMap[account.symbol].totalCost = account.assetQuantity * positionsMap[account.symbol].avgPrice;
-    }
+export async function GET(request: NextRequest) {
+  try {
+    const mode = request.nextUrl.searchParams.get('mode') === 'live' ? 'live' : 'paper';
 
-    const positionsList = Object.values(positionsMap)
-      .filter(p => p.quantity > 0)
-      .map(p => {
-        const mPrice = tickerPrices[p.symbol] || p.avgPrice;
-        const mValue = p.quantity * mPrice;
-        const uPnl = p.quantity * (mPrice - p.avgPrice);
-        
-        totalRealizedPnl += p.realizedPnl;
-        totalUnrealizedPnl += uPnl;
+    // Credenciais vêm da sessão criptografada no servidor (nunca de headers do cliente)
+    const { apiKey: binanceApiKey, apiSecret: binanceApiSecret, testnet: isTestnet } = getBinanceCredentials(request);
 
-        return {
-          symbol: p.symbol,
-          quantity: p.quantity,
-          avgPrice: p.avgPrice,
-          marketPrice: mPrice,
-          marketValue: mValue,
-          unrealizedPnl: uPnl,
-          realizedPnl: p.realizedPnl,
-        };
+    if (mode === 'live') {
+      return NextResponse.json({
+        success: true,
+        data: await buildLiveAccount(binanceApiKey || '', binanceApiSecret || '', isTestnet),
       });
+    }
 
-    // Compute portfolio valuations
-    const totalAssetValue = positionsList.reduce((sum, p) => sum + p.marketValue, 0);
-    const totalValue = account.cashBalance + totalAssetValue;
-    // In live mode, PnL is relative to actual balance (no simulated initial)
-    const initialBalance = mode === 'live' ? totalValue : 10000.0;
-    const pnl = totalValue - initialBalance;
-    const pnlPercent = initialBalance > 0 ? (pnl / initialBalance) * 100 : 0;
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        ...account,
-        positions: positionsList,
-        totalValue,
-        realizedPnl: totalRealizedPnl,
-        unrealizedPnl: totalUnrealizedPnl,
-        pnl,
-        pnlPercent,
-      },
-    });
+    return NextResponse.json({ success: true, data: await buildPaperAccount() });
   } catch (error: any) {
     console.error('[Account API] GET error:', error.message);
     return NextResponse.json(
@@ -250,6 +151,187 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * Modo real: a carteira da Binance é a fonte da verdade (todas as moedas com saldo).
+ * Os trades salvos no app servem só para o preço médio e o PnL realizado.
+ */
+async function buildLiveAccount(apiKey: string, apiSecret: string, testnet: boolean) {
+  let binanceAcc: any;
+  try {
+    binanceAcc = await fetchBinanceAccount(apiKey, apiSecret, testnet);
+  } catch (err: any) {
+    console.error('[Account API] Failed to fetch real Binance account balance:', err.message);
+    throw new Error(`Conexão Binance falhou: ${err.message}`);
+  }
+
+  const [prices, liveTrades, stored] = await Promise.all([
+    fetchAllPrices(testnet),
+    db.trade.findMany({ where: { mode: 'live' }, orderBy: { timestamp: 'asc' } }),
+    db.account.findFirst(),
+  ]);
+  const basis = buildCostBasis(liveTrades);
+
+  let cashBalance = 0;
+  let cashFree = 0;
+  const positions: PositionOut[] = [];
+  const unpriced: string[] = [];
+  let dustValue = 0;
+
+  for (const b of binanceAcc.balances as { asset: string; free: string; locked: string }[]) {
+    const quantity = parseFloat(b.free) + parseFloat(b.locked);
+    if (!(quantity > 0)) continue;
+
+    if (b.asset === 'USDT') {
+      cashBalance = quantity;
+      cashFree = parseFloat(b.free);
+      continue;
+    }
+
+    const priced = priceAsset(b.asset, prices);
+    if (!priced) {
+      unpriced.push(b.asset);
+      continue;
+    }
+
+    const marketValue = quantity * priced.price;
+    const cost = basis[priced.symbol];
+    const costKnown = !!cost && cost.avgPrice > 0;
+    const avgPrice = costKnown ? cost.avgPrice : priced.price;
+    const pos: PositionOut = {
+      symbol: priced.symbol === 'USDT' ? `${b.asset}` : priced.symbol,
+      quantity,
+      avgPrice,
+      marketPrice: priced.price,
+      marketValue,
+      unrealizedPnl: costKnown ? quantity * (priced.price - avgPrice) : 0,
+      realizedPnl: cost?.realizedPnl ?? 0,
+      costKnown,
+    };
+    if (marketValue < DUST_USD) dustValue += marketValue;
+    else positions.push(pos);
+  }
+
+  positions.sort((x, y) => y.marketValue - x.marketValue);
+
+  const assetBalance = positions.reduce((sum, p) => sum + p.marketValue, 0) + dustValue;
+  const totalValue = cashBalance + assetBalance;
+  // PnL realizado inclui pares já encerrados (que não aparecem mais na carteira).
+  const realizedPnl = Object.values(basis).reduce((sum, p) => sum + p.realizedPnl, 0);
+  const unrealizedPnl = positions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+  const pnl = realizedPnl + unrealizedPnl;
+  const invested = totalValue - pnl;
+  const pnlPercent = invested > 0 ? (pnl / invested) * 100 : 0;
+
+  // Compatibilidade com telas antigas que mostram "a moeda principal".
+  const symbol = stored?.symbol || 'BTCUSDT';
+  const assetQuantity = positions.find((p) => p.symbol === symbol)?.quantity ?? 0;
+
+  return {
+    id: 'user-account',
+    userId: 'binance_live_user',
+    symbol,
+    cashBalance,
+    cashFree,
+    assetQuantity,
+    assetBalance,
+    positions,
+    totalValue,
+    realizedPnl,
+    unrealizedPnl,
+    pnl,
+    pnlPercent,
+    dustValue,
+    unpricedAssets: unpriced,
+    source: testnet ? 'binance-testnet' : 'binance',
+    syncedAt: Date.now(),
+  };
+}
+
+/** Modo simulado: saldo da tabela Account e posições dos trades simulados. */
+async function buildPaperAccount() {
+  let account = await db.account.findFirst();
+  if (!account) {
+    try {
+      account = await db.account.create({
+        data: {
+          id: "user-account",
+          userId: "binance_live_user",
+          cashBalance: 10000.0,
+          assetQuantity: 0.0,
+          symbol: "BTCUSDT",
+        },
+      });
+    } catch (createError: any) {
+      console.warn('[Account API] Concurrency conflict during account creation, refetching:', createError.message);
+      account = await db.account.findFirst();
+      if (!account) throw createError;
+    }
+  }
+
+  const [paperTrades, prices] = await Promise.all([
+    db.trade.findMany({ where: { mode: 'paper' }, orderBy: { timestamp: 'asc' } }),
+    fetchAllPrices(false),
+  ]);
+  const positionsMap = buildCostBasis(paperTrades);
+
+  const activePrice = prices[account.symbol] ?? paperTrades.filter((t) => t.symbol === account!.symbol).pop()?.price ?? 0;
+
+  // A quantidade da moeda principal vem da tabela Account.
+  if (account.assetQuantity > 0 && !positionsMap[account.symbol]) {
+    positionsMap[account.symbol] = {
+      symbol: account.symbol,
+      quantity: account.assetQuantity,
+      avgPrice: activePrice,
+      totalCost: account.assetQuantity * activePrice,
+      realizedPnl: 0,
+    };
+  }
+  if (positionsMap[account.symbol]) {
+    positionsMap[account.symbol].quantity = account.assetQuantity;
+    positionsMap[account.symbol].totalCost = account.assetQuantity * positionsMap[account.symbol].avgPrice;
+  }
+
+  let realizedPnl = 0;
+  let unrealizedPnl = 0;
+  const positions = Object.values(positionsMap)
+    .map((p) => {
+      realizedPnl += p.realizedPnl;
+      if (p.quantity <= 0) return null;
+      const marketPrice = prices[p.symbol] || p.avgPrice;
+      const uPnl = p.quantity * (marketPrice - p.avgPrice);
+      unrealizedPnl += uPnl;
+      return {
+        symbol: p.symbol,
+        quantity: p.quantity,
+        avgPrice: p.avgPrice,
+        marketPrice,
+        marketValue: p.quantity * marketPrice,
+        unrealizedPnl: uPnl,
+        realizedPnl: p.realizedPnl,
+        costKnown: true,
+      };
+    })
+    .filter((p): p is NonNullable<typeof p> => p !== null);
+
+  const assetBalance = positions.reduce((sum, p) => sum + p.marketValue, 0);
+  const totalValue = account.cashBalance + assetBalance;
+  const initialBalance = 10000.0;
+  const pnl = totalValue - initialBalance;
+
+  return {
+    ...account,
+    assetBalance,
+    positions,
+    totalValue,
+    realizedPnl,
+    unrealizedPnl,
+    pnl,
+    pnlPercent: (pnl / initialBalance) * 100,
+    source: 'paper',
+    syncedAt: Date.now(),
+  };
 }
 
 export async function POST(request: NextRequest) {

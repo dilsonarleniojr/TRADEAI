@@ -149,3 +149,21 @@ model UserPreference {
   preferredHour String   @default("09:00")
   createdAt     DateTime @default(now())
 }
+
+// Histórico de candles da Binance baixado localmente (somente candles já fechados).
+// A tabela também é criada sob demanda por src/lib/market-history.ts.
+model Candle {
+  symbol      String
+  interval    String
+  openTime    Float
+  open        Float
+  high        Float
+  low         Float
+  close       Float
+  volume      Float
+  closeTime   Float
+  quoteVolume Float
+  trades      Int
+
+  @@id([symbol, interval, openTime])
+}

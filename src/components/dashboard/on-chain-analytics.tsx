@@ -58,7 +58,7 @@ const KEY_METRICS: MetricCard[] = [
 // Generate 14-day network activity data
 function generateNetworkData(seed: number) {
   const rng = seededRandom(seed);
-  const days = [];
+  const days: { date: string; activeAddresses: number; txVolume: number }[] = [];
   const now = new Date();
   for (let i = 13; i >= 0; i--) {
     const d = new Date(now);

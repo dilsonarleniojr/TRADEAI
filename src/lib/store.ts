@@ -9,6 +9,7 @@ export type {
   BotPosition,
   BotStrategy,
   BotStats,
+  BotEntryCheck,
   PortfolioData,
   PortfolioPosition,
   TradeData,

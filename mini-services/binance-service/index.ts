@@ -219,153 +219,217 @@ class BinanceStreamManager {
 
 const streamManager = new BinanceStreamManager();
 
+interface TrackedSymbolInfo {
+  symbol: string;
+  name: string;
+  short: string;
+  category: string;
+  baseAsset: string;
+  quoteAsset: string;
+  isSpotTradingAllowed: boolean;
+  minNotional: number;
+  stepSize: number;
+  tickSize: number;
+}
+
+const trackedSymbolsMap = new Map<string, TrackedSymbolInfo>();
+let trackedSymbolsList: string[] = [...TOP_SYMBOLS];
+
+// Initialize default symbols into map
+TOP_SYMBOLS.forEach((sym) => {
+  const short = sym.replace("USDT", "");
+  trackedSymbolsMap.set(sym, {
+    symbol: sym,
+    name: SYMBOL_NAMES[sym] || short,
+    short,
+    category: SYMBOL_CATEGORIES[sym] || "Inovação",
+    baseAsset: short,
+    quoteAsset: "USDT",
+    isSpotTradingAllowed: true,
+    minNotional: 5.0,
+    stepSize: 0.0001,
+    tickSize: 0.01,
+  });
+});
+
 // ============================================================
 // Cache for ticker data (refreshed periodically)
 // ============================================================
 let tickerCache: any[] = [];
 let tickerCacheTime = 0;
-const TICKER_CACHE_TTL = 30000; // 30 seconds
+const TICKER_CACHE_TTL = 15000; // 15 seconds
 
-// Priority symbols - fetch these first (top 12 by volume)
+// Priority symbols (top by volume)
 const PRIORITY_SYMBOLS = [
   "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT",
   "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT",
   "DOTUSDT", "LINKUSDT", "MATICUSDT", "ATOMUSDT",
 ];
 
-// Extended symbols - fetch after priority
-const EXTENDED_SYMBOLS = TOP_SYMBOLS.filter(s => !PRIORITY_SYMBOLS.includes(s));
-
-// Initial fetch - all TOP_SYMBOLS in fast batch
-async function fetchInitialTickers(): Promise<any[]> {
+// Synchronize all available spot USDT pairs from Binance exchangeInfo
+async function syncBinanceExchangeInfo(): Promise<number> {
   try {
-    const encoded = encodeURIComponent(JSON.stringify(TOP_SYMBOLS));
-    const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbols=${encoded}`, {
-      signal: AbortSignal.timeout(8000),
+    console.log("[BinanceService] Sincronizando moedas e pares com a Binance (exchangeInfo)...");
+    const resp = await fetch(`${BINANCE_REST_BASE}/exchangeInfo`, {
+      signal: AbortSignal.timeout(12000),
     });
-    if (resp.ok) {
-      const data = await resp.json();
-      if (Array.isArray(data) && data.length > 0) {
-        console.log(`[Startup] Batch loaded ${data.length} tickers`);
-        return data;
-      }
+    if (!resp.ok) {
+      console.warn(`[BinanceService] Falha ao consultar exchangeInfo: status ${resp.status}`);
+      return trackedSymbolsList.length;
     }
-  } catch (err: any) {
-    console.warn("[Cache] Initial batch fetch failed, using fallback:", err.message);
-  }
 
-  try {
-    const results = await Promise.all(
-      PRIORITY_SYMBOLS.map(async (symbol) => {
-        try {
-          const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbol=${symbol}`, {
-            signal: AbortSignal.timeout(10000),
-          });
-          if (resp.ok) return await resp.json();
-          return null;
-        } catch { return null; }
-      })
+    const data = await resp.json();
+    if (!data || !Array.isArray(data.symbols)) return trackedSymbolsList.length;
+
+    const spotUsdtSymbols = data.symbols.filter(
+      (s: any) => s.status === "TRADING" && s.quoteAsset === "USDT" && s.isSpotTradingAllowed
     );
-    return results.filter(Boolean);
-  } catch (err) {
-    console.error("[Cache] Initial ticker fetch error:", err);
-    return [];
+
+    const newMap = new Map<string, TrackedSymbolInfo>();
+
+    for (const item of spotUsdtSymbols) {
+      const sym = item.symbol;
+      const baseAsset = item.baseAsset;
+      let minNotional = 5.0;
+      let stepSize = 0.0001;
+      let tickSize = 0.01;
+
+      if (Array.isArray(item.filters)) {
+        for (const f of item.filters) {
+          if (f.filterType === "NOTIONAL" && f.minNotional) {
+            minNotional = parseFloat(f.minNotional);
+          } else if (f.filterType === "LOT_SIZE" && f.stepSize) {
+            stepSize = parseFloat(f.stepSize);
+          } else if (f.filterType === "PRICE_FILTER" && f.tickSize) {
+            tickSize = parseFloat(f.tickSize);
+          }
+        }
+      }
+
+      const name = SYMBOL_NAMES[sym] || baseAsset;
+      const category = SYMBOL_CATEGORIES[sym] || "Inovação";
+
+      newMap.set(sym, {
+        symbol: sym,
+        name,
+        short: baseAsset,
+        category,
+        baseAsset,
+        quoteAsset: "USDT",
+        isSpotTradingAllowed: true,
+        minNotional,
+        stepSize,
+        tickSize,
+      });
+    }
+
+    if (newMap.size > 0) {
+      trackedSymbolsMap.clear();
+      for (const [k, v] of newMap) {
+        trackedSymbolsMap.set(k, v);
+      }
+
+      // Keep priority symbols first, then remaining alphabetically
+      const remaining = Array.from(newMap.keys()).filter((s) => !PRIORITY_SYMBOLS.includes(s)).sort();
+      trackedSymbolsList = [...PRIORITY_SYMBOLS.filter((s) => newMap.has(s)), ...remaining];
+
+      console.log(`[BinanceService] ✅ Sincronização concluída: ${trackedSymbolsList.length} moedas Spot USDT ativas rastreadas.`);
+    }
+
+    return trackedSymbolsList.length;
+  } catch (err: any) {
+    console.error("[BinanceService] Erro ao sincronizar com Binance exchangeInfo:", err.message);
+    return trackedSymbolsList.length;
   }
 }
 
-async function fetchAllTickers(): Promise<any[]> {
+async function fetchAllTickers(forceRefresh = false): Promise<any[]> {
   const now = Date.now();
-  if (tickerCache.length >= TOP_SYMBOLS.length && now - tickerCacheTime < TICKER_CACHE_TTL) {
+  if (!forceRefresh && tickerCache.length > 0 && now - tickerCacheTime < TICKER_CACHE_TTL) {
     return tickerCache;
   }
 
-  // Try fast-batch fetch first (Binance supports symbols=[...])
   try {
-    const encoded = encodeURIComponent(JSON.stringify(TOP_SYMBOLS));
-    const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbols=${encoded}`, {
-      signal: AbortSignal.timeout(6000),
+    // Single request fetches 24hr tickers for the whole Binance exchange
+    const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr`, {
+      signal: AbortSignal.timeout(10000),
     });
+
     if (resp.ok) {
       const data = await resp.json();
       if (Array.isArray(data) && data.length > 0) {
-        tickerCache = data;
-        tickerCacheTime = now;
-        console.log(`[Cache] Fast-batch fetched ${tickerCache.length}/${TOP_SYMBOLS.length} tickers`);
-        return tickerCache;
+        const filtered = data
+          .filter((t: any) => trackedSymbolsMap.has(t.symbol))
+          .sort((a: any, b: any) => parseFloat(b.quoteVolume || "0") - parseFloat(a.quoteVolume || "0"));
+
+        if (filtered.length > 0) {
+          tickerCache = filtered;
+          tickerCacheTime = now;
+          return tickerCache;
+        }
       }
     }
   } catch (err: any) {
-    console.warn("[Cache] Fast-batch fetch failed, using chunked fallback:", err.message);
+    console.warn("[BinanceService] Erro no fetch global de tickers:", err.message);
   }
 
-  try {
-    const results: any[] = [];
-    const batchSize = 6;
-    
-    for (let i = 0; i < TOP_SYMBOLS.length; i += batchSize) {
-      const batch = TOP_SYMBOLS.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(async (symbol) => {
-          try {
-            const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbol=${symbol}`, {
-              signal: AbortSignal.timeout(8000),
-            });
-            if (resp.ok) return await resp.json();
-            return null;
-          } catch { return null; }
-        })
-      );
-      results.push(...batchResults.filter(Boolean));
-      if (i + batchSize < TOP_SYMBOLS.length) {
-        await new Promise(r => setTimeout(r, 100));
+  // Fallback: batch fetch top symbols
+  if (tickerCache.length === 0) {
+    try {
+      const encoded = encodeURIComponent(JSON.stringify(TOP_SYMBOLS));
+      const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbols=${encoded}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data) && data.length > 0) {
+          tickerCache = data;
+          tickerCacheTime = now;
+          return tickerCache;
+        }
       }
-    }
-    tickerCache = results;
-    tickerCacheTime = now;
-    console.log(`[Cache] Fetched ${tickerCache.length}/${TOP_SYMBOLS.length} tickers`);
-    return tickerCache;
-  } catch (err) {
-    console.error("[Cache] Ticker fetch error:", err);
-    return tickerCache;
+    } catch {}
   }
+
+  return tickerCache;
 }
 
-// Background refresh - refresh all symbols every 15s using batch
+// Background refresh loop
 let refreshInProgress = false;
-
 async function backgroundRefresh() {
   if (refreshInProgress) return;
   refreshInProgress = true;
   try {
-    const encoded = encodeURIComponent(JSON.stringify(TOP_SYMBOLS));
-    const resp = await fetch(`${BINANCE_REST_BASE}/ticker/24hr?symbols=${encoded}`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      if (Array.isArray(data) && data.length > 0) {
-        tickerCache = data;
-        tickerCacheTime = Date.now();
-        console.log(`[Refresh] Batch refreshed ${tickerCache.length} tickers`);
-        return;
-      }
-    }
+    await fetchAllTickers(true);
   } catch (err: any) {
-    console.warn("[Refresh] Batch refresh error:", err.message);
+    console.warn("[Refresh] Erro no refresh em background:", err.message);
   } finally {
     refreshInProgress = false;
   }
 }
 
-// Fetch initial data on startup, then start refresh loop
-fetchInitialTickers().then(initial => {
-  tickerCache = initial;
-  tickerCacheTime = Date.now();
-  console.log(`[Startup] Loaded ${initial.length} tickers`);
-  
-  // Start refresh every 15 seconds
+// Initialize on startup: first sync all Binance exchange symbols, then load tickers
+(async () => {
+  try {
+    await syncBinanceExchangeInfo();
+  } catch (e) {
+    console.error("[Startup] Initial sync failed:", e);
+  }
+
+  try {
+    await fetchAllTickers(true);
+    console.log(`[Startup] ${tickerCache.length} tickers carregados da Binance`);
+  } catch (e) {
+    console.error("[Startup] Initial ticker fetch failed:", e);
+  }
+
+  // Refresh tickers every 15 seconds
   setInterval(backgroundRefresh, 15000);
-});
+
+  // Re-synchronize exchangeInfo every 2 hours to catch new listings
+  setInterval(syncBinanceExchangeInfo, 2 * 60 * 60 * 1000);
+})();
+
 
 // ============================================================
 // Bun.serve for REST API
@@ -451,12 +515,21 @@ Bun.serve({
         }
 
         case "/api/market/symbols": {
-          const symbols = TOP_SYMBOLS.map(sym => ({
-            symbol: sym,
-            name: SYMBOL_NAMES[sym] || sym.replace("USDT", ""),
-            category: SYMBOL_CATEGORIES[sym] || "Other",
-          }));
-          return new Response(JSON.stringify({ data: symbols, timestamp: Date.now() }), {
+          const symbols = Array.from(trackedSymbolsMap.values());
+          return new Response(JSON.stringify({ data: symbols, count: symbols.length, timestamp: Date.now() }), {
+            headers: { "Content-Type": "application/json", ...corsHeaders() },
+          });
+        }
+
+        case "/api/market/sync": {
+          const count = await syncBinanceExchangeInfo();
+          const tickers = await fetchAllTickers(true);
+          return new Response(JSON.stringify({
+            success: true,
+            symbolsCount: count,
+            tickersCount: tickers.length,
+            timestamp: Date.now(),
+          }), {
             headers: { "Content-Type": "application/json", ...corsHeaders() },
           });
         }
@@ -491,7 +564,7 @@ Bun.serve({
           return new Response(JSON.stringify({
             status: "ok", service: "binance-service", port: PORT,
             uptime: process.uptime(), activeStreams: streamManager.connectionCount,
-            symbolCount: TOP_SYMBOLS.length, timestamp: Date.now(),
+            symbolCount: trackedSymbolsList.length, timestamp: Date.now(),
           }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
 
         default:
@@ -559,10 +632,12 @@ process.on("unhandledRejection", (r) => console.error("[FATAL]", r));
 
 console.log(`[BinanceService] Endpoints:`);
 console.log(`  GET /api/market/ticker`);
+console.log(`  GET /api/market/symbols`);
+console.log(`  GET /api/market/sync`);
 console.log(`  GET /api/market/klines?symbol=BTCUSDT&interval=1h&limit=100`);
 console.log(`  GET /api/market/price?symbol=BTCUSDT`);
 console.log(`  GET /api/market/highlights`);
 console.log(`  GET /api/market/categories`);
-console.log(`  GET /api/market/symbols`);
 console.log(`  GET /health`);
-console.log(`[BinanceService] Tracking ${TOP_SYMBOLS.length} symbols across 7 categories`);
+console.log(`[BinanceService] Sincronização dinâmica de moedas Binance ativada.`);
+

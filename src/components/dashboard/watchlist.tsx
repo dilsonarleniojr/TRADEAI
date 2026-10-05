@@ -8,9 +8,12 @@ import { Star, BarChart3, TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { CRYPTO_COLORS, CRYPTO_SHORTS } from "@/lib/crypto-meta";
+import { useShallow } from "zustand/react/shallow";
 
 export function Watchlist() {
-  const { tickers, watchlist, toggleWatchlist, setSelectedSymbol, setActiveSection } = useCryptoStore();
+  const { tickers, watchlist, toggleWatchlist, setSelectedSymbol, setActiveSection } = useCryptoStore(
+  useShallow((s) => ({ tickers: s.tickers, watchlist: s.watchlist, toggleWatchlist: s.toggleWatchlist, setSelectedSymbol: s.setSelectedSymbol, setActiveSection: s.setActiveSection }))
+);
 
   const watchlistTickers = watchlist
     .map((symbol) => tickers[symbol])

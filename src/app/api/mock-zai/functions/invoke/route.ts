@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
         results = events.map(ev => ({
           title: ev.title,
           name: ev.title,
-          snippet: ev.summary || ev.explanation || `Relevância factual geral no setor de ${ev.category}. Pontuação de confiança: ${ev.confidenceScore}`,
+          snippet: ev.summary || `Relevância factual geral no setor de ${ev.category}. Pontuação de confiança: ${ev.confidenceScore}`,
           url: 'https://tradeai.net/news/' + ev.id
         }));
       } catch (err) {

@@ -327,14 +327,14 @@ export const createTradeSlice: StateCreator<TradeSlice, [], [], TradeSlice> = (s
   addAiSuggestion: (s) =>
     set((state) => ({
       aiSuggestions: [
-        { ...s, id: `sug_${Date.now()}`, createdAt: Date.now(), status: "PENDING" },
+        { ...s, id: `sug_${Date.now()}`, createdAt: Date.now(), status: "PENDING" as const },
         ...state.aiSuggestions
       ].slice(0, 20)
     })),
   resolveAiSuggestion: (id, accept) =>
     set((state) => ({
       aiSuggestions: state.aiSuggestions.map((s) =>
-        s.id === id ? { ...s, status: accept ? "ACCEPTED" : "REJECTED" } : s
+        s.id === id ? { ...s, status: (accept ? "ACCEPTED" : "REJECTED") as AISuggestion["status"] } : s
       )
     })),
 

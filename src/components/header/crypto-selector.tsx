@@ -8,6 +8,7 @@ import {
   CRYPTO_NAMES,
   CRYPTO_SHORTS,
   CATEGORY_META,
+  ALL_SYMBOLS,
   type CryptoCategory,
 } from "@/lib/crypto-meta";
 import {
@@ -16,23 +17,48 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
-import { ChevronDown, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, Search, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatPrice, formatPercent } from "@/lib/format";
+import { useDataProvider } from "@/lib/data-provider";
+import { useToast } from "@/hooks/use-toast";
+import { useShallow } from "zustand/react/shallow";
 
 export function CryptoSelector() {
-  const { selectedSymbol, setSelectedSymbol, tickers } = useCryptoStore();
+  const { selectedSymbol, setSelectedSymbol, tickers } = useCryptoStore(
+  useShallow((s) => ({ selectedSymbol: s.selectedSymbol, setSelectedSymbol: s.setSelectedSymbol, tickers: s.tickers }))
+);
+  const { syncBinanceCoins } = useDataProvider();
+  const { toast } = useToast();
+
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [isSyncing, setIsSyncing] = useState(false);
 
+  // Filter and sort cryptos
   const filteredCryptos = useMemo(() => {
     let result = searchCrypto(searchQuery);
     if (activeCategory !== "all") {
       result = result.filter((c) => c.category === activeCategory);
     }
-    return result;
-  }, [searchQuery, activeCategory]);
+
+    // Sort by volume descending so most traded coins are at the top
+    return result.sort((a, b) => {
+      const volA = tickers[a.symbol]?.quoteVolume || 0;
+      const volB = tickers[b.symbol]?.quoteVolume || 0;
+      return volB - volA;
+    });
+  }, [searchQuery, activeCategory, tickers]);
+
+  // Limit rendering when search is empty to maintain 60 FPS performance
+  const displayedCryptos = useMemo(() => {
+    if (searchQuery.trim()) {
+      return filteredCryptos.slice(0, 100);
+    }
+    return filteredCryptos.slice(0, 45);
+  }, [filteredCryptos, searchQuery]);
 
   const selectedTicker = tickers[selectedSymbol];
   const selectedColor = CRYPTO_COLORS[selectedSymbol] || "#06b6d4";
@@ -43,6 +69,31 @@ export function CryptoSelector() {
     "all",
     ...Object.keys(CATEGORY_META),
   ] as string[];
+
+  const handleSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    toast({
+      title: "🔄 Sincronizando com a Binance...",
+      description: "Buscando todas as moedas e opções ativas em tempo real.",
+    });
+
+    const result = await syncBinanceCoins();
+    setIsSyncing(false);
+
+    if (result.success) {
+      toast({
+        title: "✅ Sincronização Concluída!",
+        description: `${result.count} moedas e pares Spot USDT atualizados diretamente da Binance.`,
+      });
+    } else {
+      toast({
+        title: "⚠️ Erro na Sincronização",
+        description: "Não foi possível sincronizar agora. Usando dados em cache.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -69,21 +120,32 @@ export function CryptoSelector() {
         </button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[280px] p-0 glass border-border/50"
+        className="w-[320px] p-0 glass border-border/50"
         align="start"
         sideOffset={8}
       >
-        {/* Search */}
-        <div className="p-2 border-b border-border/30">
-          <div className="relative">
+        {/* Search & Sync Header */}
+        <div className="p-2 border-b border-border/30 flex items-center gap-1.5">
+          <div className="relative flex-1">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <Input
-              placeholder="Buscar cripto..."
+              placeholder={`Buscar entre ${ALL_SYMBOLS.length} moedas...`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-8 pl-7 text-xs input-glow bg-secondary/30 border-border/50"
             />
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleSync}
+            disabled={isSyncing}
+            className="h-8 px-2 text-xs border-border/50 hover:bg-crypto-cyan/10 hover:text-crypto-cyan cursor-pointer shrink-0"
+            title="Sincronizar moedas com a Binance"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", isSyncing && "animate-spin text-crypto-cyan")} />
+          </Button>
         </div>
 
         {/* Category filter */}
@@ -112,7 +174,7 @@ export function CryptoSelector() {
 
         {/* Symbol list */}
         <div className="max-h-[300px] overflow-y-auto cyan-scrollbar">
-          {filteredCryptos.map((crypto) => {
+          {displayedCryptos.map((crypto) => {
             const ticker = tickers[crypto.symbol];
             const isSelected = crypto.symbol === selectedSymbol;
             const isPositive = ticker ? ticker.priceChangePercent >= 0 : true;
@@ -166,7 +228,12 @@ export function CryptoSelector() {
           })}
           {filteredCryptos.length === 0 && (
             <div className="py-6 text-center text-xs text-muted-foreground">
-              Nenhum resultado encontrado
+              Nenhuma moeda encontrada para &ldquo;{searchQuery}&rdquo;
+            </div>
+          )}
+          {filteredCryptos.length > displayedCryptos.length && (
+            <div className="py-2 text-center text-[10px] text-muted-foreground/80 border-t border-border/20">
+              Mostrando {displayedCryptos.length} de {filteredCryptos.length} moedas (digite para refinar)
             </div>
           )}
         </div>

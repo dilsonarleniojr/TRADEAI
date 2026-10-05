@@ -1,12 +1,92 @@
 import { type TickerData, type KlineData } from "@/lib/store";
+import { calculateADX, calculateRSI, emaSeries } from "./indicators";
 
-export interface QuantCandidate {
-  symbol: string;
-  volume24h: number;
-  relativeStrength: number; // vs BTC
-  relATR: number;
-  direction: "LONG" | "SHORT" | "HOLD";
+// ==========================================================
+// 1. Regime de mercado (ADX de Wilder)
+// ==========================================================
+
+export type MarketRegime = "TREND_FOLLOWING" | "MEAN_REVERSION" | "NEUTRAL";
+
+export const ADX_TREND = 25;
+export const ADX_RANGE = 20;
+
+export function regimeFromADX(adx: number | null): MarketRegime {
+  if (adx === null) return "NEUTRAL";
+  if (adx > ADX_TREND) return "TREND_FOLLOWING";
+  if (adx < ADX_RANGE) return "MEAN_REVERSION";
+  return "NEUTRAL";
 }
+
+export function detectMarketRegime(klines: KlineData[]): MarketRegime {
+  return regimeFromADX(calculateADX(klines, 14));
+}
+
+// ==========================================================
+// 2. Comitê (votação 2 de 3)
+// ==========================================================
+
+export type QuantVote = "BUY" | "SELL" | "HOLD";
+
+/** Três análises independentes sobre os mesmos candles do ativo. */
+export interface ModelVotes {
+  trend: QuantVote;
+  momentum: QuantVote;
+  flow: QuantVote;
+}
+
+export function ensembleDecision(votes: ModelVotes): QuantVote {
+  const list = [votes.trend, votes.momentum, votes.flow];
+  if (list.filter((v) => v === "BUY").length >= 2) return "BUY";
+  if (list.filter((v) => v === "SELL").length >= 2) return "SELL";
+  return "HOLD";
+}
+
+// ==========================================================
+// 3. Força relativa vs BTC (filtro de ativos)
+// ==========================================================
+
+export const MIN_QUOTE_VOLUME_USDT = 50_000_000;
+export const MIN_RELATIVE_STRENGTH = -2; // pontos percentuais vs BTC em 24h
+
+export interface StrengthCheck {
+  relativeStrength: number;
+  volume24h: number;
+  liquid: boolean;
+  ok: boolean;
+}
+
+export function checkRelativeStrength(
+  symbol: string,
+  ticker: TickerData,
+  btcTicker?: TickerData
+): StrengthCheck {
+  const volume24h = ticker.quoteVolume || 0;
+  const liquid = volume24h >= MIN_QUOTE_VOLUME_USDT;
+  const relativeStrength =
+    symbol === "BTCUSDT" || !btcTicker
+      ? 0
+      : (ticker.priceChangePercent || 0) - (btcTicker.priceChangePercent || 0);
+  return { relativeStrength, volume24h, liquid, ok: liquid && relativeStrength >= MIN_RELATIVE_STRENGTH };
+}
+
+/**
+ * Varre os tickers, pega os 50 de maior volume e devolve os 3 que mais subiram em 24h.
+ */
+export function runMarketScanner(tickers: Record<string, TickerData>): string[] {
+  const usdtTickers = Object.values(tickers).filter(
+    (t) =>
+      t.symbol.endsWith("USDT") &&
+      !["USDCUSDT", "FDUSDUSDT", "TUSDUSDT", "BUSDUSDT", "EURUSDT"].includes(t.symbol)
+  );
+  usdtTickers.sort((a, b) => (b.quoteVolume || 0) - (a.quoteVolume || 0));
+  const top50 = usdtTickers.slice(0, 50);
+  top50.sort((a, b) => (b.priceChangePercent || 0) - (a.priceChangePercent || 0));
+  return top50.slice(0, 3).map((t) => t.symbol);
+}
+
+// ==========================================================
+// 4. Algoritmo Genético (otimiza os parâmetros da estratégia do robô)
+// ==========================================================
 
 export interface GeneticChromosome {
   rsiPeriod: number;
@@ -17,290 +97,110 @@ export interface GeneticChromosome {
   fitness?: number;
 }
 
-// ==========================================================
-// 1. Triagem de Ativos (The Funnel)
-// ==========================================================
+/** Quais parâmetros cada estratégia realmente usa; o GA só evolui esses. */
+export type GeneticMode = "RSI" | "MACD";
 
-/**
- * Filters and ranks symbols by volume, relative ATR volatility, and strength against BTC.
- */
-export function runAssetFunnel(
-  tickers: Record<string, TickerData>,
-  klinesHistory: Record<string, KlineData[]>,
-  minVolumeUsdt = 50_000_000 // $50M threshold
-): QuantCandidate[] {
-  const btcTicker = tickers["BTCUSDT"];
-  const btcPriceChange = btcTicker ? btcTicker.priceChangePercent : 0;
-  const candidates: QuantCandidate[] = [];
+const MIN_GA_TRADES = 5;
+const MIN_GA_STD = 0.0025; // 0,25% por operação
 
-  for (const [symbol, ticker] of Object.entries(tickers)) {
-    // Ignore stablecoins or BTC itself for relative calculation
-    if (symbol === "BTCUSDT" || symbol.includes("USD") && !symbol.includes("USDT")) continue;
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+const randInt = (lo: number, hi: number) => Math.floor(lo + Math.random() * (hi - lo + 1));
 
-    // Filter 1: Liquidity/Volume (ignore < $50M)
-    const volume24h = ticker.quoteVolume || 0;
-    if (volume24h < minVolumeUsdt) continue;
-
-    // Filter 2: Volatilidade (ATR relative distance to average)
-    const klines = klinesHistory[symbol] || [];
-    if (klines.length < 15) continue;
-
-    const relATR = calculateRelativeATR(klines);
-    const avgHistoricalATR = calculateAvgHistoricalATR(klines);
-
-    // Filter out low-volatility/inactive assets
-    if (relATR < avgHistoricalATR) continue;
-
-    // Ranking: Relative Strength against BTC
-    const assetPriceChange = ticker.priceChangePercent || 0;
-    const relativeStrength = assetPriceChange - btcPriceChange;
-
-    // Quant bias: Long strong assets (outperforming BTC), Short weak assets
-    const direction = relativeStrength > 2.0 ? "LONG" : relativeStrength < -2.0 ? "SHORT" : "HOLD";
-
-    candidates.push({
-      symbol,
-      volume24h,
-      relativeStrength,
-      relATR,
-      direction,
-    });
-  }
-
-  // Sort by absolute relative strength
-  return candidates.sort((a, b) => Math.abs(b.relativeStrength) - Math.abs(a.relativeStrength));
+function randomChromosome(): GeneticChromosome {
+  const emaFast = randInt(5, 15);
+  return {
+    rsiPeriod: randInt(7, 21),
+    rsiBuyThreshold: randInt(20, 40),
+    rsiSellThreshold: randInt(60, 85),
+    emaFast,
+    emaSlow: Math.max(emaFast + 5, randInt(20, 50)),
+  };
 }
 
-function calculateRelativeATR(klines: KlineData[]): number {
-  let trSum = 0;
-  for (let i = 1; i < klines.length; i++) {
-    const k = klines[i];
-    const prev = klines[i - 1];
-    trSum += Math.max(k.high - k.low, Math.abs(k.high - prev.close), Math.abs(k.low - prev.close));
-  }
-  const atr = trSum / (klines.length - 1);
-  return atr / (klines[klines.length - 1]?.close || 1);
-}
-
-function calculateAvgHistoricalATR(klines: KlineData[]): number {
-  // Simple historical benchmark proxy (e.g. median relative volatility)
-  return 0.015; // 1.5% average relative true range threshold
-}
-
-// ==========================================================
-// 2. Seleção Dinâmica de Regime de Mercado
-// ==========================================================
-
-export type MarketRegime = "TREND_FOLLOWING" | "MEAN_REVERSION" | "NEUTRAL";
-
-/**
- * Analyzes market regime using ADX trend strength calculations.
- */
-export function detectMarketRegime(klines: KlineData[]): MarketRegime {
-  const period = 14;
-  if (klines.length < period + 1) return "NEUTRAL";
-
-  let trSum = 0;
-  let plusDM = 0;
-  let minusDM = 0;
-
-  for (let i = 1; i < klines.length; i++) {
-    const k = klines[i];
-    const prev = klines[i - 1];
-    
-    trSum += Math.max(k.high - k.low, Math.abs(k.high - prev.close), Math.abs(k.low - prev.close));
-
-    const upMove = k.high - prev.high;
-    const downMove = prev.low - k.low;
-
-    if (upMove > downMove && upMove > 0) {
-      plusDM += upMove;
-    } else if (downMove > upMove && downMove > 0) {
-      minusDM += downMove;
-    }
-  }
-
-  const plusDI = trSum > 0 ? (plusDM / trSum) * 100 : 50;
-  const minusDI = trSum > 0 ? (minusDM / trSum) * 100 : 50;
-  const sumDI = plusDI + minusDI;
-  const adx = sumDI > 0 ? (Math.abs(plusDI - minusDI) / sumDI) * 100 : 25;
-
-  if (adx > 25) {
-    return "TREND_FOLLOWING"; // Active trend, trigger breakout / crosses
-  } else if (adx < 20) {
-    return "MEAN_REVERSION";  // Range-bound / sideways, trigger oscillation buy/sell
-  }
-  
-  return "NEUTRAL";
-}
-
-// ==========================================================
-// 3. Otimização por Algoritmos Genéticos (GA)
-// ==========================================================
-
-/**
- * Runs a Genetic Algorithm cycle over historical data to optimize indicator parameters.
- */
 export function runGeneticOptimization(
   klines: KlineData[],
-  generations = 5,
-  populationSize = 30
+  mode: GeneticMode,
+  generations = 8,
+  populationSize = 40
 ): GeneticChromosome {
-  // 1. Initial Population
-  let population: GeneticChromosome[] = Array.from({ length: populationSize }, () => ({
-    rsiPeriod: Math.floor(7 + Math.random() * 21),
-    rsiBuyThreshold: Math.floor(20 + Math.random() * 20),
-    rsiSellThreshold: Math.floor(60 + Math.random() * 25),
-    emaFast: Math.floor(5 + Math.random() * 15),
-    emaSlow: Math.floor(20 + Math.random() * 30),
-  }));
+  let population = Array.from({ length: populationSize }, randomChromosome);
 
   for (let gen = 0; gen < generations; gen++) {
-    // 2. Evaluate Fitness (using Sharpe Ratio backtest proxy)
-    population.forEach((chrom) => {
-      chrom.fitness = evaluateFitness(klines, chrom);
+    population.forEach((c) => {
+      c.fitness = evaluateFitness(klines, c, mode);
     });
-
-    // Sort by fitness descending
-    population.sort((a, b) => (b.fitness || 0) - (a.fitness || 0));
-
-    // Exit early if best generation is found
+    population.sort((a, b) => (b.fitness ?? -Infinity) - (a.fitness ?? -Infinity));
     if (gen === generations - 1) break;
 
-    // 3. Selection & Crossover (Keep top 30% elite, cross to fill rest)
-    const eliteSize = Math.floor(populationSize * 0.3);
-    const elites = population.slice(0, eliteSize);
-    const nextGen: GeneticChromosome[] = [...elites];
+    const elites = population.slice(0, Math.max(2, Math.floor(populationSize * 0.3)));
+    const next: GeneticChromosome[] = [...elites];
+    const pick = <K extends keyof GeneticChromosome>(a: GeneticChromosome, b: GeneticChromosome, k: K) =>
+      Math.random() > 0.5 ? a[k] : b[k];
 
-    while (nextGen.length < populationSize) {
-      const parentA = elites[Math.floor(Math.random() * elites.length)];
-      const parentB = elites[Math.floor(Math.random() * elites.length)];
-
-      // Crossover
+    while (next.length < populationSize) {
+      const a = elites[Math.floor(Math.random() * elites.length)];
+      const b = elites[Math.floor(Math.random() * elites.length)];
       const child: GeneticChromosome = {
-        rsiPeriod: Math.random() > 0.5 ? parentA.rsiPeriod : parentB.rsiPeriod,
-        rsiBuyThreshold: Math.random() > 0.5 ? parentA.rsiBuyThreshold : parentB.rsiBuyThreshold,
-        rsiSellThreshold: Math.random() > 0.5 ? parentA.rsiSellThreshold : parentB.rsiSellThreshold,
-        emaFast: Math.random() > 0.5 ? parentA.emaFast : parentB.emaFast,
-        emaSlow: Math.random() > 0.5 ? parentA.emaSlow : parentB.emaSlow,
+        rsiPeriod: pick(a, b, "rsiPeriod") as number,
+        rsiBuyThreshold: pick(a, b, "rsiBuyThreshold") as number,
+        rsiSellThreshold: pick(a, b, "rsiSellThreshold") as number,
+        emaFast: pick(a, b, "emaFast") as number,
+        emaSlow: pick(a, b, "emaSlow") as number,
       };
-
-      // 4. Mutation (10% chance per parameter)
-      if (Math.random() < 0.1) child.rsiPeriod = Math.max(5, child.rsiPeriod + (Math.random() > 0.5 ? 1 : -1));
-      if (Math.random() < 0.1) child.rsiBuyThreshold = Math.max(15, child.rsiBuyThreshold + (Math.random() > 0.5 ? 2 : -2));
-      if (Math.random() < 0.1) child.rsiSellThreshold = Math.min(95, child.rsiSellThreshold + (Math.random() > 0.5 ? 2 : -2));
-      if (Math.random() < 0.1) child.emaFast = Math.max(3, child.emaFast + (Math.random() > 0.5 ? 1 : -1));
-      if (Math.random() < 0.1) child.emaSlow = Math.max(15, child.emaSlow + (Math.random() > 0.5 ? 2 : -2));
-
-      nextGen.push(child);
+      const step = () => (Math.random() > 0.5 ? 1 : -1);
+      if (Math.random() < 0.15) child.rsiPeriod = clamp(child.rsiPeriod + step(), 5, 30);
+      if (Math.random() < 0.15) child.rsiBuyThreshold = clamp(child.rsiBuyThreshold + 2 * step(), 15, 45);
+      if (Math.random() < 0.15) child.rsiSellThreshold = clamp(child.rsiSellThreshold + 2 * step(), 55, 90);
+      if (Math.random() < 0.15) child.emaFast = clamp(child.emaFast + step(), 3, 20);
+      if (Math.random() < 0.15) child.emaSlow = clamp(child.emaSlow + 2 * step(), child.emaFast + 5, 60);
+      next.push(child);
     }
-
-    population = nextGen;
+    population = next;
   }
 
-  return population[0]; // Best optimized chromosome
+  return population[0];
 }
 
-function evaluateFitness(klines: KlineData[], chrom: GeneticChromosome): number {
-  // Fast, scale-invariant backtesting simulation returning a fitness score (Sharpe Ratio proxy)
-  let balance = 10000;
-  let inPosition = false;
-  let entryPrice = 0;
+/**
+ * Backtest rápido (sem custos) que devolve um Sharpe aproximado por operação.
+ * RSI: compra com RSI <= limiar de compra, vende com RSI >= limiar de venda.
+ * MACD: compra quando a EMA rápida cruza acima da lenta, vende no cruzamento contrário.
+ */
+function evaluateFitness(klines: KlineData[], c: GeneticChromosome, mode: GeneticMode): number {
   const closes = klines.map((k) => k.close);
-  
-  // Calculate relative returns
+  if (closes.length < 40) return -999;
+
   const returns: number[] = [];
+  let entry: number | null = null;
 
-  // Simulate basic RSI/EMA cross strategy
-  const emaMultiplier = 2 / (chrom.emaFast + 1);
-  let ema = closes[0] || 0;
-  
-  for (let i = 1; i < closes.length; i++) {
-    ema = (closes[i] - ema) * emaMultiplier + ema;
-    const isBullish = closes[i] > ema;
-
-    if (!inPosition && isBullish) {
-      inPosition = true;
-      entryPrice = closes[i];
-    } else if (inPosition && !isBullish) {
-      inPosition = false;
-      const tradeReturn = (closes[i] - entryPrice) / entryPrice;
-      returns.push(tradeReturn);
-      balance *= (1 + tradeReturn);
+  if (mode === "RSI") {
+    for (let i = c.rsiPeriod + 1; i < closes.length; i++) {
+      const rsi = calculateRSI(closes.slice(0, i + 1), c.rsiPeriod);
+      if (entry === null && rsi <= c.rsiBuyThreshold) entry = closes[i];
+      else if (entry !== null && rsi >= c.rsiSellThreshold) {
+        returns.push((closes[i] - entry) / entry);
+        entry = null;
+      }
+    }
+  } else {
+    const fast = emaSeries(closes, c.emaFast);
+    const slow = emaSeries(closes, c.emaSlow);
+    for (let i = c.emaSlow; i < closes.length; i++) {
+      const crossedUp = fast[i - 1] <= slow[i - 1] && fast[i] > slow[i];
+      const crossedDown = fast[i - 1] >= slow[i - 1] && fast[i] < slow[i];
+      if (entry === null && crossedUp) entry = closes[i];
+      else if (entry !== null && crossedDown) {
+        returns.push((closes[i] - entry) / entry);
+        entry = null;
+      }
     }
   }
 
-  if (returns.length < 2) return -999;
-
-  // Calculate Sharpe Ratio fitness metric
+  // Poucas operações = resultado estatisticamente fraco; descarta.
+  if (returns.length < MIN_GA_TRADES) return -999;
   const avg = returns.reduce((s, x) => s + x, 0) / returns.length;
   const variance = returns.reduce((s, x) => s + (x - avg) ** 2, 0) / returns.length;
   const std = Math.sqrt(variance);
-
-  return std > 0 ? (avg / std) * Math.sqrt(252) : -999;
-}
-
-// ==========================================================
-// 4. Tomada de Decisão por Ensemble (Votação)
-// ==========================================================
-
-export type QuantVote = "BUY" | "SELL" | "HOLD";
-
-export interface ModelVotes {
-  modelARandomForest: QuantVote;
-  modelBXGBoost: QuantVote;
-  modelCSentiment: QuantVote;
-}
-
-/**
- * Decides whether to enter a trade using a 2-out-of-3 voting consensus scheme.
- */
-export function ensembleDecision(votes: ModelVotes): QuantVote {
-  const voteList = [votes.modelARandomForest, votes.modelBXGBoost, votes.modelCSentiment];
-  
-  // Count directions
-  const buyVotes = voteList.filter(v => v === "BUY").length;
-  const sellVotes = voteList.filter(v => v === "SELL").length;
-
-  // 2/3 confluency threshold
-  if (buyVotes >= 2) return "BUY";
-  if (sellVotes >= 2) return "SELL";
-  
-  return "HOLD";
-}
-
-/**
-  * Soft voting and Hard voting decision with Failsafe Risk Veto.
-  * If ATR relative volatility exceeds threshold, BUY votes are vetoed and trade is blocked.
-  */
-export function ensembleDecisionWithVeto(
-  votes: ModelVotes,
-  relATR: number,
-  limitATR = 0.05 // 5% volatility threshold
-): QuantVote | "VETO" {
-  if (relATR >= limitATR) {
-    return "VETO";
-  }
-  return ensembleDecision(votes);
-}
-
-/**
- * Scans market tickers, filters top 50 by volume, and selects top 3 with highest price change
- * to focus operations.
- */
-export function runMarketScanner(tickers: Record<string, TickerData>): string[] {
-  const usdtTickers = Object.values(tickers).filter(
-    (t) => t.symbol.endsWith("USDT") && 
-    !["USDCUSDT", "FDUSDUSDT", "TUSDUSDT", "BUSDUSDT", "EURUSDT"].includes(t.symbol)
-  );
-
-  // 1. Sort by quote volume descending to get top 50
-  usdtTickers.sort((a, b) => (b.quoteVolume || 0) - (a.quoteVolume || 0));
-  const top50 = usdtTickers.slice(0, 50);
-
-  // 2. Sort by price change percentage descending
-  top50.sort((a, b) => (b.priceChangePercent || 0) - (a.priceChangePercent || 0));
-
-  // 3. Return top 3 symbols
-  return top50.slice(0, 3).map((t) => t.symbol);
+  // Piso no desvio: retornos quase idênticos não podem gerar pontuação "infinita".
+  return (avg / Math.max(std, MIN_GA_STD)) * Math.sqrt(returns.length);
 }

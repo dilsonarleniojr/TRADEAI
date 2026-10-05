@@ -9,6 +9,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { motion } from "framer-motion";
 import { Globe, BarChart3, Coins, TrendingUp, TrendingDown, Info } from "lucide-react";
 import { CRYPTO_COLORS } from "@/lib/crypto-meta";
+import { useShallow } from "zustand/react/shallow";
 
 interface MetricCardProps {
   icon: React.ReactNode;
@@ -77,7 +78,9 @@ function DonutTooltip({ active, payload }: DonutTooltipProps) {
 }
 
 export function MarketOverview() {
-  const { tickers } = useCryptoStore();
+  const { tickers } = useCryptoStore(
+  useShallow((s) => ({ tickers: s.tickers }))
+);
 
   const marketData = useMemo(() => {
     const tickerValues = Object.values(tickers);

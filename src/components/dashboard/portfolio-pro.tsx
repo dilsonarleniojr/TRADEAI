@@ -10,6 +10,7 @@ import { Briefcase, ArrowUpRight, ArrowDownRight, Percent, Database, PieChart as
 import { CRYPTO_BY_SYMBOL, CRYPTO_CATEGORIES, CATEGORY_META } from "@/lib/crypto-meta";
 import { DataSourceBadge } from "@/components/ui/data-source-badge";
 import { cn } from "@/lib/utils";
+import { useShallow } from "zustand/react/shallow";
 
 interface Position {
   symbol: string;
@@ -53,7 +54,9 @@ function AllocationCustomTooltip({ active, payload }: { active?: boolean; payloa
 }
 
 export function PortfolioPro() {
-  const { portfolio, trades, tickers, selectedSymbol, botConfig } = useCryptoStore();
+  const { portfolio, trades, tickers, selectedSymbol, botConfig } = useCryptoStore(
+  useShallow((s) => ({ portfolio: s.portfolio, trades: s.trades, tickers: s.tickers, selectedSymbol: s.selectedSymbol, botConfig: s.botConfig }))
+);
 
   // 1. Get positions directly from authoritative backend payload
   const positions = useMemo(() => {

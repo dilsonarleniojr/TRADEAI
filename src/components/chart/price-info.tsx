@@ -6,6 +6,7 @@ import { formatPrice, formatVolume, formatPercent } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, Activity } from 'lucide-react';
+import { useShallow } from "zustand/react/shallow";
 
 interface TickerInfo {
   symbol: string;
@@ -26,7 +27,9 @@ interface PriceInfoProps {
 }
 
 export function PriceInfo({ symbol, interval, rsiValue }: PriceInfoProps) {
-  const { tickers } = useCryptoStore();
+  const { tickers } = useCryptoStore(
+  useShallow((s) => ({ tickers: s.tickers }))
+);
   const [tickerData, setTickerData] = useState<TickerInfo | null>(null);
   const prevPriceRef = useRef<number | null>(null);
   const clearFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -14,10 +14,14 @@
  * - Provides a "dataReady" flag for skeleton→content transitions
  */
 
+import { restoreBinanceSession } from "@/lib/binance-client";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useCryptoStore } from "@/lib/store";
 import type { TickerData } from "@/lib/store";
 import { getOrFetch, CACHE_TTL } from "@/lib/cache";
+import { getPersistedTradingMode } from "@/lib/store/accountSlice";
+
+import { registerDynamicSymbols } from "@/lib/crypto-meta";
 
 interface DataProviderState {
   dataReady: boolean;
@@ -25,6 +29,7 @@ interface DataProviderState {
   accountLoaded: boolean;
   tradesLoaded: boolean;
   error: string | null;
+  syncBinanceCoins: () => Promise<{ success: boolean; count: number }>;
 }
 
 const DataProviderContext = createContext<DataProviderState>({
@@ -33,6 +38,7 @@ const DataProviderContext = createContext<DataProviderState>({
   accountLoaded: false,
   tradesLoaded: false,
   error: null,
+  syncBinanceCoins: async () => ({ success: false, count: 0 }),
 });
 
 export function useDataProvider() {
@@ -60,25 +66,44 @@ async function fetchInitialTickers(): Promise<Record<string, TickerData>> {
       quoteVolume: parseFloat(item.quoteVolume),
     };
   }
+
+  // Pre-register all symbols from tickers immediately
+  registerDynamicSymbols(
+    data.map((item) => ({
+      symbol: item.symbol,
+      short: item.symbol.replace(/USDT$/, ""),
+    }))
+  );
+
   return tickersMap;
 }
 
-async function fetchInitialAccount(mode: string, state: any) {
-  const res = await fetch(`/api/account?mode=${mode}`, {
-    headers: {
-      'x-binance-api-key': state.binanceApiKey || '',
-      'x-binance-api-secret': state.binanceApiSecret || '',
-      'x-binance-testnet': state.binanceTestnet ? 'true' : 'false'
+async function fetchSymbolsMetadata() {
+  try {
+    const res = await fetch("/api/market/symbols");
+    if (res.ok) {
+      const json = await res.json();
+      if (Array.isArray(json.data)) {
+        registerDynamicSymbols(json.data);
+        console.log(`[DataProvider] ${json.data.length} moedas Binance sincronizadas.`);
+      }
     }
-  });
+  } catch (err: any) {
+    console.warn("[DataProvider] Falha ao carregar metadados dos símbolos:", err.message);
+  }
+}
+
+async function fetchInitialAccount(mode: string, state: any) {
+  const res = await fetch(`/api/account?mode=${mode}`);
   if (!res.ok) throw new Error("Failed to fetch account");
   const result = await res.json();
   if (!result.success || !result.data) throw new Error("Invalid account data");
   return result.data;
 }
 
-async function fetchInitialTrades() {
-  const res = await fetch("/api/trades");
+async function fetchInitialTrades(mode?: string) {
+  const url = mode ? `/api/trades?mode=${mode}` : "/api/trades";
+  const res = await fetch(url);
   if (!res.ok) throw new Error("Failed to fetch trades");
   const result = await res.json();
   if (!result.success || !Array.isArray(result.data)) throw new Error("Invalid trade data");
@@ -86,37 +111,52 @@ async function fetchInitialTrades() {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
+  const syncBinanceCoins = async (): Promise<{ success: boolean; count: number }> => {
+    try {
+      const syncRes = await fetch("/api/market/sync", { method: "POST" });
+      if (syncRes.ok) {
+        const syncData = await syncRes.json();
+        const updatedTickers = await fetchInitialTickers();
+        useCryptoStore.getState().setTickers(updatedTickers);
+        await fetchSymbolsMetadata();
+        return { success: true, count: syncData.symbolsCount || Object.keys(updatedTickers).length };
+      }
+    } catch (err: any) {
+      console.error("[DataProvider] Sync error:", err.message);
+    }
+    return { success: false, count: 0 };
+  };
+
   const [state, setState] = useState<DataProviderState>({
     dataReady: false,
     marketsLoaded: false,
     accountLoaded: false,
     tradesLoaded: false,
     error: null,
+    syncBinanceCoins,
   });
+
 
   useEffect(() => {
     let mounted = true;
     const store = useCryptoStore.getState();
 
-    // Load credentials and trading mode from localStorage if present
+    // Restaura o estado da conexão a partir da sessão do servidor (as chaves nunca chegam ao navegador)
     if (typeof window !== "undefined") {
-      const key = localStorage.getItem("binance_api_key") || "";
-      const secret = localStorage.getItem("binance_api_secret") || "";
-      const connected = localStorage.getItem("binance_connected") === "true";
-      const testnet = localStorage.getItem("binance_testnet") !== "false";
-      store.setBinanceCredentials(key, secret);
-      store.setBinanceConnected(connected);
-      store.setBinanceTestnet(testnet);
-      
-      const savedMode = localStorage.getItem("trading_mode") as any;
-      if (savedMode === "live" || savedMode === "paper") {
-        store.setTradingMode(savedMode);
-      }
+      restoreBinanceSession().then((status) => {
+        if (!mounted) return;
+        const st = useCryptoStore.getState();
+        st.setBinanceConnected(status.connected);
+        st.setBinanceTestnet(status.testnet);
+      });
+
+      // Preserva o modo escolhido pelo usuário (live ou paper) sem resetar no F5
+      const persistedMode = getPersistedTradingMode();
+      store.setTradingMode(persistedMode);
     }
 
-    // Clear any stale mock data
+    // Limpa apenas sinais antigos de IA (mantém status de robôs ativos e configurações)
     store.setAiSignals([]);
-    store.setBotActive(false);
 
     // Load all initial data in parallel
     const loadData = async () => {
@@ -127,6 +167,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           useCryptoStore.getState().setTickers(tickers);
           setState((s) => ({ ...s, marketsLoaded: true }));
           console.log("[DataProvider] Markets loaded:", Object.keys(tickers).length, "symbols");
+          fetchSymbolsMetadata().catch(() => {});
         }
       } catch (err) {
         console.error("[DataProvider] Market data failed:", err);
@@ -158,11 +199,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       // Trade history
       try {
-        const trades = await fetchInitialTrades();
+        const currentMode = useCryptoStore.getState().tradingMode;
+        const trades = await fetchInitialTrades(currentMode);
         if (mounted) {
           useCryptoStore.getState().setTrades(trades);
           setState((s) => ({ ...s, tradesLoaded: true }));
-          console.log("[DataProvider] Trades loaded:", trades.length);
+          console.log("[DataProvider] Trades loaded for mode:", currentMode, trades.length);
         }
       } catch (err) {
         console.error("[DataProvider] Trades fetch failed:", err);
@@ -170,6 +212,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
           useCryptoStore.getState().setTrades([]);
           setState((s) => ({ ...s, tradesLoaded: true }));
         }
+      }
+
+      // Initial Candlestick (Kline) data
+      try {
+        const symbol = useCryptoStore.getState().selectedSymbol || "BTCUSDT";
+        await useCryptoStore.getState().loadKlinesForSymbol(symbol);
+        console.log("[DataProvider] Initial klines loaded for:", symbol);
+      } catch (err) {
+        console.warn("[DataProvider] Initial klines fetch error:", err);
       }
 
       // All loaded

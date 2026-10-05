@@ -20,11 +20,12 @@ import {
 import { TrendingUp, TrendingDown, Calendar, BarChart3, Trophy, Target, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
 // Generate 24 hourly P&L data points based on real trades or portfolio
 function generatePnLTimeline(portfolioPnl: number, pnlPercent: number, trades: import("@/lib/store").TradeData[] = []) {
   const now = new Date();
-  const data = [];
+  const data: { time: string; pnl: number; value: number }[] = [];
   const baseValue = 10000; // Starting portfolio value
 
   // If we have real trades, build timeline from trade history
@@ -181,7 +182,9 @@ function PnLTooltip({
 }
 
 export function PnlTracker() {
-  const { portfolio, trades, tickers } = useCryptoStore();
+  const { portfolio, trades, tickers } = useCryptoStore(
+  useShallow((s) => ({ portfolio: s.portfolio, trades: s.trades, tickers: s.tickers }))
+);
 
   const pnlTimeline = useMemo(
     () => generatePnLTimeline(portfolio.pnl, portfolio.pnlPercent, trades),

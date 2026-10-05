@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import ZAI from 'z-ai-web-dev-sdk';
+import { AIUnavailableError, askAI, type AIMessage } from '@/lib/ai-client';
+import { getActiveProvider, getModel } from '@/lib/ai/settings';
 
-// Store conversations in memory
-const conversations = new Map<string, { role: string; content: string }[]>();
+// Conversas em memória. As respostas são guardadas inteiras (no Claude, com os blocos de
+// raciocínio) e o histórico só cresce no fim, como a API exige para reaproveitar o raciocínio.
+// Trocar de motor ou de modelo recomeça a conversa.
+const conversations = new Map<string, { engine: string; turns: AIMessage[] }>();
+const MAX_TURNS = 20; // ao passar disso, recomeça a conversa em vez de editar o meio do histórico
 
 const SYSTEM_PROMPT = `Você é o Crypto IA Pro, um assistente de IA avançado especializado em trading e análise de criptomoedas. Você tem conhecimento profundo de:
 
@@ -26,15 +30,6 @@ REGRAS IMPORTANTES:
 - Sempre lembre os usuários que isso não é recomendação financeira
 - RESPONDA SEMPRE EM PORTUGUÊS BRASILEIRO`;
 
-let zaiInstance: InstanceType<typeof ZAI> | null = null;
-
-async function getZAI() {
-  if (!zaiInstance) {
-    zaiInstance = await ZAI.create();
-  }
-  return zaiInstance;
-}
-
 export async function POST(request: NextRequest) {
   try {
     const { sessionId, message } = await request.json();
@@ -43,43 +38,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Mensagem é obrigatória' }, { status: 400 });
     }
 
-    const zai = await getZAI();
+    const engine = `${getActiveProvider()}:${getModel(getActiveProvider())}`;
+    const saved = conversations.get(sessionId);
+    let history = saved && saved.engine === engine ? saved.turns : [];
+    if (history.length >= MAX_TURNS * 2) history = [];
 
-    // Get or create conversation history
-    let history = conversations.get(sessionId) || [
-      { role: 'assistant', content: SYSTEM_PROMPT }
-    ];
-
-    // Add user message
-    history.push({ role: 'user', content: message });
-
-    // Keep only last 20 messages for context management
-    if (history.length > 22) {
-      history = [history[0], ...history.slice(-21)];
-    }
-
-    const completion = await zai.chat.completions.create({
-      messages: history,
-      thinking: { type: 'disabled' }
+    const pending: AIMessage[] = [...history, { role: 'user', content: message }];
+    const reply = await askAI({
+      system: SYSTEM_PROMPT,
+      messages: pending,
+      maxTokens: 8000,
+      effort: 'medium',
     });
 
-    const aiResponse = completion.choices[0]?.message?.content || 'Desculpe, não foi possível gerar uma resposta.';
-
-    // Add AI response to history
-    history.push({ role: 'assistant', content: aiResponse });
-    conversations.set(sessionId, history);
+    const aiResponse = reply.text || 'Desculpe, não foi possível gerar uma resposta.';
+    // Guarda só depois do sucesso, para uma falha não deixar uma pergunta sem resposta no histórico.
+    history = [...pending, { role: 'assistant', content: reply.assistantContent }];
+    conversations.set(sessionId, { engine, turns: history });
 
     return NextResponse.json({
       success: true,
       response: aiResponse,
-      messageCount: history.length - 1,
+      messageCount: history.length,
+      engine: { provider: reply.provider, model: reply.model },
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('AI Chat error:', error);
+    const status = error instanceof AIUnavailableError ? 503 : 500;
     return NextResponse.json(
       { error: 'Falha ao gerar resposta', details: message },
-      { status: 500 }
+      { status }
     );
   }
 }

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
 interface TopPick {
   rank: number;
@@ -49,7 +50,9 @@ const REC_STYLES: Record<string, { bg: string; text: string; icon: typeof Trendi
 };
 
 export function AITopPicks() {
-  const { tickers, setSelectedSymbol, setActiveSection } = useCryptoStore();
+  const { tickers, setSelectedSymbol, setActiveSection } = useCryptoStore(
+  useShallow((s) => ({ tickers: s.tickers, setSelectedSymbol: s.setSelectedSymbol, setActiveSection: s.setActiveSection }))
+);
   const [picks, setPicks] = useState<TopPick[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCached, setIsCached] = useState(false);

@@ -8,11 +8,25 @@ services:
     ports:
       - "3000:3000"
       - "3001:3001"
+      - "3002:3002"
     env_file:
       - .env
+      # Segredos locais fora do git (ex.: ANTHROPIC_API_KEY). Opcional.
+      - path: .env.local
+        required: false
     environment:
       - NODE_ENV=production
       - PORT=3000
       - DATABASE_URL=file:/app/db/custom.db
     volumes:
       - ./db:/app/db
+
+  caddy-proxy:
+    image: caddy:alpine
+    container_name: trade_caddy_proxy
+    restart: always
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+    depends_on:
+      - tradeai-app

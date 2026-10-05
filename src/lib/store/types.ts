@@ -71,6 +71,8 @@ export interface BotPosition {
   unrealizedPnl: number;
   unrealizedPnlPercent: number;
   entryTime: string;
+  /** Modo em que a posição foi aberta. Só pode ser encerrada pelo motor nesse mesmo modo. */
+  mode?: TradingMode;
 }
 
 export interface BotStats {
@@ -83,6 +85,14 @@ export interface BotStats {
   realizedPnl: number;
   lastAction?: string;
   lastActionTime?: string;
+  /** Resultado da última análise de entrada (por que o robô comprou ou aguarda). */
+  entryChecks?: BotEntryCheck[];
+}
+
+export interface BotEntryCheck {
+  label: string;
+  ok: boolean;
+  detail: string;
 }
 
 export interface BotInstance {

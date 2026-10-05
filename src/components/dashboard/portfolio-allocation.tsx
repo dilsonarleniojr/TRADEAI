@@ -8,6 +8,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { motion } from "framer-motion";
 import { PieChart as PieChartIcon } from "lucide-react";
 import { CRYPTO_COLORS, CRYPTO_SHORTS } from "@/lib/crypto-meta";
+import { useShallow } from "zustand/react/shallow";
 
 interface AllocationItem {
   name: string;
@@ -35,7 +36,9 @@ function AllocationCustomTooltip({ active, payload }: { active?: boolean; payloa
 }
 
 export function PortfolioAllocation() {
-  const { portfolio, selectedSymbol, tickers, botConfig } = useCryptoStore();
+  const { portfolio, selectedSymbol, tickers, botConfig } = useCryptoStore(
+  useShallow((s) => ({ portfolio: s.portfolio, selectedSymbol: s.selectedSymbol, tickers: s.tickers, botConfig: s.botConfig }))
+);
 
   const data = useMemo(() => {
     const items: AllocationItem[] = [];

@@ -48,6 +48,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ALL_SYMBOLS } from "@/lib/crypto-meta";
+import { useShallow } from "zustand/react/shallow";
 
 function AnimatedValue({ value, prefix = "", suffix = "", decimals = 2 }: {
   value: number;
@@ -64,7 +65,9 @@ function AnimatedValue({ value, prefix = "", suffix = "", decimals = 2 }: {
 }
 
 export function FinancialHub() {
-  const { portfolio, trades, botActive, tickers, connectionStatus, tradingMode, setActiveSection, addAlert } = useCryptoStore();
+  const { portfolio, trades, botActive, tickers, connectionStatus, tradingMode, setActiveSection, addAlert } = useCryptoStore(
+  useShallow((s) => ({ portfolio: s.portfolio, trades: s.trades, botActive: s.botActive, tickers: s.tickers, connectionStatus: s.connectionStatus, tradingMode: s.tradingMode, setActiveSection: s.setActiveSection, addAlert: s.addAlert }))
+);
   const [alertDialogOpen, setAlertDialogOpen] = useState(false);
   const [alertSymbol, setAlertSymbol] = useState("BTCUSDT");
   const [alertTargetPrice, setAlertTargetPrice] = useState("");
@@ -96,13 +99,7 @@ export function FinancialHub() {
     try {
       const state = useCryptoStore.getState();
       const mode = state.tradingMode;
-      const res = await fetch(`/api/account?mode=${mode}`, {
-        headers: {
-          'x-binance-api-key': state.binanceApiKey || '',
-          'x-binance-api-secret': state.binanceApiSecret || '',
-          'x-binance-testnet': state.binanceTestnet ? 'true' : 'false'
-        }
-      });
+      const res = await fetch(`/api/account?mode=${mode}`);
       const result = await res.json();
       if (res.ok && result.success && result.data) {
         state.setAccount(result.data);

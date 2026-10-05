@@ -4,6 +4,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { useCryptoStore, type TickerData } from "@/lib/store";
 import { getOrFetch, CACHE_TTL } from "@/lib/cache";
 import { syncManager } from "@/lib/realtime-sync";
+import { useShallow } from "zustand/react/shallow";
 
 const BINANCE_API = "/api/market";
 
@@ -14,7 +15,9 @@ export function useBinanceData() {
     setKlines,
     setIsLoading,
     tradingMode,
-  } = useCryptoStore();
+  } = useCryptoStore(
+  useShallow((s) => ({ setTickers: s.setTickers, selectedSymbol: s.selectedSymbol, setKlines: s.setKlines, setIsLoading: s.setIsLoading, tradingMode: s.tradingMode }))
+);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 

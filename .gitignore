@@ -55,3 +55,6 @@ server.log
 # python
 .venv/
 __pycache__/
+
+# chave de sessão local (dev)
+.data/

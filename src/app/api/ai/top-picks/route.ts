@@ -1,14 +1,5 @@
 import { NextResponse } from 'next/server';
-import ZAI from 'z-ai-web-dev-sdk';
-
-let zaiInstance: InstanceType<typeof ZAI> | null = null;
-
-async function getZAI() {
-  if (!zaiInstance) {
-    zaiInstance = await ZAI.create();
-  }
-  return zaiInstance;
-}
+import { askAIOnce, parseJsonLoose } from '@/lib/ai-client';
 
 // Cache for 5 minutes to avoid excessive API calls
 let cachedPicks: { data: TopPick[]; timestamp: number } | null = null;
@@ -47,25 +38,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const zai = await getZAI();
-
-    // Fetch latest crypto news to inform the AI analysis
-    let newsContext = '';
-    try {
-      const newsResults = await zai.functions.invoke('web_search', {
-        query: 'cryptocurrency bitcoin ethereum market news today 2025',
-        num: 5,
-        recency_days: 2,
-      });
-      if (Array.isArray(newsResults) && newsResults.length > 0) {
-        newsContext = newsResults
-          .slice(0, 5)
-          .map((r: any) => `- ${r.name || r.title || 'Notícia'}: ${r.snippet || ''}`)
-          .join('\n');
-      }
-    } catch {
-      // News search failed, continue without it
-    }
+    // Sem busca de notícias: a busca antiga dependia do SDK da Z.AI.
+    const newsContext = '';
 
     // Prepare market summary for AI analysis
     const marketSummary = Object.entries(marketData)
@@ -107,28 +81,19 @@ Responda APENAS com um array JSON contendo objetos com:
 
 IMPORTANTE: Responda APENAS com o array JSON, sem texto adicional.`;
 
-    const completion = await zai.chat.completions.create({
-      messages: [
-        {
-          role: 'assistant',
-          content: 'Você é um analista de criptomoedas profissional. Responda apenas com JSON válido. Foque em oportunidades reais baseadas nos dados e notícias fornecidas.'
-        },
-        { role: 'user', content: prompt }
-      ],
-      thinking: { type: 'disabled' }
-    });
+    const response = await askAIOnce(
+      'Você é um analista de criptomoedas profissional. Responda apenas com JSON válido. Foque em oportunidades reais baseadas nos dados fornecidos.',
+      prompt,
+      { maxTokens: 6000 }
+    );
 
-    const response = completion.choices[0]?.message?.content || '';
-
-    try {
-      const cleanedResponse = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const picks: TopPick[] = JSON.parse(cleanedResponse);
-
+    const picks = parseJsonLoose<TopPick[]>(response);
+    if (Array.isArray(picks) && picks.length > 0) {
       // Cache the result
       cachedPicks = { data: picks, timestamp: Date.now() };
 
       return NextResponse.json({ success: true, picks, cached: false });
-    } catch {
+    } else {
       // If parsing fails, generate picks from market data algorithmically
       const fallbackPicks = generateFallbackPicks(marketData);
       cachedPicks = { data: fallbackPicks, timestamp: Date.now() };

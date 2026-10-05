@@ -11,9 +11,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Download, FileText, Copy, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useShallow } from "zustand/react/shallow";
 
 export function ExportTrades() {
-  const { trades } = useCryptoStore();
+  const { trades } = useCryptoStore(
+  useShallow((s) => ({ trades: s.trades }))
+);
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
 

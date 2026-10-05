@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Brain, Sparkles, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 
 function getActionColor(action: AISignalData["action"]) {
   switch (action) {
@@ -36,7 +37,9 @@ function getConfidenceBars(confidence: number) {
 }
 
 export function AISignals() {
-  const { aiSignals, botConfig, botActive, trades } = useCryptoStore();
+  const { aiSignals, botConfig, botActive, trades } = useCryptoStore(
+  useShallow((s) => ({ aiSignals: s.aiSignals, botConfig: s.botConfig, botActive: s.botActive, trades: s.trades }))
+);
 
   // Determine which signals have had trades executed via auto-trade
   const executedSignalSymbols = new Set<string>();
