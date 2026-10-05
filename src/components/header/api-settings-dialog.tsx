@@ -70,6 +70,20 @@ export function ApiSettingsDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [riskAck, setRiskAck] = useState(false);
 
+  const isAiModelName = (val: string) => {
+    if (!val) return false;
+    const lower = val.toLowerCase().trim();
+    return (
+      lower.startsWith("claude") ||
+      lower.startsWith("gpt-") ||
+      lower.startsWith("gemini") ||
+      lower.startsWith("qwen") ||
+      lower.includes("opus") ||
+      lower.includes("sonnet") ||
+      lower.includes("haiku")
+    );
+  };
+
   // Ao abrir: campos sempre vazios (o segredo nunca volta do servidor) e ambiente vindo do estado da sessão
   useEffect(() => {
     if (open) {
@@ -78,6 +92,18 @@ export function ApiSettingsDialog({
       setShowSecret(false);
       setTestnet(binanceTestnet);
       setRiskAck(false);
+
+      // Prevenir injeção incorreta de gerenciador de senhas do navegador (ex: claude-opus-5-5)
+      const t1 = setTimeout(() => {
+        setApiKey((prev) => (isAiModelName(prev) ? "" : prev));
+      }, 50);
+      const t2 = setTimeout(() => {
+        setApiKey((prev) => (isAiModelName(prev) ? "" : prev));
+      }, 250);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
     }
   }, [open, binanceTestnet]);
 
@@ -259,6 +285,12 @@ export function ApiSettingsDialog({
 
         {/* Inputs */}
         <div className="space-y-3.5 py-1">
+          {/* Honeypot hidden fields to trap browser password managers */}
+          <div className="sr-only" aria-hidden="true" style={{ position: "absolute", opacity: 0, height: 0, width: 0, zIndex: -1 }}>
+            <input type="text" name="fake_username_trap" tabIndex={-1} autoComplete="off" />
+            <input type="password" name="fake_password_trap" tabIndex={-1} autoComplete="new-password" />
+          </div>
+
           {/* API Key */}
           <div className="space-y-1.5">
             <Label htmlFor="binance-api-key" className="text-xs font-semibold flex items-center justify-between">
@@ -274,10 +306,25 @@ export function ApiSettingsDialog({
             </Label>
             <Input
               id="binance-api-key"
+              name="binance_auth_api_key_no_autofill"
               type="text"
               placeholder="Cole sua API Key da Binance"
               value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (isAiModelName(val)) {
+                  setApiKey("");
+                  return;
+                }
+                setApiKey(val);
+              }}
+              autoComplete="off"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-form-type="other"
               className="h-9 text-xs font-mono bg-secondary/30 border-border/60"
             />
           </div>
@@ -290,10 +337,15 @@ export function ApiSettingsDialog({
             <div className="relative">
               <Input
                 id="binance-api-secret"
+                name="binance_auth_api_secret_no_autofill"
                 type={showSecret ? "text" : "password"}
                 placeholder="Cole seu API Secret da Binance"
                 value={apiSecret}
                 onChange={(e) => setApiSecret(e.target.value)}
+                autoComplete="new-password"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                data-form-type="other"
                 className="h-9 text-xs font-mono bg-secondary/30 border-border/60 pr-9"
               />
               <button
