@@ -195,23 +195,23 @@ export function AIBotRecommendationsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-[#0a0f1d]/95 backdrop-blur-2xl border-white/[0.1] text-foreground p-6 shadow-2xl">
-        <DialogHeader className="space-y-2">
+      <DialogContent className="w-[95vw] sm:max-w-4xl lg:max-w-5xl h-[88vh] max-h-[92vh] flex flex-col p-6 bg-[#0a0f1d]/95 backdrop-blur-2xl border-white/[0.1] text-foreground shadow-2xl overflow-hidden">
+        <DialogHeader className="shrink-0 space-y-2.5 pb-2.5 border-b border-white/[0.06] pr-16">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-purple-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-purple-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)] shrink-0">
                 <Brain className="w-5 h-5 animate-pulse" />
               </div>
               <div>
-                <DialogTitle className="text-lg font-bold flex items-center gap-2">
-                  Sugestões de IA Especialista
+                <DialogTitle className="text-lg font-bold flex items-center gap-2 flex-wrap">
+                  <span>Sugestões de IA Especialista</span>
                   <Badge variant="outline" className="border-cyan-500/40 text-cyan-400 bg-cyan-500/10 text-[10px] font-semibold">
                     <Sparkles className="w-2.5 h-2.5 mr-1" />
                     Montante & Tempo Otimizados
                   </Badge>
                 </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
-                  A IA analisa volume, momentum e volatilidade do mercado atual para recomendar as melhores estratégias, o capital de entrada ideal e a duração estimada da operação.
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  A IA analisa volume, momentum e volatilidade do mercado atual para recomendar estratégias, capital de entrada ideal e duração estimada.
                 </DialogDescription>
               </div>
             </div>
@@ -229,8 +229,8 @@ export function AIBotRecommendationsDialog({
           </div>
 
           {/* Quick Context Bar */}
-          <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.06] text-xs">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.06] text-xs flex-wrap">
+            <div className="flex items-center gap-3 flex-wrap">
               <span className="text-muted-foreground">Saldo Disponível:</span>
               <span className="font-mono font-bold text-emerald-400">
                 ${formatPrice(portfolio.cashBalance)} USDT
@@ -288,7 +288,7 @@ export function AIBotRecommendationsDialog({
         </DialogHeader>
 
         {/* Content Body */}
-        <div className="space-y-4 pt-2">
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1.5 space-y-4 pt-3">
           {isLoading ? (
             <div className="py-16 flex flex-col items-center justify-center gap-3">
               <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
@@ -304,7 +304,7 @@ export function AIBotRecommendationsDialog({
               Nenhuma recomendação disponível para este filtro no momento. Clique em Recalcular.
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4">
               {filtered.map((rec) => {
                 const currentVal = editedAmounts[rec.id] !== undefined ? editedAmounts[rec.id] : rec.allocationAmount;
                 const isAdding = addingId === rec.id;
@@ -416,17 +416,17 @@ export function AIBotRecommendationsDialog({
                           size="sm"
                           onClick={() => handleApplyBot(rec, true)}
                           disabled={isAdding}
-                          className="flex-1 h-8 text-xs font-bold bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-sm shadow-emerald-500/20 cursor-pointer"
+                          className="flex-1 h-8 text-xs font-bold bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-sm shadow-emerald-500/20 cursor-pointer min-w-0"
                         >
-                          <Zap className="w-3.5 h-3.5 mr-1 fill-current" />
-                          Ativar Robô Agora
+                          <Zap className="w-3.5 h-3.5 mr-1 shrink-0 fill-current" />
+                          <span className="truncate">Ativar Robô Agora</span>
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => handleApplyBot(rec, false)}
                           disabled={isAdding}
-                          className="h-8 text-xs font-semibold border-white/[0.1] hover:bg-white/[0.05] cursor-pointer"
+                          className="h-8 text-xs font-semibold border-white/[0.1] hover:bg-white/[0.05] cursor-pointer shrink-0 whitespace-nowrap"
                           title="Adicionar à frota pausado para revisar antes"
                         >
                           Salvar Pausado

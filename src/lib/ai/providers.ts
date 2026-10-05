@@ -10,6 +10,8 @@ export interface AIProviderInfo {
   envKeys: string[];
   /** Modelo inicial sugerido; o usuário pode trocar e listar os disponíveis na conta. */
   defaultModel: string;
+  /** Lista de modelos oficiais e populares recomendados para o seletor. */
+  suggestedModels: string[];
   /** Onde criar a chave. */
   keyUrl: string;
 }
@@ -20,7 +22,14 @@ export const AI_PROVIDERS: AIProviderInfo[] = [
     name: "Claude",
     vendor: "Anthropic",
     envKeys: ["ANTHROPIC_API_KEY"],
-    defaultModel: "claude-opus-5-5",
+    defaultModel: "claude-3-5-sonnet-latest",
+    suggestedModels: [
+      "claude-3-5-sonnet-latest",
+      "claude-3-5-haiku-latest",
+      "claude-3-opus-latest",
+      "claude-3-5-sonnet-20241022",
+      "claude-3-haiku-20240307",
+    ],
     keyUrl: "https://console.anthropic.com/settings/keys",
   },
   {
@@ -28,7 +37,14 @@ export const AI_PROVIDERS: AIProviderInfo[] = [
     name: "OpenAI",
     vendor: "OpenAI (GPT)",
     envKeys: ["OPENAI_API_KEY"],
-    defaultModel: "gpt-5",
+    defaultModel: "gpt-4o",
+    suggestedModels: [
+      "gpt-4o",
+      "gpt-4o-mini",
+      "o1-mini",
+      "o1",
+      "gpt-4-turbo",
+    ],
     keyUrl: "https://platform.openai.com/api-keys",
   },
   {
@@ -36,7 +52,12 @@ export const AI_PROVIDERS: AIProviderInfo[] = [
     name: "Gemini",
     vendor: "Google",
     envKeys: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-    defaultModel: "gemini-2.5-flash",
+    defaultModel: "gemini-2.0-flash",
+    suggestedModels: [
+      "gemini-2.0-flash",
+      "gemini-1.5-flash",
+      "gemini-1.5-pro",
+    ],
     keyUrl: "https://aistudio.google.com/apikey",
   },
   {
@@ -45,6 +66,12 @@ export const AI_PROVIDERS: AIProviderInfo[] = [
     vendor: "Alibaba Cloud (DashScope)",
     envKeys: ["DASHSCOPE_API_KEY", "QWEN_API_KEY"],
     defaultModel: "qwen-plus",
+    suggestedModels: [
+      "qwen-plus",
+      "qwen-turbo",
+      "qwen-max",
+      "qwen-long",
+    ],
     keyUrl: "https://modelstudio.console.alibabacloud.com/",
   },
 ];
