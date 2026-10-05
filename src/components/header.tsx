@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { useTheme } from "next-themes";
-import { useSyncExternalStore, useState } from "react";
+import { useSyncExternalStore, useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { CryptoSelector } from "./header/crypto-selector";
 import { ApiSettingsDialog } from "./header/api-settings-dialog";
@@ -66,6 +66,24 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
   const [apiDialogOpen, setApiDialogOpen] = useState(false);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [confirmLiveOpen, setConfirmLiveOpen] = useState(false);
+  const [aiInfo, setAiInfo] = useState<{ provider: string; model: string; configured: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!mounted) return;
+    fetch("/api/ai/settings")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.success && j.data) {
+          const active = j.data.providers?.find((p: any) => p.id === j.data.provider);
+          setAiInfo({
+            provider: j.data.provider,
+            model: active?.model || "",
+            configured: !!active?.configured,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [mounted, aiDialogOpen]);
 
   const isRealMoney = tradingMode === "live" && !binanceTestnet;
   const modeLabel = tradingMode === "live" ? (binanceTestnet ? "TESTNET" : "REAL") : "SIMULADO";
@@ -375,6 +393,32 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
                   <Moon className="w-4 h-4 text-muted-foreground" />
                 )}
               </motion.div>
+            </Button>
+          )}
+
+          {/* AI Engine Status Button */}
+          {mounted && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setAiDialogOpen(true)}
+              className="h-8 gap-1.5 px-2 hover:bg-purple-500/10 text-muted-foreground hover:text-purple-300 transition-colors cursor-pointer"
+              title={
+                aiInfo
+                  ? `Motor IA: ${aiInfo.provider.toUpperCase()} (${aiInfo.configured ? "Chave configurada" : "Sem chave"})`
+                  : "Configurações de IA"
+              }
+            >
+              <Brain className="w-3.5 h-3.5 text-purple-400" />
+              <span className="text-[10px] font-semibold hidden lg:inline capitalize">
+                {aiInfo ? aiInfo.provider : "IA"}
+              </span>
+              <span
+                className={cn(
+                  "w-1.5 h-1.5 rounded-full shrink-0",
+                  aiInfo?.configured ? "bg-crypto-green shadow-[0_0_6px_#10b981]" : "bg-muted-foreground/40"
+                )}
+              />
             </Button>
           )}
 
