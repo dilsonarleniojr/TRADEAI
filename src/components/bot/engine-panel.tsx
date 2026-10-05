@@ -108,7 +108,7 @@ export function EnginePanel() {
             <Brain className="w-4 h-4 text-crypto-cyan" />
             Decisão de cada robô agora
             <Badge variant="outline" className="ml-auto text-[10px] border-crypto-cyan/20 text-crypto-cyan">
-              até 500 candles de 1h · atualiza a cada 10s
+              até 500 candles de 1m · atualiza a cada 10s
             </Badge>
           </CardTitle>
           <p className="text-[11px] text-muted-foreground">

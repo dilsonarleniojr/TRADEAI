@@ -7,16 +7,33 @@ export interface MultiBotEngineCallbacks {
   onToast?: (toast: { title: string; description: string; variant?: "default" | "destructive" }) => void;
 }
 
+let lastFleetAccountSync = 0;
+const botErrorCooldown = new Map<string, number>();
+
 /**
  * Evaluates all active bots simultaneously and executes buys/sells aiming strictly for profit.
  */
 export async function tickMultiBotFleet(callbacks?: MultiBotEngineCallbacks) {
   const store = useCryptoStore.getState();
-  const { bots } = store;
+  const { bots, tradingMode } = store;
 
   // Filter only active bots
   const activeBots = bots.filter((b) => b.active);
   if (activeBots.length === 0) return;
+
+  // Sempre sincroniza o saldo real da conta (Spot Binance) periodicamente para que o portfólio esteja sempre atualizado
+  if (tradingMode === "live" && Date.now() - lastFleetAccountSync >= 4000) {
+    lastFleetAccountSync = Date.now();
+    try {
+      const accRes = await fetch("/api/account?mode=live");
+      if (accRes.ok) {
+        const accJson = await accRes.json();
+        if (accJson.success && accJson.data) {
+          store.setAccount(accJson.data);
+        }
+      }
+    } catch {}
+  }
 
   // Execute each bot asynchronously in parallel
   await Promise.all(
@@ -36,6 +53,12 @@ export async function tickMultiBotFleet(callbacks?: MultiBotEngineCallbacks) {
  * 2. If no position -> Checks entry criteria to BUY for profit
  */
 async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngineCallbacks) {
+  // Respeita cooldown de erro se houve rejeição recente da Binance
+  const cooldownUntil = botErrorCooldown.get(bot.id) || 0;
+  if (Date.now() < cooldownUntil) {
+    return;
+  }
+
   const store = useCryptoStore.getState();
   const { tickers, tradingMode, aiSignals } = store;
 
@@ -60,6 +83,39 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
           quoteVolume: 0,
         };
       }
+    }
+  }
+
+  // Para robô com posição aberta: busca ativamente cotação fresca na Binance para monitorar saída e PnL em tempo real
+  if (bot.position && bot.position.quantity > 0) {
+    try {
+      const res = await fetch(`/api/market/price?symbol=${symbol}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(1500),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const freshPrice = parseFloat(json?.data?.price || json?.price);
+        if (freshPrice && !isNaN(freshPrice) && freshPrice > 0) {
+          currentPrice = freshPrice;
+          const updatedTicker = ticker
+            ? { ...ticker, price: freshPrice }
+            : {
+                symbol,
+                price: freshPrice,
+                priceChange: 0,
+                priceChangePercent: 0,
+                high: freshPrice,
+                low: freshPrice,
+                volume: 0,
+                quoteVolume: 0,
+              };
+          ticker = updatedTicker;
+          store.updateTicker(symbol, updatedTicker);
+        }
+      }
+    } catch {
+      // Ignora erro de rede temporário e continua com a cotação disponível
     }
   }
 
@@ -109,6 +165,20 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       unrealizedPnlPercent: parseFloat(gainPercent.toFixed(2)),
     };
     store.updateBotPosition(bot.id, updatedPosition);
+    store.updateBotPositionsRealtime(store.tickers);
+    store.updateBotPnls(store.tickers);
+
+    // Feedback de monitoramento em tempo real do robô em operação
+    const targetProfitPrice = (pos.entryPrice * (1 + bot.takeProfit / 100)).toFixed(4);
+    const sign = gainPercent >= 0 ? "+" : "";
+    store.updateBot(bot.id, {
+      status: "in_position",
+      stats: {
+        ...bot.stats,
+        lastAction: `Monitorando posição · Cotação: $${currentPrice.toFixed(5)} (${sign}${gainPercent.toFixed(2)}%) · Alvo: $${targetProfitPrice}`,
+        lastActionTime: new Date().toISOString(),
+      },
+    });
 
     // 1.1 TAKE PROFIT TRIGGER (Target reached!)
     const isTakeProfit = gainPercent >= bot.takeProfit;
@@ -207,15 +277,16 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   const { shouldBuy, reason: entryReason, checks } = decision;
 
   if (shouldBuy) {
-    // Sizing: Dynamically adapted to available cash and allocation
-    const targetSpend = tradingMode === "live"
-      ? Math.min(cash, Math.max(5.50, Math.min(bot.allocationAmount || 50, cash * 0.35)))
-      : Math.min(cash, bot.allocationAmount || 100);
+    // Sizing: Dinamicamente adaptado ao saldo disponível em caixa.
+    // Deixamos margem de segurança de 5% sobre o caixa livre para que a ordem nunca exceda
+    // o saldo nem seja rejeitada por buffer de taxas/slippage a mercado da Binance.
+    const maxSafeCash = Math.max(0, cash * 0.95);
+    const targetSpend = Math.max(5.20, Math.min(maxSafeCash, bot.allocationAmount || 10));
 
     const quantity = parseFloat((targetSpend / currentPrice).toFixed(6));
     const total = parseFloat((quantity * currentPrice).toFixed(2));
 
-    if (total >= 5.20) {
+    if (total >= 5.20 && total <= cash) {
       await executeBotBuy({
         bot,
         buyPrice: currentPrice,
@@ -299,6 +370,8 @@ async function executeBotBuy({
             lastActionTime: new Date().toISOString(),
           },
         });
+        // Cooldown de 20s para evitar floodar logs a cada ciclo quando a Binance rejeita
+        botErrorCooldown.set(bot.id, Date.now() + 20_000);
         return;
       }
 
@@ -526,7 +599,19 @@ export async function manualCloseBotPosition(botId: string, callbacks?: MultiBot
     return;
   }
 
-  const currentPrice = store.tickers[bot.symbol]?.price || bot.position.currentPrice;
+  let currentPrice = store.tickers[bot.symbol]?.price || bot.position.currentPrice;
+  try {
+    const res = await fetch(`/api/market/price?symbol=${bot.symbol}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(1500),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      const p = parseFloat(json?.data?.price || json?.price);
+      if (p && !isNaN(p) && p > 0) currentPrice = p;
+    }
+  } catch {}
+
   const gainPercent = ((currentPrice - bot.position.entryPrice) / bot.position.entryPrice) * 100;
   const pnl = parseFloat(((currentPrice - bot.position.entryPrice) * bot.position.quantity).toFixed(2));
 
@@ -590,9 +675,8 @@ export async function manualOpenBotPosition(botId: string, callbacks?: MultiBotE
     return;
   }
 
-  const targetSpend = store.tradingMode === "live"
-    ? Math.min(cash, Math.max(5.50, Math.min(bot.allocationAmount || 50, cash * 0.35)))
-    : Math.min(cash, bot.allocationAmount || 100);
+  const maxSafeCash = Math.max(0, cash * 0.95);
+  const targetSpend = Math.max(5.20, Math.min(maxSafeCash, bot.allocationAmount || 10));
 
   const quantity = parseFloat((targetSpend / currentPrice).toFixed(6));
   const total = parseFloat((quantity * currentPrice).toFixed(2));

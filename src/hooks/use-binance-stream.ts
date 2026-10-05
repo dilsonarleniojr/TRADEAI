@@ -6,12 +6,119 @@ import { syncManager } from "@/lib/realtime-sync";
 import { useShallow } from "zustand/react/shallow";
 
 let globalSocket: Socket | null = null;
+let globalNativeWs: WebSocket | null = null;
+let nativeWsReconnectTimer: any = null;
 let activeHookCount = 0;
 
+function getNeededSymbols(): string[] {
+  const store = useCryptoStore.getState();
+  const set = new Set<string>();
+  if (store.selectedSymbol) set.add(store.selectedSymbol.toUpperCase());
+  store.bots.forEach((b) => {
+    if (b.active && b.symbol) set.add(b.symbol.toUpperCase());
+  });
+  return Array.from(set);
+}
+
+function syncSocketSubscriptions(socket: Socket) {
+  if (!socket || !socket.connected) return;
+  const symbols = getNeededSymbols();
+  symbols.forEach((sym) => {
+    socket.emit("subscribe", sym);
+  });
+}
+
+function startNativeWsFallback() {
+  if (typeof window === "undefined") return;
+  if (globalNativeWs && (globalNativeWs.readyState === WebSocket.OPEN || globalNativeWs.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+
+  const symbols = getNeededSymbols();
+  if (symbols.length === 0) return;
+
+  const streams = symbols.map((s) => `${s.toLowerCase()}@ticker`).join("/");
+  const url = `wss://stream.binance.com:9443/stream?streams=${streams}`;
+
+  try {
+    const ws = new WebSocket(url);
+    globalNativeWs = ws;
+
+    ws.onopen = () => {
+      console.log(`[BinanceStream] Native WS Fallback conectado para: ${symbols.join(", ")}`);
+      useCryptoStore.getState().setConnectionStatus("connected");
+      useCryptoStore.getState().setSyncMode("realtime");
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        const data = payload?.data;
+        if (!data || !data.s) return;
+
+        const sym = data.s.toUpperCase();
+        useCryptoStore.getState().updateTicker(sym, {
+          symbol: sym,
+          price: parseFloat(data.c),
+          priceChange: parseFloat(data.p),
+          priceChangePercent: parseFloat(data.P),
+          high: parseFloat(data.h),
+          low: parseFloat(data.l),
+          volume: parseFloat(data.v),
+          quoteVolume: parseFloat(data.q),
+        });
+
+        const store = useCryptoStore.getState();
+        store.updateBotPnls(store.tickers);
+        store.updateBotPositionsRealtime(store.tickers);
+      } catch {}
+    };
+
+    ws.onerror = (err) => {
+      console.warn("[BinanceStream] Native WS error:", err);
+    };
+
+    ws.onclose = () => {
+      globalNativeWs = null;
+      // Reconnect native WS fallback se Socket.IO ainda não estiver conectado
+      if (!globalSocket || !globalSocket.connected) {
+        if (nativeWsReconnectTimer) clearTimeout(nativeWsReconnectTimer);
+        nativeWsReconnectTimer = setTimeout(() => {
+          if (!globalSocket || !globalSocket.connected) {
+            startNativeWsFallback();
+          }
+        }, 3000);
+      }
+    };
+  } catch (err: any) {
+    console.warn("[BinanceStream] Falha ao iniciar Native WS fallback:", err.message);
+  }
+}
+
+function stopNativeWsFallback() {
+  if (nativeWsReconnectTimer) {
+    clearTimeout(nativeWsReconnectTimer);
+    nativeWsReconnectTimer = null;
+  }
+  if (globalNativeWs) {
+    try {
+      globalNativeWs.close();
+    } catch {}
+    globalNativeWs = null;
+  }
+}
+
 export function useBinanceStream() {
-  const { selectedSymbol } = useCryptoStore(
-  useShallow((s) => ({ selectedSymbol: s.selectedSymbol }))
-);
+  const { selectedSymbol, activeBotSymbolsKey } = useCryptoStore(
+    useShallow((s) => ({
+      selectedSymbol: s.selectedSymbol,
+      activeBotSymbolsKey: s.bots
+        .filter((b) => b.active)
+        .map((b) => b.symbol)
+        .sort()
+        .join(","),
+    }))
+  );
   const setConnectionStatus = useCryptoStore((s) => s.setConnectionStatus);
   const reconnectAttemptRef = useRef(0);
   const failedRef = useRef(false);
@@ -24,10 +131,11 @@ export function useBinanceStream() {
       if (!mounted) return;
 
       if (globalSocket) {
-        console.log("[BinanceStream] Reusing global socket instance. Active hooks:", activeHookCount);
         if (globalSocket.connected) {
           syncManager.onWSConnected();
-          globalSocket.emit("subscribe", selectedSymbol);
+          syncSocketSubscriptions(globalSocket);
+        } else {
+          startNativeWsFallback();
         }
         return;
       }
@@ -56,7 +164,8 @@ export function useBinanceStream() {
         reconnectAttemptRef.current = 0;
         failedRef.current = false;
         syncManager.onWSConnected();
-        socket.emit("subscribe", useCryptoStore.getState().selectedSymbol);
+        syncSocketSubscriptions(socket);
+        stopNativeWsFallback();
       });
 
       socket.on("ticker:update", (data: {
@@ -71,8 +180,9 @@ export function useBinanceStream() {
         priceChangePercent: string;
         timestamp: number;
       }) => {
-        useCryptoStore.getState().updateTicker(data.symbol.toUpperCase(), {
-          symbol: data.symbol.toUpperCase(),
+        const sym = data.symbol.toUpperCase();
+        useCryptoStore.getState().updateTicker(sym, {
+          symbol: sym,
           price: parseFloat(data.price),
           priceChange: parseFloat(data.priceChange),
           priceChangePercent: parseFloat(data.priceChangePercent),
@@ -94,7 +204,7 @@ export function useBinanceStream() {
       socket.on("trade-executed", (data: any) => {
         console.log("[BinanceStream] Trade received via Socket.IO:", data);
         const store = useCryptoStore.getState();
-        const exists = store.trades.some(t => t.id === data.id);
+        const exists = store.trades.some((t) => t.id === data.id);
         if (!exists) {
           store.addTrade({
             id: data.id,
@@ -123,6 +233,7 @@ export function useBinanceStream() {
       socket.on("disconnect", (reason) => {
         console.log("[BinanceStream] Disconnected:", reason);
         syncManager.onWSDisconnected();
+        startNativeWsFallback();
       });
 
       socket.on("reconnect_attempt", (attempt) => {
@@ -133,22 +244,25 @@ export function useBinanceStream() {
         if (attempt === 1) {
           useCryptoStore.getState().setConnectionStatus("connecting");
         }
+        startNativeWsFallback();
       });
 
       socket.on("reconnect_failed", () => {
-        console.log("[BinanceStream] Reconnect failed — polling fallback active");
+        console.log("[BinanceStream] Reconnect failed — native WS fallback active");
         syncManager.onWSDisconnected();
+        startNativeWsFallback();
       });
 
       socket.on("connect_error", (err) => {
         const attempt = reconnectAttemptRef.current;
         if (attempt <= 1 || attempt % 10 === 0) {
-          console.warn("[BinanceStream] Connection issue (fallback active):", err.message);
+          console.warn("[BinanceStream] Connection issue (native fallback active):", err.message);
         }
         if (attempt >= 2 && !failedRef.current) {
           failedRef.current = true;
           syncManager.onWSDisconnected();
         }
+        startNativeWsFallback();
       });
     }
 
@@ -158,26 +272,29 @@ export function useBinanceStream() {
       mounted = false;
       activeHookCount--;
       if (activeHookCount <= 0) {
-        console.log("[BinanceStream] No active hooks left, disconnecting global socket");
+        console.log("[BinanceStream] No active hooks left, cleaning up connections");
         const socket = globalSocket;
         if (socket) {
-          socket.emit("unsubscribe", useCryptoStore.getState().selectedSymbol);
           socket.disconnect();
           globalSocket = null;
         }
+        stopNativeWsFallback();
         setConnectionStatus("rest-api");
-      } else {
-        console.log(`[BinanceStream] Hook unmounted. ${activeHookCount} hooks still active. Keeping socket alive.`);
       }
     };
   }, []);
 
+  // Sincroniza assinaturas sempre que mudar o símbolo selecionado ou os robôs ativos
   useEffect(() => {
     const socket = globalSocket;
-    if (!socket || !socket.connected) return;
-
-    socket.emit("subscribe", selectedSymbol);
-  }, [selectedSymbol]);
+    if (socket && socket.connected) {
+      syncSocketSubscriptions(socket);
+    } else {
+      // Re-estabelece Native WS fallback com os novos símbolos necessários
+      stopNativeWsFallback();
+      startNativeWsFallback();
+    }
+  }, [selectedSymbol, activeBotSymbolsKey]);
 
   const getSocket = useCallback(() => globalSocket, []);
 

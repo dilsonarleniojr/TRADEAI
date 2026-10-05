@@ -8,8 +8,10 @@ import { AI_PROVIDERS, DEFAULT_PROVIDER, getProvider, isProviderId, type AIProvi
 
 interface StoredSettings {
   provider: AIProviderId;
+  activeProviders?: AIProviderId[]; // Provedores ativos para modo Multi-IA
+  multiAiEnabled?: boolean;         // Flag para ativar modo Multi-IA simultâneo
   models: Partial<Record<AIProviderId, string>>;
-  keys: Partial<Record<AIProviderId, string>>; // cifradas
+  keys: Partial<Record<AIProviderId, string>>; // cifradas separadamente por IA
 }
 
 const FILE = path.join(process.cwd(), ".data", "ai-settings.json");
@@ -17,13 +19,26 @@ const FILE = path.join(process.cwd(), ".data", "ai-settings.json");
 function read(): StoredSettings {
   try {
     const raw = JSON.parse(fs.readFileSync(FILE, "utf8"));
+    const primary = isProviderId(raw.provider) ? raw.provider : DEFAULT_PROVIDER;
+    const active = Array.isArray(raw.activeProviders)
+      ? (raw.activeProviders.filter(isProviderId) as AIProviderId[])
+      : [primary];
+
     return {
-      provider: isProviderId(raw.provider) ? raw.provider : DEFAULT_PROVIDER,
+      provider: primary,
+      activeProviders: active.length > 0 ? active : [primary],
+      multiAiEnabled: typeof raw.multiAiEnabled === "boolean" ? raw.multiAiEnabled : true,
       models: typeof raw.models === "object" && raw.models ? raw.models : {},
       keys: typeof raw.keys === "object" && raw.keys ? raw.keys : {},
     };
   } catch {
-    return { provider: DEFAULT_PROVIDER, models: {}, keys: {} };
+    return {
+      provider: DEFAULT_PROVIDER,
+      activeProviders: [DEFAULT_PROVIDER],
+      multiAiEnabled: true,
+      models: {},
+      keys: {},
+    };
   }
 }
 
@@ -51,32 +66,51 @@ export function getActiveProvider(): AIProviderId {
   return read().provider;
 }
 
+/** Retorna lista de provedores ativos habilitados para uso simultâneo */
+export function getActiveProvidersList(): AIProviderId[] {
+  const s = read();
+  if (!s.multiAiEnabled) return [s.provider];
+  const list = s.activeProviders && s.activeProviders.length > 0 ? s.activeProviders : [s.provider];
+  return list;
+}
+
 export function getModel(id: AIProviderId): string {
   return read().models[id] || getProvider(id).defaultModel;
 }
 
 export interface PublicSettings {
   provider: AIProviderId;
+  activeProviders: AIProviderId[];
+  multiAiEnabled: boolean;
   providers: {
     id: AIProviderId;
+    name: string;
+    vendor: string;
     model: string;
     configured: boolean;
+    active: boolean; // se está na lista de ativos simultâneos
     keySource: KeySource;
-    /** Variável de ambiente que está sendo usada, quando a chave vem do ambiente. */
     envKey: string | null;
   }[];
 }
 
 export function getPublicSettings(): PublicSettings {
   const s = read();
+  const activeSet = new Set(s.activeProviders || [s.provider]);
+
   return {
     provider: s.provider,
+    activeProviders: s.activeProviders || [s.provider],
+    multiAiEnabled: s.multiAiEnabled ?? true,
     providers: AI_PROVIDERS.map((p) => {
       const { key, source } = resolveApiKey(p.id);
       return {
         id: p.id,
+        name: p.name,
+        vendor: p.vendor,
         model: s.models[p.id] || p.defaultModel,
         configured: !!key,
+        active: activeSet.has(p.id),
         keySource: source,
         envKey: source === "env" ? p.envKeys.find((n) => process.env[n]) ?? null : null,
       };
@@ -86,6 +120,8 @@ export function getPublicSettings(): PublicSettings {
 
 export interface SettingsUpdate {
   provider?: AIProviderId;
+  activeProviders?: AIProviderId[];
+  multiAiEnabled?: boolean;
   /** Provedor ao qual model/apiKey/clearKey se referem (padrão: o provider da atualização ou o ativo). */
   target?: AIProviderId;
   model?: string;
@@ -96,13 +132,32 @@ export interface SettingsUpdate {
 export function updateSettings(u: SettingsUpdate): void {
   const s = read();
   const target = u.target ?? u.provider ?? s.provider;
-  if (u.provider) s.provider = u.provider;
+
+  if (u.provider && isProviderId(u.provider)) {
+    s.provider = u.provider;
+  }
+
+  if (Array.isArray(u.activeProviders)) {
+    s.activeProviders = u.activeProviders.filter(isProviderId);
+  }
+
+  if (typeof u.multiAiEnabled === "boolean") {
+    s.multiAiEnabled = u.multiAiEnabled;
+  }
+
   if (typeof u.model === "string") {
     const m = u.model.trim();
     if (m) s.models[target] = m;
     else delete s.models[target];
   }
-  if (u.clearKey) delete s.keys[target];
-  if (typeof u.apiKey === "string" && u.apiKey.trim()) s.keys[target] = sealSecret(u.apiKey.trim());
+
+  if (u.clearKey) {
+    delete s.keys[target];
+  }
+
+  if (typeof u.apiKey === "string" && u.apiKey.trim()) {
+    s.keys[target] = sealSecret(u.apiKey.trim());
+  }
+
   write(s);
 }

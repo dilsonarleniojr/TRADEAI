@@ -37,9 +37,16 @@ interface PortfolioHistoryPoint {
 }
 
 export function BotPortfolio() {
-  const { portfolio, botConfig, trades, botActive, tickers } = useCryptoStore(
-  useShallow((s) => ({ portfolio: s.portfolio, botConfig: s.botConfig, trades: s.trades, botActive: s.botActive, tickers: s.tickers }))
-);
+  const { portfolio, botConfig, trades, botActive, tickers, tradingMode } = useCryptoStore(
+    useShallow((s) => ({
+      portfolio: s.portfolio,
+      botConfig: s.botConfig,
+      trades: s.trades,
+      botActive: s.botActive,
+      tickers: s.tickers,
+      tradingMode: s.tradingMode,
+    }))
+  );
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioHistoryPoint[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const { toast } = useToast();
@@ -117,6 +124,31 @@ export function BotPortfolio() {
 
     return () => clearInterval(interval);
   }, [botActive]);
+
+  // Sincronização automática contínua do portfólio com a Binance em tempo real
+  useEffect(() => {
+    let mounted = true;
+    const syncAccount = async () => {
+      try {
+        const state = useCryptoStore.getState();
+        const mode = state.tradingMode;
+        const res = await fetch(`/api/account?mode=${mode}`);
+        if (res.ok) {
+          const result = await res.json();
+          if (mounted && result.success && result.data) {
+            state.setAccount(result.data);
+          }
+        }
+      } catch {}
+    };
+
+    syncAccount();
+    const interval = setInterval(syncAccount, 4000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [tradingMode]);
 
   return (
     <Card className="bg-card/60 backdrop-blur-md gradient-border relative overflow-hidden">

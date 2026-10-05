@@ -13,6 +13,7 @@ export interface PortfolioSlice {
   // Account from backend — authoritative source
   setAccount: (account: {
     cashBalance: number;
+    cashFree?: number;
     assetQuantity: number;
     symbol: string;
     totalValue?: number;
@@ -81,7 +82,7 @@ export const createPortfolioSlice: StateCreator<
       accountSource: account.source ?? null,
       portfolio: {
         totalValue,
-        cashBalance: account.cashBalance,
+        cashBalance: account.cashFree !== undefined ? account.cashFree : account.cashBalance,
         assetBalance,
         assetQuantity: account.assetQuantity,
         pnl,
