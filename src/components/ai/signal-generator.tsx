@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
 import {
   RefreshCw,
   TrendingUp,
@@ -17,6 +19,9 @@ import {
   Zap,
   Loader2,
   AlertTriangle,
+  DollarSign,
+  CheckCircle2,
+  ShieldCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useShallow } from "zustand/react/shallow";
@@ -105,13 +110,38 @@ function getEstimateSeconds(symbol: string, uptime: number): number {
 }
 
 export function SignalGenerator() {
-  const { selectedSymbol, tickers, addAiSignal } = useCryptoStore(
-  useShallow((s) => ({ selectedSymbol: s.selectedSymbol, tickers: s.tickers, addAiSignal: s.addAiSignal }))
-);
+  const {
+    selectedSymbol,
+    tickers,
+    portfolio,
+    tradingMode,
+    addAiSignal,
+    addTrade,
+    setAccount,
+    addScheduledOrder,
+    addBotLog,
+  } = useCryptoStore(
+    useShallow((s) => ({
+      selectedSymbol: s.selectedSymbol,
+      tickers: s.tickers,
+      portfolio: s.portfolio,
+      tradingMode: s.tradingMode,
+      addAiSignal: s.addAiSignal,
+      addTrade: s.addTrade,
+      setAccount: s.setAccount,
+      addScheduledOrder: s.addScheduledOrder,
+      addBotLog: s.addBotLog,
+    }))
+  );
+  const { toast } = useToast();
+
   const [signal, setSignal] = useState<SignalResult | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [execAmount, setExecAmount] = useState<number>(50);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executedSuccess, setExecutedSuccess] = useState(false);
 
   const ticker = tickers[selectedSymbol];
   const isLoaded = !!ticker && ticker.price > 0;
@@ -244,10 +274,146 @@ export function SignalGenerator() {
   const actionConfig = signal ? ACTION_CONFIG[signal.action] : null;
   const ActionIcon = actionConfig?.icon ?? Minus;
 
+  const currentPos = portfolio.positions?.find((p) => p.symbol === selectedSymbol);
+  const currentHoldingQty = currentPos?.quantity ?? (portfolio.assetQuantity > 0 && selectedSymbol === "BTCUSDT" ? portfolio.assetQuantity : 0);
+
   const formatSlTpPercent = (entryPrice: number, targetPrice: number) => {
     if (!entryPrice || entryPrice === 0) return '0%';
     const pct = ((targetPrice - entryPrice) / entryPrice) * 100;
     return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+  };
+
+  const handleExecuteSignal = async () => {
+    if (!signal || !ticker || ticker.price <= 0) return;
+
+    const currentPrice = ticker.price;
+    const cleanSym = selectedSymbol.replace('USDT', '');
+    let qty = 0;
+    let total = 0;
+
+    if (signal.action === 'BUY') {
+      total = execAmount;
+      if (total <= 0) {
+        toast({
+          title: "Valor Inválido",
+          description: "Defina um valor em USDT para compra.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (total > portfolio.cashBalance && tradingMode === "live") {
+        toast({
+          title: "Saldo Insuficiente",
+          description: `Seu saldo em caixa é de $${portfolio.cashBalance.toFixed(2)} USDT.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      qty = Number((total / currentPrice).toFixed(6));
+    } else if (signal.action === 'SELL') {
+      qty = currentHoldingQty > 0 ? currentHoldingQty : Number((execAmount / currentPrice).toFixed(6));
+      total = Number((qty * currentPrice).toFixed(2));
+      if (qty <= 0) {
+        toast({
+          title: "Sem Moedas em Carteira",
+          description: `Você não possui saldo de ${cleanSym} para vender.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    } else {
+      return;
+    }
+
+    try {
+      setIsExecuting(true);
+      const res = await fetch("/api/trades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: selectedSymbol,
+          side: signal.action,
+          price: currentPrice,
+          quantity: qty,
+          total,
+          strategy: `Sinal IA (${Math.round(signal.confidence * 100)}% Confiança)`,
+          mode: tradingMode,
+          pnl: 0,
+        }),
+      });
+
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || "Falha ao registrar a ordem.");
+      }
+
+      // 1. Add to store
+      addTrade({
+        id: result.data.id || `trade-${Date.now()}`,
+        symbol: result.data.symbol || selectedSymbol,
+        side: result.data.side || signal.action,
+        price: result.data.price || currentPrice,
+        quantity: result.data.quantity || qty,
+        total: result.data.total || total,
+        strategy: result.data.strategy || `Sinal IA (${Math.round(signal.confidence * 100)}%)`,
+        mode: result.data.mode || tradingMode,
+        pnl: result.data.pnl || 0,
+        timestamp: result.data.timestamp || new Date().toISOString(),
+      });
+
+      if (result.account) {
+        setAccount(result.account);
+      }
+
+      // 2. Automatically register protective orders if BUY
+      if (signal.action === 'BUY') {
+        if (signal.takeProfit && signal.takeProfit > currentPrice) {
+          addScheduledOrder({
+            id: `tp-${Date.now()}`,
+            symbol: selectedSymbol,
+            side: "SELL",
+            triggerPrice: signal.takeProfit,
+            quantity: qty,
+            direction: "above",
+            isTriggered: false,
+            createdAt: new Date().toISOString(),
+          });
+        }
+        if (signal.stopLoss && signal.stopLoss > 0 && signal.stopLoss < currentPrice) {
+          addScheduledOrder({
+            id: `sl-${Date.now()}`,
+            symbol: selectedSymbol,
+            side: "SELL",
+            triggerPrice: signal.stopLoss,
+            quantity: qty,
+            direction: "below",
+            isTriggered: false,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+
+      addBotLog({
+        type: signal.action === 'BUY' ? 'buy' : 'sell',
+        message: `⚡ Ordem disparada via Gerador de Sinais IA: ${signal.action} ${qty} ${cleanSym} @ $${formatPrice(currentPrice)} (Total: $${total.toFixed(2)} USDT)`,
+      });
+
+      setExecutedSuccess(true);
+      setTimeout(() => setExecutedSuccess(false), 9000);
+
+      toast({
+        title: `🚀 Ordem de ${signal.action === 'BUY' ? 'Compra' : 'Venda'} Executada!`,
+        description: `${qty} ${cleanSym} @ $${formatPrice(currentPrice)} — Total: $${total.toFixed(2)} USDT ${signal.takeProfit > 0 ? `(TP: $${formatPrice(signal.takeProfit)} | SL: $${formatPrice(signal.stopLoss)})` : ''}`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Erro na Execução da Ordem",
+        description: err.message || "Não foi possível enviar a ordem.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExecuting(false);
+    }
   };
 
   return (
@@ -306,7 +472,7 @@ export function SignalGenerator() {
             <Button
               onClick={generateSignal}
               disabled={isGenerating}
-              className="w-full gap-2"
+              className="w-full gap-2 cursor-pointer font-bold"
               variant={signal ? 'outline' : 'default'}
             >
               {isGenerating ? (
@@ -404,8 +570,6 @@ export function SignalGenerator() {
                 </div>
               )}
 
-              <Separator className="bg-border" />
-
               {/* Reasoning */}
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1">
@@ -414,6 +578,133 @@ export function SignalGenerator() {
                 <p className="text-sm text-foreground leading-relaxed">
                   {signal.reasoning}
                 </p>
+              </div>
+
+              <Separator className="bg-border" />
+
+              {/* Action Execution Panel */}
+              <div className="rounded-xl border border-border/60 bg-secondary/30 p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-crypto-cyan" />
+                    Executar Sugestão
+                  </span>
+                  <span className="text-[11px] text-muted-foreground font-mono">
+                    Saldo disponível: <strong className="text-emerald-400">${portfolio.cashBalance.toFixed(2)}</strong> USDT
+                  </span>
+                </div>
+
+                {signal.action === 'BUY' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[11px] text-muted-foreground">Valor em USDT:</span>
+                      <div className="flex items-center gap-1">
+                        {[25, 50, 100].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setExecAmount(preset)}
+                            className={`px-2 py-0.5 text-[10px] font-bold rounded border cursor-pointer transition-colors ${
+                              execAmount === preset
+                                ? 'bg-crypto-cyan/20 border-crypto-cyan text-crypto-cyan'
+                                : 'border-border/60 hover:bg-secondary/60 text-muted-foreground'
+                            }`}
+                          >
+                            ${preset}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setExecAmount(Math.max(10, Math.floor(portfolio.cashBalance)))}
+                          className="px-2 py-0.5 text-[10px] font-bold rounded border border-border/60 hover:bg-secondary/60 text-muted-foreground cursor-pointer"
+                        >
+                          Máx
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <Input
+                        type="number"
+                        min="5"
+                        max={Math.max(10, portfolio.cashBalance)}
+                        step="5"
+                        value={execAmount}
+                        onChange={(e) => setExecAmount(Math.max(1, parseFloat(e.target.value) || 0))}
+                        className="h-8 pl-8 text-xs font-mono font-bold bg-background/50 border-border/70"
+                      />
+                    </div>
+
+                    <p className="text-[10px] text-muted-foreground">
+                      Quantidade calculada: <strong>{(execAmount / Math.max(0.000001, ticker?.price || 1)).toLocaleString(undefined, { maximumFractionDigits: 6 })}</strong> {selectedSymbol.replace("USDT", "")}
+                    </p>
+                  </div>
+                )}
+
+                {signal.action === 'SELL' && (
+                  <div className="text-xs text-muted-foreground">
+                    Posição estimada em carteira: <strong className="text-foreground">{currentHoldingQty.toLocaleString(undefined, { maximumFractionDigits: 6 })}</strong> {selectedSymbol.replace("USDT", "")} (${(currentHoldingQty * (ticker?.price || 0)).toFixed(2)} USDT)
+                  </div>
+                )}
+
+                {/* Primary Execution Button */}
+                {signal.action === 'BUY' && (
+                  <Button
+                    type="button"
+                    onClick={handleExecuteSignal}
+                    disabled={isExecuting || !ticker || ticker.price <= 0 || execAmount <= 0}
+                    className="w-full h-10 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20 cursor-pointer flex items-center justify-center gap-1.5 transition-all"
+                  >
+                    {isExecuting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Executando Compra...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-4 h-4 fill-current" />
+                        Executar Sugestão: Comprar ${execAmount} USDT
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                {signal.action === 'SELL' && (
+                  <Button
+                    type="button"
+                    onClick={handleExecuteSignal}
+                    disabled={isExecuting || !ticker || ticker.price <= 0}
+                    className="w-full h-10 bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-400 hover:to-rose-500 text-white font-bold text-xs shadow-md shadow-red-500/20 cursor-pointer flex items-center justify-center gap-1.5 transition-all"
+                  >
+                    {isExecuting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Executando Venda...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-4 h-4 fill-current" />
+                        Executar Sugestão: Vender {selectedSymbol.replace("USDT", "")}
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                {signal.action === 'HOLD' && (
+                  <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-center">
+                    <p className="text-xs text-amber-400 font-semibold">
+                      ⏸️ A IA recomenda AGUARDAR neste momento (sem compra nem venda imediata).
+                    </p>
+                  </div>
+                )}
+
+                {executedSuccess && (
+                  <div className="p-2.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center gap-2 text-emerald-400 text-xs font-semibold">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>Ordem executada com sucesso! Stop Loss e Take Profit programados.</span>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}

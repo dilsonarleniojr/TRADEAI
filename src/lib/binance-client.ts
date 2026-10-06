@@ -36,9 +36,9 @@ export async function restoreBinanceSession(): Promise<BinanceSessionStatus> {
     }
     const res = await fetch("/api/binance/login", { cache: "no-store" });
     const data = await res.json();
-    return { connected: !!data.connected, testnet: data.testnet !== false };
+    return { connected: !!data.connected, testnet: Boolean(data.testnet) };
   } catch {
-    return { connected: false, testnet: true };
+    return { connected: false, testnet: false };
   }
 }
 

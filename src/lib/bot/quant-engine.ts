@@ -69,14 +69,86 @@ export function checkRelativeStrength(
   return { relativeStrength, volume24h, liquid, ok: liquid && relativeStrength >= MIN_RELATIVE_STRENGTH };
 }
 
+export interface HotCoinCandidate {
+  symbol: string;
+  price: number;
+  priceChangePercent: number;
+  quoteVolume: number;
+  relativeStrengthVsBtc: number;
+  score: number;
+}
+
+const EXCLUDED_SYMBOLS = new Set([
+  "USDCUSDT",
+  "FDUSDUSDT",
+  "TUSDUSDT",
+  "BUSDUSDT",
+  "EURUSDT",
+  "DAIUSDT",
+  "AEURUSDT",
+  "WBTCUSDT",
+  "USDPUSDT",
+]);
+
 /**
- * Varre os tickers, pega os 50 de maior volume e devolve os 3 que mais subiram em 24h.
+ * Auto-Screener institucional da Binance:
+ * Filtra moedas em USDT com liquidez robusta (> $5M), momentum positivo em 24h
+ * e força relativa positiva vs Bitcoin, pontuando as melhores candidatas para entrada.
+ */
+export function scanHotCoins(
+  tickers: Record<string, TickerData>,
+  btcTicker?: TickerData,
+  limit = 12
+): HotCoinCandidate[] {
+  const btcChange = btcTicker?.priceChangePercent ?? 0;
+  const candidates: HotCoinCandidate[] = [];
+
+  for (const ticker of Object.values(tickers)) {
+    const s = ticker.symbol;
+    if (!s || !s.endsWith("USDT") || EXCLUDED_SYMBOLS.has(s) || s === "BTCUSDT") continue;
+
+    const vol = ticker.quoteVolume || 0;
+    const change = ticker.priceChangePercent || 0;
+
+    // Critério 1: Liquidez real na Binance (mínimo US$ 5 milhões nas últimas 24h)
+    if (vol < 5_000_000) continue;
+
+    // Critério 2: Variação positiva em 24h (evita ativos em sangria/queda livre)
+    if (change < 0.2) continue;
+
+    const relStrength = change - btcChange;
+
+    // Se o Bitcoin estiver em forte queda (< -2.5%), exige força relativa destacada (≥ +2.0%)
+    if (btcChange < -2.5 && relStrength < 2.0) continue;
+
+    // Pontuação quantitativa: combina momentum de alta com peso de volume institucional
+    const volScore = Math.log10(Math.max(1, vol / 1_000_000));
+    const score = change * 1.5 + relStrength * 0.8 + volScore * 1.2;
+
+    candidates.push({
+      symbol: s,
+      price: ticker.price,
+      priceChangePercent: change,
+      quoteVolume: vol,
+      relativeStrengthVsBtc: relStrength,
+      score,
+    });
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates.slice(0, limit);
+}
+
+/**
+ * Varre os tickers e devolve os símbolos das maiores altas com volume robusto em 24h.
  */
 export function runMarketScanner(tickers: Record<string, TickerData>): string[] {
+  const hot = scanHotCoins(tickers, tickers["BTCUSDT"], 5);
+  if (hot.length > 0) return hot.map((h) => h.symbol);
+
+  // Fallback se poucos tickers estiverem no store
   const usdtTickers = Object.values(tickers).filter(
-    (t) =>
-      t.symbol.endsWith("USDT") &&
-      !["USDCUSDT", "FDUSDUSDT", "TUSDUSDT", "BUSDUSDT", "EURUSDT"].includes(t.symbol)
+    (t) => t.symbol.endsWith("USDT") && !EXCLUDED_SYMBOLS.has(t.symbol)
   );
   usdtTickers.sort((a, b) => (b.quoteVolume || 0) - (a.quoteVolume || 0));
   const top50 = usdtTickers.slice(0, 50);

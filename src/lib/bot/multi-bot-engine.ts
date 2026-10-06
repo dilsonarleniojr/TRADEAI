@@ -1,14 +1,21 @@
 import { useCryptoStore, type BotInstance, type BotPosition, type TradeData } from "@/lib/store";
+import type { BotExecutionReport } from "@/lib/store/types";
 import { calculateRSI } from "./indicators";
 import { evaluateEntry } from "./entry-engine";
 import { getSymbolKlines } from "./kline-cache";
+import { scanHotCoins, type HotCoinCandidate } from "./quant-engine";
+import { getOrderBookAnalysis } from "./order-book-cache";
 
 export interface MultiBotEngineCallbacks {
   onToast?: (toast: { title: string; description: string; variant?: "default" | "destructive" }) => void;
+  stopBotAfterClose?: boolean;
 }
 
 let lastFleetAccountSync = 0;
+let lastLiveAccountError: string | null = null;
+let lastLiveAccountErrorLoggedAt = 0;
 const botErrorCooldown = new Map<string, number>();
+const botSymbolLossCooldown = new Map<string, number>();
 
 /**
  * Evaluates all active bots simultaneously and executes buys/sells aiming strictly for profit.
@@ -30,9 +37,23 @@ export async function tickMultiBotFleet(callbacks?: MultiBotEngineCallbacks) {
         const accJson = await accRes.json();
         if (accJson.success && accJson.data) {
           store.setAccount(accJson.data);
+          lastLiveAccountError = null;
+        }
+      } else {
+        const errJson = await accRes.json().catch(() => ({}));
+        const errMsg = errJson.error || "Falha ao sincronizar conta Binance";
+        lastLiveAccountError = errMsg;
+        if (Date.now() - lastLiveAccountErrorLoggedAt > 30000) {
+          lastLiveAccountErrorLoggedAt = Date.now();
+          store.addBotLog({
+            message: `🔴 [Binance] ${errMsg}`,
+            type: "error",
+          });
         }
       }
-    } catch {}
+    } catch (e: any) {
+      lastLiveAccountError = e.message;
+    }
   }
 
   // Execute each bot asynchronously in parallel
@@ -62,32 +83,34 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   const store = useCryptoStore.getState();
   const { tickers, tradingMode, aiSignals } = store;
 
-  const symbol = bot.symbol;
-  let ticker = tickers[symbol];
+  const isAutoScreener = Boolean(bot.useAutoScreener || bot.symbol === "AUTO");
+  const hasOpenPosition = Boolean(bot.position && bot.position.quantity > 0);
+  const symbol = hasOpenPosition ? (bot.position!.symbol || bot.symbol) : bot.symbol;
 
-  // Se o ticker não tiver preço imediato no estado, busca dos candles
+  let ticker = tickers[symbol];
   let currentPrice = ticker?.price;
-  if (!currentPrice) {
-    const cachedKlines = await getSymbolKlines(symbol);
-    if (cachedKlines.length > 0) {
-      currentPrice = cachedKlines[cachedKlines.length - 1].close;
-      if (!ticker) {
-        ticker = {
-          symbol,
-          price: currentPrice,
-          priceChange: 0,
-          priceChangePercent: 0,
-          high: currentPrice,
-          low: currentPrice,
-          volume: 0,
-          quoteVolume: 0,
-        };
-      }
-    }
-  }
 
   // Para robô com posição aberta: busca ativamente cotação fresca na Binance para monitorar saída e PnL em tempo real
-  if (bot.position && bot.position.quantity > 0) {
+  if (hasOpenPosition) {
+    if (!currentPrice) {
+      const cachedKlines = await getSymbolKlines(symbol);
+      if (cachedKlines.length > 0) {
+        currentPrice = cachedKlines[cachedKlines.length - 1].close;
+        if (!ticker) {
+          ticker = {
+            symbol,
+            price: currentPrice,
+            priceChange: 0,
+            priceChangePercent: 0,
+            high: currentPrice,
+            low: currentPrice,
+            volume: 0,
+            quoteVolume: 0,
+          };
+        }
+      }
+    }
+
     try {
       const res = await fetch(`/api/market/price?symbol=${symbol}`, {
         cache: "no-store",
@@ -117,19 +140,50 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     } catch {
       // Ignora erro de rede temporário e continua com a cotação disponível
     }
-  }
 
-  // If ticker data is not yet in state, keep user updated and wait
-  if (!ticker || !currentPrice) {
-    store.updateBot(bot.id, {
-      status: "scanning",
-      stats: {
-        ...bot.stats,
-        lastAction: `Aguardando cotação de ${symbol.replace("USDT", "")}...`,
-        lastActionTime: new Date().toISOString(),
-      },
-    });
-    return;
+    if (!ticker || !currentPrice) {
+      store.updateBot(bot.id, {
+        status: "in_position",
+        stats: {
+          ...bot.stats,
+          lastAction: `Aguardando cotação de ${symbol.replace("USDT", "")}...`,
+          lastActionTime: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+  } else if (!isAutoScreener) {
+    // Para robô de ativo único fixo sem posição aberta:
+    if (!currentPrice) {
+      const cachedKlines = await getSymbolKlines(symbol);
+      if (cachedKlines.length > 0) {
+        currentPrice = cachedKlines[cachedKlines.length - 1].close;
+        if (!ticker) {
+          ticker = {
+            symbol,
+            price: currentPrice,
+            priceChange: 0,
+            priceChangePercent: 0,
+            high: currentPrice,
+            low: currentPrice,
+            volume: 0,
+            quoteVolume: 0,
+          };
+        }
+      }
+    }
+
+    if (!ticker || !currentPrice) {
+      store.updateBot(bot.id, {
+        status: "scanning",
+        stats: {
+          ...bot.stats,
+          lastAction: `Aguardando cotação de ${symbol.replace("USDT", "")}...`,
+          lastActionTime: new Date().toISOString(),
+        },
+      });
+      return;
+    }
   }
 
   // ==========================================================
@@ -151,18 +205,59 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       return;
     }
 
-    const gainPercent = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
-    const unrealizedPnlUsdt = parseFloat(((currentPrice - pos.entryPrice) * pos.quantity).toFixed(2));
-    const highestPrice = Math.max(pos.highestPrice || pos.entryPrice, currentPrice);
+    const cash = store.portfolio.cashBalance;
+    const gainPercent = ((currentPrice! - pos.entryPrice) / pos.entryPrice) * 100;
+    const unrealizedPnlUsdt = parseFloat(((currentPrice! - pos.entryPrice) * pos.quantity).toFixed(2));
+    const highestPrice = Math.max(pos.highestPrice || pos.entryPrice, currentPrice!);
     const peakGain = ((highestPrice - pos.entryPrice) / pos.entryPrice) * 100;
+
+    // 🛡️ BREAK-EVEN AUTOMÁTICO (Risco Zero Institucional)
+    // Gatilho: % de valorização necessária para armar o break-even (padrão: 1.2% ou 40% do Take Profit)
+    const beTrigger = bot.breakEvenTrigger ?? Math.max(0.8, Math.min(1.2, bot.takeProfit * 0.4));
+    // Buffer: % acima do preço de entrada para cobrir taxas Spot da Binance (0.20%) e garantir fechamento positivo
+    const beBuffer = bot.breakEvenBuffer ?? 0.25;
+    const isAutoBreakEvenEnabled = bot.autoBreakEven ?? true;
+    const isBreakEvenNowArmed = Boolean(pos.isBreakEvenArmed || (isAutoBreakEvenEnabled && peakGain >= beTrigger));
+    const breakEvenPrice = pos.entryPrice * (1 + beBuffer / 100);
+    const isBreakEvenTriggered = isAutoBreakEvenEnabled && isBreakEvenNowArmed && gainPercent <= beBuffer;
+
+    // 🚀 TRAILING TAKE-PROFIT DINÂMICO (Deixar o Lucro Correr em Altas Fortes)
+    // Se ativado (padrão true), ao bater a meta de Take Profit (ex: +2.5%), o robô não vende na hora;
+    // ele arma o Trailing TP, rastreia o topo do pump e só realiza quando recuar X% do pico.
+    const isTrailingTakeProfitEnabled = bot.trailingTakeProfit ?? true;
+    const tpDistance = bot.trailingTakeProfitDistance ?? 0.6; // recuo percentual do pico (ex: 0.6%)
+
+    let isTakeProfitNowArmed = Boolean(pos.isTakeProfitArmed);
+    if (isTrailingTakeProfitEnabled && gainPercent >= bot.takeProfit) {
+      isTakeProfitNowArmed = true;
+    }
+
+    let tpPeakPrice = pos.tpPeakPrice || currentPrice!;
+    if (isTakeProfitNowArmed) {
+      tpPeakPrice = Math.max(tpPeakPrice, currentPrice!);
+    }
+    const peakGainFromTp = ((tpPeakPrice - pos.entryPrice) / pos.entryPrice) * 100;
+    const pullbackFromTpPeak = peakGainFromTp - gainPercent;
+
+    // Condição de saída pelo Trailing TP:
+    // 1. Está armado
+    // 2. Teve um recuo >= tpDistance a partir do topo OU o lucro recuou perigosamente de volta para a base do alvo (takeProfit - 0.2%)
+    const isTrailingTakeProfitTriggered =
+      isTrailingTakeProfitEnabled &&
+      isTakeProfitNowArmed &&
+      (pullbackFromTpPeak >= tpDistance || gainPercent <= Math.max(0.4, bot.takeProfit - 0.2));
 
     // Update position mark-to-market
     const updatedPosition: BotPosition = {
       ...pos,
-      currentPrice,
+      currentPrice: currentPrice!,
       highestPrice,
       unrealizedPnl: unrealizedPnlUsdt,
       unrealizedPnlPercent: parseFloat(gainPercent.toFixed(2)),
+      isBreakEvenArmed: isBreakEvenNowArmed,
+      breakEvenPrice,
+      isTakeProfitArmed: isTakeProfitNowArmed,
+      tpPeakPrice,
     };
     store.updateBotPosition(bot.id, updatedPosition);
     store.updateBotPositionsRealtime(store.tickers);
@@ -171,26 +266,51 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // Feedback de monitoramento em tempo real do robô em operação
     const targetProfitPrice = (pos.entryPrice * (1 + bot.takeProfit / 100)).toFixed(4);
     const sign = gainPercent >= 0 ? "+" : "";
+    let statusNotice = "";
+    if (isTakeProfitNowArmed) {
+      statusNotice = ` · 🚀 Surfando Pump (Trailing TP Ativo · Topo: +${peakGainFromTp.toFixed(2)}%)`;
+    } else if (isBreakEvenNowArmed) {
+      statusNotice = ` · 🛡️ Risco Zero Ativo (Break-Even Armado em $${breakEvenPrice.toFixed(4)})`;
+    }
+    const dcaNotice = (pos.dcaCount && pos.dcaCount > 0) ? ` · 🔄 DCA (${pos.dcaCount}/${bot.maxDcaOrders || 1})` : "";
+
     store.updateBot(bot.id, {
       status: "in_position",
       stats: {
         ...bot.stats,
-        lastAction: `Monitorando posição · Cotação: $${currentPrice.toFixed(5)} (${sign}${gainPercent.toFixed(2)}%) · Alvo: $${targetProfitPrice}`,
+        lastAction: `Monitorando ${pos.symbol.replace("USDT", "")} · Cotação: $${currentPrice!.toFixed(5)} (${sign}${gainPercent.toFixed(2)}%) · Alvo: $${targetProfitPrice}${statusNotice}${dcaNotice}`,
         lastActionTime: new Date().toISOString(),
       },
     });
 
-    // 1.1 TAKE PROFIT TRIGGER (Target reached!)
-    const isTakeProfit = gainPercent >= bot.takeProfit;
+    // 1.1 TAKE PROFIT TRIGGER
+    let isTakeProfit = false;
+    let takeProfitReason = "";
+    if (isTrailingTakeProfitEnabled) {
+      if (isTrailingTakeProfitTriggered) {
+        isTakeProfit = true;
+        takeProfitReason = bot.stopAfterProfit
+          ? `🚀 TRAILING TAKE-PROFIT SURFADO (+${gainPercent.toFixed(2)}%) · TOPO: +${peakGainFromTp.toFixed(2)}% · OPERAÇÃO ÚNICA CONCLUÍDA`
+          : `🚀 TRAILING TAKE-PROFIT SURFADO (+${gainPercent.toFixed(2)}%) · TOPO: +${peakGainFromTp.toFixed(2)}% (Recuo de ${pullbackFromTpPeak.toFixed(2)}%)`;
+      }
+    } else {
+      if (gainPercent >= bot.takeProfit) {
+        isTakeProfit = true;
+        takeProfitReason = bot.stopAfterProfit
+          ? `🎯 TAKE PROFIT ATINGIDO (+${gainPercent.toFixed(2)}%) · OPERAÇÃO ÚNICA CONCLUÍDA`
+          : `🎯 TAKE PROFIT ATINGIDO (+${gainPercent.toFixed(2)}%)`;
+      }
+    }
 
-    // 1.2 TRAILING STOP PROFIT LOCK
-    // If profit previously reached at least 1.0% and dropped by trailing distance, but still positive
+    // 1.2 TRAILING STOP / BREAKEVEN PROFIT LOCK
+    // Se o lucro bateu pelo menos 0.75% e recuou antes de atingir o Take Profit pleno:
     const pullbackFromPeak = peakGain - gainPercent;
     const isTrailingStop =
       bot.trailingStop &&
-      peakGain >= Math.max(1.0, bot.takeProfit * 0.4) &&
-      pullbackFromPeak >= bot.trailingStopDistance &&
-      gainPercent > 0.3;
+      !isTakeProfitNowArmed &&
+      peakGain >= Math.max(0.75, bot.takeProfit * 0.35) &&
+      pullbackFromPeak >= (bot.trailingStopDistance || 0.5) &&
+      gainPercent >= 0.25;
 
     // 1.3 TECHNICAL OVERBOUGHT REVERSAL (RSI real do ativo; só realiza se já está no lucro)
     let isOverboughtProfit = false;
@@ -206,21 +326,39 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // 1.4 STOP LOSS (Capital Protection Failsafe)
     const isStopLoss = gainPercent <= -bot.stopLoss;
 
+    // 1.5 ONE-SHOT QUICK PROFIT (Venda assim que obter lucro)
+    // Se o robô estiver no modo de operação única e tiver qualquer ganho líquido seguro (>= 0.4% para cobrir taxas):
+    const isQuickProfit = bot.stopAfterProfit && gainPercent >= Math.max(0.4, Math.min(bot.takeProfit, 0.5));
+
     let shouldSell = false;
     let sellReason = "";
     let logType: "profit" | "loss" | "warning" = "profit";
 
     if (isTakeProfit) {
       shouldSell = true;
-      sellReason = `🎯 TAKE PROFIT ATINGIDO (+${gainPercent.toFixed(2)}%)`;
+      sellReason = takeProfitReason;
+      logType = "profit";
+    } else if (isQuickProfit) {
+      shouldSell = true;
+      sellReason = `💰 LUCRO CONQUISTADO (+${gainPercent.toFixed(2)}%) · OPERAÇÃO ÚNICA CONCLUÍDA`;
       logType = "profit";
     } else if (isTrailingStop) {
       shouldSell = true;
-      sellReason = `🔒 TRAILING STOP LUCRO PROTEGIDO (+${gainPercent.toFixed(2)}%)`;
+      sellReason = bot.stopAfterProfit
+        ? `🔒 TRAILING STOP LUCRO PROTEGIDO (+${gainPercent.toFixed(2)}%) · OPERAÇÃO ÚNICA CONCLUÍDA`
+        : `🔒 TRAILING STOP LUCRO PROTEGIDO (+${gainPercent.toFixed(2)}%)`;
+      logType = "profit";
+    } else if (isBreakEvenTriggered) {
+      shouldSell = true;
+      sellReason = bot.stopAfterProfit
+        ? `🛡️ BREAK-EVEN AUTOMÁTICO (+${gainPercent.toFixed(2)}%) · RISCO ZERO PROTEGIDO · OPERAÇÃO ÚNICA CONCLUÍDA`
+        : `🛡️ BREAK-EVEN AUTOMÁTICO (+${gainPercent.toFixed(2)}%) · RISCO ZERO PROTEGIDO (Stop no Lucro)`;
       logType = "profit";
     } else if (isOverboughtProfit) {
       shouldSell = true;
-      sellReason = `📈 REALIZAÇÃO NO TOPO RSI ${exitRsi.toFixed(0)} (+${gainPercent.toFixed(2)}%)`;
+      sellReason = bot.stopAfterProfit
+        ? `📈 REALIZAÇÃO NO TOPO RSI ${exitRsi.toFixed(0)} (+${gainPercent.toFixed(2)}%) · OPERAÇÃO ÚNICA CONCLUÍDA`
+        : `📈 REALIZAÇÃO NO TOPO RSI ${exitRsi.toFixed(0)} (+${gainPercent.toFixed(2)}%)`;
       logType = "profit";
     } else if (isStopLoss) {
       shouldSell = true;
@@ -232,16 +370,56 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       await executeBotSell({
         bot,
         position: updatedPosition,
-        sellPrice: currentPrice,
+        sellPrice: currentPrice!,
         pnl: unrealizedPnlUsdt,
         gainPercent,
         reason: sellReason,
         logType,
         callbacks,
       });
+      return;
     }
+
+    // ==========================================================
+    // 1.6 SMART SUPPORT DCA (Preço Médio Estratégico em Suporte)
+    // ==========================================================
+    const isSmartDcaEnabled = bot.useSmartDca ?? true;
+    const maxDca = bot.maxDcaOrders ?? 1;
+    const currentDcaCount = pos.dcaCount ?? 0;
+    const dcaDip = bot.dcaDipThreshold ?? 1.5; // ex: -1.5% de recuo
+
+    if (
+      isSmartDcaEnabled &&
+      currentDcaCount < maxDca &&
+      gainPercent <= -dcaDip &&
+      gainPercent > -bot.stopLoss &&
+      cash >= 5.20
+    ) {
+      const posKlines1m = await getSymbolKlines(symbol, "1m");
+      if (posKlines1m.length >= 14) {
+        const currentRsi = calculateRSI(posKlines1m.map((k) => k.close), 14);
+        const lastCandle = posKlines1m[posKlines1m.length - 1];
+        const isBullishCandle = lastCandle.close >= lastCandle.open;
+        // Confirma suporte: RSI sobrevendido (<= 38) OU rejeição em fundo no candle atual
+        const isSupportConfirmed = currentRsi <= 38 || (currentRsi <= 45 && isBullishCandle);
+
+        if (isSupportConfirmed) {
+          await executeBotDcaReentry({
+            bot,
+            position: updatedPosition,
+            currentPrice: currentPrice!,
+            gainPercent,
+            currentRsi,
+            callbacks,
+          });
+          return;
+        }
+      }
+    }
+
     return;
   }
+
 
   // ==========================================================
   // CASE 2: Bot HAS NO Position -> FIND PROFITABLE ENTRY
@@ -260,23 +438,158 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
 
   // Check minimum execution balance
   if (cash < 5.20) {
+    const actionMsg = (tradingMode === "live" && lastLiveAccountError)
+      ? `Aguardando Binance: ${lastLiveAccountError.replace("Conexão Binance falhou: ", "")}`
+      : `Aguardando saldo USDT ($${cash.toFixed(2)} disponível, mín $5.20)`;
     store.updateBot(bot.id, {
       status: "scanning",
       stats: {
         ...bot.stats,
-        lastAction: `Aguardando saldo USDT ($${cash.toFixed(2)} disponível, mín $5.20)`,
+        lastAction: actionMsg,
         lastActionTime: new Date().toISOString(),
       },
     });
     return;
   }
 
-  // Decisão de entrada com candles reais do próprio ativo do robô
-  const klines = await getSymbolKlines(symbol);
-  const decision = evaluateEntry(bot, ticker, tickers["BTCUSDT"], klines, aiSignals);
+  const btcTicker = tickers["BTCUSDT"];
+
+  // ==========================================================
+  // BRANCH 2A: AUTO-SCREENER DE MOEDAS EM ALTA (HOT COINS)
+  // ==========================================================
+  if (isAutoScreener) {
+    const candidates = scanHotCoins(tickers, btcTicker, 12);
+
+    if (candidates.length === 0) {
+      store.updateBot(bot.id, {
+        status: "scanning",
+        stats: {
+          ...bot.stats,
+          lastAction: "🔥 Auto-Screener: Carregando cotações e buscando moedas em alta na Binance...",
+          lastActionTime: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    // Identifica moedas já sob custódia de outros robôs para evitar duplicidade
+    const otherHeldSymbols = new Set(
+      store.bots
+        .filter((b) => b.id !== bot.id && b.position && b.position.quantity > 0)
+        .map((b) => b.position!.symbol)
+    );
+
+    // Filtra moedas alocadas ou em cooldown pós-stop
+    const availableCandidates = candidates.filter((cand) => {
+      if (otherHeldSymbols.has(cand.symbol)) return false;
+      const cooldownUntil = botSymbolLossCooldown.get(cand.symbol);
+      if (cooldownUntil && Date.now() < cooldownUntil) return false;
+      return true;
+    });
+
+    if (availableCandidates.length === 0) {
+      store.updateBot(bot.id, {
+        status: "scanning",
+        stats: {
+          ...bot.stats,
+          lastAction: "🔥 Auto-Screener: Líderes em alta alocadas em outros robôs ou em cooldown de proteção",
+          lastActionTime: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    // Avalia as melhores candidatas por ordem de score quantitativo
+    for (const cand of availableCandidates.slice(0, 5)) {
+      const candTicker = tickers[cand.symbol] || {
+        symbol: cand.symbol,
+        price: cand.price,
+        priceChange: cand.priceChangePercent,
+        priceChangePercent: cand.priceChangePercent,
+        high: cand.price,
+        low: cand.price,
+        volume: cand.quoteVolume,
+        quoteVolume: cand.quoteVolume,
+      };
+
+      const [candKlines1m, candKlines15m, orderBook] = await Promise.all([
+        getSymbolKlines(cand.symbol, "1m"),
+        getSymbolKlines(cand.symbol, "15m"),
+        bot.useOrderBookFilter !== false
+          ? getOrderBookAnalysis(cand.symbol, bot.maxSpreadPercent, bot.minBidAskRatio)
+          : Promise.resolve(undefined),
+      ]);
+
+      const decision = evaluateEntry(bot, candTicker, btcTicker, candKlines1m, aiSignals, candKlines15m, orderBook);
+      if (decision.shouldBuy) {
+        const maxSafeCash = Math.max(0, cash * 0.95);
+        const targetSpend = Math.max(5.20, Math.min(maxSafeCash, bot.allocationAmount || 10));
+        const quantity = parseFloat((targetSpend / cand.price).toFixed(6));
+        const total = parseFloat((quantity * cand.price).toFixed(2));
+
+        if (total >= 5.20 && total <= cash) {
+          const reasonFormatted = `🔥 Auto-Screener [${cand.symbol.replace("USDT", "")} +${cand.priceChangePercent.toFixed(1)}%]: ${decision.reason}`;
+          await executeBotBuy({
+            bot,
+            targetSymbol: cand.symbol,
+            buyPrice: cand.price,
+            quantity,
+            total,
+            customReason: reasonFormatted,
+            callbacks,
+          });
+          return;
+        }
+      }
+    }
+
+    // Nenhuma candidata confirmou gatilho técnico no tick atual
+    const topSummary = availableCandidates
+      .slice(0, 3)
+      .map((c) => `${c.symbol.replace("USDT", "")} (+${c.priceChangePercent.toFixed(1)}%)`)
+      .join(", ");
+
+    store.updateBot(bot.id, {
+      status: "scanning",
+      stats: {
+        ...bot.stats,
+        lastAction: `🔥 Auto-Screener: Monitorando líderes (${topSummary}) · Aguardando gatilho 1m/15m`,
+        lastActionTime: new Date().toISOString(),
+      },
+    });
+    return;
+  }
+
+  // ==========================================================
+  // BRANCH 2B: SINGLE-SYMBOL BOT TRADICIONAL
+  // ==========================================================
+  // Proteção Anti-Cascata: Cooldown de 10 min no símbolo após stop loss para evitar recomprar em queda livre
+  const lossCooldownUntil = botSymbolLossCooldown.get(symbol);
+  if (lossCooldownUntil && Date.now() < lossCooldownUntil) {
+    const remainingMin = Math.ceil((lossCooldownUntil - Date.now()) / 60000);
+    store.updateBot(bot.id, {
+      status: "scanning",
+      stats: {
+        ...bot.stats,
+        lastAction: `🛡️ Proteção anti-queda ativa após stop loss (${remainingMin}m restantes para reavaliação)`,
+        lastActionTime: new Date().toISOString(),
+      },
+    });
+    return;
+  }
+
+  // Decisão de entrada com candles reais do próprio ativo do robô (Multi-Timeframe 15m + 1m + Order Book)
+  const [klines, klines15m, orderBook] = await Promise.all([
+    getSymbolKlines(symbol, "1m"),
+    getSymbolKlines(symbol, "15m"),
+    bot.useOrderBookFilter !== false
+      ? getOrderBookAnalysis(symbol, bot.maxSpreadPercent, bot.minBidAskRatio)
+      : Promise.resolve(undefined),
+  ]);
+  const decision = evaluateEntry(bot, ticker!, btcTicker, klines, aiSignals, klines15m, orderBook);
   const { shouldBuy, reason: entryReason, checks } = decision;
 
-  if (shouldBuy) {
+  if (shouldBuy && currentPrice) {
     // Sizing: Dinamicamente adaptado ao saldo disponível em caixa.
     // Deixamos margem de segurança de 5% sobre o caixa livre para que a ordem nunca exceda
     // o saldo nem seja rejeitada por buffer de taxas/slippage a mercado da Binance.
@@ -289,6 +602,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     if (total >= 5.20 && total <= cash) {
       await executeBotBuy({
         bot,
+        targetSymbol: symbol,
         buyPrice: currentPrice,
         quantity,
         total,
@@ -315,6 +629,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
  */
 async function executeBotBuy({
   bot,
+  targetSymbol,
   buyPrice,
   quantity,
   total,
@@ -322,6 +637,7 @@ async function executeBotBuy({
   callbacks,
 }: {
   bot: BotInstance;
+  targetSymbol?: string;
   buyPrice: number;
   quantity: number;
   total: number;
@@ -330,10 +646,11 @@ async function executeBotBuy({
 }) {
   const store = useCryptoStore.getState();
   const { tradingMode } = store;
+  const execSymbol = targetSymbol || bot.symbol;
 
   const trade: TradeData = {
     id: `trade-${bot.id}-${Date.now()}`,
-    symbol: bot.symbol,
+    symbol: execSymbol,
     side: "BUY",
     price: buyPrice,
     quantity,
@@ -345,6 +662,8 @@ async function executeBotBuy({
     botId: bot.id,
     botName: bot.name,
   };
+
+  let executedTrade: TradeData = trade;
 
   if (tradingMode === "live") {
     try {
@@ -375,7 +694,7 @@ async function executeBotBuy({
         return;
       }
 
-      const executedTrade: TradeData = {
+      executedTrade = {
         ...trade,
         price: result.data?.price ?? result.trade?.price ?? trade.price,
         quantity: result.data?.quantity ?? result.trade?.quantity ?? trade.quantity,
@@ -419,15 +738,19 @@ async function executeBotBuy({
     store.applyTradeToPortfolio(trade);
   }
 
-  // Create BotPosition
+  // Create BotPosition com valores reais executados
+  const finalQty = (executedTrade.quantity && executedTrade.quantity > 0) ? executedTrade.quantity : quantity;
+  const finalPrice = (executedTrade.price && executedTrade.price > 0) ? executedTrade.price : buyPrice;
+  const finalTotal = (executedTrade.total && executedTrade.total > 0) ? executedTrade.total : total;
+
   const newPosition: BotPosition = {
-    symbol: bot.symbol,
+    symbol: execSymbol,
     side: "BUY",
-    entryPrice: buyPrice,
-    currentPrice: buyPrice,
-    quantity,
-    totalCost: total,
-    highestPrice: buyPrice,
+    entryPrice: finalPrice,
+    currentPrice: finalPrice,
+    quantity: finalQty,
+    totalCost: finalTotal,
+    highestPrice: finalPrice,
     unrealizedPnl: 0,
     unrealizedPnlPercent: 0,
     entryTime: new Date().toISOString(),
@@ -441,7 +764,7 @@ async function executeBotBuy({
   const modeTag = tradingMode === "live" ? "🟢 [REAL]" : "🔷 [SIMULADO]";
 
   store.addBotLog({
-    message: `🚀 ${modeTag} [${bot.name}] COMPRA executada em ${bot.symbol.replace("USDT", "")}! Preço: $${buyPrice.toLocaleString()} | Alvo de Lucro: +${bot.takeProfit}% ($${targetProfitPrice})`,
+    message: `🚀 ${modeTag} [${bot.name}] COMPRA executada em ${execSymbol.replace("USDT", "")}! Preço: $${buyPrice.toLocaleString()} | Alvo de Lucro: +${bot.takeProfit}% ($${targetProfitPrice})`,
     type: "buy",
     botId: bot.id,
     botName: bot.name,
@@ -449,7 +772,156 @@ async function executeBotBuy({
 
   callbacks?.onToast?.({
     title: `🤖 ${bot.name} ${modeTag}`,
-    description: `Comprou ${quantity.toFixed(4)} ${bot.symbol.replace("USDT", "")} @ $${buyPrice.toLocaleString()} (Alvo: +${bot.takeProfit}%)`,
+    description: `Comprou ${finalQty.toFixed(4)} ${execSymbol.replace("USDT", "")} @ $${buyPrice.toLocaleString()} (Alvo: +${bot.takeProfit}%)`,
+    variant: "default",
+  });
+}
+
+/**
+ * Executes a Smart DCA Re-entry order in support to lower average entry price.
+ */
+async function executeBotDcaReentry({
+  bot,
+  position,
+  currentPrice,
+  gainPercent,
+  currentRsi,
+  callbacks,
+}: {
+  bot: BotInstance;
+  position: BotPosition;
+  currentPrice: number;
+  gainPercent: number;
+  currentRsi: number;
+  callbacks?: MultiBotEngineCallbacks;
+}) {
+  const store = useCryptoStore.getState();
+  const { tradingMode } = store;
+  const cash = store.portfolio.cashBalance;
+  const execSymbol = position.symbol || bot.symbol;
+
+  const multiplier = bot.dcaMultiplier ?? 1.0;
+  const baseAllocation = bot.allocationAmount || 10;
+  const maxSafeCash = Math.max(0, cash * 0.95);
+  const targetSpend = Math.max(5.20, Math.min(maxSafeCash, baseAllocation * multiplier));
+
+  if (targetSpend < 5.20 || targetSpend > cash) {
+    return;
+  }
+
+  const dcaQuantity = parseFloat((targetSpend / currentPrice).toFixed(6));
+  const dcaTotal = parseFloat((dcaQuantity * currentPrice).toFixed(2));
+
+  const dcaTrade: TradeData = {
+    id: `dca-${bot.id}-${Date.now()}`,
+    symbol: execSymbol,
+    side: "BUY",
+    price: currentPrice,
+    quantity: dcaQuantity,
+    total: dcaTotal,
+    strategy: `${bot.strategy} (DCA Suporte RSI ${currentRsi.toFixed(0)})`,
+    mode: tradingMode,
+    pnl: 0,
+    timestamp: new Date().toISOString(),
+    botId: bot.id,
+    botName: bot.name,
+  };
+
+  let executedTrade: TradeData = dcaTrade;
+
+  if (tradingMode === "live") {
+    try {
+      const res = await fetch("/api/trades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(dcaTrade),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        store.addBotLog({
+          message: `🔴 [${bot.name}] Falha na Binance ao executar DCA: ${result.error || "Ordem rejeitada"}`,
+          type: "warning",
+          botId: bot.id,
+          botName: bot.name,
+        });
+        return;
+      }
+      executedTrade = {
+        ...dcaTrade,
+        price: result.data?.price ?? result.trade?.price ?? dcaTrade.price,
+        quantity: result.data?.quantity ?? result.trade?.quantity ?? dcaTrade.quantity,
+        total: result.data?.total ?? result.trade?.total ?? dcaTrade.total,
+        id: result.data?.id ?? result.trade?.id ?? dcaTrade.id,
+      };
+      store.addTrade(executedTrade);
+      store.applyTradeToPortfolio(executedTrade);
+      if (result.account) store.setAccount(result.account);
+    } catch (e: any) {
+      store.addBotLog({
+        message: `🔴 [${bot.name}] Erro de rede ao executar DCA: ${e.message}`,
+        type: "warning",
+        botId: bot.id,
+        botName: bot.name,
+      });
+      return;
+    }
+  } else {
+    // Paper mode
+    try {
+      fetch("/api/trades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(dcaTrade),
+      })
+        .then((res) => res.json())
+        .then((result) => {
+          if (result.success && result.account) {
+            useCryptoStore.getState().setAccount(result.account);
+          }
+        })
+        .catch(() => {});
+    } catch {}
+
+    store.addTrade(dcaTrade);
+    store.applyTradeToPortfolio(dcaTrade);
+  }
+
+  const finalQty = executedTrade.quantity || dcaQuantity;
+  const finalTotal = executedTrade.total || dcaTotal;
+
+  // Calcula novo preço médio ponderado
+  const prevTotalCost = position.totalCost || position.entryPrice * position.quantity;
+  const newTotalQty = position.quantity + finalQty;
+  const newTotalCost = prevTotalCost + finalTotal;
+  const newAvgPrice = parseFloat((newTotalCost / newTotalQty).toFixed(6));
+  const newDcaCount = (position.dcaCount || 0) + 1;
+
+  const updatedPosition: BotPosition = {
+    ...position,
+    entryPrice: newAvgPrice,
+    quantity: newTotalQty,
+    totalCost: newTotalCost,
+    currentPrice,
+    dcaCount: newDcaCount,
+    isBreakEvenArmed: false, // Rearma o break-even a partir do novo preço médio reduzido
+    isTakeProfitArmed: false,
+    tpPeakPrice: undefined,
+  };
+
+  store.updateBotPosition(bot.id, updatedPosition);
+  store.recordBotTrade(bot.id, executedTrade, 0);
+
+  const modeTag = tradingMode === "live" ? "🟢 [REAL]" : "🔷 [SIMULADO]";
+  store.addBotLog({
+    message: `🔄 ${modeTag} [${bot.name}] DCA INTELIGENTE EXECUTADO em suporte (RSI ${currentRsi.toFixed(0)})! Preço Médio reduzido de $${position.entryPrice.toFixed(4)} para $${newAvgPrice.toFixed(4)} (Recuo: ${gainPercent.toFixed(2)}%)`,
+    type: "buy",
+    botId: bot.id,
+    botName: bot.name,
+  });
+
+  callbacks?.onToast?.({
+    title: `🔄 DCA Inteligente [${bot.name}]`,
+    description: `Preço médio de ${execSymbol.replace("USDT", "")} otimizado para $${newAvgPrice.toFixed(4)} (RSI ${currentRsi.toFixed(0)})`,
     variant: "default",
   });
 }
@@ -478,12 +950,13 @@ async function executeBotSell({
 }) {
   const store = useCryptoStore.getState();
   const { tradingMode } = store;
+  const execSymbol = position.symbol || bot.symbol;
 
   const total = parseFloat((position.quantity * sellPrice).toFixed(2));
 
   const trade: TradeData = {
     id: `trade-${bot.id}-${Date.now()}`,
-    symbol: bot.symbol,
+    symbol: execSymbol,
     side: "SELL",
     price: sellPrice,
     quantity: position.quantity,
@@ -494,6 +967,7 @@ async function executeBotSell({
     timestamp: new Date().toISOString(),
     botId: bot.id,
     botName: bot.name,
+    sellAll: true, // Vender 100% de todo o saldo livre na Binance
   };
 
   if (tradingMode === "live") {
@@ -507,6 +981,32 @@ async function executeBotSell({
       });
       const result = await res.json();
       if (!res.ok || !result.success) {
+        // Se a posição na Binance for resíduo / inferior ao mínimo de $5 da Binance (MIN_NOTIONAL_DUST):
+        // Encerra a posição no robô para desobstruí-lo e não travar o usuário
+        if (
+          result.code === "MIN_NOTIONAL_DUST" ||
+          result.error?.includes("inferior ao mínimo") ||
+          result.code === "NO_BALANCE" ||
+          result.error?.includes("não possui saldo")
+        ) {
+          store.updateBotPosition(bot.id, null);
+          store.recordBotTrade(bot.id, trade, pnl);
+
+          store.addBotLog({
+            message: `⚠️ [${bot.name}] Posição encerrada no robô. A quantidade em carteira (${position.quantity.toFixed(4)} ${execSymbol.replace("USDT", "")}) vale menos que o lote mínimo de $5 da Binance para venda direta. O saldo residual permanece seguro na sua conta Spot da Binance.`,
+            type: "warning",
+            botId: bot.id,
+            botName: bot.name,
+          });
+
+          callbacks?.onToast?.({
+            title: `⚠️ Posição Finalizada (${bot.name})`,
+            description: `Posição encerrada no robô. O valor residual (< $5 USDT) permanece seguro na sua conta Spot da Binance.`,
+            variant: "default",
+          });
+          return;
+        }
+
         store.addBotLog({
           message: `🔴 [${bot.name}] Falha na ordem de venda Binance: ${result.error || "Erro"}`,
           type: "error",
@@ -564,12 +1064,114 @@ async function executeBotSell({
   store.updateBotPosition(bot.id, null);
   store.recordBotTrade(bot.id, trade, pnl);
 
+  // Cálculos financeiros e custos operacionais
+  const totalInvested = parseFloat((position.totalCost || position.quantity * position.entryPrice).toFixed(2));
+  const totalReturned = parseFloat((position.quantity * sellPrice).toFixed(2));
+  const grossPnl = parseFloat(pnl.toFixed(2));
+  // Taxa padrão Binance Spot: 0.10% (0.001) para compra e 0.10% para venda
+  const buyFee = parseFloat((totalInvested * 0.001).toFixed(4));
+  const sellFee = parseFloat((totalReturned * 0.001).toFixed(4));
+  const totalFees = parseFloat((buyFee + sellFee).toFixed(4));
+  const netPnl = parseFloat((grossPnl - totalFees).toFixed(2));
+  const netGainPercent = totalInvested > 0
+    ? parseFloat((((totalReturned - totalFees - totalInvested) / totalInvested) * 100).toFixed(2))
+    : parseFloat(gainPercent.toFixed(2));
+
+  // Duração da operação
+  const entryDate = position.entryTime ? new Date(position.entryTime).getTime() : Date.now();
+  const exitDate = Date.now();
+  const diffSec = Math.max(0, Math.floor((exitDate - entryDate) / 1000));
+  const hours = Math.floor(diffSec / 3600);
+  const minutes = Math.floor((diffSec % 3600) / 60);
+  const seconds = diffSec % 60;
+  let durationFormatted = "";
+  if (hours > 0) {
+    durationFormatted = `${hours}h ${minutes}m ${seconds}s`;
+  } else if (minutes > 0) {
+    durationFormatted = `${minutes}m ${seconds}s`;
+  } else {
+    durationFormatted = `${seconds}s`;
+  }
+
+  const updatedBotState = useCryptoStore.getState().bots.find((b) => b.id === bot.id);
+  const botStats = updatedBotState?.stats || bot.stats;
+
+  const executionReport: BotExecutionReport = {
+    id: `rep-${bot.id}-${Date.now()}`,
+    botId: bot.id,
+    botName: bot.name,
+    symbol: execSymbol,
+    strategy: bot.strategy,
+    mode: tradingMode,
+    entryPrice: position.entryPrice,
+    exitPrice: sellPrice,
+    quantity: position.quantity,
+    totalInvested,
+    totalReturned,
+    grossPnl,
+    gainPercent: parseFloat(gainPercent.toFixed(2)),
+    buyFee,
+    sellFee,
+    totalFees,
+    netPnl,
+    netGainPercent,
+    entryTime: position.entryTime || new Date(Date.now() - diffSec * 1000).toISOString(),
+    exitTime: new Date().toISOString(),
+    durationFormatted,
+    exitReason: reason,
+    botTotalTrades: botStats.totalTrades,
+    botWinTrades: botStats.winTrades,
+    botLossTrades: botStats.lossTrades,
+    botWinRate: botStats.winRate,
+    botAccumulatedPnl: botStats.realizedPnl,
+  };
+
+  // Se o robô tiver 'stopAfterProfit' ativo e obteve lucro (ou encerramento com lucro solicitado):
+  const isProfitableSell =
+    pnl > 0 ||
+    gainPercent > 0 ||
+    logType === "profit" ||
+    reason.includes("Lucro") ||
+    reason.includes("Take-Profit") ||
+    reason.includes("Break-Even");
+  const shouldStopFleetBot = (bot.stopAfterProfit && isProfitableSell) || callbacks?.stopBotAfterClose;
+
+  if (shouldStopFleetBot) {
+    store.updateBot(bot.id, {
+      active: false,
+      status: "stopped",
+      lastReport: executionReport,
+      stats: {
+        ...bot.stats,
+        lastAction: `🎯 Operação finalizada com lucro (+${gainPercent.toFixed(2)}%)! Robô desativado automaticamente (Operação Única).`,
+        lastActionTime: new Date().toISOString(),
+      },
+    });
+
+    // Sincroniza estado de botActive global
+    const hasOtherActive = useCryptoStore.getState().bots.some((b) => b.id !== bot.id && b.active);
+    store.setBotActive(hasOtherActive);
+  } else {
+    // Salva o relatório no robô para consulta a qualquer momento
+    store.updateBot(bot.id, {
+      lastReport: executionReport,
+    });
+  }
+
+  // Abre o relatório detalhado automaticamente para o usuário
+  store.setActiveExecutionReport(executionReport);
+
+  // Se encerrou no prejuízo / stop loss, ativa cooldown de proteção de 10 minutos para esse ativo
+  if (logType === "loss" || pnl < 0 || gainPercent < 0) {
+    botSymbolLossCooldown.set(execSymbol, Date.now() + 10 * 60 * 1000);
+  }
+
   const sign = pnl >= 0 ? "+" : "";
   const pnlFormatted = `${sign}$${pnl.toFixed(2)} USDT (${sign}${gainPercent.toFixed(2)}%)`;
   const modeTag = tradingMode === "live" ? "🟢 [REAL]" : "🔷 [SIMULADO]";
 
   store.addBotLog({
-    message: `${pnl >= 0 ? "🎉" : "🛑"} ${modeTag} [${bot.name}] ${reason} em ${bot.symbol.replace("USDT", "")}! Resultado: ${pnlFormatted}`,
+    message: `${pnl >= 0 ? "🎉" : "🛑"} ${modeTag} [${bot.name}] ${reason} em ${execSymbol.replace("USDT", "")}! Resultado: ${pnlFormatted}`,
     type: logType,
     botId: bot.id,
     botName: bot.name,
@@ -577,7 +1179,9 @@ async function executeBotSell({
 
   callbacks?.onToast?.({
     title: pnl >= 0 ? `🎉 Lucro Realizado! ${bot.name} ${modeTag}` : `🛑 Ordem Finalizada (${bot.name}) ${modeTag}`,
-    description: `Vendeu ${position.quantity.toFixed(4)} ${bot.symbol.replace("USDT", "")} @ $${sellPrice.toLocaleString()} | Resultado: ${pnlFormatted}`,
+    description: shouldStopFleetBot
+      ? `Vendeu ${position.quantity.toFixed(4)} ${execSymbol.replace("USDT", "")} @ $${sellPrice.toLocaleString()} | Resultado: ${pnlFormatted}. Robô finalizado (Relatório aberto na tela).`
+      : `Vendeu ${position.quantity.toFixed(4)} ${execSymbol.replace("USDT", "")} @ $${sellPrice.toLocaleString()} | Resultado: ${pnlFormatted}. Relatório gerado com sucesso.`,
     variant: pnl >= 0 ? "default" : "destructive",
   });
 }
@@ -599,9 +1203,10 @@ export async function manualCloseBotPosition(botId: string, callbacks?: MultiBot
     return;
   }
 
-  let currentPrice = store.tickers[bot.symbol]?.price || bot.position.currentPrice;
+  const execSymbol = bot.position.symbol || bot.symbol;
+  let currentPrice = store.tickers[execSymbol]?.price || bot.position.currentPrice;
   try {
-    const res = await fetch(`/api/market/price?symbol=${bot.symbol}`, {
+    const res = await fetch(`/api/market/price?symbol=${execSymbol}`, {
       cache: "no-store",
       signal: AbortSignal.timeout(1500),
     });
@@ -621,7 +1226,9 @@ export async function manualCloseBotPosition(botId: string, callbacks?: MultiBot
     sellPrice: currentPrice,
     pnl,
     gainPercent,
-    reason: `⚡ FECHAMENTO MANUAL / REALIZAÇÃO IMEDIATA (+${gainPercent.toFixed(2)}%)`,
+    reason: callbacks?.stopBotAfterClose
+      ? `🎯 REALIZAÇÃO DE LUCRO E ENCERRAMENTO DO ROBÔ (+${gainPercent.toFixed(2)}%)`
+      : `⚡ FECHAMENTO MANUAL / REALIZAÇÃO IMEDIATA (+${gainPercent.toFixed(2)}%)`,
     logType: pnl >= 0 ? "profit" : "loss",
     callbacks,
   });
@@ -644,17 +1251,45 @@ export async function manualOpenBotPosition(botId: string, callbacks?: MultiBotE
     return;
   }
 
-  const ticker = store.tickers[bot.symbol];
-  if (!ticker || !ticker.price) {
+  let targetSymbol = bot.symbol;
+  let targetPrice = 0;
+
+  if (bot.symbol === "AUTO" || bot.useAutoScreener) {
+    const hotList = scanHotCoins(store.tickers, store.tickers["BTCUSDT"], 5);
+    if (hotList.length > 0) {
+      targetSymbol = hotList[0].symbol;
+      targetPrice = hotList[0].price;
+    } else {
+      targetSymbol = "BTCUSDT";
+    }
+  }
+
+  const ticker = store.tickers[targetSymbol];
+  let currentPrice = targetPrice > 0 ? targetPrice : (ticker?.price || 0);
+
+  if (!currentPrice || currentPrice <= 0) {
+    try {
+      const res = await fetch(`/api/market/price?symbol=${targetSymbol}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(1500),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const p = parseFloat(json?.data?.price || json?.price);
+        if (p && !isNaN(p) && p > 0) currentPrice = p;
+      }
+    } catch {}
+  }
+
+  if (!currentPrice || currentPrice <= 0) {
     callbacks?.onToast?.({
       title: bot.name,
-      description: `Cotação de ${bot.symbol} indisponível no momento.`,
+      description: `Cotação de ${targetSymbol} indisponível no momento.`,
       variant: "destructive",
     });
     return;
   }
 
-  const currentPrice = ticker.price;
   let cash = store.portfolio.cashBalance;
 
   if (store.tradingMode === "paper" && cash < 50) {
@@ -667,9 +1302,12 @@ export async function manualOpenBotPosition(botId: string, callbacks?: MultiBotE
   }
 
   if (cash < 5.20) {
+    const detail = (store.tradingMode === "live" && lastLiveAccountError)
+      ? `Falha ao consultar saldo na Binance: ${lastLiveAccountError.replace("Conexão Binance falhou: ", "")}`
+      : `Saldo em caixa ($${cash.toFixed(2)} USDT) é inferior ao mínimo ($5.20 USDT).`;
     callbacks?.onToast?.({
-      title: "Saldo Insuficiente",
-      description: `Saldo em caixa ($${cash.toFixed(2)} USDT) é inferior ao mínimo ($5.20 USDT).`,
+      title: "Saldo Insuficiente ou Erro na Binance",
+      description: detail,
       variant: "destructive",
     });
     return;
@@ -688,10 +1326,11 @@ export async function manualOpenBotPosition(botId: string, callbacks?: MultiBotE
 
   await executeBotBuy({
     bot,
+    targetSymbol,
     buyPrice: currentPrice,
     quantity,
     total,
-    customReason: "⚡ ENTRADA MANUAL IMEDIATA",
+    customReason: `⚡ ENTRADA MANUAL IMEDIATA (${targetSymbol.replace("USDT", "")})`,
     callbacks,
   });
 }

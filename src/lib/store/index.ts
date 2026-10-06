@@ -13,6 +13,7 @@ export type {
   KlineData,
   BotConfigData,
   BotInstance,
+  BotExecutionReport,
   BotPosition,
   BotStrategy,
   BotStats,

@@ -24,6 +24,7 @@ import {
   type StrengthCheck,
 } from "./quant-engine";
 import { getStrategy, VOLATILITY_VETO_LIMIT } from "./strategy-catalog";
+import type { OrderBookAnalysis } from "./order-book-cache";
 
 export const MIN_CANDLES = 25;
 
@@ -94,12 +95,13 @@ export function analyzeMarket(
         : "HOLD"
     : "HOLD";
 
-  // Fluxo: avalia volume e direção considerando o candle fechado anterior e a formação atual
+  // Fluxo: avalia volume e direção com rigor institucional (não aceita candle vazio)
   const avgVol = averageVolume(klines, 20, 1);
   const prevStrong = avgVol > 0 && prevCandle.volume >= avgVol * 0.7 && prevCandle.close >= prevCandle.open;
   const currentGreen = last.close >= last.open;
-  const currentVolumeGood = avgVol > 0 && last.volume >= avgVol * 0.35;
-  const flow: QuantVote = (prevStrong || (currentGreen && currentVolumeGood) || currentGreen) ? "BUY" : (last.close < last.open ? "SELL" : "HOLD");
+  const currentVolumeGood = avgVol > 0 && last.volume >= avgVol * 0.55;
+  // Exige volume expressivo e confirmação direcional (elimina falsos sinais em micro-candles sem liquidez)
+  const flow: QuantVote = (prevStrong || (currentGreen && currentVolumeGood)) ? "BUY" : (last.close < last.open ? "SELL" : "HOLD");
 
   const votes: ModelVotes = { trend, momentum, flow };
 
@@ -142,8 +144,12 @@ export function evaluateStrategySignal(
   switch (bot.strategy) {
     case "QUANT_ENSEMBLE": {
       const { votes } = analysis;
+      // Regra de Proteção Institucional: NUNCA compra contra a tendência (se trend for SELL, bloqueia)
+      if (votes.trend === "SELL") {
+        return { ok: false, detail: "bloqueado por tendência de baixa (EMA rápida < EMA lenta)" };
+      }
       const buys = [votes.trend, votes.momentum, votes.flow].filter((v) => v === "BUY").length;
-      return { ok: analysis.committee === "BUY", detail: `${buys}/3 análises favoráveis (precisa de 2)` };
+      return { ok: analysis.committee === "BUY", detail: `${buys}/3 análises favoráveis (tendência altista)` };
     }
 
     case "RSI": {
@@ -248,9 +254,12 @@ export function evaluateEntry(
   ticker: TickerData,
   btcTicker: TickerData | undefined,
   klines: KlineData[],
-  aiSignals: AISignalData[]
+  aiSignals: AISignalData[],
+  klines15m?: KlineData[],
+  orderBook?: OrderBookAnalysis
 ): EntryDecision {
-  const analysis = analyzeMarket(bot.symbol, ticker, btcTicker, klines, {
+  const evalSymbol = (ticker?.symbol && ticker.symbol !== "AUTO") ? ticker.symbol : bot.symbol;
+  const analysis = analyzeMarket(evalSymbol, ticker, btcTicker, klines, {
     emaFast: bot.emaFast,
     emaSlow: bot.emaSlow,
     rsiPeriod: bot.rsiPeriod,
@@ -263,7 +272,21 @@ export function evaluateEntry(
 
   const checks: BotEntryCheck[] = [];
 
-  const signal = evaluateStrategySignal(bot, klines, analysis, aiSignals);
+  // Filtro Auto-Screener: Se ativo, exige que o ativo seja uma moeda em alta real com volume significativo
+  if (bot.useAutoScreener || bot.symbol === "AUTO") {
+    const change24h = ticker.priceChangePercent ?? 0;
+    const vol = ticker.quoteVolume ?? 0;
+    const isHotCandidate = change24h >= 0.2 && vol >= 5_000_000;
+    checks.push({
+      label: "Auto-Screener Alta",
+      ok: isHotCandidate,
+      detail: isHotCandidate
+        ? `Líder em alta confirmada (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M)`
+        : `Ativo sem momentum suficiente (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M — precisa ≥ +0.2% e ≥ $5M)`,
+    });
+  }
+
+  const signal = evaluateStrategySignal({ ...bot, symbol: evalSymbol }, klines, analysis, aiSignals);
   checks.push({ label: "Estratégia", ok: signal.ok, detail: signal.detail });
 
   checks.push({
@@ -271,6 +294,51 @@ export function evaluateEntry(
     ok: !analysis.vetoed,
     detail: `ATR ${(analysis.relATR * 100).toFixed(1)}% (bloqueia ≥ ${VOLATILITY_VETO_LIMIT * 100}%)`,
   });
+
+  // Filtro de Spread e Livro de Ofertas: Veta entradas com spread alargado ou livro dominado por vendedores
+  if (bot.useOrderBookFilter !== false && orderBook) {
+    checks.push({
+      label: "Livro & Spread",
+      ok: orderBook.ok,
+      detail: orderBook.detail,
+    });
+  }
+
+  // Filtro Multi-Timeframe (15m + 1m): Só compra no 1m se a macro-tendência de 15m estiver altista
+  if (bot.useMultiTimeframe !== false) {
+    if (klines15m && klines15m.length >= 20) {
+      const closes15m = klines15m.map((k) => k.close);
+      const fast15 = emaSeries(closes15m, 9);
+      const slow15 = emaSeries(closes15m, 21);
+      const fastNow15 = fast15[fast15.length - 1];
+      const slowNow15 = slow15[slow15.length - 1];
+      const lastClose15 = closes15m[closes15m.length - 1];
+
+      const trend15mOk = fastNow15 >= slowNow15;
+      const priceAboveEma15m = lastClose15 >= slowNow15 * 0.993; // tolerância para pullback controlado
+      const is15mBullish = trend15mOk && priceAboveEma15m;
+
+      checks.push({
+        label: "Multi-Timeframe 15m",
+        ok: is15mBullish,
+        detail: !trend15mOk
+          ? `Tendência 15m em baixa (EMA9 < EMA21 no 15m) — aguardando alinhamento altista`
+          : !priceAboveEma15m
+            ? `Preço 15m abaixo da EMA21 ($${lastClose15.toFixed(4)} < $${slowNow15.toFixed(4)}) — aguardando sustentação`
+            : `Tendência 15m altista confirmada (EMA9 > EMA21 e preço sobre a média)`,
+      });
+    } else {
+      const change24h = ticker.priceChangePercent ?? 0;
+      const isNotDumping = change24h >= -2.5;
+      checks.push({
+        label: "Multi-Timeframe 15m",
+        ok: isNotDumping,
+        detail: isNotDumping
+          ? `Variação 24h favorável (${change24h >= 0 ? "+" : ""}${change24h.toFixed(1)}%) · sincronizando candles 15m`
+          : `Ativo em forte queda 24h (${change24h.toFixed(1)}%) — bloqueado para proteção`,
+      });
+    }
+  }
 
   if (bot.useMarketRegime) {
     const style = getStrategy(bot.strategy)?.style ?? "HYBRID";

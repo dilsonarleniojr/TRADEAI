@@ -198,6 +198,7 @@ export const createPortfolioSlice: StateCreator<
     useQuantFunnel: false,
     useMarketRegime: false,
     useEnsemble: false,
+    useMultiTimeframe: true,
     rsiPeriod: 14,
     emaFast: 9,
     emaSlow: 21,

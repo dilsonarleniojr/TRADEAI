@@ -20,6 +20,7 @@ import {
   Zap,
   Target,
   ShieldAlert,
+  ShieldCheck,
   Flame,
   Clock,
   Sparkles,
@@ -29,6 +30,10 @@ import {
   Activity,
   Grid,
   RotateCcw,
+  CheckCircle2,
+  FileText,
+  Rocket,
+  BookOpen,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -41,14 +46,22 @@ interface BotCardProps {
 }
 
 export function BotCard({ bot, onEdit }: BotCardProps) {
-  const { toggleBotActive, removeBot, resetBotStats, tickers, tradingMode } = useCryptoStore(
-  useShallow((s) => ({ toggleBotActive: s.toggleBotActive, removeBot: s.removeBot, resetBotStats: s.resetBotStats, tickers: s.tickers, tradingMode: s.tradingMode }))
-);
+  const { toggleBotActive, removeBot, resetBotStats, tickers, tradingMode, setActiveExecutionReport } = useCryptoStore(
+    useShallow((s) => ({
+      toggleBotActive: s.toggleBotActive,
+      removeBot: s.removeBot,
+      resetBotStats: s.resetBotStats,
+      tickers: s.tickers,
+      tradingMode: s.tradingMode,
+      setActiveExecutionReport: s.setActiveExecutionReport,
+    }))
+  );
   const { toast } = useToast();
   const [isClosing, setIsClosing] = useState(false);
   const [isOpening, setIsOpening] = useState(false);
 
-  const ticker = tickers[bot.symbol];
+  const activeSymbol = (bot.position && bot.position.quantity > 0) ? bot.position.symbol : bot.symbol;
+  const ticker = tickers[activeSymbol];
   const currentPrice = ticker?.price ?? (bot.position?.currentPrice || 0);
 
   // Position calculations
@@ -68,6 +81,18 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
     try {
       await manualCloseBotPosition(bot.id, {
         onToast: (t) => toast(t),
+      });
+    } finally {
+      setIsClosing(false);
+    }
+  };
+
+  const handleTakeProfitAndStop = async () => {
+    setIsClosing(true);
+    try {
+      await manualCloseBotPosition(bot.id, {
+        onToast: (t) => toast(t),
+        stopBotAfterClose: true,
       });
     } finally {
       setIsClosing(false);
@@ -146,10 +171,18 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
 
             <div className="flex items-center gap-1.5 flex-wrap">
               {/* Symbol Badge */}
-              <Badge variant="outline" className="text-[11px] font-semibold px-2 py-0 border-border/70 bg-secondary/30">
-                {bot.symbol.replace("USDT", "")}
+              <Badge variant="outline" className={`text-[11px] font-semibold px-2 py-0 border-border/70 ${bot.symbol === "AUTO" || bot.useAutoScreener ? "bg-orange-500/15 border-orange-500/40 text-orange-400" : "bg-secondary/30"}`}>
+                {bot.symbol === "AUTO" ? (hasPosition ? bot.position!.symbol.replace("USDT", "") : "🔥 TOP ALTAS") : bot.symbol.replace("USDT", "")}
                 <span className="text-[9px] text-muted-foreground ml-0.5">/USDT</span>
               </Badge>
+
+              {/* Auto-Screener Badge */}
+              {(bot.useAutoScreener || bot.symbol === "AUTO") && (
+                <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-orange-500/40 text-orange-400 bg-orange-500/10 flex items-center gap-1" title="Varre dinamicamente as moedas em maior alta na Binance">
+                  <Flame className="w-2.5 h-2.5 text-orange-400" />
+                  Auto-Screener
+                </Badge>
+              )}
 
               {/* Strategy Badge */}
               <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-border/60 bg-secondary/20 flex items-center gap-1">
@@ -169,6 +202,46 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-secondary/50 text-muted-foreground">
                 ${bot.allocationAmount} USDT
               </Badge>
+
+              {/* Stop After Profit Mode Badge */}
+              {bot.stopAfterProfit && (
+                <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-emerald-500/40 text-emerald-400 bg-emerald-500/10 flex items-center gap-1" title="Pausará automaticamente após obter lucro">
+                  <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+                  Operação Única
+                </Badge>
+              )}
+
+              {/* Break-Even Protection Badge */}
+              {(bot.autoBreakEven ?? true) && (
+                <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-amber-500/40 text-amber-400 bg-amber-500/10 flex items-center gap-1" title="Break-Even Automático ativo: move stop para risco zero ao valorizar">
+                  <ShieldCheck className="w-2.5 h-2.5 text-amber-400" />
+                  Break-Even
+                </Badge>
+              )}
+
+              {/* Trailing Take-Profit Badge */}
+              {(bot.trailingTakeProfit ?? true) && (
+                <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-emerald-500/40 text-emerald-400 bg-emerald-500/10 flex items-center gap-1" title="Trailing Take-Profit ativo: deixa o lucro correr além da meta fixa">
+                  <Rocket className="w-2.5 h-2.5 text-emerald-400" />
+                  Trailing TP
+                </Badge>
+              )}
+
+              {/* Smart DCA Badge */}
+              {(bot.useSmartDca ?? true) && (
+                <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-cyan-500/40 text-cyan-400 bg-cyan-500/10 flex items-center gap-1" title="DCA Inteligente ativo: reentrada estratégica em suporte se houver recuo">
+                  <TrendingUp className="w-2.5 h-2.5 text-cyan-400" />
+                  DCA Suporte
+                </Badge>
+              )}
+
+              {/* Order Book & Spread Filter Badge */}
+              {(bot.useOrderBookFilter ?? true) && (
+                <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-blue-500/40 text-blue-400 bg-blue-500/10 flex items-center gap-1" title="Filtro de Livro e Spread ativo: barra compras com spread largo ou book desfavorável">
+                  <BookOpen className="w-2.5 h-2.5 text-blue-400" />
+                  Livro & Spread
+                </Badge>
+              )}
 
               {/* Position Mode Badge */}
               {hasPosition && (
@@ -274,6 +347,45 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
                 </div>
               </div>
 
+              {/* Break-Even Armed (Risco Zero Ativo) Banner */}
+              {bot.position?.isBreakEvenArmed && (
+                <div className="flex items-center justify-between text-[11px] bg-amber-500/15 border border-amber-500/40 px-2.5 py-1.5 rounded-lg text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.15)]">
+                  <span className="flex items-center gap-1.5 font-bold">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-pulse" />
+                    Risco Zero Armado (Break-Even)
+                  </span>
+                  <span className="text-[10px] font-mono text-amber-200">
+                    Stop: ${formatPrice(bot.position.breakEvenPrice || entryPrice * 1.0025)}
+                  </span>
+                </div>
+              )}
+
+              {/* Trailing Take-Profit Armed (Surfando Pump) Banner */}
+              {bot.position?.isTakeProfitArmed && (
+                <div className="flex items-center justify-between text-[11px] bg-emerald-500/15 border border-emerald-500/40 px-2.5 py-1.5 rounded-lg text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.2)]">
+                  <span className="flex items-center gap-1.5 font-bold">
+                    <Rocket className="w-3.5 h-3.5 text-emerald-400 shrink-0 animate-bounce" />
+                    Surfando Pump (Alvo Superado!)
+                  </span>
+                  <span className="text-[10px] font-mono text-emerald-200">
+                    Pico: ${formatPrice(bot.position.tpPeakPrice || currentPrice)}
+                  </span>
+                </div>
+              )}
+
+              {/* DCA Re-entry Applied Badge */}
+              {Boolean(bot.position?.dcaCount && bot.position.dcaCount > 0) && (
+                <div className="flex items-center justify-between text-[11px] bg-cyan-500/15 border border-cyan-500/40 px-2.5 py-1.5 rounded-lg text-cyan-300">
+                  <span className="flex items-center gap-1.5 font-bold">
+                    <TrendingUp className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    Preço Médio Estratégico (DCA Executado)
+                  </span>
+                  <span className="text-[10px] font-mono text-cyan-200">
+                    {bot.position!.dcaCount} reentrada(s)
+                  </span>
+                </div>
+              )}
+
               {/* Price comparison */}
               <div className="grid grid-cols-2 gap-2 text-[11px] bg-secondary/30 p-2 rounded-lg">
                 <div>
@@ -301,27 +413,42 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
               </div>
 
               {/* Quick Close / Take Profit / Stop Loss Button */}
-              <Button
-                size="sm"
-                onClick={handleTakeProfitNow}
-                disabled={isClosing}
-                className={`w-full h-7 text-xs font-semibold text-white shadow-sm cursor-pointer transition-colors ${
-                  isProfit
-                    ? "bg-gradient-to-r from-crypto-green to-emerald-500 hover:from-crypto-green/90 hover:to-emerald-500/90"
-                    : "bg-gradient-to-r from-crypto-red to-rose-600 hover:from-crypto-red/90 hover:to-rose-600/90"
-                }`}
-              >
-                {isProfit ? (
-                  <Sparkles className="w-3 h-3 mr-1" />
-                ) : (
-                  <TrendingDown className="w-3 h-3 mr-1" />
+              <div className="space-y-1.5">
+                <Button
+                  size="sm"
+                  onClick={handleTakeProfitNow}
+                  disabled={isClosing}
+                  className={`w-full h-7 text-xs font-semibold text-white shadow-sm cursor-pointer transition-colors ${
+                    isProfit
+                      ? "bg-gradient-to-r from-crypto-green to-emerald-500 hover:from-crypto-green/90 hover:to-emerald-500/90"
+                      : "bg-gradient-to-r from-crypto-red to-rose-600 hover:from-crypto-red/90 hover:to-rose-600/90"
+                  }`}
+                >
+                  {isProfit ? (
+                    <Sparkles className="w-3 h-3 mr-1" />
+                  ) : (
+                    <TrendingDown className="w-3 h-3 mr-1" />
+                  )}
+                  {isClosing
+                    ? "Executando..."
+                    : isProfit
+                      ? `Realizar Lucro Agora (+$${Math.abs(unrealizedPnlUsdt).toFixed(2)})`
+                      : `Realizar Prejuízo Agora (-$${Math.abs(unrealizedPnlUsdt).toFixed(2)})`}
+                </Button>
+
+                {isProfit && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleTakeProfitAndStop}
+                    disabled={isClosing}
+                    className="w-full h-7 text-xs font-semibold border-emerald-500/50 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                    {isClosing ? "Executando..." : "Realizar Lucro e Encerrar Robô (Pausar)"}
+                  </Button>
                 )}
-                {isClosing
-                  ? "Executando..."
-                  : isProfit
-                    ? `Realizar Lucro Agora (+$${Math.abs(unrealizedPnlUsdt).toFixed(2)})`
-                    : `Realizar Prejuízo Agora (-$${Math.abs(unrealizedPnlUsdt).toFixed(2)})`}
-              </Button>
+              </div>
             </motion.div>
           ) : bot.active ? (
             <motion.div
@@ -417,7 +544,7 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
         </AnimatePresence>
 
         {/* Profit & Risk Rules Badges */}
-        <div className="grid grid-cols-3 gap-1.5 text-center text-[10px]">
+        <div className="grid grid-cols-4 gap-1.5 text-center text-[10px]">
           <div className="bg-secondary/25 p-1.5 rounded-lg border border-border/20">
             <span className="text-muted-foreground block text-[9px] uppercase tracking-wider">Take Profit</span>
             <span className="font-bold text-crypto-green">+{bot.takeProfit}%</span>
@@ -429,10 +556,44 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
           </div>
 
           <div className="bg-secondary/25 p-1.5 rounded-lg border border-border/20">
-            <span className="text-muted-foreground block text-[9px] uppercase tracking-wider">Trailing Stop</span>
-            <span className="font-bold text-crypto-cyan">{bot.trailingStop ? `Ativo (${bot.trailingStopDistance}%)` : "Desativado"}</span>
+            <span className="text-muted-foreground block text-[9px] uppercase tracking-wider">Trailing</span>
+            <span className="font-bold text-crypto-cyan">{bot.trailingStop ? `${bot.trailingStopDistance}%` : "Off"}</span>
+          </div>
+
+          <div className="bg-secondary/25 p-1.5 rounded-lg border border-border/20">
+            <span className="text-muted-foreground block text-[9px] uppercase tracking-wider">Break-Even</span>
+            <span className="font-bold text-amber-400">{(bot.autoBreakEven ?? true) ? `+${bot.breakEvenTrigger ?? 1.2}%` : "Off"}</span>
           </div>
         </div>
+
+        {/* Operação Única Indicator */}
+        {bot.stopAfterProfit && (
+          <div className="flex items-center justify-between text-[10px] bg-emerald-500/10 border border-emerald-500/25 px-2 py-1 rounded-lg text-emerald-300">
+            <span className="flex items-center gap-1 font-semibold">
+              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+              Operação Única
+            </span>
+            <span className="text-[9px] opacity-85">Pausará o robô logo após vender com lucro</span>
+          </div>
+        )}
+
+        {/* Banner de Operação Finalizada e Relatório Pronto */}
+        {bot.lastReport && (
+          <div className="flex items-center justify-between text-[11px] bg-crypto-cyan/15 border border-crypto-cyan/40 px-2.5 py-1.5 rounded-lg text-crypto-cyan shadow-[0_0_12px_rgba(0,240,255,0.1)]">
+            <span className="flex items-center gap-1.5 font-bold truncate">
+              <FileText className="w-3.5 h-3.5 text-crypto-cyan shrink-0" />
+              Relatório Pronto ({bot.lastReport.netPnl >= 0 ? "+" : ""}${bot.lastReport.netPnl.toFixed(2)} USDT)
+            </span>
+            <Button
+              size="sm"
+              variant="default"
+              onClick={() => setActiveExecutionReport(bot.lastReport!)}
+              className="h-6 px-2 text-[10px] bg-crypto-cyan text-black hover:bg-crypto-cyan/90 font-bold shrink-0 cursor-pointer shadow-sm"
+            >
+              Ver Relatório
+            </Button>
+          </div>
+        )}
 
         {/* Stats Footer: Realized PnL & Win Rate */}
         <div className="flex items-center justify-between pt-1 border-t border-border/30 text-[11px]">

@@ -163,7 +163,11 @@ async function buildLiveAccount(apiKey: string, apiSecret: string, testnet: bool
     binanceAcc = await fetchBinanceAccount(apiKey, apiSecret, testnet);
   } catch (err: any) {
     console.error('[Account API] Failed to fetch real Binance account balance:', err.message);
-    throw new Error(`Conexão Binance falhou: ${err.message}`);
+    let msg = err.message;
+    if (err.message?.includes('-2015')) {
+      msg = "Chave API inválida, IP não autorizado ou sem permissão de Leitura na Binance. Verifique se o IP 168.121.98.202 está cadastrado no Gerenciamento de API da Binance ou se a chave expirou.";
+    }
+    throw new Error(`Conexão Binance falhou: ${msg}`);
   }
 
   const [prices, liveTrades, stored] = await Promise.all([
