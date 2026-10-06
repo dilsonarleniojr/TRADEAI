@@ -396,22 +396,11 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       pullbackFromPeak >= (bot.trailingStopDistance || 0.6) &&
       gainPercent >= 0.50;
 
-    // 1.3 TECHNICAL OVERBOUGHT REVERSAL (RSI real do ativo; só realiza se já está no lucro)
-    let isOverboughtProfit = false;
-    let exitRsi = 0;
-    if (gainPercent >= 1.5) {
-      const klines = await getSymbolKlines(symbol);
-      if (klines.length > (bot.rsiPeriod || 14)) {
-        exitRsi = calculateRSI(klines.map((k) => k.close), bot.rsiPeriod || 14);
-        isOverboughtProfit = exitRsi >= (bot.sellThreshold || 70);
-      }
-    }
-
-    // 1.4 STOP LOSS DISCIPLINADO (Respeita o risco configurado sem cortes prematuros por ruído)
+    // 1.3 STOP LOSS DISCIPLINADO (Respeita o risco configurado sem cortes prematuros por ruído)
     const isHardStopLoss = gainPercent <= -bot.stopLoss;
     const isStopLoss = isHardStopLoss;
 
-    // 1.5 ONE-SHOT QUICK PROFIT (Venda com lucro real conquistado)
+    // 1.4 ONE-SHOT QUICK PROFIT (Venda com lucro real conquistado)
     // Se o robô estiver no modo de operação única, só encerra quando atingir o alvo de take profit
     // ou no mínimo 1.8% líquido:
     const isQuickProfit = bot.stopAfterProfit && gainPercent >= Math.max(1.8, bot.takeProfit * 0.9);
@@ -444,12 +433,6 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       shouldSell = true;
       sellReason = `⏱️ TIME-STOP ESCALONADO (${minutesOpen.toFixed(0)} min sem evolução) · LIBERANDO CAPITAL`;
       logType = gainPercent >= 0 ? "profit" : "warning";
-    } else if (isOverboughtProfit) {
-      shouldSell = true;
-      sellReason = bot.stopAfterProfit
-        ? `📈 REALIZAÇÃO NO TOPO RSI ${exitRsi.toFixed(0)} (+${gainPercent.toFixed(2)}%) · OPERAÇÃO ÚNICA CONCLUÍDA`
-        : `📈 REALIZAÇÃO NO TOPO RSI ${exitRsi.toFixed(0)} (+${gainPercent.toFixed(2)}%)`;
-      logType = "profit";
     } else if (isStopLoss) {
       shouldSell = true;
       sellReason = isHardStopLoss
@@ -529,10 +512,14 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   }
 
   // Check minimum execution balance
-  if (cash < 5.20) {
+  // Limiar de Capital Institucional: Impede a abertura de posições "migalhas" ($6 a $12)
+  // que quebram a simetria de risco e geram lucros insignificantes de centavos enquanto
+  // perdas ocorrem em posições de $40-$50.
+  const minRequiredCash = Math.max(10.0, Math.min(bot.allocationAmount || 40.0, 35.0));
+  if (cash < minRequiredCash) {
     const actionMsg = (tradingMode === "live" && lastLiveAccountError)
       ? `Aguardando Binance: ${lastLiveAccountError.replace("Conexão Binance falhou: ", "")}`
-      : `Aguardando saldo USDT ($${cash.toFixed(2)} disponível, mín $5.20)`;
+      : `Aguardando capital livre: Saldo ($${cash.toFixed(2)}) abaixo do lote mínimo ($${minRequiredCash.toFixed(2)}). Preservando simetria de risco.`;
     store.updateBot(bot.id, {
       status: "scanning",
       stats: {
@@ -643,18 +630,18 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
           }
         } catch {}
 
-        // Sizing Institucional: Aloca uma fatia expressiva (mínimo $35 ou bot.allocationAmount, até 85% do saldo seguro)
-        // para garantir que alvos de +2.5% a +3.5% gerem mais de +US$ 1.00 a +US$ 2.00 de lucro líquido
+        // Sizing Institucional: Posição padronizada (padrão $40 ou bot.allocationAmount)
+        // para garantir que alvos de +3.0% gerem lucros reais de +US$ 1.20 a +US$ 2.50 líquidos
         const maxSafeCash = Math.max(0, cash * 0.95);
-        const configuredAlloc = bot.allocationAmount || 35.0;
-        const dynamicAlloc = (cash >= 35.0 && cash <= 80.0)
-          ? Math.max(35.0, cash * 0.80)
-          : Math.max(35.0, configuredAlloc);
-        const targetSpend = Math.max(5.20, Math.min(maxSafeCash, dynamicAlloc));
+        const configuredAlloc = bot.allocationAmount || 40.0;
+        const dynamicAlloc = (cash >= 35.0 && cash <= 90.0)
+          ? Math.max(35.0, Math.min(maxSafeCash, cash * 0.85))
+          : Math.min(maxSafeCash, configuredAlloc);
+        const targetSpend = Math.max(minRequiredCash, Math.min(maxSafeCash, dynamicAlloc));
         const quantity = parseFloat((targetSpend / freshCandPrice).toFixed(6));
         const total = parseFloat((quantity * freshCandPrice).toFixed(2));
 
-        if (total >= 5.20 && total <= cash) {
+        if (total >= minRequiredCash * 0.95 && total <= cash) {
           const reasonFormatted = `🔥 Auto-Screener [${cand.symbol.replace("USDT", "")} +${cand.priceChangePercent.toFixed(1)}%]: ${decision.reason}`;
           await executeBotBuy({
             bot,
@@ -735,19 +722,19 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   const { shouldBuy, reason: entryReason, checks } = decision;
 
   if (shouldBuy && currentPrice) {
-    // Sizing Institucional: Dinamicamente adaptado para gerar lucros expressivos.
-    // Aloca no mínimo $35 (ou bot.allocationAmount) respeitando a margem de segurança de caixa.
+    // Sizing Institucional: Posição padronizada (padrão $40 ou bot.allocationAmount)
+    // para garantir que alvos de +3.0% gerem lucros reais de +US$ 1.20 a +US$ 2.50 líquidos
     const maxSafeCash = Math.max(0, cash * 0.95);
-    const configuredAlloc = bot.allocationAmount || 35.0;
-    const dynamicAlloc = (cash >= 35.0 && cash <= 80.0)
-      ? Math.max(35.0, cash * 0.80)
-      : Math.max(35.0, configuredAlloc);
-    const targetSpend = Math.max(5.20, Math.min(maxSafeCash, dynamicAlloc));
+    const configuredAlloc = bot.allocationAmount || 40.0;
+    const dynamicAlloc = (cash >= 35.0 && cash <= 90.0)
+      ? Math.max(35.0, Math.min(maxSafeCash, cash * 0.85))
+      : Math.min(maxSafeCash, configuredAlloc);
+    const targetSpend = Math.max(minRequiredCash, Math.min(maxSafeCash, dynamicAlloc));
 
     const quantity = parseFloat((targetSpend / currentPrice).toFixed(6));
     const total = parseFloat((quantity * currentPrice).toFixed(2));
 
-    if (total >= 5.20 && total <= cash) {
+    if (total >= minRequiredCash * 0.95 && total <= cash) {
       await executeBotBuy({
         bot,
         targetSymbol: symbol,

@@ -109,12 +109,14 @@ export function analyzeMarket(
   const isTopRejection = candleRange > 0 && (upperWick / candleRange) >= 0.45;
 
   // Voto de fluxo calibrado:
-  // BUY: impulso com volume ou suporte sustentado na EMA9 sem rejeição de topo
-  // SELL: rejeição explícita de topo ou candle vermelho com volume de despejo (> 1.3x) perdendo a média
+  // BUY: impulso comprador ativo (candle verde com volume bom, sem rejeição de topo)
+  // SELL: rejeição explícita de topo ou candle vermelho com volume de despejo (> 1.2x) perdendo a média
   // HOLD: recuos saudáveis de baixo volume em consolidação
-  const flow: QuantVote = (!isTopRejection && (prevStrong || (currentGreen && currentVolumeGood) || isHoldingEmaSupport))
+  const isHealthyGreen = currentGreen && currentVolumeGood;
+  const isSustainedBreak = prevStrong && currentGreen && !isTopRejection;
+  const flow: QuantVote = (!isTopRejection && (isHealthyGreen || isSustainedBreak))
     ? "BUY"
-    : (isTopRejection || (last.close < last.open && avgVol > 0 && last.volume > avgVol * 1.3 && last.close < fastNow))
+    : (isTopRejection || (last.close < last.open && avgVol > 0 && last.volume > avgVol * 1.2 && last.close < fastNow))
       ? "SELL"
       : "HOLD";
 
@@ -129,7 +131,7 @@ export function analyzeMarket(
     votes,
     voteDetails: {
       trend: `EMA${fastP} ${fastNow >= slowNow ? ">" : "<"} EMA${slowP}`,
-      momentum: macd ? `MACD ${hist >= 0 ? "+" : ""}${hist.toFixed(4)} · RSI ${rsi.toFixed(0)} (máx ≤ 68)` : "poucos candles",
+      momentum: macd ? `MACD ${hist >= 0 ? "+" : ""}${hist.toFixed(4)} · RSI ${rsi.toFixed(0)} (máx ≤ 65)` : "poucos candles",
       flow: avgVol > 0 ? `Vol ${(last.volume / avgVol).toFixed(1)}× média · ${currentGreen ? "verde" : "vermelho"}${isTopRejection ? " (rejeição)" : ""}` : "sem volume",
     },
     committee: ensembleDecision(votes),
@@ -159,15 +161,18 @@ export function evaluateStrategySignal(
   switch (bot.strategy) {
     case "QUANT_ENSEMBLE": {
       const { votes } = analysis;
-      // Regra de Proteção Institucional: NUNCA compra contra a tendência (se trend for SELL, bloqueia)
-      if (votes.trend === "SELL") {
-        return { ok: false, detail: "bloqueado por tendência de baixa (EMA rápida < EMA lenta)" };
+      // Regra de Proteção Institucional: NUNCA compra contra a tendência ou se a tendência for neutra/baixa
+      if (votes.trend !== "BUY") {
+        return { ok: false, detail: "aguarda confirmação de tendência de alta (EMA rápida > EMA lenta)" };
       }
-      if (analysis.rsi > 68) {
-        return { ok: false, detail: `RSI (${analysis.rsi.toFixed(0)}) esticado para compra institucional (máx ≤ 68)` };
+      if (votes.flow === "SELL") {
+        return { ok: false, detail: "bloqueado por pressão vendedora no fluxo de volume" };
+      }
+      if (analysis.rsi > 65) {
+        return { ok: false, detail: `RSI (${analysis.rsi.toFixed(0)}) esticado para compra institucional (máx ≤ 65)` };
       }
       const buys = [votes.trend, votes.momentum, votes.flow].filter((v) => v === "BUY").length;
-      return { ok: analysis.committee === "BUY", detail: `${buys}/3 análises favoráveis (tendência altista e RSI ${analysis.rsi.toFixed(0)} saudável)` };
+      return { ok: buys >= 2 && analysis.committee === "BUY", detail: `${buys}/3 análises favoráveis (tendência altista e RSI ${analysis.rsi.toFixed(0)} saudável)` };
     }
 
     case "RSI": {
@@ -194,16 +199,31 @@ export function evaluateStrategySignal(
     case "MACD": {
       const macd = calculateMACD(closes, bot.emaFast || 12, bot.emaSlow || 26, 9);
       if (!macd) return { ok: false, detail: "poucos candles para o MACD" };
-      const crossed = macd.prevHistogram <= 0 && macd.histogram > 0;
-      const bullishMomentum = macd.histogram > 0 && macd.macd >= macd.signal;
-      const ok = crossed || bullishMomentum;
+      
+      const freshCross = macd.prevHistogram <= 0 && macd.histogram > 0;
+      const accelerating = macd.histogram > macd.prevHistogram && macd.histogram > 0;
+      const momentumOk = freshCross || accelerating;
+
+      const rsiOk = analysis.rsi <= 65;
+      const candleRange = last.high - last.low;
+      const upperWick = last.high - Math.max(last.open, last.close);
+      const isWickTrap = candleRange > 0 && (upperWick / candleRange) >= 0.40;
+      const isGreen = last.close >= last.open;
+
+      const ok = momentumOk && rsiOk && !isWickTrap && isGreen;
       return {
         ok,
-        detail: crossed
-          ? "MACD cruzou para cima da linha de sinal"
-          : bullishMomentum
-            ? `Momento altista MACD (+${macd.histogram.toFixed(4)}) acima do sinal`
-            : `histograma ${macd.histogram >= 0 ? "+" : ""}${macd.histogram.toFixed(4)} — aguarda momento altista`,
+        detail: !momentumOk
+          ? (macd.histogram > 0 ? "histograma MACD perdendo força (desacelerando no topo)" : "histograma MACD negativo")
+          : !rsiOk
+            ? `RSI sobrecomprado (${analysis.rsi.toFixed(0)} > 65) no topo do movimento`
+            : isWickTrap
+              ? "rejeição de topo com pavio superior no candle (risco de bull trap)"
+              : !isGreen
+                ? "aguardando candle comprador (verde)"
+                : freshCross
+                  ? "cruzamento altista fresco do MACD acima do sinal"
+                  : `aceleração altista do MACD (+${macd.histogram.toFixed(4)}) com RSI saudável`,
       };
     }
 
@@ -233,10 +253,9 @@ export function evaluateStrategySignal(
     }
 
     case "BREAKOUT": {
-      // Rompimento Inteligente & Dinâmico:
-      // 1. Rompimento de pivô recente (máxima dos últimos 8 a 10 candles), OU
-      // 2. Rompimento de continuação de alta (fechamento acima da máxima anterior em tendência EMA9 > EMA21 com volume), OU
-      // 3. Rompimento e cruzamento ascendente da EMA rápida
+      // Rompimento Institucional Rigoroso:
+      // 1. Rompimento de pivô/resistência recente (últimos 8 a 10 candles), OU
+      // 2. Rompimento de continuação de alta com volume institucional comprovado
       const prevPivot = klines.slice(-11, -1);
       const resistance = prevPivot.length > 0 ? Math.max(...prevPivot.map((k) => k.high)) : last.close;
       const avgVol = averageVolume(klines, 20, 1);
@@ -251,16 +270,16 @@ export function evaluateStrategySignal(
       const prevCandle = klines.length >= 2 ? klines[klines.length - 2] : last;
 
       const isPivotBreak = last.close >= resistance * 0.999 && effectiveVol >= 1.2;
-      const isTrendContinuation = fastNow > slowNow && last.close > prevCandle.high && last.close >= last.open && effectiveVol >= 1.0;
-      const isEmaBreakout = last.open < fastNow && last.close > fastNow && effectiveVol >= 1.1;
+      const isTrendContinuation = fastNow > slowNow && last.close > prevCandle.high && last.close >= last.open && effectiveVol >= 1.2;
 
-      const broke = isPivotBreak || isTrendContinuation || isEmaBreakout;
-      const strong = effectiveVol >= 0.9;
+      // Rompimento verificado: APENAS pivô ou continuação com volume real (eliminado falso rompimento de média EMA9)
+      const broke = isPivotBreak || isTrendContinuation;
+      const strong = effectiveVol >= 1.0;
 
       const candleRange = last.high - last.low;
       const upperWick = last.high - Math.max(last.open, last.close);
-      const isWickTrap = candleRange > 0 && (upperWick / candleRange) >= 0.45;
-      const rsiOk = analysis.rsi <= 70;
+      const isWickTrap = candleRange > 0 && (upperWick / candleRange) >= 0.40;
+      const rsiOk = analysis.rsi <= 68;
 
       const ok = broke && strong && !isWickTrap && rsiOk;
       return {
@@ -268,12 +287,12 @@ export function evaluateStrategySignal(
         detail: !broke
           ? `aguardando rompimento de pivô ($${last.close.toFixed(4)} < $${resistance.toFixed(4)}) ou continuação com volume`
           : !strong
-            ? `volume insuficiente (${effectiveVol.toFixed(1)}× — precisa ≥ 0.9×)`
+            ? `volume insuficiente (${effectiveVol.toFixed(1)}× — precisa ≥ 1.0×)`
             : isWickTrap
               ? `rejeição de topo com pavio no candle de rompimento (perigo de falso rompimento)`
               : !rsiOk
-                ? `RSI sobrecomprado (${analysis.rsi.toFixed(0)} > 70) no rompimento`
-                : `rompimento confirmado (${isPivotBreak ? "pivô recente" : isTrendContinuation ? "continuação de alta" : "cruzamento de média"}) com volume ${effectiveVol.toFixed(1)}×`,
+                ? `RSI esticado (${analysis.rsi.toFixed(0)} > 68) no rompimento`
+                : `rompimento confirmado (${isPivotBreak ? "pivô recente" : "continuação de alta"}) com volume ${effectiveVol.toFixed(1)}×`,
       };
     }
 

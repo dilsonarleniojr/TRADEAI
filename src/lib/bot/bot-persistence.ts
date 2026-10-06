@@ -73,11 +73,11 @@ export function startBotPersistence(): () => void {
     const bots = saved.bots.map((b) => {
       const wasActive = b.active ?? false;
       // Auto-migração transparente para parâmetros lucrativos consistentes se o robô tiver parâmetros legados
-      const takeProfit = (!b.takeProfit || b.takeProfit < 2.5) ? 3.0 : b.takeProfit;
-      const stopLoss = (!b.stopLoss || b.stopLoss < 1.2) ? 1.5 : b.stopLoss;
+      const takeProfit = (!b.takeProfit || b.takeProfit < 2.8) ? 3.0 : b.takeProfit;
+      const stopLoss = (!b.stopLoss || b.stopLoss < 1.4) ? 1.5 : b.stopLoss;
       const breakEvenTrigger = (!b.breakEvenTrigger || b.breakEvenTrigger < 1.5) ? 1.8 : b.breakEvenTrigger;
       const breakEvenBuffer = (!b.breakEvenBuffer || b.breakEvenBuffer < 0.4) ? 0.50 : b.breakEvenBuffer;
-      const allocationAmount = (!b.allocationAmount || b.allocationAmount < 30) ? 35.0 : b.allocationAmount;
+      const allocationAmount = (!b.allocationAmount || b.allocationAmount < 35) ? 40.0 : b.allocationAmount;
       const timeStopMinutes = b.timeStopMinutes ?? 20;
       const useBtcGatekeeper = b.useBtcGatekeeper ?? true;
       const trailingTakeProfit = b.trailingTakeProfit ?? true;
