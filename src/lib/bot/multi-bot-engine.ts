@@ -643,8 +643,14 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
           }
         } catch {}
 
+        // Sizing Institucional: Aloca uma fatia expressiva (mínimo $35 ou bot.allocationAmount, até 85% do saldo seguro)
+        // para garantir que alvos de +2.5% a +3.5% gerem mais de +US$ 1.00 a +US$ 2.00 de lucro líquido
         const maxSafeCash = Math.max(0, cash * 0.95);
-        const targetSpend = Math.max(5.20, Math.min(maxSafeCash, bot.allocationAmount || 25));
+        const configuredAlloc = bot.allocationAmount || 35.0;
+        const dynamicAlloc = (cash >= 35.0 && cash <= 80.0)
+          ? Math.max(35.0, cash * 0.80)
+          : Math.max(35.0, configuredAlloc);
+        const targetSpend = Math.max(5.20, Math.min(maxSafeCash, dynamicAlloc));
         const quantity = parseFloat((targetSpend / freshCandPrice).toFixed(6));
         const total = parseFloat((quantity * freshCandPrice).toFixed(2));
 
@@ -729,11 +735,14 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   const { shouldBuy, reason: entryReason, checks } = decision;
 
   if (shouldBuy && currentPrice) {
-    // Sizing: Dinamicamente adaptado ao saldo disponível em caixa.
-    // Deixamos margem de segurança de 5% sobre o caixa livre para que a ordem nunca exceda
-    // o saldo nem seja rejeitada por buffer de taxas/slippage a mercado da Binance.
+    // Sizing Institucional: Dinamicamente adaptado para gerar lucros expressivos.
+    // Aloca no mínimo $35 (ou bot.allocationAmount) respeitando a margem de segurança de caixa.
     const maxSafeCash = Math.max(0, cash * 0.95);
-    const targetSpend = Math.max(5.20, Math.min(maxSafeCash, bot.allocationAmount || 25));
+    const configuredAlloc = bot.allocationAmount || 35.0;
+    const dynamicAlloc = (cash >= 35.0 && cash <= 80.0)
+      ? Math.max(35.0, cash * 0.80)
+      : Math.max(35.0, configuredAlloc);
+    const targetSpend = Math.max(5.20, Math.min(maxSafeCash, dynamicAlloc));
 
     const quantity = parseFloat((targetSpend / currentPrice).toFixed(6));
     const total = parseFloat((quantity * currentPrice).toFixed(2));
