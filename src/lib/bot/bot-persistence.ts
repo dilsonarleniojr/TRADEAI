@@ -73,14 +73,15 @@ export function startBotPersistence(): () => void {
     const bots = saved.bots.map((b) => {
       const wasActive = b.active ?? false;
       // Auto-migração transparente para parâmetros lucrativos consistentes se o robô tiver parâmetros legados
-      const takeProfit = (!b.takeProfit || b.takeProfit < 2.0) ? 2.2 : b.takeProfit;
-      const stopLoss = (!b.stopLoss || b.stopLoss > 1.2) ? 1.0 : b.stopLoss;
-      const breakEvenTrigger = (!b.breakEvenTrigger || b.breakEvenTrigger < 1.0) ? 1.2 : b.breakEvenTrigger;
-      const allocationAmount = (!b.allocationAmount || b.allocationAmount < 20) ? 25.0 : b.allocationAmount;
+      const takeProfit = (!b.takeProfit || b.takeProfit < 2.5) ? 3.0 : b.takeProfit;
+      const stopLoss = (!b.stopLoss || b.stopLoss < 1.2) ? 1.5 : b.stopLoss;
+      const breakEvenTrigger = (!b.breakEvenTrigger || b.breakEvenTrigger < 1.5) ? 1.8 : b.breakEvenTrigger;
+      const breakEvenBuffer = (!b.breakEvenBuffer || b.breakEvenBuffer < 0.4) ? 0.50 : b.breakEvenBuffer;
+      const allocationAmount = (!b.allocationAmount || b.allocationAmount < 30) ? 35.0 : b.allocationAmount;
       const timeStopMinutes = b.timeStopMinutes ?? 20;
       const useBtcGatekeeper = b.useBtcGatekeeper ?? true;
       const trailingTakeProfit = b.trailingTakeProfit ?? true;
-      const trailingTakeProfitDistance = b.trailingTakeProfitDistance ?? 0.4;
+      const trailingTakeProfitDistance = b.trailingTakeProfitDistance ?? 0.6;
       const strategy = (b.symbol === "AUTO" && b.strategy === "BREAKOUT") ? "QUANT_ENSEMBLE" : b.strategy;
       const useMarketRegime = b.symbol === "AUTO" ? false : (b.useMarketRegime ?? true);
 
@@ -91,6 +92,7 @@ export function startBotPersistence(): () => void {
         takeProfit,
         stopLoss,
         breakEvenTrigger,
+        breakEvenBuffer,
         allocationAmount,
         timeStopMinutes,
         useBtcGatekeeper,
