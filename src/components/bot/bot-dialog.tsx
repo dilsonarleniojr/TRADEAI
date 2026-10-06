@@ -29,7 +29,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { Bot, Sparkles, Target, ShieldAlert, ShieldCheck, DollarSign, Search, ChevronDown, Dna, Loader2, CheckCircle2, Rocket, TrendingUp } from "lucide-react";
+import { Bot, Sparkles, Target, ShieldAlert, ShieldCheck, DollarSign, Search, ChevronDown, Dna, Loader2, CheckCircle2, Rocket, TrendingUp, Zap, Shield, Clock } from "lucide-react";
 import { STRATEGY_CATALOG, ENGINE_FILTERS, getStrategy } from "@/lib/bot/strategy-catalog";
 import { runGeneticOptimization, type GeneticChromosome } from "@/lib/bot/quant-engine";
 import { getSymbolKlines } from "@/lib/bot/kline-cache";
@@ -53,10 +53,10 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("BTCUSDT");
   const [strategy, setStrategy] = useState<BotStrategy>("QUANT_ENSEMBLE");
-  const [takeProfit, setTakeProfit] = useState(3.0);
-  const [stopLoss, setStopLoss] = useState(1.8);
+  const [takeProfit, setTakeProfit] = useState(2.8);
+  const [stopLoss, setStopLoss] = useState(1.2);
   const [trailingStop, setTrailingStop] = useState(true);
-  const [trailingStopDistance, setTrailingStopDistance] = useState(0.8);
+  const [trailingStopDistance, setTrailingStopDistance] = useState(0.5);
   const [allocationAmount, setAllocationAmount] = useState(100);
   const [active, setActive] = useState(false);
   const [useMarketRegime, setUseMarketRegime] = useState(true);
@@ -65,10 +65,15 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
   const [useMultiTimeframe, setUseMultiTimeframe] = useState(true);
   const [useAutoScreener, setUseAutoScreener] = useState(false);
   const [autoBreakEven, setAutoBreakEven] = useState(true);
-  const [breakEvenTrigger, setBreakEvenTrigger] = useState(1.2);
+  const [breakEvenTrigger, setBreakEvenTrigger] = useState(0.8);
   const [breakEvenBuffer, setBreakEvenBuffer] = useState(0.25);
   const [trailingTakeProfit, setTrailingTakeProfit] = useState(true);
-  const [trailingTakeProfitDistance, setTrailingTakeProfitDistance] = useState(0.6);
+  const [trailingTakeProfitDistance, setTrailingTakeProfitDistance] = useState(0.5);
+  const [usePartialTp, setUsePartialTp] = useState(true);
+  const [partialTpTrigger, setPartialTpTrigger] = useState(1.0);
+  const [partialTpPercent, setPartialTpPercent] = useState(50);
+  const [timeStopMinutes, setTimeStopMinutes] = useState(20);
+  const [useBtcGatekeeper, setUseBtcGatekeeper] = useState(true);
   const [useSmartDca, setUseSmartDca] = useState(true);
   const [dcaDipThreshold, setDcaDipThreshold] = useState(1.5);
   const [maxDcaOrders, setMaxDcaOrders] = useState(1);

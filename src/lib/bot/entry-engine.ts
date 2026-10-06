@@ -24,7 +24,7 @@ import {
   type StrengthCheck,
 } from "./quant-engine";
 import { getStrategy, VOLATILITY_VETO_LIMIT } from "./strategy-catalog";
-import type { OrderBookAnalysis } from "./order-book-cache";
+import type { OrderBookAnalysis } from "@/lib/bot/order-book-cache";
 
 export const MIN_CANDLES = 25;
 
@@ -84,24 +84,32 @@ export function analyzeMarket(
   const slowNow = slow[slow.length - 1];
   const trend: QuantVote = fastNow > slowNow ? "BUY" : fastNow < slowNow ? "SELL" : "HOLD";
 
-  // Momentum: histograma MACD + RSI fora da sobrecompra extrema
+  // Momentum: histograma MACD + RSI fora de sobrecompra (teto rigoroso de 60 para evitar compras em topo)
   const macd = calculateMACD(closes, 12, 26, 9);
   const hist = macd?.histogram ?? 0;
   const momentum: QuantVote = macd
-    ? hist > 0 && rsi < 72
+    ? hist > 0 && rsi <= 60
       ? "BUY"
-      : hist < 0
+      : hist < 0 || rsi > 70
         ? "SELL"
         : "HOLD"
     : "HOLD";
 
-  // Fluxo: avalia volume e direção com rigor institucional (não aceita candle vazio)
+  // Fluxo: avalia volume e direção com rigor institucional (rejeita candles com pavio superior de exaustão)
   const avgVol = averageVolume(klines, 20, 1);
   const prevStrong = avgVol > 0 && prevCandle.volume >= avgVol * 0.7 && prevCandle.close >= prevCandle.open;
   const currentGreen = last.close >= last.open;
-  const currentVolumeGood = avgVol > 0 && last.volume >= avgVol * 0.55;
-  // Exige volume expressivo e confirmação direcional (elimina falsos sinais em micro-candles sem liquidez)
-  const flow: QuantVote = (prevStrong || (currentGreen && currentVolumeGood)) ? "BUY" : (last.close < last.open ? "SELL" : "HOLD");
+  const currentVolumeGood = avgVol > 0 && last.volume >= avgVol * 0.6;
+
+  // Rejeição de pavio superior (Bull trap / exaustão compradora)
+  const candleRange = last.high - last.low;
+  const upperWick = last.high - Math.max(last.open, last.close);
+  const isTopRejection = candleRange > 0 && (upperWick / candleRange) >= 0.40;
+
+  // Exige volume expressivo, ausência de rejeição de topo e confirmação direcional
+  const flow: QuantVote = (!isTopRejection && (prevStrong || (currentGreen && currentVolumeGood)))
+    ? "BUY"
+    : (last.close < last.open || isTopRejection ? "SELL" : "HOLD");
 
   const votes: ModelVotes = { trend, momentum, flow };
 
@@ -114,8 +122,8 @@ export function analyzeMarket(
     votes,
     voteDetails: {
       trend: `EMA${fastP} ${fastNow >= slowNow ? ">" : "<"} EMA${slowP}`,
-      momentum: macd ? `MACD ${hist >= 0 ? "+" : ""}${hist.toFixed(4)} · RSI ${rsi.toFixed(0)}` : "poucos candles",
-      flow: avgVol > 0 ? `Vol ${(last.volume / avgVol).toFixed(1)}× média · ${currentGreen ? "verde" : "vermelho"}` : "sem volume",
+      momentum: macd ? `MACD ${hist >= 0 ? "+" : ""}${hist.toFixed(4)} · RSI ${rsi.toFixed(0)} (máx ≤ 60)` : "poucos candles",
+      flow: avgVol > 0 ? `Vol ${(last.volume / avgVol).toFixed(1)}× média · ${currentGreen ? "verde" : "vermelho"}${isTopRejection ? " (rejeição)" : ""}` : "sem volume",
     },
     committee: ensembleDecision(votes),
     strength,
@@ -148,8 +156,11 @@ export function evaluateStrategySignal(
       if (votes.trend === "SELL") {
         return { ok: false, detail: "bloqueado por tendência de baixa (EMA rápida < EMA lenta)" };
       }
+      if (analysis.rsi > 60) {
+        return { ok: false, detail: `RSI (${analysis.rsi.toFixed(0)}) esticado para compra institucional (máx ≤ 60)` };
+      }
       const buys = [votes.trend, votes.momentum, votes.flow].filter((v) => v === "BUY").length;
-      return { ok: analysis.committee === "BUY", detail: `${buys}/3 análises favoráveis (tendência altista)` };
+      return { ok: analysis.committee === "BUY", detail: `${buys}/3 análises favoráveis (tendência altista e RSI ${analysis.rsi.toFixed(0)} saudável)` };
     }
 
     case "RSI": {
@@ -191,11 +202,27 @@ export function evaluateStrategySignal(
       const avgVol = averageVolume(klines, 20, 1);
       const volMult = avgVol > 0 ? last.volume / avgVol : 0;
       const prevVolMult = avgVol > 0 && klines.length >= 2 ? klines[klines.length - 2].volume / avgVol : 0;
-      const broke = last.close >= resistance * 0.998;
-      const strong = volMult >= 0.7 || prevVolMult >= 1.0;
+      const effectiveVol = Math.max(volMult, prevVolMult);
+      const broke = last.close >= resistance;
+      const strong = effectiveVol >= 1.6;
+
+      const candleRange = last.high - last.low;
+      const upperWick = last.high - Math.max(last.open, last.close);
+      const isWickTrap = candleRange > 0 && (upperWick / candleRange) >= 0.35;
+      const rsiOk = analysis.rsi <= 65;
+
+      const ok = broke && strong && !isWickTrap && rsiOk;
       return {
-        ok: broke && strong,
-        detail: `${broke ? "rompimento de" : "abaixo da"} máxima de 20 candles de 1m · volume ${Math.max(volMult, prevVolMult).toFixed(1)}×`,
+        ok,
+        detail: !broke
+          ? `abaixo da máxima de 20 candles de 1m ($${last.close.toFixed(4)} < $${resistance.toFixed(4)})`
+          : !strong
+            ? `rompimento sem volume institucional (${effectiveVol.toFixed(1)}× — precisa ≥ 1.6×)`
+            : isWickTrap
+              ? `rejeição de topo com pavio no candle de rompimento (perigo de falso rompimento)`
+              : !rsiOk
+                ? `RSI sobrecomprado (${analysis.rsi.toFixed(0)} > 65) no rompimento`
+                : `rompimento confirmado com volume forte ${effectiveVol.toFixed(1)}× e candle pleno`,
       };
     }
 
@@ -339,6 +366,29 @@ export function evaluateEntry(
       });
     }
   }
+
+  // 🛡️ Filtro Anti-Topo & Pullback Saudável:
+  // Impede compra se o candle de 1m esticou demais acima da EMA9 (> 1.2%) ou se formou rejeição com pavio superior longo (> 40%)
+  const closes1m = klines.map((k) => k.close);
+  const fastEma1m = emaSeries(closes1m, 9);
+  const lastFastEma = fastEma1m[fastEma1m.length - 1];
+  const lastCandle = klines[klines.length - 1];
+  const candleRange = lastCandle.high - lastCandle.low;
+  const upperWick = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
+  const wickRejection = candleRange > 0 && (upperWick / candleRange) >= 0.40;
+  const distFromEma9Pct = lastFastEma > 0 ? ((lastCandle.close - lastFastEma) / lastFastEma) * 100 : 0;
+  const isExtendedFromEma = distFromEma9Pct > 1.2;
+
+  const isPullbackHealthy = !wickRejection && !isExtendedFromEma;
+  checks.push({
+    label: "Anti-Topo & Pullback",
+    ok: isPullbackHealthy,
+    detail: isExtendedFromEma
+      ? `Preço esticado (+${distFromEma9Pct.toFixed(1)}% acima da EMA9) — aguardando recuo para a média`
+      : wickRejection
+        ? `Rejeição vendedora de topo (pavio ${(upperWick / candleRange * 100).toFixed(0)}%) — perigo de falso rompimento`
+        : `Preço em suporte saudável (distância da EMA9: ${distFromEma9Pct.toFixed(1)}%)`,
+  });
 
   if (bot.useMarketRegime) {
     const style = getStrategy(bot.strategy)?.style ?? "HYBRID";

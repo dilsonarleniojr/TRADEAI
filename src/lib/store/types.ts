@@ -51,6 +51,12 @@ export interface BotConfigData {
   autoBreakEven?: boolean;
   breakEvenTrigger?: number;
   breakEvenBuffer?: number;
+  // Scalping de Curto Prazo: Parciais, Time-Stop e Filtro BTC
+  usePartialTp?: boolean;
+  partialTpTrigger?: number;
+  partialTpPercent?: number;
+  timeStopMinutes?: number;
+  useBtcGatekeeper?: boolean;
   rsiPeriod: number;
   emaFast: number;
   emaSlow: number;
@@ -87,6 +93,10 @@ export interface BotPosition {
   tpPeakPrice?: number;
   /** Quantidade de ordens DCA (preço médio) executadas nesta posição */
   dcaCount?: number;
+  /** Realização Parcial (Scale-Out 50/50 no primeiro alvo) */
+  partialTpExecuted?: boolean;
+  partialTpSoldQty?: number;
+  partialTpRealizedPnl?: number;
 }
 
 export interface BotStats {
@@ -161,6 +171,13 @@ export interface BotInstance {
 
   // Encerramento automático após lucro (Operação Única)
   stopAfterProfit?: boolean;
+
+  // Scalping de Curto Prazo
+  usePartialTp?: boolean; // Realização Parcial de 50% no primeiro alvo
+  partialTpTrigger?: number; // % de lucro para parcial (padrão 1.0%)
+  partialTpPercent?: number; // % da posição a vender (padrão 50%)
+  timeStopMinutes?: number; // Saída por tempo se trade estagnar (padrão 20 min, 0 desativa)
+  useBtcGatekeeper?: boolean; // Filtro Direcional BTC (bloqueia compras se BTC cair no 5m)
 
   // Último relatório de execução gerado ao finalizar
   lastReport?: BotExecutionReport | null;
