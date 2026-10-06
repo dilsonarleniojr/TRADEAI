@@ -81,9 +81,13 @@ export function startBotPersistence(): () => void {
       const useBtcGatekeeper = b.useBtcGatekeeper ?? true;
       const trailingTakeProfit = b.trailingTakeProfit ?? true;
       const trailingTakeProfitDistance = b.trailingTakeProfitDistance ?? 0.4;
+      const strategy = (b.symbol === "AUTO" && b.strategy === "BREAKOUT") ? "QUANT_ENSEMBLE" : b.strategy;
+      const useMarketRegime = b.symbol === "AUTO" ? false : (b.useMarketRegime ?? true);
 
       return {
         ...b,
+        strategy,
+        useMarketRegime,
         takeProfit,
         stopLoss,
         breakEvenTrigger,

@@ -84,13 +84,14 @@ export function analyzeMarket(
   const slowNow = slow[slow.length - 1];
   const trend: QuantVote = fastNow > slowNow ? "BUY" : fastNow < slowNow ? "SELL" : "HOLD";
 
-  // Momentum: histograma MACD + RSI fora de sobrecompra (teto calibrado de 68 para momentum de scalp)
+  // Momentum: histograma MACD + RSI fora de sobrecompra (captura impulsos e apoios de suporte)
   const macd = calculateMACD(closes, 12, 26, 9);
   const hist = macd?.histogram ?? 0;
+  const isHealthyPullback = hist >= -0.0008 && fastNow >= slowNow && rsi >= 45 && rsi <= 68;
   const momentum: QuantVote = macd
-    ? hist > 0 && rsi <= 68
+    ? (hist > 0 && rsi <= 68) || isHealthyPullback
       ? "BUY"
-      : hist < 0 || rsi > 74
+      : hist < -0.002 || rsi > 74
         ? "SELL"
         : "HOLD"
     : "HOLD";
@@ -100,16 +101,22 @@ export function analyzeMarket(
   const prevStrong = avgVol > 0 && prevCandle.volume >= avgVol * 0.7 && prevCandle.close >= prevCandle.open;
   const currentGreen = last.close >= last.open;
   const currentVolumeGood = avgVol > 0 && last.volume >= avgVol * 0.6;
+  const isHoldingEmaSupport = last.close >= fastNow * 0.997 && rsi >= 45 && rsi <= 68;
 
   // Rejeição de pavio superior (Bull trap / exaustão compradora)
   const candleRange = last.high - last.low;
   const upperWick = last.high - Math.max(last.open, last.close);
   const isTopRejection = candleRange > 0 && (upperWick / candleRange) >= 0.45;
 
-  // Exige volume expressivo, ausência de rejeição de topo e confirmação direcional
-  const flow: QuantVote = (!isTopRejection && (prevStrong || (currentGreen && currentVolumeGood)))
+  // Voto de fluxo calibrado:
+  // BUY: impulso com volume ou suporte sustentado na EMA9 sem rejeição de topo
+  // SELL: rejeição explícita de topo ou candle vermelho com volume de despejo (> 1.3x) perdendo a média
+  // HOLD: recuos saudáveis de baixo volume em consolidação
+  const flow: QuantVote = (!isTopRejection && (prevStrong || (currentGreen && currentVolumeGood) || isHoldingEmaSupport))
     ? "BUY"
-    : (last.close < last.open || isTopRejection ? "SELL" : "HOLD");
+    : (isTopRejection || (last.close < last.open && avgVol > 0 && last.volume > avgVol * 1.3 && last.close < fastNow))
+      ? "SELL"
+      : "HOLD";
 
   const votes: ModelVotes = { trend, momentum, flow };
 
@@ -168,15 +175,19 @@ export function evaluateStrategySignal(
       const rsi = calculateRSI(closes, period);
       const limit = bot.buyThreshold || 35;
       const isOversold = rsi <= limit;
-      const isRebound = rsi <= limit + 10 && last.close >= last.open;
-      const ok = isOversold || isRebound;
+      const isRebound = rsi <= limit + 12 && last.close >= last.open;
+      // Suporte em tendência de alta: RSI em pullback saudável entre 40 e 55 voltando a subir
+      const isPullbackSupport = rsi >= 40 && rsi <= 55 && last.close >= last.open && analysis.votes.trend === "BUY";
+      const ok = isOversold || isRebound || isPullbackSupport;
       return {
         ok,
         detail: isOversold
           ? `RSI(${period}) ${rsi.toFixed(1)} em sobrevenda (≤ ${limit})`
           : isRebound
-            ? `RSI(${period}) ${rsi.toFixed(1)} com repique altista (≤ ${limit + 10})`
-            : `RSI(${period}) ${rsi.toFixed(1)} — aguarda sobrevenda (≤ ${limit}) ou repique`,
+            ? `RSI(${period}) ${rsi.toFixed(1)} com repique altista (≤ ${limit + 12})`
+            : isPullbackSupport
+              ? `RSI(${period}) ${rsi.toFixed(1)} em suporte na tendência altista`
+              : `RSI(${period}) ${rsi.toFixed(1)} — aguarda sobrevenda (≤ ${limit}) ou repique`,
       };
     }
 
@@ -196,33 +207,73 @@ export function evaluateStrategySignal(
       };
     }
 
+    case "EMA_CROSS": {
+      const fastP = bot.emaFast || 9;
+      const slowP = bot.emaSlow || 21;
+      const fast = emaSeries(closes, fastP);
+      const slow = emaSeries(closes, slowP);
+      const fastNow = fast[fast.length - 1];
+      const slowNow = slow[slow.length - 1];
+      const fastPrev = fast[fast.length - 2] ?? fastNow;
+      const slowPrev = slow[slow.length - 2] ?? slowNow;
+
+      const crossedUp = fastPrev <= slowPrev && fastNow > slowNow;
+      const bullishTrend = fastNow > slowNow && last.close >= fastNow * 0.997; // sustentando sobre a média rápida
+      const rsiOk = analysis.rsi <= 68;
+
+      const ok = (crossedUp || bullishTrend) && rsiOk;
+      return {
+        ok,
+        detail: crossedUp
+          ? `EMA${fastP} cruzou para cima da EMA${slowP}`
+          : bullishTrend
+            ? `EMA${fastP} > EMA${slowP} com preço sustentando sobre a média`
+            : `EMA${fastP} < EMA${slowP} — aguardando cruzamento altista`,
+      };
+    }
+
     case "BREAKOUT": {
-      const prev = klines.slice(-21, -1);
-      const resistance = Math.max(...prev.map((k) => k.high));
+      // Rompimento Inteligente & Dinâmico:
+      // 1. Rompimento de pivô recente (máxima dos últimos 8 a 10 candles), OU
+      // 2. Rompimento de continuação de alta (fechamento acima da máxima anterior em tendência EMA9 > EMA21 com volume), OU
+      // 3. Rompimento e cruzamento ascendente da EMA rápida
+      const prevPivot = klines.slice(-11, -1);
+      const resistance = prevPivot.length > 0 ? Math.max(...prevPivot.map((k) => k.high)) : last.close;
       const avgVol = averageVolume(klines, 20, 1);
       const volMult = avgVol > 0 ? last.volume / avgVol : 0;
       const prevVolMult = avgVol > 0 && klines.length >= 2 ? klines[klines.length - 2].volume / avgVol : 0;
       const effectiveVol = Math.max(volMult, prevVolMult);
-      const broke = last.close >= resistance;
-      const strong = effectiveVol >= 1.6;
+
+      const fastEma = emaSeries(closes, 9);
+      const slowEma = emaSeries(closes, 21);
+      const fastNow = fastEma[fastEma.length - 1];
+      const slowNow = slowEma[slowEma.length - 1];
+      const prevCandle = klines.length >= 2 ? klines[klines.length - 2] : last;
+
+      const isPivotBreak = last.close >= resistance * 0.999 && effectiveVol >= 1.2;
+      const isTrendContinuation = fastNow > slowNow && last.close > prevCandle.high && last.close >= last.open && effectiveVol >= 1.0;
+      const isEmaBreakout = last.open < fastNow && last.close > fastNow && effectiveVol >= 1.1;
+
+      const broke = isPivotBreak || isTrendContinuation || isEmaBreakout;
+      const strong = effectiveVol >= 0.9;
 
       const candleRange = last.high - last.low;
       const upperWick = last.high - Math.max(last.open, last.close);
-      const isWickTrap = candleRange > 0 && (upperWick / candleRange) >= 0.35;
-      const rsiOk = analysis.rsi <= 65;
+      const isWickTrap = candleRange > 0 && (upperWick / candleRange) >= 0.45;
+      const rsiOk = analysis.rsi <= 70;
 
       const ok = broke && strong && !isWickTrap && rsiOk;
       return {
         ok,
         detail: !broke
-          ? `abaixo da máxima de 20 candles de 1m ($${last.close.toFixed(4)} < $${resistance.toFixed(4)})`
+          ? `aguardando rompimento de pivô ($${last.close.toFixed(4)} < $${resistance.toFixed(4)}) ou continuação com volume`
           : !strong
-            ? `rompimento sem volume institucional (${effectiveVol.toFixed(1)}× — precisa ≥ 1.6×)`
+            ? `volume insuficiente (${effectiveVol.toFixed(1)}× — precisa ≥ 0.9×)`
             : isWickTrap
               ? `rejeição de topo com pavio no candle de rompimento (perigo de falso rompimento)`
               : !rsiOk
-                ? `RSI sobrecomprado (${analysis.rsi.toFixed(0)} > 65) no rompimento`
-                : `rompimento confirmado com volume forte ${effectiveVol.toFixed(1)}× e candle pleno`,
+                ? `RSI sobrecomprado (${analysis.rsi.toFixed(0)} > 70) no rompimento`
+                : `rompimento confirmado (${isPivotBreak ? "pivô recente" : isTrendContinuation ? "continuação de alta" : "cruzamento de média"}) com volume ${effectiveVol.toFixed(1)}×`,
       };
     }
 

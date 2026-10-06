@@ -116,22 +116,22 @@ export function scanHotCoins(
     // Critério 2: Variação positiva em 24h (evita ativos em sangria/queda livre)
     if (change < 0.5) continue;
 
-    // Critério 3: Filtro Anti-Exaustão (evita comprar o topo de pumps já esgotados > 32%)
-    if (change > 32.0) continue;
+    // Critério 3: Filtro Anti-Exaustão (permite capturar pumps fortes em expansão até +70%)
+    if (change > 70.0) continue;
 
     const relStrength = change - btcChange;
 
     // Se o Bitcoin estiver em queda (< -1.5%), exige força relativa destacada (≥ +2.0%)
     if (btcChange < -1.5 && relStrength < 2.0) continue;
 
-    // Pontuação quantitativa: bonifica a faixa ideal de expansão intradiária (2% a 18%) e liquidez robusta
-    const isSweetSpot = change >= 2.0 && change <= 18.0;
+    // Pontuação quantitativa: bonifica a faixa ideal de expansão intradiária (2% a 25%) e liquidez robusta
+    const isSweetSpot = change >= 2.0 && change <= 25.0;
     const volScore = Math.log10(Math.max(1, vol / 1_000_000));
     const score = change * 1.3 + (isSweetSpot ? 4.0 : 0) + relStrength * 0.8 + volScore * 1.5;
 
     candidates.push({
       symbol: s,
-      price: ticker.price,
+      price: ticker.price || parseFloat((ticker as any).lastPrice || 0),
       priceChangePercent: change,
       quoteVolume: vol,
       relativeStrengthVsBtc: relStrength,
