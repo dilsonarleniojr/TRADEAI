@@ -31,7 +31,7 @@ export interface BotSlice {
   recordBotTrade: (botId: string, trade: TradeData, pnl: number) => void;
 }
 
-const DEFAULT_BOTS: BotInstance[] = [
+export const DEFAULT_BOTS: BotInstance[] = [
   {
     id: "bot-alpha-btc",
     name: "Bot Alpha — BTC Quantum Pro",
@@ -39,6 +39,10 @@ const DEFAULT_BOTS: BotInstance[] = [
     strategy: "QUANT_ENSEMBLE",
     active: false,
     status: "stopped",
+    algorithmVersion: "v2.5.0-institutional",
+    slippageTolerance: 0.35,
+    riskPerTradePercent: 40.0,
+    maxHoldingMinutes: 30,
     takeProfit: 3.5,
     stopLoss: 1.8,
     trailingStop: true,
@@ -78,6 +82,10 @@ const DEFAULT_BOTS: BotInstance[] = [
     strategy: "MACD",
     active: false,
     status: "stopped",
+    algorithmVersion: "v2.5.0-institutional",
+    slippageTolerance: 0.35,
+    riskPerTradePercent: 35.0,
+    maxHoldingMinutes: 30,
     takeProfit: 3.0,
     stopLoss: 1.5,
     trailingStop: true,
@@ -114,6 +122,10 @@ const DEFAULT_BOTS: BotInstance[] = [
     strategy: "RSI",
     active: false,
     status: "stopped",
+    algorithmVersion: "v2.5.0-institutional",
+    slippageTolerance: 0.40,
+    riskPerTradePercent: 35.0,
+    maxHoldingMinutes: 30,
     takeProfit: 4.0,
     stopLoss: 2.0,
     trailingStop: true,
@@ -150,6 +162,10 @@ const DEFAULT_BOTS: BotInstance[] = [
     strategy: "GRID",
     active: false,
     status: "stopped",
+    algorithmVersion: "v2.5.0-institutional",
+    slippageTolerance: 0.35,
+    riskPerTradePercent: 30.0,
+    maxHoldingMinutes: 30,
     takeProfit: 2.5,
     stopLoss: 1.5,
     trailingStop: false,
@@ -186,6 +202,10 @@ const DEFAULT_BOTS: BotInstance[] = [
     strategy: "QUANT_ENSEMBLE",
     active: false,
     status: "stopped",
+    algorithmVersion: "v2.5.0-institutional",
+    slippageTolerance: 0.40,
+    riskPerTradePercent: 40.0,
+    maxHoldingMinutes: 30,
     takeProfit: 3.0,
     stopLoss: 1.5,
     trailingStop: true,

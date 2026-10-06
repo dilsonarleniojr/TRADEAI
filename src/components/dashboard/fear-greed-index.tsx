@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -9,31 +9,22 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
 
-// Seeded pseudo-random number generator for deterministic values
-function seededRandom(seed: number) {
-  const x = Math.sin(seed) * 10000;
-  return x - Math.floor(x);
-}
-
-// Generate Fear & Greed Index based on market data
+// Generate Fear & Greed Index based on real market data (volume-weighted price momentum)
 function computeFearGreedIndex(tickers: Record<string, import("@/lib/store").TickerData>) {
   const tickerValues = Object.values(tickers);
   if (tickerValues.length === 0) return { value: 50, label: "Neutro", color: "#f59e0b" };
 
-  const totalVolume = tickerValues.reduce((sum, t) => sum + t.quoteVolume, 0);
+  const totalVolume = tickerValues.reduce((sum, t) => sum + (t.quoteVolume || 0), 0);
   let weightedScore = 0;
 
   for (const t of tickerValues) {
-    const weight = totalVolume > 0 ? t.quoteVolume / totalVolume : 1 / tickerValues.length;
+    const weight = totalVolume > 0 ? (t.quoteVolume || 0) / totalVolume : 1 / tickerValues.length;
     // Map priceChangePercent to 0-100 range
-    const normalized = Math.min(100, Math.max(0, 50 + t.priceChangePercent * 3));
+    const normalized = Math.min(100, Math.max(0, 50 + (t.priceChangePercent || 0) * 3));
     weightedScore += normalized * weight;
   }
 
-  // Add a small seeded variation based on the day so it changes slowly
-  const daySeed = Math.floor(Date.now() / 86400000);
-  const dailyVariation = (seededRandom(daySeed) - 0.5) * 10;
-  const score = Math.round(Math.min(100, Math.max(0, weightedScore + dailyVariation)));
+  const score = Math.round(Math.min(100, Math.max(0, weightedScore)));
 
   let label: string;
   let color: string;
@@ -58,30 +49,32 @@ function computeFearGreedIndex(tickers: Record<string, import("@/lib/store").Tic
   return { value: score, label, color };
 }
 
-// Generate 7-day history data
-function generateHistory(currentValue: number) {
-  const history: { day: string; value: number; label: string; color: string }[] = [];
-  const daySeed = Math.floor(Date.now() / 86400000);
+// Map 7-day history from official Alternative.me feed or real fallback
+function mapOfficialHistory(apiData: any[], currentValue: number) {
+  if (Array.isArray(apiData) && apiData.length > 0) {
+    return apiData.slice(0, 7).reverse().map((item) => {
+      const val = parseInt(item.value, 10) || 50;
+      const date = new Date(parseInt(item.timestamp, 10) * 1000);
+      const dayLabel = date.toLocaleDateString("pt-BR", { weekday: "short" });
+      let histLabel = "N";
+      let histColor = "#f59e0b";
+      if (val >= 75) { histLabel = "EG"; histColor = "#22c55e"; }
+      else if (val >= 55) { histLabel = "G"; histColor = "#4ade80"; }
+      else if (val >= 45) { histLabel = "N"; histColor = "#f59e0b"; }
+      else if (val >= 25) { histLabel = "F"; histColor = "#fb923c"; }
+      else { histLabel = "EF"; histColor = "#ef4444"; }
 
-  for (let i = 6; i >= 0; i--) {
-    const seed = daySeed - i;
-    const variation = (seededRandom(seed * 7 + 3) - 0.5) * 20;
-    const value = Math.round(Math.min(100, Math.max(0, currentValue + variation - (i * 0.5))));
-    let histLabel: string;
-    let histColor: string;
-
-    if (value >= 75) { histLabel = "EG"; histColor = "#22c55e"; }
-    else if (value >= 55) { histLabel = "G"; histColor = "#4ade80"; }
-    else if (value >= 45) { histLabel = "N"; histColor = "#f59e0b"; }
-    else if (value >= 25) { histLabel = "F"; histColor = "#fb923c"; }
-    else { histLabel = "EF"; histColor = "#ef4444"; }
-
-    const date = new Date(Date.now() - i * 86400000);
-    const dayLabel = date.toLocaleDateString("pt-BR", { weekday: "short" });
-
-    history.push({ day: dayLabel, value, label: histLabel, color: histColor });
+      return { day: dayLabel, value: val, label: histLabel, color: histColor };
+    });
   }
 
+  const history: { day: string; value: number; label: string; color: string }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const val = currentValue;
+    const date = new Date(Date.now() - i * 86400000);
+    const dayLabel = date.toLocaleDateString("pt-BR", { weekday: "short" });
+    history.push({ day: dayLabel, value: val, label: "N", color: "#f59e0b" });
+  }
   return history;
 }
 
@@ -99,8 +92,37 @@ export function FearGreedIndex() {
   useShallow((s) => ({ tickers: s.tickers }))
 );
 
-  const fearGreed = useMemo(() => computeFearGreedIndex(tickers), [tickers]);
-  const history = useMemo(() => generateHistory(fearGreed.value), [fearGreed.value]);
+  const [officialData, setOfficialData] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch("/api/market/fear-greed")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data)) {
+          setOfficialData(json.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const marketFearGreed = useMemo(() => computeFearGreedIndex(tickers), [tickers]);
+  const fearGreed = useMemo(() => {
+    if (officialData.length > 0) {
+      const latest = officialData[0];
+      const val = parseInt(latest.value, 10);
+      let label = "Neutro";
+      let color = "#f59e0b";
+      if (val >= 75) { label = "Ganância Extrema"; color = "#22c55e"; }
+      else if (val >= 55) { label = "Ganância"; color = "#4ade80"; }
+      else if (val >= 45) { label = "Neutro"; color = "#f59e0b"; }
+      else if (val >= 25) { label = "Medo"; color = "#fb923c"; }
+      else { label = "Medo Extremo"; color = "#ef4444"; }
+      return { value: val, label, color };
+    }
+    return marketFearGreed;
+  }, [officialData, marketFearGreed]);
+
+  const history = useMemo(() => mapOfficialHistory(officialData, fearGreed.value), [officialData, fearGreed.value]);
 
   // SVG gauge parameters
   const cx = 120;

@@ -9,7 +9,6 @@
   "dependencies": {
     "socket.io": "^4.7.4",
     "tsx": "^4.7.1",
-    "typescript": "^5.3.3",
-    "z-ai-web-dev-sdk": "^0.0.18"
+    "typescript": "^5.3.3"
   }
 }

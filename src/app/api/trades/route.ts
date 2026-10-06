@@ -25,6 +25,36 @@ async function fetchReferencePrice(symbol: string, testnet: boolean): Promise<nu
   }
 }
 
+/**
+ * Executa requisição HTTP com backoff exponencial para lidar com HTTP 429 e 5xx da Binance
+ */
+async function fetchBinanceWithBackoff(url: string, init?: RequestInit, maxRetries = 3): Promise<Response> {
+  let attempt = 0;
+  let delayMs = 300;
+  while (attempt < maxRetries) {
+    try {
+      const response = await fetch(url, init);
+      if (response.status === 429 || (response.status >= 500 && response.status <= 599)) {
+        attempt++;
+        if (attempt >= maxRetries) return response;
+        const retryAfter = response.headers.get("retry-after");
+        const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : delayMs;
+        console.warn(`[Binance API] HTTP ${response.status} detectado. Aguardando ${waitMs}ms para retry (${attempt}/${maxRetries})...`);
+        await new Promise((r) => setTimeout(r, waitMs));
+        delayMs *= 2;
+        continue;
+      }
+      return response;
+    } catch (err: any) {
+      attempt++;
+      if (attempt >= maxRetries) throw err;
+      await new Promise((r) => setTimeout(r, delayMs));
+      delayMs *= 2;
+    }
+  }
+  return fetch(url, init);
+}
+
 async function executeBinanceOrder(
   symbol: string,
   side: string,
@@ -50,7 +80,7 @@ async function executeBinanceOrder(
   let quoteOrderQtyAllowed = true;
 
   try {
-    const infoRes = await fetch(`${baseUrl}/api/v3/exchangeInfo?symbol=${symbol}`);
+    const infoRes = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/exchangeInfo?symbol=${symbol}`);
     if (infoRes.ok) {
       const info = await infoRes.json();
       const symbolInfo = info.symbols?.[0];
@@ -76,7 +106,7 @@ async function executeBinanceOrder(
   // 2. Fetch current market price
   let currentPrice = 0;
   try {
-    const priceRes = await fetch(`${baseUrl}/api/v3/ticker/price?symbol=${symbol}`);
+    const priceRes = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/ticker/price?symbol=${symbol}`);
     if (priceRes.ok) {
       const priceData = await priceRes.json();
       currentPrice = parseFloat(priceData.price) || 0;
@@ -96,7 +126,7 @@ async function executeBinanceOrder(
     try {
       const accQuery = `omitZeroBalances=true&timestamp=${Date.now()}&recvWindow=60000`;
       const accSig = crypto.createHmac('sha256', apiSecret).update(accQuery).digest('hex');
-      const accRes = await fetch(`${baseUrl}/api/v3/account?${accQuery}&signature=${accSig}`, {
+      const accRes = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/account?${accQuery}&signature=${accSig}`, {
         headers: { 'X-MBX-APIKEY': apiKey },
       });
       if (accRes.ok) {
@@ -169,7 +199,7 @@ async function executeBinanceOrder(
     try {
       const accQuery = `omitZeroBalances=true&timestamp=${Date.now()}&recvWindow=60000`;
       const accSig = crypto.createHmac('sha256', apiSecret).update(accQuery).digest('hex');
-      const accRes = await fetch(`${baseUrl}/api/v3/account?${accQuery}&signature=${accSig}`, {
+      const accRes = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/account?${accQuery}&signature=${accSig}`, {
         headers: { 'X-MBX-APIKEY': apiKey },
       });
       if (accRes.ok) {
@@ -224,7 +254,7 @@ async function executeBinanceOrder(
 
   const url = `${baseUrl}/api/v3/order?${queryString}&signature=${signature}`;
 
-  const response = await fetch(url, {
+  const response = await fetchBinanceWithBackoff(url, {
     method: 'POST',
     headers: {
       'X-MBX-APIKEY': apiKey,
@@ -320,8 +350,40 @@ export async function POST(request: NextRequest) {
 
     const sideClean = side === "BUY" ? "BUY" : "SELL";
     const symbolClean = symbol.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+
+    if (!symbolClean || symbolClean.length < 5 || (!symbolClean.endsWith("USDT") && !symbolClean.endsWith("FDUSD") && !symbolClean.endsWith("BTC") && !symbolClean.endsWith("BRL"))) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Símbolo de negociação inválido: "${symbolClean}". Apenas pares oficiais (ex.: BTCUSDT, ETHUSDT) são aceitos.`,
+          code: "INVALID_SYMBOL",
+        },
+        { status: 400 }
+      );
+    }
+
     const strategyClean = (strategy || "Manual").replace(/[<>]/g, "");
     const modeClean = mode === "live" ? "live" : "paper";
+
+    // Verificação de Slippage Universal (Tanto Paper quanto Live com dados reais da Binance)
+    const refPrice = await fetchReferencePrice(symbolClean, false);
+    if (refPrice !== null) {
+      const calculatedSlippage = Math.abs(priceVal - refPrice) / refPrice;
+      const maxSlippageTolerance = typeof body.slippageTolerance === 'number'
+        ? body.slippageTolerance / 100
+        : 0.0075; // 0.75% de tolerância padrão
+
+      if (calculatedSlippage > maxSlippageTolerance) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Slippage excessivo detectado (${(calculatedSlippage * 100).toFixed(2)}%). Limite máximo de tolerância é ${(maxSlippageTolerance * 100).toFixed(2)}%. Preço da ordem: $${priceVal}, Preço atual da Binance: $${refPrice}. Ordem rejeitada por governança de risco.`,
+            code: 'SLIPPAGE_EXCEEDED',
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     // If live mode, run trade order on Binance first
     if (modeClean === "live") {
@@ -331,7 +393,6 @@ export async function POST(request: NextRequest) {
       // Usa o maior entre o total informado, preço × quantidade e o preço atual do servidor × quantidade.
       if (!isTestnet) {
         // Falha fechada: sem preço de referência do servidor, a ordem não passa pela trava.
-        const refPrice = await fetchReferencePrice(symbolClean, isTestnet);
         if (refPrice === null) {
           return NextResponse.json(
             {
@@ -415,6 +476,7 @@ export async function POST(request: NextRequest) {
       // 1. Create the trade
       const trade = await tx.trade.create({
         data: {
+          id: body.executionId || body.id || undefined,
           symbol: symbolClean,
           side: sideClean,
           price: priceVal,
@@ -512,9 +574,18 @@ export async function POST(request: NextRequest) {
       console.warn('[Trades API] Failed to emit Socket.IO notification:', ioErr.message);
     }
 
+    const auditTrade = {
+      ...result.trade,
+      executionId: body.executionId || result.trade.id,
+      algorithmVersion: body.algorithmVersion || "v2.5.0-institutional",
+      marketSnapshot: body.marketSnapshot,
+      riskParams: body.riskParams,
+      slippagePercent: body.slippagePercent,
+    };
+
     return NextResponse.json({
       success: true,
-      data: result.trade,
+      data: auditTrade,
       account: {
         cashBalance: result.account.cashBalance,
         assetQuantity: result.account.assetQuantity,

@@ -92,12 +92,15 @@ export function MarketOverview() {
     const btcTicker = tickers["BTCUSDT"];
     const btcChange = btcTicker?.priceChangePercent ?? -1.1;
 
-    // BTC Dominance - mock ~52%
-    const btcDominance = 52.3;
-    const othersDominance = 100 - btcDominance;
+    // BTC Volume Share real entre os pares monitorados
+    const btcVolume = btcTicker?.quoteVolume || 0;
+    const btcDominance = totalVolume > 0 ? parseFloat(((btcVolume / totalVolume) * 100).toFixed(1)) : 52.5;
+    const othersDominance = parseFloat((100 - btcDominance).toFixed(1));
 
-    // Mock market cap ~$2.5T
-    const totalMarketCap = 2.51; // in trillions
+    // Estimativa de Market Cap Global baseada no preço real do BTC (19.8M moedas em circulação / ~54% de dominância)
+    const btcPrice = btcTicker?.price || 86000;
+    const btcCapTrillions = (btcPrice * 19.8e6) / 1e12;
+    const totalMarketCap = parseFloat(((btcCapTrillions / (btcDominance / 100))).toFixed(2));
 
     return {
       totalVolume,

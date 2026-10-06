@@ -1,5 +1,5 @@
 import { useCryptoStore, type BotInstance, type BotPosition, type TradeData } from "@/lib/store";
-import type { BotExecutionReport } from "@/lib/store/types";
+import type { BotExecutionReport, MarketSnapshot, RiskParams } from "@/lib/store/types";
 import { calculateRSI, calculateEMA } from "./indicators";
 import { evaluateEntry } from "./entry-engine";
 import { getSymbolKlines } from "./kline-cache";
@@ -11,12 +11,82 @@ export interface MultiBotEngineCallbacks {
   stopBotAfterClose?: boolean;
 }
 
+export interface CircuitBreakerState {
+  tripped: boolean;
+  trippedAt: number | null;
+  dailyLossLimitUsd: number;
+  dailyLossLimitPercent: number;
+  accumulatedDailyLossUsd: number;
+  reason: string | null;
+}
+
+let circuitBreakerState: CircuitBreakerState = {
+  tripped: false,
+  trippedAt: null,
+  dailyLossLimitUsd: 15.0, // Limite absoluto de perda diária em USD
+  dailyLossLimitPercent: 5.0, // Limite de 5% sobre o equity
+  accumulatedDailyLossUsd: 0,
+  reason: null,
+};
+
+export function getCircuitBreakerStatus(): CircuitBreakerState {
+  return { ...circuitBreakerState };
+}
+
+export function resetCircuitBreaker(): void {
+  circuitBreakerState = {
+    ...circuitBreakerState,
+    tripped: false,
+    trippedAt: null,
+    accumulatedDailyLossUsd: 0,
+    reason: null,
+  };
+}
+
+/**
+ * Avalia se o limite diário de perda foi violado pelos trades executados hoje
+ */
+export function checkCircuitBreaker(): boolean {
+  const store = useCryptoStore.getState();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayTimestamp = today.getTime();
+
+  let dailyLoss = 0;
+  for (const trade of store.trades) {
+    const tradeTime = new Date(trade.timestamp).getTime();
+    if (tradeTime >= todayTimestamp && trade.side === "SELL" && trade.pnl < 0) {
+      dailyLoss += Math.abs(trade.pnl);
+    }
+  }
+
+  circuitBreakerState.accumulatedDailyLossUsd = dailyLoss;
+  const totalValue = store.portfolio?.totalValue || 90.0;
+  const maxPercentLossUsd = (totalValue * circuitBreakerState.dailyLossLimitPercent) / 100;
+  const effectiveLimitUsd = Math.min(circuitBreakerState.dailyLossLimitUsd, maxPercentLossUsd);
+
+  if (dailyLoss >= effectiveLimitUsd) {
+    if (!circuitBreakerState.tripped) {
+      circuitBreakerState.tripped = true;
+      circuitBreakerState.trippedAt = Date.now();
+      circuitBreakerState.reason = `Perda diária acumulada ($${dailyLoss.toFixed(2)} USDT) atingiu limite de segurança ($${effectiveLimitUsd.toFixed(2)} USDT)`;
+      store.addBotLog({
+        message: `🚨 [Circuit Breaker Global] ACIONADO: ${circuitBreakerState.reason}. Todas as novas compras bloqueadas. Frota migrada para modo de proteção/observação.`,
+        type: "error",
+      });
+    }
+    return true;
+  }
+  return false;
+}
+
 let lastFleetAccountSync = 0;
 let lastLiveAccountError: string | null = null;
 let lastLiveAccountErrorLoggedAt = 0;
 const botErrorCooldown = new Map<string, number>();
 const botSymbolLossCooldown = new Map<string, number>();
 const inFlightBuys = new Set<string>();
+const inFlightSells = new Set<string>();
 
 /**
  * BTC Market Gatekeeper: Avalia se o Bitcoin está em correção acelerada intradiária (5m/15m)
@@ -115,6 +185,20 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   const isAutoScreener = Boolean(bot.useAutoScreener || bot.symbol === "AUTO");
   const hasOpenPosition = Boolean(bot.position && bot.position.quantity > 0);
   const symbol = hasOpenPosition ? (bot.position!.symbol || bot.symbol) : bot.symbol;
+
+  // Governança de Risco: Se Circuit Breaker Global estiver ativo e o robô não tiver posição aberta,
+  // bloqueia novas análises de compra e mantém robô em modo de proteção.
+  if (!hasOpenPosition && circuitBreakerState.tripped) {
+    store.updateBot(bot.id, {
+      status: "scanning",
+      stats: {
+        ...bot.stats,
+        lastAction: `🚨 Circuit Breaker Global Ativo (${circuitBreakerState.reason})`,
+        lastActionTime: new Date().toISOString(),
+      },
+    });
+    return;
+  }
 
   let ticker = tickers[symbol];
   let currentPrice = ticker?.price;
@@ -739,16 +823,28 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   const { shouldBuy, reason: entryReason, checks } = decision;
 
   if (shouldBuy && currentPrice) {
-    // Sizing Compounding Dinâmico (Half-Kelly):
-    // Conforme a banca cresce (> $90), escala as posições proporcionalmente (~42-45% do saldo)
-    // para ativar os juros compostos automáticos e maximizar os lucros acumulados.
+    // 🛡️ Trava de Slippage: Rejeitar ordens se o spread de mercado exceder a tolerância máxima parametrizada
+    if (orderBook && typeof bot.slippageTolerance === "number" && orderBook.spreadPercent > bot.slippageTolerance) {
+      store.updateBot(bot.id, {
+        status: "scanning",
+        stats: {
+          ...bot.stats,
+          lastAction: `⚠️ Slippage Guard · Spread de ${orderBook.spreadPercent.toFixed(2)}% excede tolerância de ${bot.slippageTolerance}%`,
+          lastActionTime: new Date().toISOString(),
+          entryChecks: checks,
+        },
+      });
+      return;
+    }
+
+    // Gestão de Risco por Ordem: Tamanho de posição calculado por regra explícita (% do capital livre)
+    // com limites máximos absolutos e compatibilidade com filtros de lote da exchange
+    const riskPercent = (bot.riskPerTradePercent || (cash > 90.0 ? 45.0 : 40.0)) / 100;
     const maxSafeCash = Math.max(0, cash * 0.95);
     const configuredAlloc = bot.allocationAmount || 40.0;
-    const compoundingSlot = cash > 90.0
-      ? Math.max(35.0, cash * 0.45)
-      : Math.max(35.0, Math.min(maxSafeCash, cash * 0.85));
-    const dynamicAlloc = Math.max(35.0, Math.min(maxSafeCash, Math.max(configuredAlloc, compoundingSlot)));
-    const targetSpend = Math.max(minRequiredCash, Math.min(maxSafeCash, dynamicAlloc));
+    const calculatedAlloc = Math.min(maxSafeCash, cash * riskPercent);
+    const dynamicAlloc = Math.max(35.0, Math.min(maxSafeCash, Math.max(configuredAlloc, calculatedAlloc)));
+    const targetSpend = Math.min(150.0, Math.max(minRequiredCash, Math.min(maxSafeCash, dynamicAlloc)));
 
     const quantity = parseFloat((targetSpend / currentPrice).toFixed(6));
     const total = parseFloat((quantity * currentPrice).toFixed(2));
@@ -764,6 +860,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         dynamicTakeProfit: decision.suggestedTp,
         dynamicStopLoss: decision.suggestedSl,
         relativeAtrAtEntry: decision.relATR,
+        orderBook,
         callbacks,
       });
     }
@@ -794,6 +891,7 @@ async function executeBotBuy({
   dynamicTakeProfit,
   dynamicStopLoss,
   relativeAtrAtEntry,
+  orderBook,
   callbacks,
 }: {
   bot: BotInstance;
@@ -805,6 +903,7 @@ async function executeBotBuy({
   dynamicTakeProfit?: number;
   dynamicStopLoss?: number;
   relativeAtrAtEntry?: number;
+  orderBook?: any;
   callbacks?: MultiBotEngineCallbacks;
 }) {
   const store = useCryptoStore.getState();
@@ -817,22 +916,45 @@ async function executeBotBuy({
   inFlightBuys.add(execSymbol);
 
   try {
-    const trade: TradeData = {
-    id: `trade-${bot.id}-${Date.now()}`,
-    symbol: execSymbol,
-    side: "BUY",
-    price: buyPrice,
-    quantity,
-    total,
-    strategy: customReason || bot.strategy,
-    mode: tradingMode,
-    pnl: 0,
-    timestamp: new Date().toISOString(),
-    botId: bot.id,
-    botName: bot.name,
-  };
+    const executionId = `exec_buy_${bot.id}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const riskParams: RiskParams = {
+      riskPerTradePercent: bot.riskPerTradePercent || 35.0,
+      maxOrderUsd: 150.0,
+      slippageTolerancePercent: bot.slippageTolerance || 0.35,
+      stopLossPercent: dynamicStopLoss || bot.stopLoss,
+      takeProfitPercent: dynamicTakeProfit || bot.takeProfit,
+      holdingTimeLimitMinutes: bot.maxHoldingMinutes || bot.timeStopMinutes || 30,
+    };
+    const marketSnapshot: MarketSnapshot = {
+      refPrice: buyPrice,
+      bidPrice: orderBook?.bestBid,
+      askPrice: orderBook?.bestAsk,
+      spreadPercent: orderBook?.spreadPercent,
+      orderBookRatio: orderBook?.bidAskRatio,
+      timestamp: Date.now(),
+    };
 
-  let executedTrade: TradeData = trade;
+    const trade: TradeData = {
+      id: `trade-${bot.id}-${Date.now()}`,
+      executionId,
+      algorithmVersion: bot.algorithmVersion || "v2.5.0-institutional",
+      symbol: execSymbol,
+      side: "BUY",
+      price: buyPrice,
+      quantity,
+      total,
+      strategy: customReason || bot.strategy,
+      mode: tradingMode,
+      pnl: 0,
+      timestamp: new Date().toISOString(),
+      botId: bot.id,
+      botName: bot.name,
+      riskParams,
+      marketSnapshot,
+      slippagePercent: orderBook?.spreadPercent ? parseFloat((orderBook.spreadPercent / 2).toFixed(3)) : 0.05,
+    };
+
+    let executedTrade: TradeData = trade;
 
   if (tradingMode === "live") {
     try {
@@ -1122,22 +1244,31 @@ async function executeBotPartialSell({
   const store = useCryptoStore.getState();
   const { tradingMode } = store;
   const execSymbol = position.symbol || bot.symbol;
-
-  const partialRatio = (bot.partialTpPercent ?? 50) / 100;
-  const sellQty = parseFloat((position.quantity * partialRatio).toFixed(6));
-  const remainingQty = parseFloat((position.quantity - sellQty).toFixed(6));
-  const partialCost = parseFloat((position.totalCost * partialRatio).toFixed(2));
-  const remainingCost = parseFloat((position.totalCost - partialCost).toFixed(2));
-  const partialTotal = parseFloat((sellQty * sellPrice).toFixed(2));
-  const partialPnl = parseFloat((partialTotal - partialCost).toFixed(2));
-
-  // Binance spot order requires min $5 notional
-  if (tradingMode === "live" && partialTotal < 5.20) {
+  const sellLockKey = `${bot.id}_${execSymbol}`;
+  if (inFlightSells.has(sellLockKey)) {
     return false;
   }
+  inFlightSells.add(sellLockKey);
 
+  try {
+    const partialRatio = (bot.partialTpPercent ?? 50) / 100;
+    const sellQty = parseFloat((position.quantity * partialRatio).toFixed(6));
+    const remainingQty = parseFloat((position.quantity - sellQty).toFixed(6));
+    const partialCost = parseFloat((position.totalCost * partialRatio).toFixed(2));
+    const remainingCost = parseFloat((position.totalCost - partialCost).toFixed(2));
+    const partialTotal = parseFloat((sellQty * sellPrice).toFixed(2));
+    const partialPnl = parseFloat((partialTotal - partialCost).toFixed(2));
+
+    // Binance spot order requires min $5 notional
+    if (tradingMode === "live" && partialTotal < 5.20) {
+      return false;
+    }
+
+  const executionId = `exec_partial_${bot.id}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const trade: TradeData = {
     id: `trade-partial-${bot.id}-${Date.now()}`,
+    executionId,
+    algorithmVersion: bot.algorithmVersion || "v2.5.0-institutional",
     symbol: execSymbol,
     side: "SELL",
     price: sellPrice,
@@ -1150,6 +1281,18 @@ async function executeBotPartialSell({
     botId: bot.id,
     botName: bot.name,
     sellAll: false,
+    riskParams: {
+      riskPerTradePercent: bot.riskPerTradePercent || 35.0,
+      maxOrderUsd: 150.0,
+      slippageTolerancePercent: bot.slippageTolerance || 0.35,
+      stopLossPercent: bot.stopLoss,
+      takeProfitPercent: bot.takeProfit,
+      holdingTimeLimitMinutes: bot.maxHoldingMinutes || bot.timeStopMinutes || 30,
+    },
+    marketSnapshot: {
+      refPrice: sellPrice,
+      timestamp: Date.now(),
+    },
   };
 
   if (tradingMode === "live") {
@@ -1246,7 +1389,10 @@ async function executeBotPartialSell({
   // 🛡️ Protege contra novas entradas ou recompras da frota no mesmo ativo durante a fase de realização
   botSymbolLossCooldown.set(position.symbol, Date.now() + 15 * 60 * 1000);
 
-  return true;
+    return true;
+  } finally {
+    inFlightSells.delete(sellLockKey);
+  }
 }
 
 /**
@@ -1274,24 +1420,45 @@ async function executeBotSell({
   const store = useCryptoStore.getState();
   const { tradingMode } = store;
   const execSymbol = position.symbol || bot.symbol;
+  const sellLockKey = `${bot.id}_${execSymbol}`;
+  if (inFlightSells.has(sellLockKey)) {
+    return;
+  }
+  inFlightSells.add(sellLockKey);
 
-  const total = parseFloat((position.quantity * sellPrice).toFixed(2));
+  try {
+    const total = parseFloat((position.quantity * sellPrice).toFixed(2));
 
-  const trade: TradeData = {
-    id: `trade-${bot.id}-${Date.now()}`,
-    symbol: execSymbol,
-    side: "SELL",
-    price: sellPrice,
-    quantity: position.quantity,
-    total,
-    strategy: `${bot.strategy} (${reason.split(" ")[0]})`,
-    mode: tradingMode,
-    pnl,
-    timestamp: new Date().toISOString(),
-    botId: bot.id,
-    botName: bot.name,
-    sellAll: true, // Vender 100% de todo o saldo livre na Binance
-  };
+    const executionId = `exec_exit_${bot.id}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const trade: TradeData = {
+      id: `trade-${bot.id}-${Date.now()}`,
+      executionId,
+      algorithmVersion: bot.algorithmVersion || "v2.5.0-institutional",
+      symbol: execSymbol,
+      side: "SELL",
+      price: sellPrice,
+      quantity: position.quantity,
+      total,
+      strategy: `${bot.strategy} (${reason.split(" ")[0]})`,
+      mode: tradingMode,
+      pnl,
+      timestamp: new Date().toISOString(),
+      botId: bot.id,
+      botName: bot.name,
+      sellAll: true, // Vender 100% de todo o saldo livre na Binance
+      riskParams: {
+        riskPerTradePercent: bot.riskPerTradePercent || 35.0,
+        maxOrderUsd: 150.0,
+        slippageTolerancePercent: bot.slippageTolerance || 0.35,
+        stopLossPercent: bot.stopLoss,
+        takeProfitPercent: bot.takeProfit,
+        holdingTimeLimitMinutes: bot.maxHoldingMinutes || bot.timeStopMinutes || 30,
+      },
+      marketSnapshot: {
+        refPrice: sellPrice,
+        timestamp: Date.now(),
+      },
+    };
 
   if (tradingMode === "live") {
     try {
@@ -1387,6 +1554,11 @@ async function executeBotSell({
   store.updateBotPosition(bot.id, null);
   store.recordBotTrade(bot.id, trade, pnl);
 
+  // Governança de Risco: Avalia se perda acumulada acionou o Circuit Breaker Global
+  if (pnl < 0) {
+    checkCircuitBreaker();
+  }
+
   // Cálculos financeiros e custos operacionais
   const totalInvested = parseFloat((position.totalCost || position.quantity * position.entryPrice).toFixed(2));
   const totalReturned = parseFloat((position.quantity * sellPrice).toFixed(2));
@@ -1421,6 +1593,8 @@ async function executeBotSell({
 
   const executionReport: BotExecutionReport = {
     id: `rep-${bot.id}-${Date.now()}`,
+    executionId,
+    algorithmVersion: bot.algorithmVersion || "v2.5.0-institutional",
     botId: bot.id,
     botName: bot.name,
     symbol: execSymbol,
@@ -1447,6 +1621,19 @@ async function executeBotSell({
     botLossTrades: botStats.lossTrades,
     botWinRate: botStats.winRate,
     botAccumulatedPnl: botStats.realizedPnl,
+    riskParams: {
+      riskPerTradePercent: bot.riskPerTradePercent || 35.0,
+      maxOrderUsd: 150.0,
+      slippageTolerancePercent: bot.slippageTolerance || 0.35,
+      stopLossPercent: bot.stopLoss,
+      takeProfitPercent: bot.takeProfit,
+      holdingTimeLimitMinutes: bot.maxHoldingMinutes || bot.timeStopMinutes || 30,
+    },
+    marketSnapshot: {
+      refPrice: sellPrice,
+      timestamp: Date.now(),
+    },
+    slippagePercent: 0.05,
   };
 
   // Se o robô tiver 'stopAfterProfit' ativo e obteve lucro (ou encerramento com lucro solicitado):
@@ -1513,6 +1700,9 @@ async function executeBotSell({
       : `Vendeu ${position.quantity.toFixed(4)} ${execSymbol.replace("USDT", "")} @ $${sellPrice.toLocaleString()} | Resultado: ${pnlFormatted}. Relatório gerado com sucesso.`,
     variant: pnl >= 0 ? "default" : "destructive",
   });
+  } finally {
+    inFlightSells.delete(sellLockKey);
+  }
 }
 
 /**

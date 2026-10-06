@@ -73,9 +73,7 @@ function generatePnLTimeline(portfolioPnl: number, pnlPercent: number, trades: i
     return data;
   }
 
-  // Fallback: synthetic timeline when no trades exist
-  let cumulativePnl = portfolioPnl - portfolioPnl * 0.3;
-
+  // Real timeline when no trades exist yet: reflects current actual portfolio value without synthetic noise
   for (let i = 23; i >= 0; i--) {
     const time = new Date(now.getTime() - i * 3600000);
     const hourLabel = time.toLocaleTimeString("en-US", {
@@ -84,22 +82,12 @@ function generatePnLTimeline(portfolioPnl: number, pnlPercent: number, trades: i
       hour12: false,
     });
 
-    const progress = (24 - i) / 24;
-    const noise = (Math.sin(i * 0.8) * 15 + Math.cos(i * 1.3) * 8) * (1 - progress * 0.5);
-    cumulativePnl = portfolioPnl * progress + noise;
-
-    const totalValue = baseValue + cumulativePnl;
-
     data.push({
       time: hourLabel,
-      pnl: parseFloat(cumulativePnl.toFixed(2)),
-      value: parseFloat(totalValue.toFixed(2)),
+      pnl: parseFloat(portfolioPnl.toFixed(2)),
+      value: parseFloat((baseValue + portfolioPnl).toFixed(2)),
     });
   }
-
-  // Ensure last point matches current P&L
-  data[data.length - 1].pnl = parseFloat(portfolioPnl.toFixed(2));
-  data[data.length - 1].value = parseFloat((baseValue + portfolioPnl).toFixed(2));
 
   return data;
 }

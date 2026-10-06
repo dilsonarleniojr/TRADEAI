@@ -189,6 +189,12 @@ export interface BotInstance {
   timeStopMinutes?: number; // Saída por tempo se trade estagnar (padrão 20 min, 0 desativa)
   useBtcGatekeeper?: boolean; // Filtro Direcional BTC (bloqueia compras se BTC cair no 5m)
 
+  // Governança e Controle de Risco Institucional (v2.5.0)
+  algorithmVersion?: string; // Versão formal do algoritmo (ex: "v2.5.0-institutional")
+  slippageTolerance?: number; // Tolerância máxima de slippage em % (ex: 0.35%)
+  riskPerTradePercent?: number; // % explícita de risco por ordem do saldo livre (ex: 35.0%)
+  maxHoldingMinutes?: number; // Holding time máximo para encerramento intradiário de proteção (ex: 30 min)
+
   // Último relatório de execução gerado ao finalizar
   lastReport?: BotExecutionReport | null;
 
@@ -201,6 +207,26 @@ export interface BotInstance {
   // Real-time statistics
   stats: BotStats;
   createdAt: string;
+}
+
+export interface MarketSnapshot {
+  refPrice: number;
+  bidPrice?: number;
+  askPrice?: number;
+  spreadPercent?: number;
+  rsi1m?: number;
+  rsi15m?: number;
+  orderBookRatio?: number;
+  timestamp: number;
+}
+
+export interface RiskParams {
+  riskPerTradePercent: number;
+  maxOrderUsd: number;
+  slippageTolerancePercent: number;
+  stopLossPercent: number;
+  takeProfitPercent: number;
+  holdingTimeLimitMinutes?: number;
 }
 
 export interface BotExecutionReport {
@@ -231,6 +257,13 @@ export interface BotExecutionReport {
   botLossTrades: number;
   botWinRate: number;
   botAccumulatedPnl: number;
+
+  // Auditoria e Governança
+  executionId?: string;
+  algorithmVersion?: string;
+  marketSnapshot?: MarketSnapshot;
+  riskParams?: RiskParams;
+  slippagePercent?: number;
 }
 
 export interface PortfolioPosition {
@@ -269,6 +302,13 @@ export interface TradeData {
   botId?: string;
   botName?: string;
   sellAll?: boolean;
+
+  // Governança, Rastreabilidade e Auditoria
+  executionId?: string;
+  algorithmVersion?: string;
+  marketSnapshot?: MarketSnapshot;
+  riskParams?: RiskParams;
+  slippagePercent?: number;
 }
 
 export interface AISignalData {

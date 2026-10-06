@@ -78,8 +78,33 @@ export function TradeReport() {
       strategyBreakdown[t.strategy].pnl += t.pnl;
     }
 
-    // Average hold time (mock calculation)
-    const avgHoldTime = "2h 34m";
+    // Real average hold time calculated from trade timestamps
+    let totalHoldMs = 0;
+    let holdCount = 0;
+    const buyTimesBySymbol: Record<string, number[]> = {};
+    for (const t of trades) {
+      const timeMs = new Date(t.timestamp).getTime();
+      if (t.side === "BUY") {
+        if (!buyTimesBySymbol[t.symbol]) buyTimesBySymbol[t.symbol] = [];
+        buyTimesBySymbol[t.symbol].push(timeMs);
+      } else if (t.side === "SELL" && buyTimesBySymbol[t.symbol]?.length > 0) {
+        const buyTime = buyTimesBySymbol[t.symbol].shift()!;
+        const duration = Math.max(0, timeMs - buyTime);
+        totalHoldMs += duration;
+        holdCount++;
+      }
+    }
+
+    let avgHoldTime = "N/A";
+    if (holdCount > 0) {
+      const avgSec = Math.floor((totalHoldMs / holdCount) / 1000);
+      const hours = Math.floor(avgSec / 3600);
+      const minutes = Math.floor((avgSec % 3600) / 60);
+      const seconds = avgSec % 60;
+      if (hours > 0) avgHoldTime = `${hours}h ${minutes}m`;
+      else if (minutes > 0) avgHoldTime = `${minutes}m ${seconds}s`;
+      else avgHoldTime = `${seconds}s`;
+    }
 
     setReport({
       totalTrades: trades.length,

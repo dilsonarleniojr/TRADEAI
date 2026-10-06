@@ -137,10 +137,22 @@ export async function GET(request: NextRequest) {
     const { apiKey: binanceApiKey, apiSecret: binanceApiSecret, testnet: isTestnet } = getBinanceCredentials(request);
 
     if (mode === 'live') {
-      return NextResponse.json({
-        success: true,
-        data: await buildLiveAccount(binanceApiKey || '', binanceApiSecret || '', isTestnet),
-      });
+      try {
+        const liveData = await buildLiveAccount(binanceApiKey || '', binanceApiSecret || '', isTestnet);
+        return NextResponse.json({
+          success: true,
+          data: liveData,
+        });
+      } catch (liveErr: any) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: liveErr.message || "Autenticação Binance necessária para modo real",
+            code: "BINANCE_AUTH_REQUIRED",
+          },
+          { status: 401 }
+        );
+      }
     }
 
     return NextResponse.json({ success: true, data: await buildPaperAccount() });

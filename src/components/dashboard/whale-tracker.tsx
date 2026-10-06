@@ -4,102 +4,83 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion, AnimatePresence } from "framer-motion";
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from "recharts";
-import { Fish, RefreshCw, TrendingUp, TrendingDown, Trophy } from "lucide-react";
+import { Fish, RefreshCw, TrendingUp, TrendingDown, Trophy, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatVolume } from "@/lib/format";
-import { CRYPTO_SHORTS, CRYPTO_COLORS, CRYPTO_BY_SYMBOL } from "@/lib/crypto-meta";
-
-// Seeded random for consistent mock data
-function seededRandom(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 16807) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
-}
+import { CRYPTO_COLORS } from "@/lib/crypto-meta";
 
 interface WhaleTransaction {
   id: string;
   symbol: string;
+  rawSymbol: string;
   side: "BUY" | "SELL";
+  price: number;
   amountUSD: number;
   amountCoin: number;
   timestamp: number;
 }
 
-const SYMBOLS = ["BTC", "ETH", "SOL", "BNB", "XRP", "LINK", "AVAX", "DOGE"];
-const SYMBOL_PRICES: Record<string, number> = {
-  BTC: 78301, ETH: 2182, SOL: 86.6, BNB: 656,
-  XRP: 1.41, LINK: 9.76, AVAX: 9.32, DOGE: 0.109,
-};
-const SYMBOL_FULL_NAMES: Record<string, string> = {
-  BTC: "Bitcoin", ETH: "Ethereum", SOL: "Solana", BNB: "BNB",
-  XRP: "XRP", LINK: "Chainlink", AVAX: "Avalanche", DOGE: "Dogecoin",
-};
-
-function generateWhaleTransactions(seed: number): WhaleTransaction[] {
-  const rng = seededRandom(seed);
-  const txs: WhaleTransaction[] = [];
-  const now = Date.now();
-
-  for (let i = 0; i < 15; i++) {
-    const symbol = SYMBOLS[Math.floor(rng() * SYMBOLS.length)];
-    const side = rng() > 0.45 ? "BUY" : "SELL";
-    const amountUSD = 500_000 + rng() * 50_000_000;
-    const amountCoin = amountUSD / SYMBOL_PRICES[symbol];
-    const minutesAgo = Math.floor(rng() * 1440);
-
-    txs.push({
-      id: `w-${seed}-${i}`,
-      symbol,
-      side,
-      amountUSD,
-      amountCoin,
-      timestamp: now - minutesAgo * 60_000,
-    });
-  }
-
-  return txs.sort((a, b) => b.timestamp - a.timestamp);
-}
-
 function relativeTime(ts: number): string {
   const diff = Math.floor((Date.now() - ts) / 1000);
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+  if (diff < 60) return `${Math.max(1, diff)}s atrás`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m atrás`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`;
+  return `${Math.floor(diff / 86400)}d atrás`;
 }
 
 export function WhaleTracker() {
-  const [seed, setSeed] = useState(42);
+  const [transactions, setTransactions] = useState<WhaleTransaction[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [newIds, setNewIds] = useState<Set<string>>(new Set());
+  const [lastUpdated, setLastUpdated] = useState<string>("");
 
-  const transactions = useMemo(() => generateWhaleTransactions(seed), [seed]);
-
-  const refresh = useCallback(() => {
-    setRefreshing(true);
-    setSeed((s) => s + 1);
-    const newTxIds = new Set(transactions.slice(0, 2).map((t) => `w-${seed + 1}-${t.id.split("-").pop()}`));
-    setNewIds(newTxIds);
-    setTimeout(() => setRefreshing(false), 600);
-    setTimeout(() => setNewIds(new Set()), 2000);
-  }, [seed, transactions]);
+  const fetchRealWhales = useCallback(async () => {
+    try {
+      setRefreshing(true);
+      const res = await fetch("/api/market/whale-trades");
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setTransactions(json.data);
+          setLastUpdated(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+        }
+      }
+    } catch (err) {
+      console.warn("[WhaleTracker] Erro ao sincronizar ordens institucionais:", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const interval = setInterval(refresh, 8000);
+    fetchRealWhales();
+    const interval = setInterval(fetchRealWhales, 10000);
     return () => clearInterval(interval);
-  }, [refresh]);
+  }, [fetchRealWhales]);
 
-  // Summary stats
-  const totalVolume = 2.4e9;
-  const buyRatio = 0.55;
+  // Real Summary stats calculated from actual live trades
+  const totalVolume = useMemo(
+    () => transactions.reduce((sum, t) => sum + t.amountUSD, 0),
+    [transactions]
+  );
+
+  const buyVolume = useMemo(
+    () => transactions.filter((t) => t.side === "BUY").reduce((sum, t) => sum + t.amountUSD, 0),
+    [transactions]
+  );
+
+  const buyRatio = useMemo(() => {
+    if (totalVolume === 0) return 0.5;
+    return buyVolume / totalVolume;
+  }, [totalVolume, buyVolume]);
+
   const largestTx = useMemo(
     () => transactions.reduce((max, t) => (t.amountUSD > max ? t.amountUSD : max), 0),
     [transactions]
   );
 
-  // Volume by symbol
+  // Volume by symbol from real trades
   const volumeBySymbol = useMemo(() => {
     const map: Record<string, number> = {};
     for (const t of transactions) {
@@ -117,6 +98,35 @@ export function WhaleTracker() {
       transition={{ delay: 0.15, duration: 0.4 }}
       className="space-y-4"
     >
+      {/* Header com indicador de dados 100% reais */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded-lg bg-crypto-gold/10 text-crypto-gold">
+            <Fish className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              Rastreador de Grandes Ordens (Whales)
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Binance Spot Real
+              </span>
+            </h3>
+            <p className="text-[11px] text-muted-foreground">
+              Grandes ordens a mercado executadas (&gt; $10k USD) · Atualizado: {lastUpdated || "agora"}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={fetchRealWhales}
+          disabled={refreshing}
+          className="p-1.5 rounded-md hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          title="Atualizar dados reais da Binance"
+        >
+          <RefreshCw className={cn("w-3.5 h-3.5", refreshing && "animate-spin")} />
+        </button>
+      </div>
+
       {/* Summary Stats Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Total Whale Volume */}
@@ -126,7 +136,7 @@ export function WhaleTracker() {
               <div className="p-1.5 rounded-md bg-crypto-gold/10">
                 <Fish className="w-3.5 h-3.5 text-crypto-gold" />
               </div>
-              <span className="text-xs text-muted-foreground">Volume de Baleias (24h)</span>
+              <span className="text-xs text-muted-foreground">Volume de Grandes Ordens</span>
             </div>
             <span className="text-lg font-bold gradient-text-gold number-animate">
               {formatVolume(totalVolume)}
@@ -141,7 +151,7 @@ export function WhaleTracker() {
               <div className="p-1.5 rounded-md bg-crypto-gold/10">
                 <TrendingUp className="w-3.5 h-3.5 text-crypto-gold" />
               </div>
-              <span className="text-xs text-muted-foreground">Proporção Compra / Venda</span>
+              <span className="text-xs text-muted-foreground">Pressão Institucional (Compra / Venda)</span>
             </div>
             <div className="flex items-center gap-2 mt-2">
               <span className="text-xs text-crypto-green font-semibold">{(buyRatio * 100).toFixed(0)}%</span>
@@ -154,8 +164,8 @@ export function WhaleTracker() {
               <span className="text-xs text-crypto-red font-semibold">{((1 - buyRatio) * 100).toFixed(0)}%</span>
             </div>
             <div className="flex justify-between mt-1">
-              <span className="text-[10px] text-crypto-green">BUY</span>
-              <span className="text-[10px] text-crypto-red">SELL</span>
+              <span className="text-[10px] text-crypto-green">BUY (${formatVolume(buyVolume)})</span>
+              <span className="text-[10px] text-crypto-red">SELL (${formatVolume(totalVolume - buyVolume)})</span>
             </div>
           </CardContent>
         </Card>
@@ -167,7 +177,7 @@ export function WhaleTracker() {
               <div className="p-1.5 rounded-md bg-crypto-gold/10">
                 <Trophy className="w-3.5 h-3.5 text-crypto-gold" />
               </div>
-              <span className="text-xs text-muted-foreground">Maior Tx (24h)</span>
+              <span className="text-xs text-muted-foreground">Maior Ordem Individual</span>
             </div>
             <span className="text-lg font-bold gradient-text-gold number-animate">
               {formatVolume(largestTx)}
@@ -178,139 +188,129 @@ export function WhaleTracker() {
 
       {/* Transaction Feed + Volume Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        {/* Transaction Feed */}
-        <Card className="glass-card card-accent-gold lg:col-span-3">
+        {/* Left: Transaction Feed (3 cols) */}
+        <Card className="glass-card lg:col-span-3">
           <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Fish className="w-4 h-4 text-crypto-gold" />
-                Feed de Transações de Baleias
-              </CardTitle>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-muted-foreground">Atualização automática</span>
-                <RefreshCw className={cn("w-3 h-3 text-crypto-gold", refreshing && "animate-spin")} />
-              </div>
-            </div>
+            <CardTitle className="text-sm font-semibold flex items-center justify-between">
+              <span>Fluxo Recente de Execução em Tempo Real</span>
+              <span className="text-xs text-muted-foreground font-normal">
+                {transactions.length} ordens detectadas
+              </span>
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="max-h-96 overflow-y-auto cyan-scrollbar space-y-1.5 pr-1">
-              <AnimatePresence mode="popLayout">
-                {transactions.map((tx) => {
-                  const isBuy = tx.side === "BUY";
-                  const isMega = tx.amountUSD >= 5_000_000;
-                  const isLarge = tx.amountUSD >= 1_000_000;
-                  const isNew = newIds.has(tx.id);
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="p-8 text-center text-xs text-muted-foreground">
+                <Activity className="w-5 h-5 mx-auto mb-2 animate-spin text-crypto-gold" />
+                Carregando execuções reais da Binance...
+              </div>
+            ) : transactions.length === 0 ? (
+              <div className="p-8 text-center text-xs text-muted-foreground">
+                Nenhuma ordem institucional &gt; $10k detectada nos últimos minutos.
+              </div>
+            ) : (
+              <div className="divide-y divide-border/30 max-h-[380px] overflow-y-auto custom-scrollbar">
+                <AnimatePresence initial={false}>
+                  {transactions.map((tx) => {
+                    const isBuy = tx.side === "BUY";
+                    return (
+                      <motion.div
+                        key={tx.id}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="flex items-center justify-between px-4 py-2.5 hover:bg-secondary/20 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={cn(
+                              "text-[10px] font-bold px-1.5 py-0.5 rounded",
+                              isBuy
+                                ? "bg-crypto-green/10 text-crypto-green border border-crypto-green/30"
+                                : "bg-crypto-red/10 text-crypto-red border border-crypto-red/30"
+                            )}
+                          >
+                            {tx.side}
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-semibold text-foreground">
+                                {tx.symbol}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground">
+                                @ ${tx.price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-muted-foreground">
+                              {tx.amountCoin.toFixed(4)} {tx.symbol} · {relativeTime(tx.timestamp)}
+                            </span>
+                          </div>
+                        </div>
 
-                  return (
-                    <motion.div
-                      key={tx.id}
-                      layout
-                      initial={isNew ? { opacity: 0, x: 40 } : { opacity: 1, x: 0 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -40 }}
-                      transition={{ duration: 0.35, ease: "easeOut" }}
-                      className={cn(
-                        "flex items-center justify-between p-2.5 rounded-lg border transition-all duration-200 hover:scale-[1.01]",
-                        isBuy
-                          ? "bg-crypto-green/5 border-crypto-green/10"
-                          : "bg-crypto-red/5 border-crypto-red/10"
-                      )}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div
-                          className={cn(
-                            "px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider",
-                            isBuy
-                              ? "bg-crypto-green/15 text-crypto-green"
-                              : "bg-crypto-red/15 text-crypto-red"
-                          )}
-                        >
-                          {tx.side}
-                        </div>
-                        <span className="text-sm font-semibold whitespace-nowrap">{tx.symbol}</span>
-                        <span className="text-[10px] text-muted-foreground">{SYMBOL_FULL_NAMES[tx.symbol] || tx.symbol}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-crypto-gold/15 text-crypto-gold font-medium whitespace-nowrap">
-                          Alerta de Baleia
-                        </span>
-                        {isMega && <span className="text-xs" title="Mega whale ($5M+)">💎</span>}
-                        {!isMega && isLarge && <span className="text-xs" title="Large whale ($1M+)">🔥</span>}
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
                         <div className="text-right">
-                          <div className={cn(
-                            "text-sm font-bold",
-                            isBuy ? "text-crypto-green" : "text-crypto-red"
-                          )}>
+                          <span
+                            className={cn(
+                              "text-xs font-bold number-animate",
+                              isBuy ? "text-crypto-green" : "text-crypto-red"
+                            )}
+                          >
                             {formatVolume(tx.amountUSD)}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground">
-                            {tx.amountCoin < 1 ? tx.amountCoin.toFixed(4) : tx.amountCoin.toFixed(2)} {tx.symbol}
-                          </div>
+                          </span>
                         </div>
-                        <span className="text-[10px] text-muted-foreground whitespace-nowrap w-14 text-right">
-                          {relativeTime(tx.timestamp)}
-                        </span>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-            </div>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Volume by Symbol */}
-        <Card className="glass-card card-accent-gold lg:col-span-2">
+        {/* Right: Volume by Symbol Chart (2 cols) */}
+        <Card className="glass-card lg:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <TrendingDown className="w-4 h-4 text-crypto-gold" />
-              Volume por Símbolo
+            <CardTitle className="text-sm font-semibold">
+              Concentração por Ativo (USD)
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="h-[320px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={volumeBySymbol}
-                  layout="vertical"
-                  margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
-                >
-                  <XAxis
-                    type="number"
-                    tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
-                    axisLine={false}
-                    tickLine={false}
-                    tickFormatter={(v) => formatVolume(v)}
-                  />
+          <CardContent className="pt-2">
+            {volumeBySymbol.length > 0 ? (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={volumeBySymbol} layout="vertical" margin={{ left: 10, right: 10 }}>
+                  <XAxis type="number" hide />
                   <YAxis
-                    type="category"
                     dataKey="symbol"
-                    tick={{ fontSize: 10, fill: "var(--muted-foreground)", fontFamily: "monospace" }}
+                    type="category"
+                    tick={{ fill: "#94a3b8", fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
-                    width={42}
+                    width={45}
                   />
                   <RechartsTooltip
                     contentStyle={{
-                      background: "var(--card)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "8px",
-                      fontSize: "11px",
+                      backgroundColor: "rgba(15, 23, 42, 0.95)",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      borderRadius: 8,
+                      fontSize: 12,
                     }}
-                    formatter={(value: number) => [formatVolume(value), "Volume"]}
+                    formatter={(val: number) => [formatVolume(val), "Volume"]}
                   />
-                  <Bar dataKey="volume" radius={[0, 4, 4, 0]} maxBarSize={20}>
-                    {volumeBySymbol.map((entry, index) => (
+                  <Bar dataKey="volume" radius={[0, 4, 4, 0]}>
+                    {volumeBySymbol.map((entry) => (
                       <Cell
-                        key={`cell-${index}`}
-                        fill="#f59e0b"
-                        fillOpacity={0.6 + (index * 0.05)}
+                        key={entry.symbol}
+                        fill={CRYPTO_COLORS[`${entry.symbol}USDT`] || "#f59e0b"}
                       />
                     ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+            ) : (
+              <div className="h-[260px] flex items-center justify-center text-xs text-muted-foreground">
+                Aguardando dados de volume...
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

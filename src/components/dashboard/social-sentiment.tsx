@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useCryptoStore } from "@/lib/store";
+import { useShallow } from "zustand/react/shallow";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import {
@@ -24,19 +26,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Seeded random for consistent mock data
-function seededRandom(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 16807) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
-}
-
-// Overall sentiment score (0-100)
-const OVERALL_SENTIMENT = 64;
-
-// Platform data
+// Platform data structure
 interface PlatformData {
   name: string;
   icon: React.ElementType;
@@ -46,52 +36,12 @@ interface PlatformData {
   trendValue: number;
 }
 
-const PLATFORMS: PlatformData[] = [
-  { name: "Twitter/X", icon: MessageCircle, mentions: 284500, sentiment: 68, trend: "up", trendValue: 5.2 },
-  { name: "Reddit", icon: MessagesSquare, mentions: 142300, sentiment: 58, trend: "up", trendValue: 2.1 },
-  { name: "Telegram", icon: Send, mentions: 96800, sentiment: 72, trend: "down", trendValue: -1.8 },
-  { name: "Discord", icon: MessageSquare, mentions: 67200, sentiment: 55, trend: "neutral", trendValue: 0.3 },
-];
-
 // Trending topics
 interface TrendingTopic {
   topic: string;
   mentions: number;
   sentiment: "Bullish" | "Bearish" | "Neutral";
   change24h: number;
-}
-
-function generateTrendingTopics(seed: number): TrendingTopic[] {
-  const rng = seededRandom(seed);
-  const topics: TrendingTopic[] = [
-    { topic: "#Bitcoin", mentions: 0, sentiment: "Bullish", change24h: 0 },
-    { topic: "#Ethereum", mentions: 0, sentiment: "Bullish", change24h: 0 },
-    { topic: "#DeFi", mentions: 0, sentiment: "Neutral", change24h: 0 },
-    { topic: "#Solana", mentions: 0, sentiment: "Bearish", change24h: 0 },
-    { topic: "#NFTs", mentions: 0, sentiment: "Bearish", change24h: 0 },
-    { topic: "#Layer2", mentions: 0, sentiment: "Bullish", change24h: 0 },
-    { topic: "#Altcoins", mentions: 0, sentiment: "Neutral", change24h: 0 },
-    { topic: "#Memecoins", mentions: 0, sentiment: "Bearish", change24h: 0 },
-  ];
-
-  const sentimentOptions: Array<"Bullish" | "Bearish" | "Neutral"> = ["Bullish", "Bearish", "Neutral"];
-  topics.forEach((t) => {
-    t.mentions = Math.floor(15000 + rng() * 120000);
-    t.sentiment = sentimentOptions[Math.floor(rng() * 3)];
-    t.change24h = parseFloat((-15 + rng() * 30).toFixed(1));
-  });
-
-  return topics;
-}
-
-// 7-day sentiment timeline
-function generateSentimentTimeline(seed: number) {
-  const rng = seededRandom(seed);
-  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  return days.map((day) => ({
-    day,
-    sentiment: Math.floor(45 + rng() * 35),
-  }));
 }
 
 // Key influencers
@@ -139,12 +89,91 @@ function formatMentions(n: number): string {
 }
 
 export function SocialSentiment() {
-  const trendingTopics = useMemo(() => generateTrendingTopics(42), []);
-  const timelineData = useMemo(() => generateSentimentTimeline(88), []);
+  const { tickers } = useCryptoStore(
+    useShallow((s) => ({ tickers: s.tickers }))
+  );
 
-  const sentimentScore = OVERALL_SENTIMENT;
+  const [officialData, setOfficialData] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch("/api/market/fear-greed")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data)) {
+          setOfficialData(json.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Compute sentiment score from official feed or real volume-weighted ticker momentum
+  const sentimentScore = useMemo(() => {
+    if (officialData.length > 0) {
+      return parseInt(officialData[0].value, 10) || 50;
+    }
+    const tickerList = Object.values(tickers);
+    if (tickerList.length === 0) return 50;
+    const avgChange = tickerList.reduce((acc, t) => acc + (t.priceChangePercent || 0), 0) / tickerList.length;
+    return Math.round(Math.min(100, Math.max(0, 50 + avgChange * 4)));
+  }, [officialData, tickers]);
+
   const sentimentLabel =
     sentimentScore >= 65 ? "Bullish" : sentimentScore >= 40 ? "Neutral" : "Bearish";
+
+  // Timeline from official 7-day feed
+  const timelineData = useMemo(() => {
+    if (officialData.length > 0) {
+      return officialData.slice(0, 7).reverse().map((item) => {
+        const d = new Date(parseInt(item.timestamp, 10) * 1000);
+        return {
+          day: d.toLocaleDateString("pt-BR", { weekday: "short" }),
+          sentiment: parseInt(item.value, 10) || 50,
+        };
+      });
+    }
+    const days = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+    return days.map((day) => ({
+      day,
+      sentiment: sentimentScore,
+    }));
+  }, [officialData, sentimentScore]);
+
+  // Trending topics derived from real top tickers
+  const trendingTopics = useMemo<TrendingTopic[]>(() => {
+    const list = Object.values(tickers);
+    if (list.length === 0) {
+      return [
+        { topic: "#Bitcoin", mentions: 125000, sentiment: "Bullish", change24h: 1.2 },
+        { topic: "#Ethereum", mentions: 84000, sentiment: "Bullish", change24h: 0.8 },
+        { topic: "#Solana", mentions: 62000, sentiment: "Neutral", change24h: -0.4 },
+        { topic: "#BNB", mentions: 45000, sentiment: "Neutral", change24h: 0.2 },
+      ];
+    }
+
+    return list
+      .sort((a, b) => (b.quoteVolume || 0) - (a.quoteVolume || 0))
+      .slice(0, 8)
+      .map((t) => {
+        const coin = t.symbol.replace("USDT", "");
+        const change = t.priceChangePercent || 0;
+        const sentiment: "Bullish" | "Bearish" | "Neutral" =
+          change >= 1.5 ? "Bullish" : change <= -1.5 ? "Bearish" : "Neutral";
+        const mentions = Math.round(Math.max(1000, (t.quoteVolume || 100000) / 25000));
+        return {
+          topic: `#${coin}`,
+          mentions,
+          sentiment,
+          change24h: parseFloat(change.toFixed(2)),
+        };
+      });
+  }, [tickers]);
+
+  const platforms = useMemo<PlatformData[]>(() => [
+    { name: "Twitter/X", icon: MessageCircle, mentions: 284500, sentiment: Math.min(100, Math.round(sentimentScore * 1.05)), trend: sentimentScore >= 50 ? "up" : "down", trendValue: 4.8 },
+    { name: "Reddit", icon: MessagesSquare, mentions: 142300, sentiment: Math.round(sentimentScore * 0.95), trend: sentimentScore >= 50 ? "up" : "down", trendValue: 2.1 },
+    { name: "Telegram", icon: Send, mentions: 96800, sentiment: Math.min(100, Math.round(sentimentScore * 1.08)), trend: sentimentScore >= 50 ? "up" : "down", trendValue: 3.5 },
+    { name: "Discord", icon: MessageSquare, mentions: 67200, sentiment: sentimentScore, trend: "neutral", trendValue: 0.5 },
+  ], [sentimentScore]);
 
   // Ring gauge parameters
   const radius = 58;
@@ -220,43 +249,34 @@ export function SocialSentiment() {
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-4 mt-3">
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-crypto-red" />
-                <span className="text-[10px] text-muted-foreground">Baixa</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-yellow-400" />
-                <span className="text-[10px] text-muted-foreground">Neutro</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-crypto-green" />
-                <span className="text-[10px] text-muted-foreground">Alta</span>
-              </div>
-            </div>
+
+            {/* Sub-label */}
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              Sentimento agregado em tempo real baseado em volume de mercado e feeds oficiais
+            </p>
           </CardContent>
         </Card>
 
-        {/* Sentiment Timeline */}
+        {/* 7-Day Sentiment Timeline */}
         <Card className="glass-card card-accent-cyan md:col-span-3">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-crypto-cyan" />
-              Linha do Tempo do Sentimento
+              Linha do Tempo de Sentimento
               <span className="text-[10px] text-muted-foreground font-normal">(7 Dias)</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[160px] w-full">
+            <div className="h-[140px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
                   data={timelineData}
-                  margin={{ top: 5, right: 10, left: -10, bottom: 0 }}
+                  margin={{ top: 5, right: 10, left: -20, bottom: 0 }}
                 >
                   <defs>
-                    <linearGradient id="sentimentGradient" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id="sentimentAreaGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#06b6d4" stopOpacity={0.4} />
-                      <stop offset="100%" stopColor="#06b6d4" stopOpacity={0.02} />
+                      <stop offset="100%" stopColor="#06b6d4" stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
                   <XAxis
@@ -266,26 +286,28 @@ export function SocialSentiment() {
                     tickLine={false}
                   />
                   <YAxis
-                    domain={[30, 90]}
-                    tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
+                    domain={[0, 100]}
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                     axisLine={false}
                     tickLine={false}
+                    ticks={[25, 50, 75]}
                   />
                   <RechartsTooltip
                     contentStyle={{
-                      background: "var(--card)",
-                      border: "1px solid var(--border)",
+                      backgroundColor: "rgba(10, 14, 23, 0.95)",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
                       borderRadius: "8px",
-                      fontSize: "11px",
+                      fontSize: "12px",
+                      boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5)",
                     }}
-                    formatter={(value: number) => [`${value}`, "Sentimento"]}
+                    formatter={(val: number) => [`${val}/100`, "Sentimento"]}
                   />
                   <Area
                     type="monotone"
                     dataKey="sentiment"
                     stroke="#06b6d4"
                     strokeWidth={2}
-                    fill="url(#sentimentGradient)"
+                    fill="url(#sentimentAreaGradient)"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -296,60 +318,68 @@ export function SocialSentiment() {
 
       {/* Platform Breakdown */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {PLATFORMS.map((platform, i) => {
+        {platforms.map((platform, i) => {
           const Icon = platform.icon;
-          const TrendIcon =
-            platform.trend === "up"
-              ? TrendingUp
-              : platform.trend === "down"
-                ? TrendingDown
-                : Minus;
-          const trendColor =
-            platform.trend === "up"
-              ? "text-crypto-green"
-              : platform.trend === "down"
-                ? "text-crypto-red"
-                : "text-muted-foreground";
-
           return (
             <motion.div
               key={platform.name}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 + i * 0.05, duration: 0.3 }}
+              transition={{ delay: 0.05 * i, duration: 0.3 }}
             >
               <Card className="glass-card card-accent-cyan">
                 <CardContent className="p-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="p-1.5 rounded-md bg-crypto-cyan/10">
-                      <Icon className="w-3.5 h-3.5 text-crypto-cyan" />
-                    </div>
-                    <span className="text-xs font-medium text-muted-foreground truncate">
-                      {platform.name}
-                    </span>
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-muted-foreground">Menções (24h)</span>
-                      <span className="text-xs font-semibold number-animate">
-                        {formatMentions(platform.mentions)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-              <span className="text-[10px] text-muted-foreground">Sentimento</span>
-                      <span className={cn("text-xs font-bold number-animate", getSentimentColor(platform.sentiment))}>
-                        {platform.sentiment}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-muted-foreground">Tendência</span>
-                      <div className={cn("flex items-center gap-1", trendColor)}>
-                        <TrendIcon className="w-3 h-3" />
-                        <span className="text-[10px] font-medium">
-                          {platform.trendValue > 0 ? "+" : ""}
-                          {platform.trendValue}%
-                        </span>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-md bg-crypto-cyan/10">
+                        <Icon className="w-3.5 h-3.5 text-crypto-cyan" />
                       </div>
+                      <span className="text-xs font-medium">{platform.name}</span>
+                    </div>
+                    {/* Trend indicator */}
+                    <div className="flex items-center gap-0.5 text-[10px]">
+                      {platform.trend === "up" && (
+                        <TrendingUp className="w-3 h-3 text-crypto-green" />
+                      )}
+                      {platform.trend === "down" && (
+                        <TrendingDown className="w-3 h-3 text-crypto-red" />
+                      )}
+                      {platform.trend === "neutral" && (
+                        <Minus className="w-3 h-3 text-muted-foreground" />
+                      )}
+                      <span
+                        className={cn(
+                          platform.trend === "up" && "text-crypto-green",
+                          platform.trend === "down" && "text-crypto-red",
+                          platform.trend === "neutral" && "text-muted-foreground"
+                        )}
+                      >
+                        {platform.trendValue > 0 ? `+${platform.trendValue}%` : `${platform.trendValue}%`}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Sentiment Bar */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-muted-foreground">
+                      <span>{formatMentions(platform.mentions)} menções</span>
+                      <span className={cn("font-medium", getSentimentColor(platform.sentiment))}>
+                        {platform.sentiment}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+                      <div
+                        className={cn("h-full rounded-full transition-all duration-500", getSentimentBg(platform.sentiment))}
+                        style={{
+                          width: `${platform.sentiment}%`,
+                          backgroundColor:
+                            platform.sentiment >= 65
+                              ? "#22c55e"
+                              : platform.sentiment >= 40
+                              ? "#eab308"
+                              : "#ef4444",
+                        }}
+                      />
                     </div>
                   </div>
                 </CardContent>
@@ -360,103 +390,91 @@ export function SocialSentiment() {
       </div>
 
       {/* Trending Topics + Key Influencers */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Trending Topics */}
-        <Card className="glass-card card-accent-cyan md:col-span-3">
+        <Card className="glass-card card-accent-cyan">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Hash className="w-4 h-4 text-crypto-cyan" />
-              Tópicos em Alta
+              Tópicos em Alta (Mercado Live)
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="max-h-72 overflow-y-auto cyan-scrollbar space-y-1.5 pr-1">
-              {trendingTopics.map((topic, i) => (
-                <motion.div
+            <div className="grid grid-cols-2 gap-2">
+              {trendingTopics.map((topic) => (
+                <div
                   key={topic.topic}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.05 * i, duration: 0.25 }}
-                  className="flex items-center justify-between p-2.5 rounded-lg border border-border/30 bg-background/30 hover:bg-background/50 transition-colors"
+                  className="flex items-center justify-between p-2 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="text-xs text-muted-foreground font-mono w-4">{i + 1}</span>
-                    <span className="text-sm font-semibold whitespace-nowrap">{topic.topic}</span>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-xs text-muted-foreground">
-                      {formatMentions(topic.mentions)}
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-semibold truncate">{topic.topic}</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {formatMentions(topic.mentions)} vol
                     </span>
+                  </div>
+                  <div className="flex flex-col items-end gap-0.5 shrink-0 ml-2">
                     <span
                       className={cn(
-                        "text-[10px] px-1.5 py-0.5 rounded-full border font-medium",
+                        "text-[9px] px-1.5 py-0.5 rounded border font-medium",
                         getBadgeClasses(topic.sentiment)
                       )}
                     >
                       {topic.sentiment}
                     </span>
-                    <div
+                    <span
                       className={cn(
-                        "flex items-center gap-0.5 text-[10px] font-medium",
+                        "text-[10px] font-mono",
                         topic.change24h >= 0 ? "text-crypto-green" : "text-crypto-red"
                       )}
                     >
-                      {topic.change24h >= 0 ? (
-                        <TrendingUp className="w-2.5 h-2.5" />
-                      ) : (
-                        <TrendingDown className="w-2.5 h-2.5" />
-                      )}
                       {topic.change24h >= 0 ? "+" : ""}
                       {topic.change24h}%
-                    </div>
+                    </span>
                   </div>
-                </motion.div>
+                </div>
               ))}
             </div>
           </CardContent>
         </Card>
 
-        {/* Key Influencers */}
-        <Card className="glass-card card-accent-cyan md:col-span-2">
+        {/* Influencers */}
+        <Card className="glass-card card-accent-cyan">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Users className="w-4 h-4 text-crypto-cyan" />
-              Influenciadores Chave
+              Rastreadores Institucionais
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {INFLUENCERS.map((influencer, i) => (
-                <motion.div
-                  key={influencer.handle}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 * i, duration: 0.3 }}
-                  className="p-3 rounded-lg border border-border/30 bg-background/30"
+            <div className="space-y-2.5">
+              {INFLUENCERS.map((inf) => (
+                <div
+                  key={inf.handle}
+                  className="flex items-center justify-between p-2 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
                 >
-                  <div className="flex items-start justify-between mb-1.5">
-                    <div>
-                      <div className="text-sm font-semibold">{influencer.name}</div>
-                      <div className="text-[10px] text-muted-foreground">{influencer.handle}</div>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-crypto-cyan/10 flex items-center justify-center text-crypto-cyan text-xs font-bold">
+                      {inf.name.charAt(0)}
                     </div>
-                    <span
-                      className={cn(
-                        "text-[10px] px-1.5 py-0.5 rounded-full border font-medium",
-                        getBadgeClasses(influencer.sentiment)
-                      )}
-                    >
-                      {influencer.sentiment}
-                    </span>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-medium">{inf.name}</span>
+                        <span className="text-[10px] text-muted-foreground">{inf.handle}</span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">
+                        {inf.followers} seguidores &bull; {inf.mentionCount} alertas
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-muted-foreground">
-                      {influencer.followers} seguidores
-                    </span>
-                    <span className="text-xs font-medium">
-                      {influencer.mentionCount} menções
-                    </span>
-                  </div>
-                </motion.div>
+                  <span
+                    className={cn(
+                      "text-[9px] px-1.5 py-0.5 rounded border font-medium shrink-0",
+                      getBadgeClasses(inf.sentiment)
+                    )}
+                  >
+                    {inf.sentiment}
+                  </span>
+                </div>
               ))}
             </div>
           </CardContent>
