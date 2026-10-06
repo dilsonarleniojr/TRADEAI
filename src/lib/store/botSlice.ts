@@ -192,7 +192,7 @@ const DEFAULT_BOTS: BotInstance[] = [
     trailingStopDistance: 0.6,
     trailingTakeProfit: true,
     trailingTakeProfitDistance: 0.6,
-    allocationAmount: 35,
+    allocationAmount: 40,
     maxDailyTrades: 25,
     buyThreshold: 30,
     sellThreshold: 70,

@@ -294,7 +294,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setStopLoss(1.5);
       setTrailingStop(true);
       setTrailingStopDistance(0.6);
-      setAllocationAmount(35);
+      setAllocationAmount(40);
       setActive(false);
       setUseMarketRegime(true);
       setUseQuantFunnel(false);
