@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const rawSymbol = searchParams.get('symbol') || 'BTCUSDT';
-    const symbol = rawSymbol.toUpperCase();
+    const symbol = rawSymbol.toUpperCase() === 'AUTO' ? 'BTCUSDT' : rawSymbol.toUpperCase();
     const interval = searchParams.get('interval') || '1h';
     const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '100', 10), 10), 1000);
 

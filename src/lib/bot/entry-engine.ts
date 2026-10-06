@@ -84,13 +84,13 @@ export function analyzeMarket(
   const slowNow = slow[slow.length - 1];
   const trend: QuantVote = fastNow > slowNow ? "BUY" : fastNow < slowNow ? "SELL" : "HOLD";
 
-  // Momentum: histograma MACD + RSI fora de sobrecompra (teto rigoroso de 60 para evitar compras em topo)
+  // Momentum: histograma MACD + RSI fora de sobrecompra (teto calibrado de 68 para momentum de scalp)
   const macd = calculateMACD(closes, 12, 26, 9);
   const hist = macd?.histogram ?? 0;
   const momentum: QuantVote = macd
-    ? hist > 0 && rsi <= 60
+    ? hist > 0 && rsi <= 68
       ? "BUY"
-      : hist < 0 || rsi > 70
+      : hist < 0 || rsi > 74
         ? "SELL"
         : "HOLD"
     : "HOLD";
@@ -104,7 +104,7 @@ export function analyzeMarket(
   // Rejeição de pavio superior (Bull trap / exaustão compradora)
   const candleRange = last.high - last.low;
   const upperWick = last.high - Math.max(last.open, last.close);
-  const isTopRejection = candleRange > 0 && (upperWick / candleRange) >= 0.40;
+  const isTopRejection = candleRange > 0 && (upperWick / candleRange) >= 0.45;
 
   // Exige volume expressivo, ausência de rejeição de topo e confirmação direcional
   const flow: QuantVote = (!isTopRejection && (prevStrong || (currentGreen && currentVolumeGood)))
@@ -122,7 +122,7 @@ export function analyzeMarket(
     votes,
     voteDetails: {
       trend: `EMA${fastP} ${fastNow >= slowNow ? ">" : "<"} EMA${slowP}`,
-      momentum: macd ? `MACD ${hist >= 0 ? "+" : ""}${hist.toFixed(4)} · RSI ${rsi.toFixed(0)} (máx ≤ 60)` : "poucos candles",
+      momentum: macd ? `MACD ${hist >= 0 ? "+" : ""}${hist.toFixed(4)} · RSI ${rsi.toFixed(0)} (máx ≤ 68)` : "poucos candles",
       flow: avgVol > 0 ? `Vol ${(last.volume / avgVol).toFixed(1)}× média · ${currentGreen ? "verde" : "vermelho"}${isTopRejection ? " (rejeição)" : ""}` : "sem volume",
     },
     committee: ensembleDecision(votes),
@@ -156,8 +156,8 @@ export function evaluateStrategySignal(
       if (votes.trend === "SELL") {
         return { ok: false, detail: "bloqueado por tendência de baixa (EMA rápida < EMA lenta)" };
       }
-      if (analysis.rsi > 60) {
-        return { ok: false, detail: `RSI (${analysis.rsi.toFixed(0)}) esticado para compra institucional (máx ≤ 60)` };
+      if (analysis.rsi > 68) {
+        return { ok: false, detail: `RSI (${analysis.rsi.toFixed(0)}) esticado para compra institucional (máx ≤ 68)` };
       }
       const buys = [votes.trend, votes.momentum, votes.flow].filter((v) => v === "BUY").length;
       return { ok: analysis.committee === "BUY", detail: `${buys}/3 análises favoráveis (tendência altista e RSI ${analysis.rsi.toFixed(0)} saudável)` };
@@ -375,9 +375,9 @@ export function evaluateEntry(
   const lastCandle = klines[klines.length - 1];
   const candleRange = lastCandle.high - lastCandle.low;
   const upperWick = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
-  const wickRejection = candleRange > 0 && (upperWick / candleRange) >= 0.40;
+  const wickRejection = candleRange > 0 && (upperWick / candleRange) >= 0.45;
   const distFromEma9Pct = lastFastEma > 0 ? ((lastCandle.close - lastFastEma) / lastFastEma) * 100 : 0;
-  const isExtendedFromEma = distFromEma9Pct > 1.2;
+  const isExtendedFromEma = distFromEma9Pct > 1.8;
 
   const isPullbackHealthy = !wickRejection && !isExtendedFromEma;
   checks.push({
