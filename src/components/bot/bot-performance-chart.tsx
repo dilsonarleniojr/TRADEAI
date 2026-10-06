@@ -27,6 +27,9 @@ import {
   Trophy,
   AlertTriangle,
   Activity,
+  ShieldCheck,
+  Receipt,
+  Scale,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -147,6 +150,15 @@ export function BotPerformanceChart() {
     const bestTrade = closedTrades.length > 0 ? Math.max(...closedTrades.map((t) => t.pnl)) : 0;
     const worstTrade = closedTrades.length > 0 ? Math.min(...closedTrades.map((t) => t.pnl)) : 0;
 
+    const grossProfit = winTrades.reduce((sum, t) => sum + t.pnl, 0);
+    const grossLoss = Math.abs(lossTrades.reduce((sum, t) => sum + t.pnl, 0));
+    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 99.9 : 1.0);
+    const avgWin = winTrades.length > 0 ? grossProfit / winTrades.length : 0;
+    const avgLoss = lossTrades.length > 0 ? grossLoss / lossTrades.length : 0;
+    const payoffRatio = avgLoss > 0 ? avgWin / avgLoss : 1.0;
+    const estimatedFees = trades.reduce((sum, t) => sum + (t.total || 0) * 0.001, 0);
+    const netPnl = totalPnl - estimatedFees;
+
     return {
       pnlOverTime: pnlData,
       winLossData: winLossArr,
@@ -160,6 +172,12 @@ export function BotPerformanceChart() {
         totalTrades: trades.length,
         wins: winTrades.length,
         losses: lossTrades.length,
+        grossProfit,
+        grossLoss,
+        profitFactor,
+        payoffRatio,
+        estimatedFees,
+        netPnl,
       },
     };
   }, [trades]);
@@ -213,7 +231,8 @@ export function BotPerformanceChart() {
         <CardContent className="space-y-4">
           {/* Summary Stats Row */}
           {stats && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="p-3 rounded-lg bg-secondary/30 border border-border/50 card-accent-cyan">
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <DollarSign className="w-3.5 h-3.5 text-crypto-cyan" />
@@ -265,7 +284,92 @@ export function BotPerformanceChart() {
                 </div>
               </div>
             </div>
-          )}
+
+            {/* Quantitative Diagnostics Row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 rounded-lg bg-secondary/20 border border-border/40">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Scale className="w-3.5 h-3.5 text-primary" />
+                  <span className="text-[10px] text-muted-foreground font-medium">Fator de Lucro</span>
+                </div>
+                <div className={cn(
+                  "text-base font-bold font-mono",
+                  stats.profitFactor >= 1.5 ? "text-crypto-green" : stats.profitFactor >= 1.0 ? "text-amber-400" : "text-crypto-red"
+                )}>
+                  {stats.profitFactor.toFixed(2)}
+                </div>
+                <span className="text-[9px] text-muted-foreground block mt-0.5">
+                  {stats.profitFactor >= 1.5 ? "Excelente (>1.5)" : stats.profitFactor >= 1.0 ? "Equilibrado (≥1.0)" : "Abaixo do ideal (<1.0)"}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-lg bg-secondary/20 border border-border/40">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Target className="w-3.5 h-3.5 text-purple-400" />
+                  <span className="text-[10px] text-muted-foreground font-medium">Razão Ganho/Perda</span>
+                </div>
+                <div className={cn(
+                  "text-base font-bold font-mono",
+                  stats.payoffRatio >= 1.2 ? "text-crypto-green" : "text-crypto-red"
+                )}>
+                  {stats.payoffRatio.toFixed(2)}x
+                </div>
+                <span className="text-[9px] text-muted-foreground block mt-0.5">
+                  Média Vitórias vs Derrotas
+                </span>
+              </div>
+
+              <div className="p-3 rounded-lg bg-secondary/20 border border-border/40">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Receipt className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-[10px] text-muted-foreground font-medium">Taxas Pagas (Est.)</span>
+                </div>
+                <div className="text-base font-bold font-mono text-amber-400">
+                  -${stats.estimatedFees.toFixed(2)}
+                </div>
+                <span className="text-[9px] text-muted-foreground block mt-0.5">
+                  0.10% Binance Spot por trade
+                </span>
+              </div>
+
+              <div className="p-3 rounded-lg bg-secondary/20 border border-border/40">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-crypto-cyan" />
+                  <span className="text-[10px] text-muted-foreground font-medium">L/P Líquido Real</span>
+                </div>
+                <div className={cn(
+                  "text-base font-bold font-mono",
+                  stats.netPnl >= 0 ? "text-crypto-green" : "text-crypto-red"
+                )}>
+                  {stats.netPnl >= 0 ? "+" : ""}${stats.netPnl.toFixed(2)}
+                </div>
+                <span className="text-[9px] text-muted-foreground block mt-0.5">
+                  Após desconto de todas as taxas
+                </span>
+              </div>
+            </div>
+
+            {/* Proteções Ativas Banner */}
+            <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-emerald-300">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="font-semibold text-foreground">
+                  Proteções Quantitativas Ativadas:
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2 text-[10px]">
+                <span className="bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30">
+                  🛡️ Veto Contra-Tendência (EMA9 &gt; EMA21)
+                </span>
+                <span className="bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30">
+                  ⏱️ Cooldown Anti-Cascata de 10m
+                </span>
+                <span className="bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30">
+                  🔒 Trava de Breakeven pós +0.75%
+                </span>
+              </div>
+            </div>
+          </>)}
 
           {/* Charts Grid: 2 columns on desktop */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

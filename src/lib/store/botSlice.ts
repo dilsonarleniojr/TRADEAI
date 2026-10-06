@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import type { BotInstance, BotPosition, BotStrategy, TickerData, TradeData } from "./types";
+import type { BotInstance, BotPosition, BotStrategy, TickerData, TradeData, BotExecutionReport } from "./types";
 
 export interface BotSlice {
   // Fleet of simultaneous bots
@@ -7,6 +7,10 @@ export interface BotSlice {
   selectedBotId: string | null;
   setSelectedBotId: (id: string | null) => void;
   setBots: (bots: BotInstance[]) => void;
+
+  // Active execution report modal
+  activeExecutionReport: BotExecutionReport | null;
+  setActiveExecutionReport: (report: BotExecutionReport | null) => void;
 
   // Bot activation controls
   toggleBotActive: (botId: string, active?: boolean) => void;
@@ -16,6 +20,7 @@ export interface BotSlice {
   addBot: (bot: Partial<BotInstance> & { name: string; symbol: string; strategy: BotStrategy }) => string;
   updateBot: (botId: string, partial: Partial<BotInstance>) => void;
   removeBot: (botId: string) => void;
+  removeAllBots: () => void;
   resetBotStats: (botId: string) => void;
   resetAllBotStats: () => void;
   clearSimulatedPositions: () => void;
@@ -48,6 +53,10 @@ const DEFAULT_BOTS: BotInstance[] = [
     useEnsemble: true,
     useMarketRegime: true,
     useQuantFunnel: false,
+    useMultiTimeframe: true,
+    autoBreakEven: true,
+    breakEvenTrigger: 1.2,
+    breakEvenBuffer: 0.25,
     position: null,
     stats: {
       totalTrades: 0,
@@ -80,6 +89,10 @@ const DEFAULT_BOTS: BotInstance[] = [
     rsiPeriod: 14,
     emaFast: 12,
     emaSlow: 26,
+    useMultiTimeframe: true,
+    autoBreakEven: true,
+    breakEvenTrigger: 1.2,
+    breakEvenBuffer: 0.25,
     position: null,
     stats: {
       totalTrades: 0,
@@ -112,6 +125,10 @@ const DEFAULT_BOTS: BotInstance[] = [
     rsiPeriod: 14,
     emaFast: 9,
     emaSlow: 21,
+    useMultiTimeframe: true,
+    autoBreakEven: true,
+    breakEvenTrigger: 1.2,
+    breakEvenBuffer: 0.25,
     position: null,
     stats: {
       totalTrades: 0,
@@ -144,6 +161,10 @@ const DEFAULT_BOTS: BotInstance[] = [
     rsiPeriod: 14,
     emaFast: 9,
     emaSlow: 21,
+    useMultiTimeframe: true,
+    autoBreakEven: true,
+    breakEvenTrigger: 1.2,
+    breakEvenBuffer: 0.25,
     position: null,
     stats: {
       totalTrades: 0,
@@ -158,6 +179,44 @@ const DEFAULT_BOTS: BotInstance[] = [
     },
     createdAt: new Date(Date.now() - 36000000).toISOString(),
   },
+  {
+    id: "bot-epsilon-auto",
+    name: "Bot Épsilon — Auto-Screener Top Altas",
+    symbol: "AUTO",
+    strategy: "BREAKOUT",
+    active: false,
+    status: "stopped",
+    takeProfit: 3.8,
+    stopLoss: 1.6,
+    trailingStop: true,
+    trailingStopDistance: 0.8,
+    allocationAmount: 50,
+    maxDailyTrades: 25,
+    buyThreshold: 30,
+    sellThreshold: 70,
+    rsiPeriod: 14,
+    emaFast: 9,
+    emaSlow: 21,
+    useAutoScreener: true,
+    useMultiTimeframe: true,
+    useMarketRegime: true,
+    autoBreakEven: true,
+    breakEvenTrigger: 1.2,
+    breakEvenBuffer: 0.25,
+    position: null,
+    stats: {
+      totalTrades: 0,
+      buyTrades: 0,
+      sellTrades: 0,
+      winTrades: 0,
+      lossTrades: 0,
+      winRate: 0,
+      realizedPnl: 0,
+      lastAction: "Aguardando ativação (Desligado)",
+      lastActionTime: new Date().toISOString(),
+    },
+    createdAt: new Date(Date.now() - 18000000).toISOString(),
+  },
 ];
 
 export const createBotSlice: StateCreator<
@@ -168,8 +227,10 @@ export const createBotSlice: StateCreator<
 > = (set, get) => ({
   bots: DEFAULT_BOTS,
   selectedBotId: "bot-alpha-btc",
+  activeExecutionReport: null,
 
   setSelectedBotId: (id) => set({ selectedBotId: id }),
+  setActiveExecutionReport: (report) => set({ activeExecutionReport: report }),
 
   setBots: (bots) => {
     set({ bots });
@@ -221,7 +282,7 @@ export const createBotSlice: StateCreator<
     const id = `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const newBot: BotInstance = {
       id,
-      name: botData.name || `Bot ${botData.symbol.replace("USDT", "")}`,
+      name: botData.name || (botData.symbol === "AUTO" ? "Bot Auto-Screener" : `Bot ${botData.symbol.replace("USDT", "")}`),
       symbol: botData.symbol.toUpperCase(),
       strategy: botData.strategy || "AI",
       active: botData.active ?? false,
@@ -242,6 +303,21 @@ export const createBotSlice: StateCreator<
       useQuantFunnel: botData.useQuantFunnel ?? false,
       useMarketRegime: botData.useMarketRegime ?? true,
       useEnsemble: botData.useEnsemble ?? false,
+      useMultiTimeframe: botData.useMultiTimeframe ?? true,
+      useAutoScreener: botData.useAutoScreener ?? (botData.symbol === "AUTO"),
+      autoBreakEven: botData.autoBreakEven ?? true,
+      breakEvenTrigger: botData.breakEvenTrigger ?? 1.2,
+      breakEvenBuffer: botData.breakEvenBuffer ?? 0.25,
+      trailingTakeProfit: botData.trailingTakeProfit ?? true,
+      trailingTakeProfitDistance: botData.trailingTakeProfitDistance ?? 0.6,
+      useSmartDca: botData.useSmartDca ?? true,
+      maxDcaOrders: botData.maxDcaOrders ?? 1,
+      dcaDipThreshold: botData.dcaDipThreshold ?? 1.5,
+      dcaMultiplier: botData.dcaMultiplier ?? 1.0,
+      useOrderBookFilter: botData.useOrderBookFilter ?? true,
+      maxSpreadPercent: botData.maxSpreadPercent ?? 0.15,
+      minBidAskRatio: botData.minBidAskRatio ?? 0.45,
+      stopAfterProfit: botData.stopAfterProfit ?? false,
       aiEngine: botData.aiEngine,
       position: null,
       stats: {
@@ -286,6 +362,14 @@ export const createBotSlice: StateCreator<
         bots: updated,
         selectedBotId: state.selectedBotId === botId ? (updated[0]?.id || null) : state.selectedBotId,
       };
+    });
+  },
+
+  removeAllBots: () => {
+    get().setBotActive(false);
+    set({
+      bots: [],
+      selectedBotId: null,
     });
   },
 

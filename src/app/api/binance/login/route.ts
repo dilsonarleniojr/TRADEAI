@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     success: true,
     connected: !!session,
-    testnet: session?.testnet ?? true,
+    testnet: session?.testnet ?? (process.env.APP_ENV !== 'production'),
   });
 }
 

@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { BotCard } from "./bot-card";
 import { BotDialog } from "./bot-dialog";
 import { AIBotRecommendationsDialog } from "./ai-bot-recommendations-dialog";
+import { BotExecutionReportDialog } from "./bot-execution-report-dialog";
 import { BinanceConnection } from "./binance-connection";
 import { EnginePanel } from "./engine-panel";
 import { BotReadinessBar } from "./bot-readiness";
@@ -64,6 +65,7 @@ export function BotSection() {
     botActive,
     setBotActive,
     toggleAllBots,
+    removeAllBots,
     botConfig,
     tradingMode,
     portfolio,
@@ -73,8 +75,27 @@ export function BotSection() {
     addBotLog,
     clearSimulatedData,
     resetAllBotStats,
+    activeExecutionReport,
+    setActiveExecutionReport,
   } = useCryptoStore(
-  useShallow((s) => ({ bots: s.bots, botActive: s.botActive, setBotActive: s.setBotActive, toggleAllBots: s.toggleAllBots, botConfig: s.botConfig, tradingMode: s.tradingMode, portfolio: s.portfolio, tickers: s.tickers, trades: s.trades, klines: s.klines, addBotLog: s.addBotLog, clearSimulatedData: s.clearSimulatedData, resetAllBotStats: s.resetAllBotStats }))
+  useShallow((s) => ({
+    bots: s.bots,
+    botActive: s.botActive,
+    setBotActive: s.setBotActive,
+    toggleAllBots: s.toggleAllBots,
+    removeAllBots: s.removeAllBots,
+    botConfig: s.botConfig,
+    tradingMode: s.tradingMode,
+    portfolio: s.portfolio,
+    tickers: s.tickers,
+    trades: s.trades,
+    klines: s.klines,
+    addBotLog: s.addBotLog,
+    clearSimulatedData: s.clearSimulatedData,
+    resetAllBotStats: s.resetAllBotStats,
+    activeExecutionReport: s.activeExecutionReport,
+    setActiveExecutionReport: s.setActiveExecutionReport,
+  }))
 );
 
   const bgEnabled = useBackgroundSettings((s) => s.enabled);
@@ -193,28 +214,67 @@ export function BotSection() {
 
           {/* Global Fleet Controls */}
           <div className="flex items-center gap-2 flex-wrap">
-            {activeBots.length === bots.length ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => toggleAllBots(false)}
-                className="h-9 px-3.5 border-amber-500/40 text-amber-400 hover:bg-amber-500/10 text-xs font-semibold cursor-pointer"
-              >
-                <Pause className="w-3.5 h-3.5 mr-1.5" />
-                Pausar Todos ({activeBots.length})
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                onClick={() => {
-                  toggleAllBots(true);
-                }}
-                className="h-9 px-3.5 bg-gradient-to-r from-crypto-green to-emerald-600 hover:from-crypto-green/90 text-white text-xs font-semibold shadow-md shadow-crypto-green/20 cursor-pointer"
-              >
-                <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
-                Iniciar Todos ({bots.length})
-              </Button>
-            )}
+            <Button
+              size="sm"
+              onClick={() => {
+                toggleAllBots(true);
+                toast({
+                  title: "Frota Iniciada",
+                  description: `Todos os ${bots.length} robôs foram ativados.`,
+                });
+              }}
+              disabled={bots.length === 0 || activeBots.length === bots.length}
+              className="h-9 px-3.5 bg-gradient-to-r from-crypto-green to-emerald-600 hover:from-crypto-green/90 text-white text-xs font-semibold shadow-md shadow-crypto-green/20 cursor-pointer disabled:opacity-50"
+            >
+              <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
+              Iniciar Todos ({bots.length})
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                toggleAllBots(false);
+                toast({
+                  title: "Frota Pausada",
+                  description: "Todos os robôs foram pausados.",
+                });
+              }}
+              disabled={bots.length === 0 || activeBots.length === 0}
+              className="h-9 px-3.5 border-amber-500/40 text-amber-400 hover:bg-amber-500/10 text-xs font-semibold cursor-pointer disabled:opacity-50"
+              title="Pausar todos os robôs em execução"
+            >
+              <Pause className="w-3.5 h-3.5 mr-1.5" />
+              Pausar Todos {activeBots.length > 0 ? `(${activeBots.length})` : ""}
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (bots.length === 0) return;
+                const inPositionCount = inPositionBots.length;
+                const warnMsg =
+                  inPositionCount > 0
+                    ? `⚠️ ATENÇÃO: Existem ${inPositionCount} robô(s) com posições abertas!\n\nDeseja realmente excluir TODOS os ${bots.length} robôs da frota? As ordens ativas não serão mais gerenciadas automaticamente por eles.`
+                    : `Deseja realmente excluir TODOS os ${bots.length} robôs da frota? Esta ação removerá permanentemente as configurações dos robôs.`;
+
+                if (window.confirm(warnMsg)) {
+                  removeAllBots();
+                  toast({
+                    title: "Frota Excluída",
+                    description: "Todos os robôs foram removidos.",
+                    variant: "destructive",
+                  });
+                }
+              }}
+              disabled={bots.length === 0}
+              className="h-9 px-3.5 border-crypto-red/40 text-crypto-red hover:bg-crypto-red/10 text-xs font-semibold cursor-pointer disabled:opacity-50"
+              title="Excluir todos os robôs da frota"
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+              Excluir Todos
+            </Button>
 
             {tradingMode === "paper" && (
               <Button
@@ -416,23 +476,56 @@ export function BotSection() {
           </span>
         </div>
 
-        {/* Grid of Simultaneous Bot Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4">
-          <AnimatePresence>
-            {filteredBots.map((bot) => (
-              <motion.div
-                key={bot.id}
-                layout
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2 }}
+        {/* Grid of Simultaneous Bot Cards or Empty State */}
+        {bots.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border/80 bg-card/40 p-8 text-center flex flex-col items-center justify-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+              <Bot className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-foreground">Nenhum robô na frota</h3>
+              <p className="text-xs text-muted-foreground mt-1 max-w-md">
+                Você pode obter sugestões automáticas inteligentes geradas pela IA ou criar novos robôs manualmente para operar em simultâneo.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <Button
+                size="sm"
+                onClick={() => setIsAiRecommendationsOpen(true)}
+                className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white text-xs font-semibold cursor-pointer"
               >
-                <BotCard bot={bot} onEdit={handleOpenEditDialog} />
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
+                <Brain className="w-3.5 h-3.5 mr-1.5" />
+                Obter Sugestões de IA
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleOpenCreateDialog}
+                className="text-xs cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                Criar Robô Manual
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4">
+            <AnimatePresence>
+              {filteredBots.map((bot) => (
+                <motion.div
+                  key={bot.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <BotCard bot={bot} onEdit={handleOpenEditDialog} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
 
       {/* ========================================================================= */}
@@ -499,6 +592,7 @@ export function BotSection() {
           setIsDialogOpen(true);
         }}
       />
+
     </motion.div>
   );
 }

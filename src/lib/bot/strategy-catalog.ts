@@ -76,7 +76,15 @@ export function strategyName(id: string): string {
   return getStrategy(id)?.name ?? id;
 }
 
-export type EngineFilterKey = "useMarketRegime" | "useQuantFunnel" | "useEnsemble";
+export type EngineFilterKey =
+  | "autoBreakEven"
+  | "useAutoScreener"
+  | "useMultiTimeframe"
+  | "useOrderBookFilter"
+  | "useSmartDca"
+  | "useMarketRegime"
+  | "useQuantFunnel"
+  | "useEnsemble";
 
 export interface EngineFilterInfo {
   key: EngineFilterKey;
@@ -86,6 +94,36 @@ export interface EngineFilterInfo {
 }
 
 export const ENGINE_FILTERS: EngineFilterInfo[] = [
+  {
+    key: "autoBreakEven",
+    name: "Break-Even Automático (Risco Zero)",
+    description:
+      "Assim que a operação atinge lucro parcial (ex: +1.0%), move automaticamente o Stop Loss para o preço de entrada + taxas (+0.25%). Impede categoricamente que um trade vencedor se transforme em prejuízo.",
+  },
+  {
+    key: "useAutoScreener",
+    name: "Auto-Screener de Moedas em Alta",
+    description:
+      "Varre dinamicamente a Binance por moedas de alto volume (> $5M) e momento positivo em 24h, operando os ativos com maior fluxo comprador em vez de ficar preso a um par estático.",
+  },
+  {
+    key: "useMultiTimeframe",
+    name: "Filtro Multi-Timeframe (15m + 1m)",
+    description:
+      "Garante que o robô só compra no gráfico de 1m quando a tendência maior de 15m (EMA9 > EMA21) também estiver de alta, evitando compras falsas em quedas contínuas.",
+  },
+  {
+    key: "useOrderBookFilter",
+    name: "Filtro de Spread e Livro de Ofertas",
+    description:
+      "Analisa o livro de ofertas da Binance antes da ordem. Bloqueia compras se o spread for alargado (> 0.15%) ou se houver dominância pesada de vendedores no book.",
+  },
+  {
+    key: "useSmartDca",
+    name: "DCA Inteligente em Níveis de Suporte",
+    description:
+      "Se a posição recuar até suporte sem atingir o stop loss, executa 1 reentrada calculada (RSI ≤ 38) para reduzir o preço médio e acelerar o take-profit no repique.",
+  },
   {
     key: "useMarketRegime",
     name: "Filtro de Regime",

@@ -33,6 +33,8 @@ import {
   Cpu,
   Layers,
   AlertTriangle,
+  Shuffle,
+  Flame,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useShallow } from "zustand/react/shallow";
@@ -104,10 +106,12 @@ export function AIBotRecommendationsDialog({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [isApplyingBatch, setIsApplyingBatch] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
-  const fetchRecommendations = async () => {
+  const fetchRecommendations = async (categoryOverride?: string) => {
     setIsLoading(true);
     setSelectedIds(new Set());
+    const categoryToSend = categoryOverride !== undefined ? categoryOverride : selectedCategory;
     try {
       const res = await fetch("/api/ai/bot-recommendations", {
         method: "POST",
@@ -116,6 +120,7 @@ export function AIBotRecommendationsDialog({
           marketData: tickers,
           cashBalance: portfolio.cashBalance,
           tradingMode,
+          category: categoryToSend,
         }),
       });
 
@@ -142,6 +147,11 @@ export function AIBotRecommendationsDialog({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleCategoryChange = (cat: string) => {
+    setSelectedCategory(cat);
+    fetchRecommendations(cat);
   };
 
   // Mantém as recomendações já carregadas na sessão ao reabrir, buscando apenas se vazio
@@ -200,6 +210,7 @@ export function AIBotRecommendationsDialog({
           active: activateImmediately,
           useEnsemble: rec.strategy === "QUANT_ENSEMBLE",
           useMarketRegime: true,
+          useMultiTimeframe: true,
           aiEngine: `${rec.aiProviderName} (${rec.aiModel})`,
         });
 
@@ -246,6 +257,7 @@ export function AIBotRecommendationsDialog({
         active: activateImmediately,
         useEnsemble: rec.strategy === "QUANT_ENSEMBLE",
         useMarketRegime: true,
+        useMultiTimeframe: true,
         aiEngine: `${rec.aiProviderName} (${rec.aiModel})`,
       });
 
@@ -366,16 +378,63 @@ export function AIBotRecommendationsDialog({
               </div>
             </div>
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchRecommendations}
-              disabled={isLoading}
-              className="h-8 gap-1.5 border-white/[0.1] hover:bg-white/[0.05] text-xs font-medium cursor-pointer"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
-              Recalcular com IA
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchRecommendations()}
+                disabled={isLoading}
+                className="h-8 gap-1.5 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10 text-xs font-semibold cursor-pointer shadow-sm"
+              >
+                <Shuffle className="w-3.5 h-3.5 text-cyan-400" />
+                <span>🎲 Sortear Novos Pares</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchRecommendations()}
+                disabled={isLoading}
+                className="h-8 gap-1.5 border-white/[0.1] hover:bg-white/[0.05] text-xs font-medium cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
+                Recalcular com IA
+              </Button>
+            </div>
+          </div>
+
+          {/* Market Focus / Category Selector Tabs */}
+          <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gradient-to-r from-blue-950/40 via-purple-950/40 to-cyan-950/40 border border-white/[0.08] text-xs flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1 mr-1">
+                <Flame className="w-3.5 h-3.5 text-orange-400" />
+                Foco de Mercado:
+              </span>
+              {[
+                { id: "all", label: "🌟 Mix Diversificado" },
+                { id: "gainers", label: "🔥 Maiores Altas" },
+                { id: "hot_altcoins", label: "🤖 IA & Altcoins Quentes" },
+                { id: "dip_hunters", label: "📉 Dips & Oportunidades" },
+                { id: "blue_chips", label: "💎 Blue Chips" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => handleCategoryChange(tab.id)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1",
+                    selectedCategory === tab.id
+                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
+                      : "text-muted-foreground hover:text-white hover:bg-white/[0.04]"
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <span className="text-[10px] text-muted-foreground hidden md:inline font-mono">
+              500+ pares Binance
+            </span>
           </div>
 
           {/* Quick Context & Balance Bar */}
@@ -700,6 +759,27 @@ export function AIBotRecommendationsDialog({
                             </Badge>
                           </div>
                         </div>
+
+                        {/* Live Price & 24h variation from Binance tickers */}
+                        {tickers[rec.symbol] && (
+                          <div className="flex flex-col items-end shrink-0">
+                            <span className="font-mono text-xs font-bold text-foreground">
+                              ${formatPrice(tickers[rec.symbol].price)}
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-[9px] px-1 py-0 font-bold mt-0.5",
+                                tickers[rec.symbol].priceChangePercent >= 0
+                                  ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/10"
+                                  : "border-red-500/40 text-red-400 bg-red-500/10"
+                              )}
+                            >
+                              {tickers[rec.symbol].priceChangePercent >= 0 ? "+" : ""}
+                              {tickers[rec.symbol].priceChangePercent.toFixed(2)}%
+                            </Badge>
+                          </div>
+                        )}
                       </div>
 
                       {/* Montante & Tempo — Destaque Principal */}

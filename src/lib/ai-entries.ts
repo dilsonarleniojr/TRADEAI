@@ -49,6 +49,13 @@ export interface TradeEntry {
   invalidation: string;
   source: "ia+regras" | "ia" | "regras";
   currentPrice: number;
+  aiProvider?: string;
+  aiProviderName?: string;
+  indicators?: {
+    rsi: number;
+    trend: "up" | "down" | "range";
+    volumeRatio: number;
+  };
 }
 
 export interface PositionInput {

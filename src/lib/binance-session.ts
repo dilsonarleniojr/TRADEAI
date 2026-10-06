@@ -57,8 +57,8 @@ export function getBinanceCredentials(request: NextRequest | Request): BinanceCr
   const session = readBinanceSession(request);
   if (session) return session;
   return {
-    apiKey: process.env.BINANCE_API_KEY?.replace(/['"]/g, "") || "",
-    apiSecret: process.env.BINANCE_API_SECRET?.replace(/['"]/g, "") || "",
+    apiKey: (process.env.BINANCE_API_KEY?.replace(/['"]/g, "") || "").trim(),
+    apiSecret: (process.env.BINANCE_API_SECRET?.replace(/['"]/g, "") || "").trim(),
     testnet: process.env.APP_ENV !== "production",
   };
 }

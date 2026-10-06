@@ -38,7 +38,7 @@ export const createAccountSlice: StateCreator<AccountSlice, [], [], AccountSlice
 
   // Binance connection state
   binanceConnected: false,
-  binanceTestnet: true,
+  binanceTestnet: false,
   setBinanceConnected: (connected) => set({ binanceConnected: connected }),
   setBinanceTestnet: (testnet) => set({ binanceTestnet: testnet }),
 });

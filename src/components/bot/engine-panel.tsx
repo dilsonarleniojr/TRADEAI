@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Brain, CheckCircle2, XCircle, ShieldAlert, TrendingUp, Activity, Zap } from "lucide-react";
 import { getSymbolKlines } from "@/lib/bot/kline-cache";
+import { getOrderBookAnalysis, type OrderBookAnalysis } from "@/lib/bot/order-book-cache";
 import { analyzeMarket, evaluateEntry, type MarketAnalysis } from "@/lib/bot/entry-engine";
 import { runMarketScanner, type QuantVote } from "@/lib/bot/quant-engine";
 import {
@@ -34,18 +35,27 @@ const VOTE_CLASS: Record<QuantVote, string> = {
   HOLD: "text-muted-foreground",
 };
 
-/** Candles reais (1h) de cada ativo usado pelos robôs, atualizados periodicamente. */
-function useBotKlines(symbols: string[]) {
-  const [klines, setKlines] = useState<Record<string, KlineData[]>>({});
+/** Candles reais (1m e 15m) e Livro de Ofertas de cada ativo usado pelos robôs. */
+function useBotMarketData(symbols: string[]) {
+  const [klines1m, setKlines1m] = useState<Record<string, KlineData[]>>({});
+  const [klines15m, setKlines15m] = useState<Record<string, KlineData[]>>({});
+  const [orderBooks, setOrderBooks] = useState<Record<string, OrderBookAnalysis>>({});
   const key = symbols.join(",");
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      const entries = await Promise.all(
-        key.split(",").filter(Boolean).map(async (s) => [s, await getSymbolKlines(s)] as const)
-      );
-      if (!cancelled) setKlines(Object.fromEntries(entries));
+      const symList = key.split(",").filter((s) => s && s !== "AUTO");
+      const [entries1m, entries15m, entriesDepth] = await Promise.all([
+        Promise.all(symList.map(async (s) => [s, await getSymbolKlines(s, "1m")] as const)),
+        Promise.all(symList.map(async (s) => [s, await getSymbolKlines(s, "15m")] as const)),
+        Promise.all(symList.map(async (s) => [s, await getOrderBookAnalysis(s)] as const)),
+      ]);
+      if (!cancelled) {
+        setKlines1m(Object.fromEntries(entries1m));
+        setKlines15m(Object.fromEntries(entries15m));
+        setOrderBooks(Object.fromEntries(entriesDepth));
+      }
     };
     load();
     const timer = setInterval(load, REFRESH_MS);
@@ -55,7 +65,7 @@ function useBotKlines(symbols: string[]) {
     };
   }, [key]);
 
-  return klines;
+  return { klines1m, klines15m, orderBooks };
 }
 
 export function EnginePanel() {
@@ -64,7 +74,7 @@ export function EnginePanel() {
   );
 
   const symbols = useMemo(() => Array.from(new Set(bots.map((b) => b.symbol))), [bots]);
-  const klines = useBotKlines(symbols);
+  const { klines1m, klines15m, orderBooks } = useBotMarketData(symbols);
   const [focusSymbol, setFocusSymbol] = useState<string>("");
   const activeSymbol = focusSymbol && symbols.includes(focusSymbol) ? focusSymbol : symbols[0];
 
@@ -74,17 +84,28 @@ export function EnginePanel() {
   const analysis: MarketAnalysis | null = useMemo(() => {
     const ticker = activeSymbol ? tickers[activeSymbol] : undefined;
     if (!ticker) return null;
-    return analyzeMarket(activeSymbol, ticker, btc, klines[activeSymbol] ?? []);
-  }, [activeSymbol, tickers, btc, klines]);
+    return analyzeMarket(activeSymbol, ticker, btc, klines1m[activeSymbol] ?? []);
+  }, [activeSymbol, tickers, btc, klines1m]);
 
   const decisions = useMemo(
     () =>
       bots.map((bot) => {
         const ticker = tickers[bot.symbol];
         if (!ticker) return { bot, decision: null };
-        return { bot, decision: evaluateEntry(bot, ticker, btc, klines[bot.symbol] ?? [], aiSignals) };
+        return {
+          bot,
+          decision: evaluateEntry(
+            bot,
+            ticker,
+            btc,
+            klines1m[bot.symbol] ?? [],
+            aiSignals,
+            klines15m[bot.symbol] ?? [],
+            orderBooks[bot.symbol] ?? null
+          ),
+        };
       }),
-    [bots, tickers, btc, klines, aiSignals]
+    [bots, tickers, btc, klines1m, klines15m, orderBooks, aiSignals]
   );
 
   const strategyStats = useMemo(() => {

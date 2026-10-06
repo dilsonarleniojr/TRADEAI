@@ -46,9 +46,15 @@ export interface BotConfigData {
   useQuantFunnel: boolean;
   useMarketRegime: boolean;
   useEnsemble: boolean;
+  useMultiTimeframe?: boolean;
+  useAutoScreener?: boolean;
+  autoBreakEven?: boolean;
+  breakEvenTrigger?: number;
+  breakEvenBuffer?: number;
   rsiPeriod: number;
   emaFast: number;
   emaSlow: number;
+  stopAfterProfit?: boolean;
   // Strategy specific params
   gridLower?: number;
   gridUpper?: number;
@@ -73,6 +79,14 @@ export interface BotPosition {
   entryTime: string;
   /** Modo em que a posição foi aberta. Só pode ser encerrada pelo motor nesse mesmo modo. */
   mode?: TradingMode;
+  /** Break-Even Automático armado para proteger o capital com risco zero */
+  isBreakEvenArmed?: boolean;
+  breakEvenPrice?: number;
+  /** Trailing Take-Profit Dinâmico: deixa o lucro correr além da meta em fortes altas */
+  isTakeProfitArmed?: boolean;
+  tpPeakPrice?: number;
+  /** Quantidade de ordens DCA (preço médio) executadas nesta posição */
+  dcaCount?: number;
 }
 
 export interface BotStats {
@@ -102,17 +116,17 @@ export interface BotInstance {
   strategy: BotStrategy;
   active: boolean;
   status: "idle" | "scanning" | "in_position" | "take_profit" | "stopped";
-  
+
   // Profit-seeking parameters
   takeProfit: number; // Target profit % to trigger sell (e.g. 2.5%, 3.5%)
   stopLoss: number;   // Max loss % protection (e.g. 1.8%, 2.0%)
   trailingStop: boolean; // Protect locked profit when pulling back from peak
   trailingStopDistance: number; // % drop from peak to trigger trailing profit lock
-  
+
   // Capital & Sizing
   allocationAmount: number; // USDT allocated per trade (e.g. 100 USDT)
   maxDailyTrades: number;
-  
+
   // Strategy settings
   buyThreshold: number;  // e.g. RSI 30
   sellThreshold: number; // e.g. RSI 70
@@ -124,6 +138,32 @@ export interface BotInstance {
   useQuantFunnel?: boolean;
   useMarketRegime?: boolean;
   useEnsemble?: boolean;
+  useMultiTimeframe?: boolean;
+  useAutoScreener?: boolean;
+  autoBreakEven?: boolean; // Break-Even Automático (move stop para o lucro/zero após atingir gatilho)
+  breakEvenTrigger?: number; // % de lucro para armar o break-even (ex: 1.0% ou 1.2%)
+  breakEvenBuffer?: number; // % acima do preço de entrada para cobrir taxas da Binance (ex: +0.25%)
+
+  // Trailing Take-Profit Dinâmico (deixar o lucro correr em fortes altas)
+  trailingTakeProfit?: boolean;
+  trailingTakeProfitDistance?: number; // % de recuo do topo para realizar (ex: 0.6%)
+
+  // DCA Inteligente em Suporte (Preço Médio Estratégico)
+  useSmartDca?: boolean;
+  maxDcaOrders?: number; // Máximo de recompras (padrão 1)
+  dcaDipThreshold?: number; // % de recuo para avaliar DCA em suporte (ex: 1.5%)
+  dcaMultiplier?: number; // Multiplicador de capital para o DCA (padrão 1.0)
+
+  // Filtro de Spread e Livro de Ofertas (Order Book Imbalance)
+  useOrderBookFilter?: boolean;
+  maxSpreadPercent?: number; // Spread máximo tolerado (padrão 0.15%)
+  minBidAskRatio?: number; // Proporção mínima de compradores vs vendedores no book (padrão 0.45)
+
+  // Encerramento automático após lucro (Operação Única)
+  stopAfterProfit?: boolean;
+
+  // Último relatório de execução gerado ao finalizar
+  lastReport?: BotExecutionReport | null;
 
   // Active position held by this bot
   position?: BotPosition | null;
@@ -134,6 +174,36 @@ export interface BotInstance {
   // Real-time statistics
   stats: BotStats;
   createdAt: string;
+}
+
+export interface BotExecutionReport {
+  id: string;
+  botId: string;
+  botName: string;
+  symbol: string;
+  strategy: string;
+  mode: "live" | "paper";
+  entryPrice: number;
+  exitPrice: number;
+  quantity: number;
+  totalInvested: number; // Volume de compra em USDT
+  totalReturned: number; // Volume de venda em USDT
+  grossPnl: number;      // PnL Bruto em USDT
+  gainPercent: number;   // % de lucro/prejuízo
+  buyFee: number;        // Taxa estimada de compra (ex: 0.1% Binance)
+  sellFee: number;       // Taxa estimada de venda (ex: 0.1% Binance)
+  totalFees: number;     // Total de custos/taxas em USDT
+  netPnl: number;        // PnL Líquido após taxas em USDT
+  netGainPercent: number;// % Líquido
+  entryTime: string;
+  exitTime: string;
+  durationFormatted: string;
+  exitReason: string;
+  botTotalTrades: number;
+  botWinTrades: number;
+  botLossTrades: number;
+  botWinRate: number;
+  botAccumulatedPnl: number;
 }
 
 export interface PortfolioPosition {
@@ -171,6 +241,7 @@ export interface TradeData {
   timestamp: string;
   botId?: string;
   botName?: string;
+  sellAll?: boolean;
 }
 
 export interface AISignalData {

@@ -3,19 +3,22 @@ import { askAIOnce, parseJsonLoose } from "@/lib/ai-client";
 import { isRateLimited } from "@/lib/rate-limit";
 import { loadSnapshot } from "@/lib/ai-market";
 import { combineWithAi, computeIndicators, planEntry, type TradeEntry } from "@/lib/ai-entries";
+import { getActiveProvider } from "@/lib/ai/settings";
+import { getProvider } from "@/lib/ai/providers";
 
-const MAX_SYMBOLS = 8;
+const MAX_SYMBOLS = 10;
 const CACHE_MS = 60_000;
 const cache = new Map<string, { at: number; entries: TradeEntry[] }>();
 
 export async function POST(request: NextRequest) {
   const ip = request.headers.get("x-forwarded-for") || "127.0.0.1";
-  if (isRateLimited(`entries:${ip}`, 6)) {
-    return NextResponse.json({ success: false, error: "Muitas solicitações. Aguarde um minuto." }, { status: 429 });
+  if (isRateLimited(`entries:${ip}`, 12)) {
+    return NextResponse.json({ success: false, error: "Muitas solicitações. Aguarde um instante." }, { status: 429 });
   }
 
   try {
     const body = await request.json();
+    const forceRefresh = Boolean(body.forceRefresh);
     const symbols: string[] = Array.isArray(body.symbols)
       ? [...new Set<string>(body.symbols.map((s: unknown) => String(s).replace(/[^A-Z0-9]/gi, "").toUpperCase()))]
           .filter((s) => s.length >= 5 && s.length <= 20)
@@ -27,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     const key = [...symbols].sort().join(",");
     const hit = cache.get(key);
-    if (hit && Date.now() - hit.at < CACHE_MS) {
+    if (!forceRefresh && hit && Date.now() - hit.at < CACHE_MS) {
       return NextResponse.json({ success: true, entries: hit.entries, cached: true });
     }
 
@@ -39,7 +42,14 @@ export async function POST(request: NextRequest) {
     // 1) Plano determinístico por indicadores
     const plans = snapshots.map((m) => ({ m, plan: planEntry(m) }));
 
-    // 2) A IA confirma ou veta cada plano (e escreve o comentário)
+    // 2) Identificar o motor de IA ativo configurado
+    const activeProv = getActiveProvider();
+    const provInfo = getProvider(activeProv);
+    let usedProvider = activeProv;
+    let usedProviderName = provInfo.name;
+    let externalAiSucceeded = false;
+
+    // 3) A IA confirma ou veta cada plano (e escreve o comentário)
     let aiRaw: any[] = [];
     {
       try {
@@ -58,8 +68,8 @@ export async function POST(request: NextRequest) {
           .join("\n");
 
         const text = await askAIOnce(
-          "Você é o motor de IA analítica quantitativa da TradeAI. Seu objetivo é identificar boas oportunidades operacionais de swing e day trade com excelente relação risco/retorno. Confirme os planos de alta probabilidade fundamentando nos indicadores.",
-          `Analise os planos operacionais abaixo. Para cada par, confirme a direção (BUY para compra ou WAIT se risco extremo), nível de confiança (0.7 a 0.95) e uma explicação técnica concisa em português citando as médias e o momentum.
+          `Você é o motor de IA analítica quantitativa da TradeAI operando com ${usedProviderName}. Seu objetivo é analisar oportunidades operacionais de swing e day trade com excelente relação risco/retorno. Confirme os planos de alta probabilidade fundamentando nos indicadores técnicos.`,
+          `Analise os planos operacionais abaixo. Para cada par, confirme a direção (BUY para compra ou WAIT se risco extremo/divergência), nível de confiança (0.7 a 0.96) e uma explicação técnica concisa em português citando as médias, RSI e volume.
 
 ${summary}
 
@@ -67,27 +77,44 @@ Responda APENAS com um array JSON: [{ "symbol": "...", "side": "BUY|SELL|WAIT", 
           { maxTokens: 4000 }
         );
         const parsed = parseJsonLoose<any[]>(text);
-        if (Array.isArray(parsed) && parsed.length > 0) aiRaw = parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          aiRaw = parsed;
+          externalAiSucceeded = true;
+        }
       } catch (e: any) {
-        console.info("[AI Entries] Usando motor interno TradeAI Quant Engine:", e.message);
+        console.info(`[AI Entries] Fallback para motor interno TradeAI Quant Engine (${e.message})`);
+        usedProvider = "algorithmic_quant" as any;
+        usedProviderName = "TradeAI Quant Engine";
       }
     }
 
     // Se a IA externa não respondeu ou não está configurada, o motor local TradeAI Quant Engine gera a análise
     const entries: TradeEntry[] = plans.map(({ m, plan }) => {
-      const externalAi = aiRaw.find((r) => String(r?.symbol || "").toUpperCase() === m.symbol);
-      if (externalAi) {
-        return combineWithAi(plan, externalAi);
-      }
-
-      // Motor de IA Local TradeAI Quant
       const ind = computeIndicators(m.candles);
       const rsi = ind?.rsi ?? 50;
       const trend = ind?.trend ?? "range";
       const volRatio = ind?.volumeRatio ?? 1.0;
 
+      const indicatorData = {
+        rsi: Math.round(rsi),
+        trend,
+        volumeRatio: Number(volRatio.toFixed(2)),
+      };
+
+      const externalAi = aiRaw.find((r) => String(r?.symbol || "").toUpperCase() === m.symbol);
+      if (externalAi && externalAiSucceeded) {
+        const combined = combineWithAi(plan, externalAi);
+        return {
+          ...combined,
+          aiProvider: usedProvider,
+          aiProviderName: usedProviderName,
+          indicators: indicatorData,
+        };
+      }
+
+      // Motor de IA Local TradeAI Quant
+      let aiReasoning = plan.reasoning;
       if (plan.side === "BUY") {
-        let aiReasoning = "";
         if (trend === "up") {
           aiReasoning = `TradeAI Quant: Estrutura altista dominante com alinhamento das médias móveis. RSI em ${rsi.toFixed(0)} e volume ${volRatio.toFixed(1)}× a média confirmam força compradora. Alvo projetado com R:R de 1:${plan.riskReward.toFixed(1)}.`;
         } else if (trend === "range") {
@@ -95,22 +122,28 @@ Responda APENAS com um array JSON: [{ "symbol": "...", "side": "BUY|SELL|WAIT", 
         } else {
           aiReasoning = `TradeAI Quant: Setup de reversão técnica na sobrevenda. Potencial de retorno às médias com risco limitado.`;
         }
-        return {
-          ...plan,
-          reasoning: aiReasoning,
-          confidence: Math.max(0.78, plan.confidence),
-          source: "ia+regras",
-        };
       }
 
       return {
         ...plan,
-        source: "ia+regras",
+        reasoning: aiReasoning || plan.reasoning,
+        confidence: Math.max(0.78, plan.confidence),
+        source: externalAiSucceeded ? "ia+regras" : "regras",
+        aiProvider: usedProviderName,
+        aiProviderName: usedProviderName,
+        indicators: indicatorData,
       };
     });
 
+    // Ordena para que oportunidades acionáveis (COMPRA/VENDA com maior score) apareçam primeiro
+    entries.sort((a, b) => {
+      if (a.side !== "WAIT" && b.side === "WAIT") return -1;
+      if (a.side === "WAIT" && b.side !== "WAIT") return 1;
+      return b.score - a.score;
+    });
+
     cache.set(key, { at: Date.now(), entries });
-    return NextResponse.json({ success: true, entries, cached: false });
+    return NextResponse.json({ success: true, entries, cached: false, provider: usedProviderName });
   } catch (error: unknown) {
     console.error("[AI Entries] error:", error instanceof Error ? error.message : error);
     return NextResponse.json({ success: false, error: "Falha ao gerar entradas." }, { status: 500 });

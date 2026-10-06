@@ -29,12 +29,14 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { Bot, Sparkles, Target, ShieldAlert, DollarSign, Search, ChevronDown, Dna, Loader2 } from "lucide-react";
+import { Bot, Sparkles, Target, ShieldAlert, ShieldCheck, DollarSign, Search, ChevronDown, Dna, Loader2, CheckCircle2, Rocket, TrendingUp } from "lucide-react";
 import { STRATEGY_CATALOG, ENGINE_FILTERS, getStrategy } from "@/lib/bot/strategy-catalog";
 import { runGeneticOptimization, type GeneticChromosome } from "@/lib/bot/quant-engine";
 import { getSymbolKlines } from "@/lib/bot/kline-cache";
 import { useToast } from "@/hooks/use-toast";
 import { useShallow } from "zustand/react/shallow";
+import { cn } from "@/lib/utils";
+import { formatPrice } from "@/lib/format";
 
 interface BotDialogProps {
   open: boolean;
@@ -43,9 +45,9 @@ interface BotDialogProps {
 }
 
 export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
-  const { addBot, updateBot } = useCryptoStore(
-  useShallow((s) => ({ addBot: s.addBot, updateBot: s.updateBot }))
-);
+  const { addBot, updateBot, tickers } = useCryptoStore(
+    useShallow((s) => ({ addBot: s.addBot, updateBot: s.updateBot, tickers: s.tickers }))
+  );
   const { toast } = useToast();
 
   const [name, setName] = useState("");
@@ -60,33 +62,121 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
   const [useMarketRegime, setUseMarketRegime] = useState(true);
   const [useQuantFunnel, setUseQuantFunnel] = useState(false);
   const [useEnsemble, setUseEnsemble] = useState(false);
+  const [useMultiTimeframe, setUseMultiTimeframe] = useState(true);
+  const [useAutoScreener, setUseAutoScreener] = useState(false);
+  const [autoBreakEven, setAutoBreakEven] = useState(true);
+  const [breakEvenTrigger, setBreakEvenTrigger] = useState(1.2);
+  const [breakEvenBuffer, setBreakEvenBuffer] = useState(0.25);
+  const [trailingTakeProfit, setTrailingTakeProfit] = useState(true);
+  const [trailingTakeProfitDistance, setTrailingTakeProfitDistance] = useState(0.6);
+  const [useSmartDca, setUseSmartDca] = useState(true);
+  const [dcaDipThreshold, setDcaDipThreshold] = useState(1.5);
+  const [maxDcaOrders, setMaxDcaOrders] = useState(1);
+  const [useOrderBookFilter, setUseOrderBookFilter] = useState(true);
   const [rsiPeriod, setRsiPeriod] = useState(14);
   const [buyThreshold, setBuyThreshold] = useState(30);
   const [sellThreshold, setSellThreshold] = useState(70);
   const [emaFast, setEmaFast] = useState(12);
   const [emaSlow, setEmaSlow] = useState(26);
+  const [stopAfterProfit, setStopAfterProfit] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimized, setOptimized] = useState<GeneticChromosome | null>(null);
   const [isAutofilling, setIsAutofilling] = useState(false);
+  const [aiUpdated, setAiUpdated] = useState(false);
   const [symbolSelectOpen, setSymbolSelectOpen] = useState(false);
   const [symbolSearch, setSymbolSearch] = useState("");
+  const [symbolCategory, setSymbolCategory] = useState<"gainers" | "volume" | "dips" | "all">("gainers");
+
+  const cryptoMetaMap = useMemo(() => {
+    const map = new Map<string, (typeof CRYPTO_LIST)[0]>();
+    for (const c of CRYPTO_LIST) {
+      map.set(c.symbol, c);
+    }
+    return map;
+  }, []);
+
+  const allAvailableSymbols = useMemo(() => {
+    const tickerList = Object.values(tickers || {});
+    if (tickerList.length === 0) {
+      return CRYPTO_LIST.map((c) => ({
+        symbol: c.symbol,
+        name: c.name,
+        short: c.short,
+        price: 0,
+        change24h: 0,
+        volume: 0,
+      }));
+    }
+
+    return tickerList
+      .filter((t) => t.symbol.endsWith("USDT"))
+      .map((t) => {
+        const meta = cryptoMetaMap.get(t.symbol);
+        const short = meta?.short || t.symbol.replace("USDT", "");
+        const name = meta?.name || short;
+        return {
+          symbol: t.symbol,
+          name,
+          short,
+          price: t.price,
+          change24h: t.priceChangePercent,
+          volume: t.quoteVolume,
+        };
+      });
+  }, [tickers, cryptoMetaMap]);
 
   const filteredCryptoList = useMemo(() => {
     const q = symbolSearch.toLowerCase().trim();
-    if (!q) return CRYPTO_LIST.slice(0, 50);
-    return CRYPTO_LIST.filter((c) =>
-      c.symbol.toLowerCase().includes(q) ||
-      c.name.toLowerCase().includes(q) ||
-      c.short.toLowerCase().includes(q)
-    ).slice(0, 60);
-  }, [symbolSearch, CRYPTO_LIST.length]);
+    let list = allAvailableSymbols;
+
+    if (q) {
+      list = list.filter(
+        (c) =>
+          c.symbol.toLowerCase().includes(q) ||
+          c.name.toLowerCase().includes(q) ||
+          c.short.toLowerCase().includes(q)
+      );
+    }
+
+    if (symbolCategory === "gainers") {
+      list = [...list].sort((a, b) => b.change24h - a.change24h);
+    } else if (symbolCategory === "volume") {
+      list = [...list].sort((a, b) => b.volume - a.volume);
+    } else if (symbolCategory === "dips") {
+      list = [...list].sort((a, b) => a.change24h - b.change24h);
+    } else {
+      list = [...list].sort((a, b) => b.volume - a.volume);
+    }
+
+    return list.slice(0, 80);
+  }, [allAvailableSymbols, symbolSearch, symbolCategory]);
 
   const handleAiAutofill = async () => {
+    const parseNum = (val: unknown, fallback: number): number => {
+      if (typeof val === "number" && !isNaN(val)) return val;
+      if (typeof val === "string") {
+        const cleaned = val.replace(/[^0-9.-]/g, "");
+        const n = parseFloat(cleaned);
+        if (!isNaN(n)) return n;
+      }
+      return fallback;
+    };
+
+    const parseBool = (val: unknown, fallback: boolean): boolean => {
+      if (typeof val === "boolean") return val;
+      if (typeof val === "string") {
+        const s = val.toLowerCase().trim();
+        if (s === "true" || s === "1" || s === "sim" || s === "yes") return true;
+        if (s === "false" || s === "0" || s === "nao" || s === "não" || s === "no") return false;
+      }
+      return fallback;
+    };
+
     try {
       setIsAutofilling(true);
       toast({
         title: "🤖 Analisando Mercado com IA...",
-        description: `Calculando parâmetros ideais de lucro e risco para ${symbol}...`,
+        description: `Calculando parâmetros ideais de lucro, filtros e risco para ${symbol.replace("USDT", "")}...`,
       });
 
       const res = await fetch("/api/ai/bot-autofill", {
@@ -94,7 +184,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           symbol,
-          currentConfig: { name, strategy, takeProfit, stopLoss, allocationAmount },
+          currentConfig: { name, strategy, takeProfit, stopLoss, allocationAmount, trailingStop, trailingStopDistance },
         }),
       });
 
@@ -103,17 +193,45 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
 
       if (data.success && data.config) {
         const cfg = data.config;
-        if (cfg.name) setName(cfg.name);
-        if (cfg.strategy) setStrategy(cfg.strategy as BotStrategy);
-        if (typeof cfg.takeProfit === "number") setTakeProfit(cfg.takeProfit);
-        if (typeof cfg.stopLoss === "number") setStopLoss(cfg.stopLoss);
-        if (typeof cfg.trailingStop === "boolean") setTrailingStop(cfg.trailingStop);
-        if (typeof cfg.trailingStopDistance === "number") setTrailingStopDistance(cfg.trailingStopDistance);
-        if (typeof cfg.allocationAmount === "number") setAllocationAmount(cfg.allocationAmount);
+        if (!botToEdit && cfg.name && typeof cfg.name === "string") {
+          setName(cfg.name);
+        }
+        if (cfg.strategy && typeof cfg.strategy === "string") {
+          setStrategy(cfg.strategy as BotStrategy);
+        }
+        
+        const newTp = parseNum(cfg.takeProfit, takeProfit);
+        const newSl = parseNum(cfg.stopLoss, stopLoss);
+        const newTs = parseBool(cfg.trailingStop, trailingStop);
+        const newTsDist = parseNum(cfg.trailingStopDistance, trailingStopDistance);
+        const newAlloc = parseNum(cfg.allocationAmount, allocationAmount);
+
+        setTakeProfit(newTp);
+        setStopLoss(newSl);
+        setTrailingStop(newTs);
+        setTrailingStopDistance(newTsDist);
+        setAllocationAmount(newAlloc);
+
+        if (cfg.useMarketRegime !== undefined) setUseMarketRegime(parseBool(cfg.useMarketRegime, useMarketRegime));
+        if (cfg.useQuantFunnel !== undefined) setUseQuantFunnel(parseBool(cfg.useQuantFunnel, useQuantFunnel));
+        if (cfg.useEnsemble !== undefined) setUseEnsemble(parseBool(cfg.useEnsemble, useEnsemble));
+        if (cfg.useMultiTimeframe !== undefined) setUseMultiTimeframe(parseBool(cfg.useMultiTimeframe, useMultiTimeframe));
+        if (cfg.autoBreakEven !== undefined) setAutoBreakEven(parseBool(cfg.autoBreakEven, autoBreakEven));
+        if (cfg.breakEvenTrigger !== undefined) setBreakEvenTrigger(parseNum(cfg.breakEvenTrigger, breakEvenTrigger));
+        if (cfg.breakEvenBuffer !== undefined) setBreakEvenBuffer(parseNum(cfg.breakEvenBuffer, breakEvenBuffer));
+        
+        if (cfg.buyThreshold !== undefined) setBuyThreshold(parseNum(cfg.buyThreshold, buyThreshold));
+        if (cfg.sellThreshold !== undefined) setSellThreshold(parseNum(cfg.sellThreshold, sellThreshold));
+        if (cfg.rsiPeriod !== undefined) setRsiPeriod(Math.round(parseNum(cfg.rsiPeriod, rsiPeriod)));
+        if (cfg.emaFast !== undefined) setEmaFast(Math.round(parseNum(cfg.emaFast, emaFast)));
+        if (cfg.emaSlow !== undefined) setEmaSlow(Math.round(parseNum(cfg.emaSlow, emaSlow)));
+
+        setAiUpdated(true);
+        setTimeout(() => setAiUpdated(false), 3500);
 
         toast({
           title: "✨ Parâmetros Otimizados pela IA!",
-          description: cfg.reasoning || "Robô configurado com sucesso com base nas métricas atuais.",
+          description: `Alvo: +${newTp}% · Stop: -${newSl}% · Trailing: ${newTs ? `${newTsDist}%` : "Off"}. ${cfg.reasoning || ""}`,
         });
       }
     } catch (err: any) {
@@ -141,11 +259,23 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setUseMarketRegime(botToEdit.useMarketRegime ?? false);
       setUseQuantFunnel(botToEdit.useQuantFunnel ?? false);
       setUseEnsemble(botToEdit.useEnsemble ?? false);
+      setUseMultiTimeframe(botToEdit.useMultiTimeframe ?? true);
+      setUseAutoScreener(botToEdit.useAutoScreener ?? (botToEdit.symbol === "AUTO"));
+      setAutoBreakEven(botToEdit.autoBreakEven ?? true);
+      setBreakEvenTrigger(botToEdit.breakEvenTrigger ?? 1.2);
+      setBreakEvenBuffer(botToEdit.breakEvenBuffer ?? 0.25);
+      setTrailingTakeProfit(botToEdit.trailingTakeProfit ?? true);
+      setTrailingTakeProfitDistance(botToEdit.trailingTakeProfitDistance ?? 0.6);
+      setUseSmartDca(botToEdit.useSmartDca ?? true);
+      setDcaDipThreshold(botToEdit.dcaDipThreshold ?? 1.5);
+      setMaxDcaOrders(botToEdit.maxDcaOrders ?? 1);
+      setUseOrderBookFilter(botToEdit.useOrderBookFilter ?? true);
       setRsiPeriod(botToEdit.rsiPeriod ?? 14);
       setBuyThreshold(botToEdit.buyThreshold ?? 30);
       setSellThreshold(botToEdit.sellThreshold ?? 70);
       setEmaFast(botToEdit.emaFast ?? 12);
       setEmaSlow(botToEdit.emaSlow ?? 26);
+      setStopAfterProfit(botToEdit.stopAfterProfit ?? false);
     } else {
       setName("Novo Robô de Lucro");
       setSymbol("SOLUSDT");
@@ -159,6 +289,18 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setUseMarketRegime(true);
       setUseQuantFunnel(false);
       setUseEnsemble(false);
+      setUseMultiTimeframe(true);
+      setUseAutoScreener(false);
+      setAutoBreakEven(true);
+      setBreakEvenTrigger(1.2);
+      setBreakEvenBuffer(0.25);
+      setTrailingTakeProfit(true);
+      setTrailingTakeProfitDistance(0.6);
+      setUseSmartDca(true);
+      setDcaDipThreshold(1.5);
+      setMaxDcaOrders(1);
+      setUseOrderBookFilter(true);
+      setStopAfterProfit(false);
       setRsiPeriod(14);
       setBuyThreshold(30);
       setSellThreshold(70);
@@ -168,18 +310,20 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
     setOptimized(null);
   }, [botToEdit, open]);
 
-  const handleApplyPreset = (preset: "scalp" | "swing" | "dips") => {
+  const handleApplyPreset = (preset: "scalp" | "swing" | "dips" | "screener") => {
     if (preset === "scalp") {
       setTakeProfit(1.8);
       setStopLoss(1.2);
       setTrailingStop(true);
       setTrailingStopDistance(0.5);
+      setUseAutoScreener(false);
       setName(`Scalper ${symbol.replace("USDT", "")}`);
     } else if (preset === "swing") {
       setTakeProfit(5.0);
       setStopLoss(2.5);
       setTrailingStop(true);
       setTrailingStopDistance(1.2);
+      setUseAutoScreener(false);
       setName(`Swing ${symbol.replace("USDT", "")} Trend`);
     } else if (preset === "dips") {
       setStrategy("RSI");
@@ -187,7 +331,19 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setStopLoss(1.8);
       setTrailingStop(true);
       setTrailingStopDistance(0.8);
+      setUseAutoScreener(false);
       setName(`Dip Hunter ${symbol.replace("USDT", "")}`);
+    } else if (preset === "screener") {
+      setSymbol("AUTO");
+      setStrategy("BREAKOUT");
+      setTakeProfit(3.8);
+      setStopLoss(1.6);
+      setTrailingStop(true);
+      setTrailingStopDistance(0.8);
+      setUseAutoScreener(true);
+      setUseMultiTimeframe(true);
+      setUseMarketRegime(true);
+      setName("Auto-Screener Líderes de Alta");
     }
   };
 
@@ -259,11 +415,23 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
         useMarketRegime,
         useQuantFunnel,
         useEnsemble,
+        useMultiTimeframe,
+        useAutoScreener: useAutoScreener || symbol === "AUTO",
+        autoBreakEven,
+        breakEvenTrigger,
+        breakEvenBuffer,
+        trailingTakeProfit,
+        trailingTakeProfitDistance,
+        useSmartDca,
+        dcaDipThreshold,
+        maxDcaOrders,
+        useOrderBookFilter,
         rsiPeriod,
         buyThreshold,
         sellThreshold,
         emaFast,
         emaSlow,
+        stopAfterProfit,
       });
       toast({
         title: "Robô Atualizado!",
@@ -283,11 +451,23 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
         useMarketRegime,
         useQuantFunnel,
         useEnsemble,
+        useMultiTimeframe,
+        useAutoScreener: useAutoScreener || symbol === "AUTO",
+        autoBreakEven,
+        breakEvenTrigger,
+        breakEvenBuffer,
+        trailingTakeProfit,
+        trailingTakeProfitDistance,
+        useSmartDca,
+        dcaDipThreshold,
+        maxDcaOrders,
+        useOrderBookFilter,
         rsiPeriod,
         buyThreshold,
         sellThreshold,
         emaFast,
         emaSlow,
+        stopAfterProfit,
       });
       toast({
         title: "🎉 Robô Criado com Sucesso!",
@@ -359,6 +539,15 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
             >
               🚀 Swing Lucro Alto (+5.0%)
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleApplyPreset("screener")}
+              className="text-xs h-7 px-2.5 border-orange-500/50 text-orange-400 hover:bg-orange-500/10 cursor-pointer font-bold"
+            >
+              🔥 Auto-Screener de Altas
+            </Button>
           </div>
         </div>
 
@@ -393,26 +582,75 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
                   <Button
                     type="button"
                     variant="outline"
-                    className="w-full h-9 text-xs bg-secondary/30 border-border justify-between px-2.5 font-bold"
+                    className={`w-full h-9 text-xs border-border justify-between px-2.5 font-bold ${
+                      symbol === "AUTO" || useAutoScreener
+                        ? "bg-orange-500/15 border-orange-500/40 text-orange-400 hover:bg-orange-500/25"
+                        : "bg-secondary/30"
+                    }`}
                   >
-                    <span>{symbol.replace("USDT", "/USDT")}</span>
+                    <span>{symbol === "AUTO" ? "🔥 AUTO (Screener de Altas)" : symbol.replace("USDT", "/USDT")}</span>
                     <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0 ml-1" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[240px] p-0 glass border-border/50" align="start">
-                  <div className="p-2 border-b border-border/30">
+                <PopoverContent className="w-[320px] sm:w-[350px] p-0 glass border-border/50 bg-[#0d1424]/95 shadow-xl" align="start">
+                  <div className="p-2 border-b border-border/30 space-y-1.5">
                     <div className="relative">
                       <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                       <Input
-                        placeholder="Buscar moeda Binance..."
+                        placeholder="Buscar entre 500+ pares Binance..."
                         value={symbolSearch}
                         onChange={(e) => setSymbolSearch(e.target.value)}
                         className="h-7 pl-7 text-xs bg-secondary/30 border-border/50"
                         autoFocus
                       />
                     </div>
+                    {/* Category tabs */}
+                    <div className="flex items-center gap-1 justify-between pt-0.5">
+                      {[
+                        { id: "gainers", label: "🔥 Em Alta" },
+                        { id: "volume", label: "📊 Volume" },
+                        { id: "dips", label: "📉 Dips" },
+                        { id: "all", label: "🌐 Todas (500+)" },
+                      ].map((cat) => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setSymbolCategory(cat.id as any)}
+                          className={cn(
+                            "px-1.5 py-0.5 text-[10px] rounded font-semibold transition-colors flex-1 text-center cursor-pointer",
+                            symbolCategory === cat.id
+                              ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                              : "text-muted-foreground hover:text-white hover:bg-white/[0.05]"
+                          )}
+                        >
+                          {cat.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="max-h-[220px] overflow-y-auto cyan-scrollbar p-1">
+                  <div className="max-h-[250px] overflow-y-auto cyan-scrollbar p-1">
+                    {/* AUTO SCREENER OPTION */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSymbol("AUTO");
+                        setUseAutoScreener(true);
+                        setSymbolSelectOpen(false);
+                        setSymbolSearch("");
+                      }}
+                      className={`w-full text-left px-2 py-1.5 text-xs rounded hover:bg-orange-500/20 flex items-center justify-between transition-colors border border-orange-500/30 mb-1 ${
+                        symbol === "AUTO" ? "bg-orange-500/20 text-orange-400 font-bold" : "text-orange-400"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="font-bold">🔥 AUTO</span>
+                        <span className="text-muted-foreground text-[10px] truncate">Auto-Screener de Altas</span>
+                      </div>
+                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-orange-500/40 text-orange-300">
+                        Top 500+ Dinâmico
+                      </Badge>
+                    </button>
+
                     {filteredCryptoList.map((c) => (
                       <button
                         type="button"
@@ -428,7 +666,28 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
                       >
                         <div className="flex items-center gap-1.5 truncate">
                           <span className="font-bold">{c.short}</span>
-                          <span className="text-muted-foreground text-[10px] truncate">({c.name})</span>
+                          <span className="text-muted-foreground text-[10px] truncate">
+                            {c.name !== c.short ? `(${c.name})` : ""}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
+                          {c.price > 0 && (
+                            <span className="text-muted-foreground font-medium">
+                              ${formatPrice(c.price)}
+                            </span>
+                          )}
+                          <span
+                            className={cn(
+                              "text-[10px] font-bold px-1 rounded",
+                              c.change24h >= 0
+                                ? "text-emerald-400 bg-emerald-500/10"
+                                : "text-red-400 bg-red-500/10"
+                            )}
+                          >
+                            {c.change24h >= 0 ? "+" : ""}
+                            {c.change24h.toFixed(1)}%
+                          </span>
                         </div>
                       </button>
                     ))}
@@ -547,16 +806,57 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
           )}
 
           {/* 2. Filtros do motor: quando o robô NÃO compra */}
-          <div className="bg-secondary/25 p-3 rounded-xl border border-border/40 space-y-3">
-            <div>
-              <span className="text-xs font-bold">2. Filtros de segurança — quando o robô NÃO compra</span>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                Filtros só bloqueiam compras; nunca forçam uma. Além deles, o robô sempre bloqueia compras com volatilidade (ATR) ≥ 5%.
-              </p>
+          <div className={`bg-secondary/25 p-3 rounded-xl border transition-all duration-300 space-y-3 ${
+            aiUpdated
+              ? "border-crypto-cyan/70 shadow-[0_0_15px_rgba(0,240,255,0.15)] ring-1 ring-crypto-cyan/50"
+              : "border-border/40"
+          }`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold">2. Filtros de segurança — quando o robô NÃO compra</span>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Filtros só bloqueiam compras; nunca forçam uma. Além deles, o robô sempre bloqueia compras com volatilidade (ATR) ≥ 5%.
+                </p>
+              </div>
+              {aiUpdated && (
+                <span className="text-[10px] font-bold text-crypto-cyan bg-crypto-cyan/15 px-2 py-0.5 rounded-full animate-pulse border border-crypto-cyan/30 shrink-0">
+                  ✨ IA Otimizou
+                </span>
+              )}
             </div>
             {ENGINE_FILTERS.map((f) => {
-              const checked = f.key === "useMarketRegime" ? useMarketRegime : f.key === "useQuantFunnel" ? useQuantFunnel : useEnsemble;
-              const set = f.key === "useMarketRegime" ? setUseMarketRegime : f.key === "useQuantFunnel" ? setUseQuantFunnel : setUseEnsemble;
+              const checked =
+                f.key === "useMarketRegime"
+                  ? useMarketRegime
+                  : f.key === "useQuantFunnel"
+                  ? useQuantFunnel
+                  : f.key === "useMultiTimeframe"
+                  ? useMultiTimeframe
+                  : f.key === "useAutoScreener"
+                  ? useAutoScreener
+                  : f.key === "autoBreakEven"
+                  ? autoBreakEven
+                  : f.key === "useOrderBookFilter"
+                  ? useOrderBookFilter
+                  : f.key === "useSmartDca"
+                  ? useSmartDca
+                  : useEnsemble;
+              const set =
+                f.key === "useMarketRegime"
+                  ? setUseMarketRegime
+                  : f.key === "useQuantFunnel"
+                  ? setUseQuantFunnel
+                  : f.key === "useMultiTimeframe"
+                  ? setUseMultiTimeframe
+                  : f.key === "useAutoScreener"
+                  ? setUseAutoScreener
+                  : f.key === "autoBreakEven"
+                  ? setAutoBreakEven
+                  : f.key === "useOrderBookFilter"
+                  ? setUseOrderBookFilter
+                  : f.key === "useSmartDca"
+                  ? setUseSmartDca
+                  : setUseEnsemble;
               const moot = f.key === "useEnsemble" && strategy === "QUANT_ENSEMBLE";
               return (
                 <div key={f.key} className={`flex items-start justify-between gap-3 ${moot ? "opacity-50" : ""}`}>
@@ -571,17 +871,28 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
           </div>
 
           {/* Profit & Risk Rules */}
-          <div className="bg-secondary/25 p-3 rounded-xl border border-border/40 space-y-3.5">
+          <div className={`bg-secondary/25 p-3 rounded-xl border transition-all duration-300 space-y-3.5 ${
+            aiUpdated
+              ? "border-crypto-green/70 shadow-[0_0_15px_rgba(0,255,136,0.15)] ring-1 ring-crypto-green/50"
+              : "border-border/40"
+          }`}>
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold flex items-center gap-1.5 text-crypto-green">
                 <Target className="w-3.5 h-3.5" />
                 Meta de Lucro: Take Profit (+{takeProfit}%)
               </span>
-              <span className="text-xs font-extrabold text-crypto-green">+{takeProfit}%</span>
+              <div className="flex items-center gap-1.5">
+                {aiUpdated && (
+                  <span className="text-[10px] font-bold text-crypto-green bg-crypto-green/15 px-2 py-0.5 rounded-full animate-pulse border border-crypto-green/30">
+                    ✨ IA Otimizou
+                  </span>
+                )}
+                <span className="text-xs font-extrabold text-crypto-green">+{takeProfit}%</span>
+              </div>
             </div>
             <Slider
               value={[takeProfit]}
-              min={1.0}
+              min={0.5}
               max={15.0}
               step={0.1}
               onValueChange={([val]) => setTakeProfit(parseFloat(val.toFixed(1)))}
@@ -590,6 +901,41 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
             <p className="text-[10px] text-muted-foreground">
               O robô venderá automaticamente 100% da posição quando o lucro atingir +{takeProfit}%.
             </p>
+
+            {/* Trailing Take-Profit Dinâmico */}
+            <div className="border-t border-border/30 pt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                    <Rocket className="w-3.5 h-3.5 text-emerald-400" />
+                    Trailing Take-Profit Dinâmico (Deixar Lucro Correr)
+                  </span>
+                  <p className="text-[10px] text-muted-foreground">
+                    Ao atingir a meta de +{takeProfit}%, não encerra imediatamente: acompanha a alta e só realiza se recuar {trailingTakeProfitDistance}% do pico.
+                  </p>
+                </div>
+                <Switch checked={trailingTakeProfit} onCheckedChange={setTrailingTakeProfit} />
+              </div>
+
+              {trailingTakeProfit && (
+                <div className="space-y-1.5 pt-1 bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-lg">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[11px] text-emerald-200">Distância de Saída do Topo:</span>
+                    <span className="font-bold text-emerald-300">{trailingTakeProfitDistance}%</span>
+                  </div>
+                  <Slider
+                    value={[trailingTakeProfitDistance]}
+                    min={0.2}
+                    max={2.0}
+                    step={0.1}
+                    onValueChange={([val]) => setTrailingTakeProfitDistance(parseFloat(val.toFixed(1)))}
+                  />
+                  <p className="text-[9px] text-muted-foreground">
+                    Se a moeda continuar subindo após +{takeProfit}%, o robô surfa a alta até o topo e vende no primeiro recuo de {trailingTakeProfitDistance}%.
+                  </p>
+                </div>
+              )}
+            </div>
 
             <div className="border-t border-border/30 pt-3">
               <div className="flex items-center justify-between mb-2">
@@ -643,26 +989,159 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
                 </div>
               )}
             </div>
+
+            {/* Break-Even Automático (Risco Zero Protegido) */}
+            <div className="border-t border-border/30 pt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-amber-400 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                    Break-Even Automático (Risco Zero Protegido)
+                  </span>
+                  <p className="text-[10px] text-muted-foreground">
+                    Quando o lucro atingir +{breakEvenTrigger}%, move o Stop para o preço de entrada +{breakEvenBuffer}% (cobrindo taxas). Zero risco de prejuízo no trade.
+                  </p>
+                </div>
+                <Switch checked={autoBreakEven} onCheckedChange={setAutoBreakEven} />
+              </div>
+
+              {autoBreakEven && (
+                <div className="space-y-3 pt-1 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-lg">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[11px] text-amber-200">Gatilho de Ativação do Break-Even:</span>
+                      <span className="font-bold text-amber-300">+{breakEvenTrigger}%</span>
+                    </div>
+                    <Slider
+                      value={[breakEvenTrigger]}
+                      min={0.6}
+                      max={4.0}
+                      step={0.1}
+                      onValueChange={([val]) => setBreakEvenTrigger(parseFloat(val.toFixed(1)))}
+                    />
+                    <p className="text-[9px] text-muted-foreground">
+                      Ao atingir este ganho parcial, o Break-Even é armado permanentemente nesta posição.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1 pt-1 border-t border-amber-500/20">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[11px] text-amber-200">Margem Acima da Entrada (Buffer Taxas Binance):</span>
+                      <span className="font-bold text-amber-300">+{breakEvenBuffer}%</span>
+                    </div>
+                    <Slider
+                      value={[breakEvenBuffer]}
+                      min={0.1}
+                      max={0.8}
+                      step={0.05}
+                      onValueChange={([val]) => setBreakEvenBuffer(parseFloat(val.toFixed(2)))}
+                    />
+                    <p className="text-[9px] text-muted-foreground">
+                      Garante que a saída ocorra acima das taxas Spot da Binance (0.1% compra + 0.1% venda = 0.20%), saindo no verde.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* DCA Inteligente em Níveis de Suporte */}
+            <div className="border-t border-border/30 pt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-cyan-400 flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
+                    DCA Inteligente em Suporte (Preço Médio Estratégico)
+                  </span>
+                  <p className="text-[10px] text-muted-foreground">
+                    Se a operação recuar até o suporte sem tocar no Stop Loss, executa 1 reentrada calculada para baratear o preço médio e lucrar no repique.
+                  </p>
+                </div>
+                <Switch checked={useSmartDca} onCheckedChange={setUseSmartDca} />
+              </div>
+
+              {useSmartDca && (
+                <div className="space-y-1.5 pt-1 bg-cyan-500/10 border border-cyan-500/20 p-2.5 rounded-lg">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[11px] text-cyan-200">Recuo Mínimo para DCA em Suporte:</span>
+                    <span className="font-bold text-cyan-300">-{dcaDipThreshold}%</span>
+                  </div>
+                  <Slider
+                    value={[dcaDipThreshold]}
+                    min={0.8}
+                    max={3.5}
+                    step={0.1}
+                    onValueChange={([val]) => setDcaDipThreshold(parseFloat(val.toFixed(1)))}
+                  />
+                  <p className="text-[9px] text-muted-foreground">
+                    Dispara reentrada apenas se o recuo atingir -{dcaDipThreshold}% E houver confirmação técnica de suporte/sobrevenda (RSI ≤ 38 ou rejeição de fundo).
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Encerrar após Obter Lucro (Operação Única) */}
+            <div className="border-t border-border/30 pt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="pr-3">
+                  <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Encerrar Robô após Lucro (Operação Única)
+                  </span>
+                  <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
+                    Vende 100% da posição assim que obtiver lucro (+{takeProfit}% ou via Trailing Stop/encerramento) e desativa o robô automaticamente. Não abrirá novas compras.
+                  </p>
+                </div>
+                <Switch checked={stopAfterProfit} onCheckedChange={setStopAfterProfit} />
+              </div>
+
+              {stopAfterProfit && (
+                <div className="bg-emerald-500/10 border border-emerald-500/30 p-2.5 rounded-lg text-[10px] text-emerald-300 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    Modo de Operação Única Ativado
+                  </div>
+                  <p className="opacity-90 leading-relaxed">
+                    O robô realizará a compra, protegerá a operação e, no momento em que a venda for executada com lucro, encerrará a operação e desligará sem recomprar.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
         </div>
 
-        <DialogFooter className="px-5 py-3 gap-2 border-t border-border/40 shrink-0">
+        <DialogFooter className="px-5 py-3 gap-2 border-t border-border/40 shrink-0 flex items-center justify-between sm:justify-between flex-wrap">
           <Button
             type="button"
             variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="text-xs h-9"
+            size="sm"
+            disabled={isAutofilling}
+            onClick={handleAiAutofill}
+            className={`text-xs h-9 px-3.5 border-crypto-cyan/50 text-crypto-cyan bg-crypto-cyan/10 hover:bg-crypto-cyan/20 font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 ${
+              aiUpdated ? "ring-2 ring-crypto-cyan bg-crypto-cyan/20" : ""
+            }`}
           >
-            Cancelar
+            <Sparkles className={`w-3.5 h-3.5 ${isAutofilling ? "animate-spin" : "text-amber-300"}`} />
+            {isAutofilling ? "Analisando..." : "Autopreencher com IA"}
           </Button>
-          <Button
-            type="button"
-            onClick={handleSave}
-            className="text-xs h-9 bg-gradient-to-r from-crypto-cyan to-blue-600 text-white font-semibold shadow-md cursor-pointer"
-          >
-            {botToEdit ? "Salvar Alterações" : "Criar Robô"}
-          </Button>
+
+          <div className="flex items-center gap-2 ml-auto">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              className="text-xs h-9 cursor-pointer"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSave}
+              className="text-xs h-9 bg-gradient-to-r from-crypto-cyan to-blue-600 text-white font-semibold shadow-md cursor-pointer hover:opacity-95"
+            >
+              {botToEdit ? "Salvar Alterações" : "Criar Robô"}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

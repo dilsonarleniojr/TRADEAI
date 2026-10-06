@@ -32,7 +32,8 @@ async function executeBinanceOrder(
   apiKey: string,
   apiSecret: string,
   testnet: boolean,
-  totalVal?: number
+  totalVal?: number,
+  sellAll?: boolean
 ) {
   if (!apiKey || !apiSecret) {
     throw new Error("Chave de API ou segredo da Binance não configurados para Live Trading.");
@@ -104,6 +105,10 @@ async function executeBinanceOrder(
         if (qBal) {
           freeQuote = parseFloat(qBal.free) || 0;
           lockedQuote = parseFloat(qBal.locked) || 0;
+        } else {
+          // Quando omitZeroBalances=true omite a moeda, o saldo é 0
+          freeQuote = 0;
+          lockedQuote = 0;
         }
       } else {
         const errText = await accRes.text().catch(() => '');
@@ -132,7 +137,18 @@ async function executeBinanceOrder(
       // IMPORTANTE: Deixar sempre margem de segurança (mínimo 2%) para taxas e buffer de oscilação a mercado da Binance
       const maxSpendable = parseFloat((freeQuote * 0.98).toFixed(2));
       if (finalSpend > maxSpendable) {
-        finalSpend = Math.max(minNotional * 1.05, maxSpendable);
+        finalSpend = Math.min(finalSpend, maxSpendable);
+      }
+
+      if (finalSpend > freeQuote) {
+        throw new Error(
+          `Saldo insuficiente na Binance: a ordem requer $${finalSpend.toFixed(2)} ${quoteAsset}, mas seu saldo livre na Carteira Spot é de $${freeQuote.toFixed(2)} ${quoteAsset}.`
+        );
+      }
+      if (finalSpend < minNotional) {
+        throw new Error(
+          `O valor disponível para esta ordem ($${finalSpend.toFixed(2)} ${quoteAsset}) é inferior ao lote mínimo exigido pela Binance ($${minNotional.toFixed(2)} ${quoteAsset}).`
+        );
       }
     }
 
@@ -162,24 +178,33 @@ async function executeBinanceOrder(
         const freeQty = assetBal ? parseFloat(assetBal.free) : 0;
         
         if (freeQty <= 0) {
-          throw new Error(`Você não possui saldo de ${baseAsset} na sua conta da Binance para vender no mercado Spot.`);
+          const err: any = new Error(`Você não possui saldo de ${baseAsset} na sua conta da Binance para vender no mercado Spot.`);
+          err.code = "NO_BALANCE";
+          throw err;
         }
 
         const precision = Math.max(0, Math.round(-Math.log10(stepSize)));
         const maxSellable = Math.floor(freeQty / stepSize) * stepSize;
-        const qtyTarget = Math.min(quantity, maxSellable);
+
+        // Se sellAll for solicitado ou se a quantidade for >= 80% do saldo, vende TODO o montante livre na Binance
+        const isFullClose = Boolean(sellAll) || quantity >= maxSellable * 0.8;
+        const qtyTarget = isFullClose ? maxSellable : Math.min(quantity, maxSellable);
         const qtyClean = parseFloat(qtyTarget.toFixed(precision));
 
         if (currentPrice > 0 && qtyClean * currentPrice < minNotional) {
-          throw new Error(
+          const err: any = new Error(
             `O valor da sua posição de ${baseAsset} ($${(qtyClean * currentPrice).toFixed(2)} USDT) é inferior ao mínimo exigido pela Binance ($${minNotional} USDT).`
           );
+          err.code = "MIN_NOTIONAL_DUST";
+          err.residualUsdt = qtyClean * currentPrice;
+          err.baseAsset = baseAsset;
+          throw err;
         }
 
         queryString = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=60000`;
       }
     } catch (accErr: any) {
-      if (accErr.message.includes("Você não possui saldo") || accErr.message.includes("inferior ao mínimo")) {
+      if (accErr.code === "NO_BALANCE" || accErr.code === "MIN_NOTIONAL_DUST" || accErr.message.includes("inferior ao mínimo")) {
         throw accErr;
       }
       console.warn('[Trades API] Account balance check bypassed:', accErr.message);
@@ -216,7 +241,7 @@ async function executeBinanceOrder(
       } else if (errJson.code === -1013) {
         errorMsg = `Ordem rejeitada pela Binance: ${errJson.msg || 'Filtro NOTIONAL ou LOT_SIZE violado'}. O valor mínimo por ordem é $${minNotional} USDT.`;
       } else if (errJson.code === -2015) {
-        errorMsg = "Chave API da Binance inválida, IP não autorizado ou permissão 'Enable Spot Trading' desativada na Binance.";
+        errorMsg = "Chave API da Binance inválida, IP não autorizado ou permissão 'Enable Spot & Margin Trading' desativada na Binance. Verifique se o IP 168.121.98.202 está cadastrado na lista de IPs confiáveis da Binance.";
       } else {
         errorMsg = errJson.msg || errorText;
       }
@@ -359,7 +384,8 @@ export async function POST(request: NextRequest) {
           binanceApiKey || '',
           binanceApiSecret || '',
           isTestnet,
-          totalVal
+          totalVal,
+          Boolean(body.sellAll)
         );
         // Extract real quantity and executed price if available
         if (binanceOrderResult) {
@@ -372,7 +398,13 @@ export async function POST(request: NextRequest) {
       } catch (err: any) {
         console.error('[Trades API] Live trade execution failed:', err.message);
         return NextResponse.json(
-          { success: false, error: err.message },
+          {
+            success: false,
+            error: err.message,
+            code: err.code || 'BINANCE_EXEC_ERROR',
+            residualUsdt: err.residualUsdt,
+            baseAsset: err.baseAsset,
+          },
           { status: 400 }
         );
       }

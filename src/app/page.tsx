@@ -24,6 +24,7 @@ import { MobilePortfolioBar } from "@/components/mobile/mobile-portfolio-bar";
 import { MobileDrawer } from "@/components/mobile/mobile-drawer";
 import { AlertNotification } from "@/components/dashboard/alert-notification";
 import { ShortcutsHint } from "@/components/dashboard/shortcuts-hint";
+import { BotExecutionReportDialog } from "@/components/bot/bot-execution-report-dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
@@ -74,9 +75,13 @@ function DashboardSkeleton() {
 }
 
 function HomePageContent() {
-  const { activeSection } = useCryptoStore(
-  useShallow((s) => ({ activeSection: s.activeSection }))
-);
+  const { activeSection, activeExecutionReport, setActiveExecutionReport } = useCryptoStore(
+    useShallow((s) => ({
+      activeSection: s.activeSection,
+      activeExecutionReport: s.activeExecutionReport,
+      setActiveExecutionReport: s.setActiveExecutionReport,
+    }))
+  );
   const { dataReady } = useDataProvider();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
@@ -181,6 +186,13 @@ function HomePageContent() {
       <BotBackgroundRunner />
       <HistoryBootstrap />
       <BotReadinessWatcher />
+      <BotExecutionReportDialog
+        report={activeExecutionReport}
+        open={!!activeExecutionReport}
+        onOpenChange={(open) => {
+          if (!open) setActiveExecutionReport(null);
+        }}
+      />
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">

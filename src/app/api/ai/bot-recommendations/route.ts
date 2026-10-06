@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
     const marketData: Record<string, any> = body.marketData || {};
     const availableCash: number = Number(body.cashBalance) || 10000;
     const tradingMode: string = body.tradingMode === 'live' ? 'live' : 'paper';
+    const focusCategory: string = body.category || 'all'; // 'all' | 'gainers' | 'hot_altcoins' | 'dip_hunters' | 'blue_chips'
 
     // 1. Filtrar ativos cripto reais e válidos (excluindo stablecoins e tokens alavancados)
     const allValid = Object.entries(marketData)
@@ -67,17 +68,17 @@ export async function POST(request: NextRequest) {
         high: Number(data.high) || Number(data.price) * 1.02,
         low: Number(data.low) || Number(data.price) * 0.98,
       }))
-      .filter((c) => c.price > 0 && c.volume > 500000); // Mínimo $500k de volume 24h
+      .filter((c) => c.price > 0 && c.volume > 200000); // Mínimo $200k de volume 24h
 
-    // 2. Classificar por perfis de oportunidade no mercado atual
-    // A) Maiores Altas com Volume (Momentum / Breakout)
+    // 2. Classificar por perfis de oportunidade no mercado atual (amostras amplas)
+    // A) Maiores Altas com Volume (Momentum / Breakout) — top 40 ordenadas
     const gainers = allValid
-      .filter((c) => c.change24h > 1.5)
+      .filter((c) => c.change24h > 0.8 && c.volume > 1000000)
       .sort((a, b) => b.change24h - a.change24h);
 
-    // B) Maiores Correções com Volume (Dip Hunter / RSI Sobrevendido)
+    // B) Maiores Correções com Volume (Dip Hunter / RSI Sobrevendido) — top 40 ordenadas
     const dipHunters = allValid
-      .filter((c) => c.change24h < -1.0)
+      .filter((c) => c.change24h < -0.5 && c.volume > 1000000)
       .sort((a, b) => a.change24h - b.change24h);
 
     // C) Maior Volatilidade Intradiária (Amplitude High/Low para Scalping)
@@ -86,60 +87,95 @@ export async function POST(request: NextRequest) {
         ...c,
         spreadPct: c.price > 0 ? ((c.high - c.low) / c.price) * 100 : 0,
       }))
-      .filter((c) => c.spreadPct > 4.0)
+      .filter((c) => c.spreadPct > 3.5 && c.volume > 800000)
       .sort((a, b) => b.spreadPct - a.spreadPct);
 
-    // D) Blue Chips Consolidados (Grandes L1s e DeFi para Acúmulo/Grid)
-    const blueChipsList = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'AVAXUSDT', 'NEARUSDT', 'LINKUSDT', 'SUIUSDT', 'ADAUSDT', 'XRPUSDT', 'DOGEUSDT', 'DOTUSDT'];
-    const blueChips = allValid
-      .filter((c) => blueChipsList.includes(c.symbol))
-      .sort((a, b) => b.volume - a.volume);
+    // D) Altcoins Populares e Narrativas Quentes (IA, L1s, DeFi, Memes)
+    const hotNarrativesSymbols = new Set([
+      'RENDERUSDT', 'NEARUSDT', 'SUIUSDT', 'SEIUSDT', 'INJUSDT', 'TIAUSDT', 'KASUSDT',
+      'ARUSDT', 'TAOUSDT', 'FETUSDT', 'APTUSDT', 'PENDLEUSDT', 'JUPUSDT', 'WIFUSDT',
+      'PEPEUSDT', 'FLOKIUSDT', 'BONKUSDT', 'AVAXUSDT', 'LINKUSDT', 'AAVEUSDT', 'UNIUSDT',
+      'GALAUSDT', 'STXUSDT', 'FTMUSDT', 'OPUSDT', 'ARBUSDT', 'STRKUSDT', 'RUNEUSDT',
+      'DYDXUSDT', 'ONDOUSDT', 'ENAUSDT', 'PYTHUSDT', 'WLDUSDT', 'IOUSDT', 'ZROUSDT'
+    ]);
+    const hotAltcoins = allValid.filter((c) => hotNarrativesSymbols.has(c.symbol));
+
+    // E) Blue Chips Consolidados (Grandes L1s)
+    const blueChipsList = new Set(['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT', 'ADAUSDT']);
+    const blueChips = allValid.filter((c) => blueChipsList.has(c.symbol));
 
     // 3. Montar uma cesta balanceada e dinâmica de candidatos
     const selectedSymbols = new Set<string>();
     const diversePool: typeof allValid = [];
 
-    const addFromList = (list: typeof allValid, count: number) => {
-      const candidates = shuffleArray(list.slice(0, 8));
+    const addRandomFromList = (list: typeof allValid, count: number, samplePoolSize = 35) => {
+      const candidates = shuffleArray(list.slice(0, samplePoolSize));
       for (const item of candidates) {
         if (!selectedSymbols.has(item.symbol)) {
           selectedSymbols.add(item.symbol);
           diversePool.push(item);
-          if (diversePool.length >= 16) break;
+          if (diversePool.length >= 24) break;
         }
       }
     };
 
-    addFromList(gainers, 3);
-    addFromList(dipHunters, 3);
-    addFromList(volatile, 3);
-    addFromList(blueChips, 3);
-
-    // Se o pool for pequeno, adicionar lista padrão rica
-    if (diversePool.length < 4) {
-      const defaultVaried = [
-        { symbol: 'BTCUSDT', price: 65000, change24h: 1.8, volume: 1500000000, high: 66000, low: 64200 },
-        { symbol: 'SOLUSDT', price: 145, change24h: 5.2, volume: 800000000, high: 152, low: 139 },
-        { symbol: 'SUIUSDT', price: 1.85, change24h: 8.4, volume: 320000000, high: 1.95, low: 1.72 },
-        { symbol: 'NEARUSDT', price: 4.80, change24h: 3.9, volume: 210000000, high: 5.05, low: 4.60 },
-        { symbol: 'LINKUSDT', price: 11.2, change24h: -2.4, volume: 180000000, high: 11.8, low: 10.9 },
-        { symbol: 'ETHUSDT', price: 2600, change24h: -1.2, volume: 900000000, high: 2680, low: 2570 },
-        { symbol: 'AVAXUSDT', price: 28.5, change24h: 4.1, volume: 190000000, high: 29.8, low: 27.2 },
-        { symbol: 'DOGEUSDT', price: 0.12, change24h: 6.8, volume: 450000000, high: 0.13, low: 0.11 },
-      ];
-      diversePool.push(...defaultVaried.filter((d) => !selectedSymbols.has(d.symbol)));
+    if (focusCategory === 'gainers') {
+      addRandomFromList(gainers, 8, 40);
+      addRandomFromList(volatile, 4, 30);
+      addRandomFromList(hotAltcoins, 4, 30);
+    } else if (focusCategory === 'hot_altcoins') {
+      addRandomFromList(hotAltcoins, 8, 35);
+      addRandomFromList(gainers, 4, 30);
+      addRandomFromList(volatile, 4, 30);
+    } else if (focusCategory === 'dip_hunters') {
+      addRandomFromList(dipHunters, 8, 40);
+      addRandomFromList(hotAltcoins, 4, 30);
+      addRandomFromList(blueChips, 4, 10);
+    } else if (focusCategory === 'blue_chips') {
+      addRandomFromList(blueChips, 6, 10);
+      addRandomFromList(hotAltcoins, 5, 25);
+      addRandomFromList(gainers, 5, 25);
+    } else {
+      // MIX DIVERSIFICADO PADRÃO: Amostragem ampla garantindo que cada requisição traga pares diferentes
+      addRandomFromList(gainers, 5, 35);
+      addRandomFromList(hotAltcoins, 5, 35);
+      addRandomFromList(dipHunters, 4, 30);
+      addRandomFromList(volatile, 4, 30);
+      addRandomFromList(blueChips, 2, 7);
     }
 
-    // 4. Montar resumo para as IAs
-    const marketSummary = diversePool
-      .slice(0, 10)
+    // Se o pool for pequeno, adicionar lista ampla de backup
+    if (diversePool.length < 6) {
+      const fallbackPool = allValid.length > 0 ? shuffleArray(allValid).slice(0, 15) : [
+        { symbol: 'SUIUSDT', price: 1.85, change24h: 8.4, volume: 320000000, high: 1.95, low: 1.72 },
+        { symbol: 'RENDERUSDT', price: 6.20, change24h: 5.8, volume: 140000000, high: 6.45, low: 5.90 },
+        { symbol: 'NEARUSDT', price: 4.80, change24h: 3.9, volume: 210000000, high: 5.05, low: 4.60 },
+        { symbol: 'TAOUSDT', price: 540, change24h: 7.2, volume: 110000000, high: 565, low: 512 },
+        { symbol: 'INJUSDT', price: 21.5, change24h: -1.8, volume: 95000000, high: 22.8, low: 20.9 },
+        { symbol: 'SOLUSDT', price: 145, change24h: 5.2, volume: 800000000, high: 152, low: 139 },
+        { symbol: 'PEPEUSDT', price: 0.0000095, change24h: 12.4, volume: 450000000, high: 0.0000102, low: 0.0000088 },
+        { symbol: 'AVAXUSDT', price: 28.5, change24h: 4.1, volume: 190000000, high: 29.8, low: 27.2 },
+        { symbol: 'BTCUSDT', price: 65000, change24h: 1.8, volume: 1500000000, high: 66000, low: 64200 },
+      ];
+      for (const item of fallbackPool) {
+        if (!selectedSymbols.has(item.symbol)) {
+          diversePool.push(item);
+        }
+      }
+    }
+
+    // 4. Montar resumo dinâmico para as IAs (com até 18 ativos variados)
+    const marketSummary = shuffleArray(diversePool)
+      .slice(0, 16)
       .map((c) => `${c.symbol}: Preço $${c.price.toLocaleString()}, Variação 24h: ${c.change24h > 0 ? '+' : ''}${c.change24h.toFixed(2)}%, Vol 24h: $${(c.volume / 1e6).toFixed(1)}M`)
       .join('\n');
 
     const prompt = `Você é um gestor quantitativo sênior de fundos cripto.
 Analise os ativos abaixo e gere exatamente 6 recomendações DIVERSIFICADAS de estratégias para robôs automatizados de trading.
-IMPORTANTE:
-- NUNCA sugira stablecoins (como USDC, FDUSD ou USDT). Escolha moedas com dinâmica de mercado real (BTC, ETH, SOL, NEAR, SUI, AVAX, LINK, DOGE, etc.).
+REGRA CRÍTICA DE DIVERSIDADE:
+- VARIE OS PARES SUGERIDOS! NÃO se limite a Bitcoin e Ethereum. Escolha altcoins líquidas com forte momento entre a lista fornecida (ex: SUI, RENDER, NEAR, TAO, INJ, AVAX, PEPE, TIA, SEI, etc.).
+- No máximo 1 robô pode ser em BTC ou ETH. Os outros 5 DEVEM ser em altcoins com oportunidades no gráfico intradiário.
+- NUNCA sugira stablecoins (como USDC, FDUSD ou USDT).
 - Distribua as 6 recomendações entre os horizontes de tempo:
   * 2 robôs para SCALPING RÁPIDO (timeframe 15m, duração 15 a 45 min)
   * 2 robôs para DAY TRADE (timeframe 1h, duração 2h a 6h)
@@ -295,12 +331,18 @@ Responda APENAS com um array JSON com 6 objetos no formato:
     };
 
     const usedCoins = new Set<string>();
-    const slot0Coin = pickUnique(gainers.length > 0 ? gainers : volatile, usedCoins, diversePool);
-    const slot1Coin = pickUnique(dipHunters.length > 0 ? dipHunters : volatile, usedCoins, diversePool);
-    const slot2Coin = pickUnique(gainers.length > 0 ? gainers : blueChips, usedCoins, diversePool);
-    const slot3Coin = pickUnique(blueChips, usedCoins, diversePool);
-    const slot4Coin = pickUnique(blueChips, usedCoins, diversePool);
-    const slot5Coin = pickUnique(diversePool, usedCoins, allValid);
+    // Slot 0: Líder de Alta com Fluxo Comprador (Gainer / Breakout)
+    const slot0Coin = pickUnique(gainers.length > 0 ? gainers : hotAltcoins, usedCoins, diversePool);
+    // Slot 1: Altcoin de Alta Performance / Narrativa (IA, L1, Web3)
+    const slot1Coin = pickUnique(hotAltcoins.length > 0 ? hotAltcoins : volatile, usedCoins, diversePool);
+    // Slot 2: Oportunidade de Repique Técnico (RSI Sobrevendido / Dip Hunter)
+    const slot2Coin = pickUnique(dipHunters.length > 0 ? dipHunters : volatile, usedCoins, diversePool);
+    // Slot 3: Day Trade de Momentum e Volume
+    const slot3Coin = pickUnique(volatile.length > 0 ? volatile : hotAltcoins, usedCoins, diversePool);
+    // Slot 4: Consolidada ou Swing Trade (Blue Chip ou Grande Altcoin)
+    const slot4Coin = pickUnique(blueChips.length > 0 ? blueChips : hotAltcoins, usedCoins, diversePool);
+    // Slot 5: Joia de Mercado / Diversificação
+    const slot5Coin = pickUnique(shuffleArray(diversePool), usedCoins, allValid);
 
     const slotCoins = [slot0Coin, slot1Coin, slot2Coin, slot3Coin, slot4Coin, slot5Coin];
 
