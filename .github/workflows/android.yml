@@ -1,0 +1,30 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout your repository first so files are available on the runner
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Set up Java (migrated from v4 to v5/v6 as warned)
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+        #  cache: 'gradle'  # Enables Gradle dependency caching
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build with Gradle
+        run: ./gradlew build
