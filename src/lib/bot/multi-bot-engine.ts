@@ -1,10 +1,10 @@
 import { useCryptoStore, type BotInstance, type BotPosition, type TradeData } from "@/lib/store";
 import type { BotExecutionReport } from "@/lib/store/types";
-import { calculateRSI } from "./indicators";
+import { calculateRSI, calculateEMA } from "./indicators";
 import { evaluateEntry } from "./entry-engine";
 import { getSymbolKlines } from "./kline-cache";
 import { scanHotCoins, type HotCoinCandidate } from "./quant-engine";
-import { getOrderBookAnalysis } from "./order-book-cache";
+import { getOrderBookAnalysis } from "@/lib/bot/order-book-cache";
 
 export interface MultiBotEngineCallbacks {
   onToast?: (toast: { title: string; description: string; variant?: "default" | "destructive" }) => void;
@@ -16,6 +16,34 @@ let lastLiveAccountError: string | null = null;
 let lastLiveAccountErrorLoggedAt = 0;
 const botErrorCooldown = new Map<string, number>();
 const botSymbolLossCooldown = new Map<string, number>();
+
+/**
+ * BTC Market Gatekeeper: Avalia se o Bitcoin está em correção acelerada intradiária (5m/15m)
+ * para impedir compras em altcoins contra o fluxo institucional.
+ */
+async function isBtcMarketHealthy(): Promise<{ healthy: boolean; detail: string }> {
+  try {
+    const klines5m = await getSymbolKlines("BTCUSDT", "5m");
+    if (!klines5m || klines5m.length < 15) {
+      return { healthy: true, detail: "Dados intradiários de BTC em sincronização" };
+    }
+    const last3 = klines5m.slice(-3);
+    const currentBtc = last3[last3.length - 1].close;
+    const btc15mChange = ((currentBtc - last3[0].open) / last3[0].open) * 100;
+    const ema20 = calculateEMA(klines5m.map((k) => k.close), 20);
+
+    // Se o BTC caiu mais de -0.5% nos últimos 15 min E está negociando abaixo da EMA20:
+    if (btc15mChange <= -0.5 && currentBtc < ema20) {
+      return {
+        healthy: false,
+        detail: `BTC em correção (${btc15mChange.toFixed(2)}% nos 15m · $${currentBtc.toFixed(0)} < EMA20 $${ema20.toFixed(0)})`,
+      };
+    }
+    return { healthy: true, detail: `BTC saudável ($${currentBtc.toFixed(0)} · 15m: ${btc15mChange >= 0 ? "+" : ""}${btc15mChange.toFixed(2)}%)` };
+  } catch {
+    return { healthy: true, detail: "Consulta de BTC em andamento" };
+  }
+}
 
 /**
  * Evaluates all active bots simultaneously and executes buys/sells aiming strictly for profit.
@@ -212,8 +240,8 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     const peakGain = ((highestPrice - pos.entryPrice) / pos.entryPrice) * 100;
 
     // 🛡️ BREAK-EVEN AUTOMÁTICO (Risco Zero Institucional)
-    // Gatilho: % de valorização necessária para armar o break-even (padrão: 1.2% ou 40% do Take Profit)
-    const beTrigger = bot.breakEvenTrigger ?? Math.max(0.8, Math.min(1.2, bot.takeProfit * 0.4));
+    // Gatilho: % de valorização necessária para armar o break-even (padrão: 0.8% ou 35% do Take Profit)
+    const beTrigger = bot.breakEvenTrigger ?? Math.max(0.6, Math.min(0.8, bot.takeProfit * 0.35));
     // Buffer: % acima do preço de entrada para cobrir taxas Spot da Binance (0.20%) e garantir fechamento positivo
     const beBuffer = bot.breakEvenBuffer ?? 0.25;
     const isAutoBreakEvenEnabled = bot.autoBreakEven ?? true;
@@ -225,7 +253,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // Se ativado (padrão true), ao bater a meta de Take Profit (ex: +2.5%), o robô não vende na hora;
     // ele arma o Trailing TP, rastreia o topo do pump e só realiza quando recuar X% do pico.
     const isTrailingTakeProfitEnabled = bot.trailingTakeProfit ?? true;
-    const tpDistance = bot.trailingTakeProfitDistance ?? 0.6; // recuo percentual do pico (ex: 0.6%)
+    const tpDistance = bot.trailingTakeProfitDistance ?? 0.5; // recuo percentual do pico (ex: 0.5%)
 
     let isTakeProfitNowArmed = Boolean(pos.isTakeProfitArmed);
     if (isTrailingTakeProfitEnabled && gainPercent >= bot.takeProfit) {
@@ -263,25 +291,62 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     store.updateBotPositionsRealtime(store.tickers);
     store.updateBotPnls(store.tickers);
 
+    // 1.0 CÁLCULO DE TEMPO EM OPERAÇÃO (Para Time-Stop e Monitoramento)
+    const timeStopMinutes = bot.timeStopMinutes ?? 20;
+    let isTimeStop = false;
+    let minutesOpen = 0;
+    if (pos.entryTime) {
+      const entryMs = new Date(pos.entryTime).getTime();
+      if (!isNaN(entryMs)) {
+        minutesOpen = Math.max(0, (Date.now() - entryMs) / 60000);
+        // Se a posição durou mais que timeStopMinutes e o preço está estagnado (entre -0.6% e +0.4%)
+        if (timeStopMinutes > 0 && minutesOpen >= timeStopMinutes && gainPercent <= 0.4 && gainPercent >= -bot.stopLoss) {
+          isTimeStop = true;
+        }
+      }
+    }
+
     // Feedback de monitoramento em tempo real do robô em operação
     const targetProfitPrice = (pos.entryPrice * (1 + bot.takeProfit / 100)).toFixed(4);
     const sign = gainPercent >= 0 ? "+" : "";
     let statusNotice = "";
+    if (pos.partialTpExecuted) {
+      statusNotice += ` · 🎯 50% Salvo no Lucro (Risco Zero)`;
+    }
     if (isTakeProfitNowArmed) {
-      statusNotice = ` · 🚀 Surfando Pump (Trailing TP Ativo · Topo: +${peakGainFromTp.toFixed(2)}%)`;
+      statusNotice += ` · 🚀 Surfando Pump (Trailing TP Ativo · Topo: +${peakGainFromTp.toFixed(2)}%)`;
     } else if (isBreakEvenNowArmed) {
-      statusNotice = ` · 🛡️ Risco Zero Ativo (Break-Even Armado em $${breakEvenPrice.toFixed(4)})`;
+      statusNotice += ` · 🛡️ Risco Zero Ativo (Break-Even Armado em $${breakEvenPrice.toFixed(4)})`;
     }
     const dcaNotice = (pos.dcaCount && pos.dcaCount > 0) ? ` · 🔄 DCA (${pos.dcaCount}/${bot.maxDcaOrders || 1})` : "";
+    const timeNotice = timeStopMinutes > 0 && minutesOpen > 0 ? ` · ⏱️ ${minutesOpen.toFixed(0)}m/${timeStopMinutes}m` : "";
 
     store.updateBot(bot.id, {
       status: "in_position",
       stats: {
         ...bot.stats,
-        lastAction: `Monitorando ${pos.symbol.replace("USDT", "")} · Cotação: $${currentPrice!.toFixed(5)} (${sign}${gainPercent.toFixed(2)}%) · Alvo: $${targetProfitPrice}${statusNotice}${dcaNotice}`,
+        lastAction: `Monitorando ${pos.symbol.replace("USDT", "")} · Cotação: $${currentPrice!.toFixed(5)} (${sign}${gainPercent.toFixed(2)}%) · Alvo: $${targetProfitPrice}${statusNotice}${dcaNotice}${timeNotice}`,
         lastActionTime: new Date().toISOString(),
       },
     });
+
+    // ==========================================================
+    // 1.0 REALIZAÇÃO PARCIAL AUTOMÁTICA (Scale-Out 50/50 no 1º Alvo)
+    // ==========================================================
+    const isPartialTpEnabled = bot.usePartialTp ?? true;
+    const partialTpTrigger = bot.partialTpTrigger ?? 1.0;
+    if (isPartialTpEnabled && !pos.partialTpExecuted && gainPercent >= partialTpTrigger) {
+      const partialOk = await executeBotPartialSell({
+        bot,
+        position: updatedPosition,
+        sellPrice: currentPrice!,
+        gainPercent,
+        callbacks,
+      });
+      if (partialOk) {
+        return; // Posição restante continua correndo protegida no Break-Even
+      }
+    }
 
     // 1.1 TAKE PROFIT TRIGGER
     let isTakeProfit = false;
@@ -354,6 +419,10 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         ? `🛡️ BREAK-EVEN AUTOMÁTICO (+${gainPercent.toFixed(2)}%) · RISCO ZERO PROTEGIDO · OPERAÇÃO ÚNICA CONCLUÍDA`
         : `🛡️ BREAK-EVEN AUTOMÁTICO (+${gainPercent.toFixed(2)}%) · RISCO ZERO PROTEGIDO (Stop no Lucro)`;
       logType = "profit";
+    } else if (isTimeStop) {
+      shouldSell = true;
+      sellReason = `⏱️ TIME-STOP ESCALONADO (${minutesOpen.toFixed(0)} min sem evolução) · LIBERANDO CAPITAL`;
+      logType = gainPercent >= 0 ? "profit" : "warning";
     } else if (isOverboughtProfit) {
       shouldSell = true;
       sellReason = bot.stopAfterProfit
@@ -453,6 +522,24 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   }
 
   const btcTicker = tickers["BTCUSDT"];
+
+  // ==========================================================
+  // BTC MARKET GATEKEEPER: Protege contra quedas aceleradas do BTC
+  // ==========================================================
+  if (bot.symbol !== "BTCUSDT" && bot.useBtcGatekeeper !== false) {
+    const btcCheck = await isBtcMarketHealthy();
+    if (!btcCheck.healthy) {
+      store.updateBot(bot.id, {
+        status: "scanning",
+        stats: {
+          ...bot.stats,
+          lastAction: `🛡️ BTC Gatekeeper: Compras pausadas (${btcCheck.detail})`,
+          lastActionTime: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+  }
 
   // ==========================================================
   // BRANCH 2A: AUTO-SCREENER DE MOEDAS EM ALTA (HOT COINS)
@@ -563,7 +650,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   // ==========================================================
   // BRANCH 2B: SINGLE-SYMBOL BOT TRADICIONAL
   // ==========================================================
-  // Proteção Anti-Cascata: Cooldown de 10 min no símbolo após stop loss para evitar recomprar em queda livre
+  // 🛡️ Proteção Anti-Cascata e Anti-Recompra Pós-Trade (evita entrar em facas caindo ou topos repetidos)
   const lossCooldownUntil = botSymbolLossCooldown.get(symbol);
   if (lossCooldownUntil && Date.now() < lossCooldownUntil) {
     const remainingMin = Math.ceil((lossCooldownUntil - Date.now()) / 60000);
@@ -571,7 +658,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       status: "scanning",
       stats: {
         ...bot.stats,
-        lastAction: `🛡️ Proteção anti-queda ativa após stop loss (${remainingMin}m restantes para reavaliação)`,
+        lastAction: `🛡️ Cooldown pós-trade ativo em ${symbol.replace("USDT", "")} (${remainingMin}m restantes para novo ciclo seguro)`,
         lastActionTime: new Date().toISOString(),
       },
     });
@@ -927,6 +1014,149 @@ async function executeBotDcaReentry({
 }
 
 /**
+ * Executes a PARTIAL SELL (Scale-Out 50%) to bank quick profit and lock the rest at Break-Even.
+ */
+async function executeBotPartialSell({
+  bot,
+  position,
+  sellPrice,
+  gainPercent,
+  callbacks,
+}: {
+  bot: BotInstance;
+  position: BotPosition;
+  sellPrice: number;
+  gainPercent: number;
+  callbacks?: MultiBotEngineCallbacks;
+}): Promise<boolean> {
+  const store = useCryptoStore.getState();
+  const { tradingMode } = store;
+  const execSymbol = position.symbol || bot.symbol;
+
+  const partialRatio = (bot.partialTpPercent ?? 50) / 100;
+  const sellQty = parseFloat((position.quantity * partialRatio).toFixed(6));
+  const remainingQty = parseFloat((position.quantity - sellQty).toFixed(6));
+  const partialCost = parseFloat((position.totalCost * partialRatio).toFixed(2));
+  const remainingCost = parseFloat((position.totalCost - partialCost).toFixed(2));
+  const partialTotal = parseFloat((sellQty * sellPrice).toFixed(2));
+  const partialPnl = parseFloat((partialTotal - partialCost).toFixed(2));
+
+  // Binance spot order requires min $5 notional
+  if (tradingMode === "live" && partialTotal < 5.20) {
+    return false;
+  }
+
+  const trade: TradeData = {
+    id: `trade-partial-${bot.id}-${Date.now()}`,
+    symbol: execSymbol,
+    side: "SELL",
+    price: sellPrice,
+    quantity: sellQty,
+    total: partialTotal,
+    strategy: `${bot.strategy} (🎯 PARCIAL ${Math.round(partialRatio * 100)}%)`,
+    mode: tradingMode,
+    pnl: partialPnl,
+    timestamp: new Date().toISOString(),
+    botId: bot.id,
+    botName: bot.name,
+    sellAll: false,
+  };
+
+  if (tradingMode === "live") {
+    try {
+      const res = await fetch("/api/trades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(trade),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        store.addBotLog({
+          message: `⚠️ [${bot.name}] Parcial não executada na Binance: ${result.error || "Ordem rejeitada"}`,
+          type: "warning",
+          botId: bot.id,
+          botName: bot.name,
+        });
+        return false;
+      }
+
+      const executedTrade: TradeData = {
+        ...trade,
+        price: result.data?.price ?? result.trade?.price ?? trade.price,
+        quantity: result.data?.quantity ?? result.trade?.quantity ?? trade.quantity,
+        total: result.data?.total ?? result.trade?.total ?? trade.total,
+        id: result.data?.id ?? result.trade?.id ?? trade.id,
+      };
+
+      store.addTrade(executedTrade);
+      store.applyTradeToPortfolio(executedTrade);
+      if (result.account) store.setAccount(result.account);
+    } catch (e: any) {
+      store.addBotLog({
+        message: `⚠️ [${bot.name}] Erro de rede ao executar parcial: ${e.message}`,
+        type: "warning",
+        botId: bot.id,
+        botName: bot.name,
+      });
+      return false;
+    }
+  } else {
+    // Paper mode
+    try {
+      fetch("/api/trades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(trade),
+      })
+        .then((res) => res.json())
+        .then((result) => {
+          if (result.success && result.account) {
+            useCryptoStore.getState().setAccount(result.account);
+          }
+        })
+        .catch(() => {});
+    } catch {}
+
+    store.addTrade(trade);
+    store.applyTradeToPortfolio(trade);
+  }
+
+  // Trava imediata de Break-Even nos 50% restantes (Preço de entrada + buffer para cobrir taxas)
+  const beBuffer = bot.breakEvenBuffer ?? 0.25;
+  const breakEvenPrice = position.entryPrice * (1 + beBuffer / 100);
+
+  const updatedPosition: BotPosition = {
+    ...position,
+    quantity: remainingQty,
+    totalCost: remainingCost,
+    partialTpExecuted: true,
+    partialTpSoldQty: sellQty,
+    partialTpRealizedPnl: partialPnl,
+    isBreakEvenArmed: true,
+    breakEvenPrice,
+  };
+
+  store.updateBotPosition(bot.id, updatedPosition);
+  store.recordBotTrade(bot.id, trade, partialPnl);
+
+  const modeTag = tradingMode === "live" ? "🟢 [REAL]" : "🔷 [SIMULADO]";
+  store.addBotLog({
+    message: `🎯 ${modeTag} [${bot.name}] REALIZAÇÃO PARCIAL (${Math.round(partialRatio * 100)}%) CONCLUÍDA! Lucro embolsado: +$${partialPnl.toFixed(2)} USDT (+${gainPercent.toFixed(2)}%). Restante travado no Break-Even ($${breakEvenPrice.toFixed(4)}) com risco ZERO!`,
+    type: "profit",
+    botId: bot.id,
+    botName: bot.name,
+  });
+
+  callbacks?.onToast?.({
+    title: `🎯 Lucro Parcial [${bot.name}]`,
+    description: `50% realizado (+${gainPercent.toFixed(2)}%). Restante protegido no Break-Even!`,
+    variant: "default",
+  });
+
+  return true;
+}
+
+/**
  * Executes a SELL trade (Take Profit / Stop Loss) to bank profits and close bot position.
  */
 async function executeBotSell({
@@ -1161,10 +1391,16 @@ async function executeBotSell({
   // Abre o relatório detalhado automaticamente para o usuário
   store.setActiveExecutionReport(executionReport);
 
-  // Se encerrou no prejuízo / stop loss, ativa cooldown de proteção de 10 minutos para esse ativo
-  if (logType === "loss" || pnl < 0 || gainPercent < 0) {
-    botSymbolLossCooldown.set(execSymbol, Date.now() + 10 * 60 * 1000);
-  }
+  // 🛡️ COOLDOWN UNIVERSAL PÓS-TRADE INSTITUCIONAL:
+  // Impede recompras precipitadas no mesmo ativo (evita overtrading e compras em facas caindo):
+  // 1. Se encerrou com stop loss / prejuízo: 20 minutos de cooldown rigoroso
+  // 2. Se encerrou com lucro ou break-even: 8 minutos de cooldown para aguardar novo ciclo de ondas e suporte real
+  const isLoss = logType === "loss" || pnl < 0 || gainPercent < 0;
+  const cooldownDuration = isLoss
+    ? 20 * 60 * 1000 // 20 minutos após stop loss
+    : 8 * 60 * 1000;  // 8 minutos após gain/breakeven
+
+  botSymbolLossCooldown.set(execSymbol, Date.now() + cooldownDuration);
 
   const sign = pnl >= 0 ? "+" : "";
   const pnlFormatted = `${sign}$${pnl.toFixed(2)} USDT (${sign}${gainPercent.toFixed(2)}%)`;

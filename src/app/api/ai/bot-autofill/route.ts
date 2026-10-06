@@ -77,26 +77,26 @@ Dados de Mercado para ${symbol}:
 
 Estratégias Disponíveis: "QUANT_ENSEMBLE", "RSI", "MACD", "GRID", "BREAKOUT", "MEAN_REVERSION".
 
-Responda APENAS com um objeto JSON no seguinte formato (sem explicações fora do JSON):
-{
-  "name": "Nome descritivo e marcante (ex: Resolv Quantum Scalper)",
-  "strategy": "QUANT_ENSEMBLE" | "RSI" | "MACD" | "GRID" | "BREAKOUT" | "MEAN_REVERSION",
-  "takeProfit": número entre 1.5 e 12.0 (ex: 3.8),
-  "stopLoss": número entre 0.8 e 6.0 (ex: 1.8),
-  "trailingStop": true ou false,
-  "trailingStopDistance": número entre 0.4 e 2.5 (ex: 0.8),
-  "allocationAmount": número entre 20 e 500 (ex: 100),
-  "useMarketRegime": true ou false,
-  "useQuantFunnel": true ou false,
-  "useEnsemble": true ou false,
-  "useMultiTimeframe": true ou false,
-  "rsiPeriod": 14,
-  "buyThreshold": 30,
-  "sellThreshold": 70,
-  "emaFast": 12,
-  "emaSlow": 26,
-  "reasoning": "Breve justificativa técnica em português (1-2 frases)"
-}`;
+    Responda APENAS com um objeto JSON no seguinte formato (sem explicações fora do JSON):
+    {
+      "name": "Nome descritivo e marcante (ex: Resolv Quantum Scalper)",
+      "strategy": "QUANT_ENSEMBLE" | "RSI" | "MACD" | "GRID" | "BREAKOUT" | "MEAN_REVERSION",
+      "takeProfit": número entre 2.5 e 8.0 (ex: 3.2),
+      "stopLoss": número entre 1.0 e 1.4 (ex: 1.2),
+      "trailingStop": true ou false,
+      "trailingStopDistance": número entre 0.4 e 1.2 (ex: 0.5),
+      "allocationAmount": número entre 20 e 500 (ex: 100),
+      "useMarketRegime": true ou false,
+      "useQuantFunnel": true ou false,
+      "useEnsemble": true ou false,
+      "useMultiTimeframe": true ou false,
+      "rsiPeriod": 14,
+      "buyThreshold": 30,
+      "sellThreshold": 70,
+      "emaFast": 12,
+      "emaSlow": 26,
+      "reasoning": "Breve justificativa técnica em português (1-2 frases)"
+    }`;
 
       const aiPromise = askAIOnce(
         'Você é um engenheiro de algoritmos de trading. Responda apenas com JSON válido.',
@@ -122,18 +122,18 @@ Responda APENAS com um objeto JSON no seguinte formato (sem explicações fora d
           config: {
             name: typeof rawConfig.name === 'string' && rawConfig.name.trim() ? rawConfig.name.trim() : `Bot IA ${cleanSym} Quantum`,
             strategy: chosenStrategy,
-            takeProfit: cleanNum(rawConfig.takeProfit, 3.8, 1.0, 15.0),
-            stopLoss: cleanNum(rawConfig.stopLoss, 1.8, 0.5, 8.0),
+            takeProfit: cleanNum(rawConfig.takeProfit, 3.2, 2.0, 15.0),
+            stopLoss: cleanNum(rawConfig.stopLoss, 1.2, 0.8, 2.0),
             trailingStop: cleanBool(rawConfig.trailingStop, true),
-            trailingStopDistance: cleanNum(rawConfig.trailingStopDistance, 0.8, 0.3, 3.0),
+            trailingStopDistance: cleanNum(rawConfig.trailingStopDistance, 0.5, 0.3, 1.5),
             allocationAmount: cleanNum(rawConfig.allocationAmount, 100, 10, 10000, 0),
             useMarketRegime: cleanBool(rawConfig.useMarketRegime, true),
             useQuantFunnel: cleanBool(rawConfig.useQuantFunnel, false),
             useEnsemble: cleanBool(rawConfig.useEnsemble, chosenStrategy === 'QUANT_ENSEMBLE'),
             useMultiTimeframe: cleanBool(rawConfig.useMultiTimeframe, true),
             autoBreakEven: cleanBool(rawConfig.autoBreakEven, true),
-            breakEvenTrigger: cleanNum(rawConfig.breakEvenTrigger, 1.2, 0.6, 5.0),
-            breakEvenBuffer: cleanNum(rawConfig.breakEvenBuffer, 0.25, 0.1, 1.0, 2),
+            breakEvenTrigger: cleanNum(rawConfig.breakEvenTrigger, 0.8, 0.5, 3.0),
+            breakEvenBuffer: cleanNum(rawConfig.breakEvenBuffer, 0.25, 0.15, 0.5, 2),
             rsiPeriod: cleanNum(rawConfig.rsiPeriod, 14, 5, 30, 0),
             buyThreshold: cleanNum(rawConfig.buyThreshold, 30, 10, 50, 0),
             sellThreshold: cleanNum(rawConfig.sellThreshold, 70, 55, 95, 0),
@@ -156,9 +156,9 @@ Responda APENAS com um objeto JSON no seguinte formato (sem explicações fora d
     const isBear = marketInfo.priceChange24h < -1.5;
 
     let strategy = 'QUANT_ENSEMBLE';
-    let takeProfit = 3.6;
-    let stopLoss = 1.8;
-    let trailingDistance = 0.8;
+    let takeProfit = 3.2;
+    let stopLoss = 1.2;
+    let trailingDistance = 0.5;
     let useMarketRegime = true;
     let useQuantFunnel = false;
     let useEnsemble = true;
@@ -170,46 +170,46 @@ Responda APENAS com um objeto JSON no seguinte formato (sem explicações fora d
 
     if (absChange > 5.0) {
       strategy = isBull ? 'BREAKOUT' : 'RSI';
-      takeProfit = 5.4;
-      stopLoss = 2.4;
-      trailingDistance = 1.1;
+      takeProfit = 4.2;
+      stopLoss = 1.3;
+      trailingDistance = 0.6;
       useMarketRegime = true;
       useQuantFunnel = true;
       useEnsemble = false;
       buyThreshold = 25;
       sellThreshold = 75;
-      reasoning = `Alta volatilidade detectada em ${cleanSym} (${marketInfo.priceChange24h.toFixed(1)}% nas 24h). Filtro de Força vs BTC ativado com alvos mais amplos para captura de rompimento.`;
+      reasoning = `Alta volatilidade detectada em ${cleanSym} (${marketInfo.priceChange24h.toFixed(1)}% nas 24h). Estratégia de expansão com Break-Even defensivo e Stop Loss limitado a 1.3%.`;
     } else if (isBull) {
       strategy = 'MACD';
-      takeProfit = 4.2;
-      stopLoss = 1.9;
-      trailingDistance = 0.9;
+      takeProfit = 3.6;
+      stopLoss = 1.2;
+      trailingDistance = 0.5;
       useMarketRegime = true;
       useQuantFunnel = false;
       useEnsemble = false;
       emaFast = 9;
       emaSlow = 21;
-      reasoning = `Tendência de alta confirmada em ${cleanSym}. Estratégia de Momentum (MACD 9/21) com trailing stop dinâmico ativado para proteger lucro em pullbacks.`;
+      reasoning = `Tendência de alta confirmada em ${cleanSym}. Estratégia de Momentum (MACD 9/21) com trailing stop dinâmico de 0.5% e Break-Even rápido em +0.8%.`;
     } else if (isBear) {
       strategy = 'RSI';
-      takeProfit = 3.4;
-      stopLoss = 1.6;
-      trailingDistance = 0.7;
+      takeProfit = 3.0;
+      stopLoss = 1.1;
+      trailingDistance = 0.5;
       useMarketRegime = false;
       useQuantFunnel = false;
       useEnsemble = false;
       buyThreshold = 26;
       sellThreshold = 68;
-      reasoning = `Ativo em sobrevenda/recuo (${marketInfo.priceChange24h.toFixed(1)}%). Otimizado para caçar fundo com compra no RSI ≤ 26 e stop justo de 1.6%.`;
+      reasoning = `Ativo em sobrevenda/recuo (${marketInfo.priceChange24h.toFixed(1)}%). Caça de fundo no RSI ≤ 26 com stop loss curto de 1.1% e R:R de ~2.7:1.`;
     } else {
       strategy = 'GRID';
-      takeProfit = 2.6;
-      stopLoss = 1.4;
-      trailingDistance = 0.6;
+      takeProfit = 2.8;
+      stopLoss = 1.2;
+      trailingDistance = 0.5;
       useMarketRegime = false;
       useQuantFunnel = false;
       useEnsemble = false;
-      reasoning = `Mercado lateral em ${cleanSym}. Configurado Grid Scalper com alvo de 2.6% para extrair lucros com oscilações frequentes.`;
+      reasoning = `Mercado lateral em ${cleanSym}. Grid Scalper com meta de 2.8%, stop de 1.2% e proteção de Break-Even ativa.`;
     }
 
     // Garante que os números visivelmente diferem se o usuário já tiver exatamente o mesmo valor
@@ -235,7 +235,7 @@ Responda APENAS com um objeto JSON no seguinte formato (sem explicações fora d
         useEnsemble,
         useMultiTimeframe: true,
         autoBreakEven: true,
-        breakEvenTrigger: 1.2,
+        breakEvenTrigger: 0.8,
         breakEvenBuffer: 0.25,
         rsiPeriod: 14,
         buyThreshold,
