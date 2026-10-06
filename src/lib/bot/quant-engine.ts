@@ -76,6 +76,8 @@ export interface HotCoinCandidate {
   quoteVolume: number;
   relativeStrengthVsBtc: number;
   score: number;
+  volumeZScore?: number;
+  rangePosition?: number;
 }
 
 const EXCLUDED_SYMBOLS = new Set([
@@ -92,8 +94,9 @@ const EXCLUDED_SYMBOLS = new Set([
 
 /**
  * Auto-Screener institucional da Binance:
- * Filtra moedas em USDT com liquidez robusta (> $5M), momentum positivo em 24h
- * e força relativa positiva vs Bitcoin, pontuando as melhores candidatas para entrada.
+ * Filtra moedas em USDT com liquidez robusta (> $5M), momentum positivo em 24h,
+ * anomalia de fluxo (Volume Z-Score) e proximidade de máximas diárias,
+ * pontuando as melhores candidatas para entrada explosiva.
  */
 export function scanHotCoins(
   tickers: Record<string, TickerData>,
@@ -103,12 +106,36 @@ export function scanHotCoins(
   const btcChange = btcTicker?.priceChangePercent ?? 0;
   const candidates: HotCoinCandidate[] = [];
 
+  // 1. Amostragem transversal para cálculo do Z-Score de volume institucional
+  const qualifiedTickers: Array<{ ticker: TickerData; logVol: number }> = [];
+  for (const ticker of Object.values(tickers)) {
+    const s = ticker.symbol;
+    if (!s || !s.endsWith("USDT") || EXCLUDED_SYMBOLS.has(s) || s === "BTCUSDT") continue;
+    const vol = ticker.quoteVolume || 0;
+    if (vol >= 3_000_000) {
+      qualifiedTickers.push({ ticker, logVol: Math.log10(Math.max(1, vol)) });
+    }
+  }
+
+  let meanLogVol = 6.5; // ~$3.16M padrão
+  let stdLogVol = 0.6;
+  if (qualifiedTickers.length >= 5) {
+    meanLogVol = qualifiedTickers.reduce((acc, q) => acc + q.logVol, 0) / qualifiedTickers.length;
+    const variance =
+      qualifiedTickers.reduce((acc, q) => acc + Math.pow(q.logVol - meanLogVol, 2), 0) /
+      qualifiedTickers.length;
+    stdLogVol = Math.sqrt(variance) || 0.6;
+  }
+
   for (const ticker of Object.values(tickers)) {
     const s = ticker.symbol;
     if (!s || !s.endsWith("USDT") || EXCLUDED_SYMBOLS.has(s) || s === "BTCUSDT") continue;
 
     const vol = ticker.quoteVolume || 0;
     const change = ticker.priceChangePercent || 0;
+    const currentPrice = ticker.price || parseFloat((ticker as any).lastPrice || 0);
+    const high = ticker.high || currentPrice;
+    const low = ticker.low || currentPrice;
 
     // Critério 1: Liquidez real na Binance (mínimo US$ 5 milhões nas últimas 24h)
     if (vol < 5_000_000) continue;
@@ -119,23 +146,44 @@ export function scanHotCoins(
     // Critério 3: Filtro Anti-Exaustão (permite capturar pumps fortes em expansão até +70%)
     if (change > 70.0) continue;
 
+    // Critério 4: Posição no canal 24h (Range Position)
+    // Se a moeda bateu topo e agora recuou para a metade inferior do dia (< 38%), é dump pós-pump -> descarta!
+    const rangeSpan = high - low;
+    const rangePos = rangeSpan > 0 ? Math.max(0, Math.min(1, (currentPrice - low) / rangeSpan)) : 0.5;
+    if (rangePos < 0.38 && change >= 4.0) continue;
+
     const relStrength = change - btcChange;
 
     // Se o Bitcoin estiver em queda (< -1.5%), exige força relativa destacada (≥ +2.0%)
     if (btcChange < -1.5 && relStrength < 2.0) continue;
 
-    // Pontuação quantitativa: bonifica a faixa ideal de expansão intradiária (2% a 25%) e liquidez robusta
+    // Volume Z-Score: mede a intensidade da entrada de capital institucional vs mercado
+    const logV = Math.log10(Math.max(1, vol));
+    const volumeZScore = (logV - meanLogVol) / stdLogVol;
+
+    // Pontuação quantitativa multicritério:
+    // - Momentum 24h (change * 1.2)
+    // - Faixa ideal de expansão intradiária (2% a 25%) (+4.0)
+    // - Força relativa vs BTC (relStrength * 0.8)
+    // - Z-Score de Volume (volumeZScore * 2.5)
+    // - Proximidade do topo do dia (rangePos * 4.0)
     const isSweetSpot = change >= 2.0 && change <= 25.0;
-    const volScore = Math.log10(Math.max(1, vol / 1_000_000));
-    const score = change * 1.3 + (isSweetSpot ? 4.0 : 0) + relStrength * 0.8 + volScore * 1.5;
+    const score =
+      change * 1.2 +
+      (isSweetSpot ? 4.0 : 0) +
+      relStrength * 0.8 +
+      volumeZScore * 2.5 +
+      rangePos * 4.0;
 
     candidates.push({
       symbol: s,
-      price: ticker.price || parseFloat((ticker as any).lastPrice || 0),
+      price: currentPrice,
       priceChangePercent: change,
       quoteVolume: vol,
       relativeStrengthVsBtc: relStrength,
       score,
+      volumeZScore: parseFloat(volumeZScore.toFixed(2)),
+      rangePosition: parseFloat((rangePos * 100).toFixed(0)),
     });
   }
 

@@ -97,6 +97,10 @@ export interface BotPosition {
   partialTpExecuted?: boolean;
   partialTpSoldQty?: number;
   partialTpRealizedPnl?: number;
+  /** Alvos Dinâmicos Adaptativos por ATR */
+  dynamicTakeProfit?: number;
+  dynamicStopLoss?: number;
+  relativeAtrAtEntry?: number;
 }
 
 export interface BotStats {
@@ -111,6 +115,12 @@ export interface BotStats {
   lastActionTime?: string;
   /** Resultado da última análise de entrada (por que o robô comprou ou aguarda). */
   entryChecks?: BotEntryCheck[];
+  /** Métricas de Risco Quantitativo (Sharpe, Sortino, Expectancy, Profit Factor) */
+  sharpeRatio?: number;
+  sortinoRatio?: number;
+  profitFactor?: number;
+  expectancy?: number;
+  maxDrawdown?: number;
 }
 
 export interface BotEntryCheck {

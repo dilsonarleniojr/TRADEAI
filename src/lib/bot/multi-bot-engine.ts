@@ -265,14 +265,19 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       (pos.partialTpExecuted || !canUsePartialTp) &&
       gainPercent <= beBuffer;
 
-    // 🚀 TRAILING TAKE-PROFIT DINÂMICO (Deixar o Lucro Correr em Altas Fortes)
-    // Ao bater a meta de Take Profit (ex: +2.5% a +3.0%), o robô não vende na hora;
-    // ele arma o Trailing TP, rastreia o topo do pump e só realiza quando recuar X% do pico.
+    // 🎯 ALVOS DINÂMICOS ADAPTATIVOS & PARABÓLICOS
+    // Se a posição foi aberta com alvo adaptativo por ATR, respeita a volatilidade do ativo
+    const effectiveTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 3.0;
+    const effectiveStopLoss = pos.dynamicStopLoss || bot.stopLoss || 1.5;
+
+    // 🚀 TRAILING TAKE-PROFIT DINÂMICO PARABÓLICO (Deixar o Lucro Correr em Altas Fortes)
+    // Ao bater a meta de Take Profit (ex: +3.0% ou alvo ATR), o robô não vende na hora;
+    // ele arma o Trailing TP, rastreia o topo do pump e estreita o stop parabolicamente conforme o lucro sobe.
     const isTrailingTakeProfitEnabled = bot.trailingTakeProfit ?? true;
-    const tpDistance = bot.trailingTakeProfitDistance ?? 0.6; // recuo percentual do pico (ex: 0.6%)
+    const baseTpDistance = bot.trailingTakeProfitDistance ?? 0.6; // recuo percentual padrão do pico
 
     let isTakeProfitNowArmed = Boolean(pos.isTakeProfitArmed);
-    if (isTrailingTakeProfitEnabled && gainPercent >= bot.takeProfit) {
+    if (isTrailingTakeProfitEnabled && gainPercent >= effectiveTakeProfit) {
       isTakeProfitNowArmed = true;
     }
 
@@ -283,13 +288,21 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     const peakGainFromTp = ((tpPeakPrice - pos.entryPrice) / pos.entryPrice) * 100;
     const pullbackFromTpPeak = peakGainFromTp - gainPercent;
 
+    // 🏄‍♂️ Aperto Parabólico de Stop (Lock-in agressivo de lucros estendidos em pumps)
+    let effectiveTpDistance = baseTpDistance;
+    if (peakGainFromTp >= 6.0) {
+      effectiveTpDistance = Math.min(baseTpDistance, 0.30); // Acima de +6%, tolera apenas 0.30% de recuo do pico
+    } else if (peakGainFromTp >= 4.0) {
+      effectiveTpDistance = Math.min(baseTpDistance, 0.45); // Entre +4% e +6%, tolera apenas 0.45% de recuo do pico
+    }
+
     // Condição de saída pelo Trailing TP:
     // 1. Está armado
-    // 2. Teve um recuo >= tpDistance a partir do topo OU o lucro recuou para a base de proteção (takeProfit - 0.4%)
+    // 2. Teve um recuo >= effectiveTpDistance a partir do topo OU o lucro recuou para a base de proteção (effectiveTakeProfit - 0.3%)
     const isTrailingTakeProfitTriggered =
       isTrailingTakeProfitEnabled &&
       isTakeProfitNowArmed &&
-      (pullbackFromTpPeak >= tpDistance || gainPercent <= Math.max(1.2, bot.takeProfit - 0.4));
+      (pullbackFromTpPeak >= effectiveTpDistance || gainPercent <= Math.max(1.5, effectiveTakeProfit - 0.3));
 
     // Update position mark-to-market
     const updatedPosition: BotPosition = {
@@ -316,24 +329,25 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       if (!isNaN(entryMs)) {
         minutesOpen = Math.max(0, (Date.now() - entryMs) / 60000);
         // Se a posição durou mais que timeStopMinutes e o preço está estagnado (entre -0.6% e +0.4%)
-        if (timeStopMinutes > 0 && minutesOpen >= timeStopMinutes && gainPercent <= 0.4 && gainPercent >= -bot.stopLoss) {
+        if (timeStopMinutes > 0 && minutesOpen >= timeStopMinutes && gainPercent <= 0.4 && gainPercent >= -effectiveStopLoss) {
           isTimeStop = true;
         }
       }
     }
 
     // Feedback de monitoramento em tempo real do robô em operação
-    const targetProfitPrice = (pos.entryPrice * (1 + bot.takeProfit / 100)).toFixed(4);
+    const targetProfitPrice = (pos.entryPrice * (1 + effectiveTakeProfit / 100)).toFixed(4);
     const sign = gainPercent >= 0 ? "+" : "";
     let statusNotice = "";
     if (pos.partialTpExecuted) {
       statusNotice += ` · 🎯 50% Salvo no Lucro (Risco Zero)`;
     }
     if (isTakeProfitNowArmed) {
-      statusNotice += ` · 🚀 Surfando Pump (Trailing TP Ativo · Topo: +${peakGainFromTp.toFixed(2)}%)`;
+      statusNotice += ` · 🚀 Surfando Pump (Trailing Parabólico Ativo · Topo: +${peakGainFromTp.toFixed(2)}%)`;
     } else if (isBreakEvenNowArmed) {
       statusNotice += ` · 🛡️ Risco Zero Ativo (Break-Even Armado em $${breakEvenPrice.toFixed(4)})`;
     }
+    const atrNotice = pos.dynamicTakeProfit ? ` · 🎯 Alvo ATR: +${pos.dynamicTakeProfit}%` : "";
     const dcaNotice = (pos.dcaCount && pos.dcaCount > 0) ? ` · 🔄 DCA (${pos.dcaCount}/${bot.maxDcaOrders || 1})` : "";
     const timeNotice = timeStopMinutes > 0 && minutesOpen > 0 ? ` · ⏱️ ${minutesOpen.toFixed(0)}m/${timeStopMinutes}m` : "";
 
@@ -341,7 +355,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       status: "in_position",
       stats: {
         ...bot.stats,
-        lastAction: `Monitorando ${pos.symbol.replace("USDT", "")} · Cotação: $${currentPrice!.toFixed(5)} (${sign}${gainPercent.toFixed(2)}%) · Alvo: $${targetProfitPrice}${statusNotice}${dcaNotice}${timeNotice}`,
+        lastAction: `Monitorando ${pos.symbol.replace("USDT", "")} · Cotação: $${currentPrice!.toFixed(5)} (${sign}${gainPercent.toFixed(2)}%) · Alvo: $${targetProfitPrice}${atrNotice}${statusNotice}${dcaNotice}${timeNotice}`,
         lastActionTime: new Date().toISOString(),
       },
     });
@@ -378,7 +392,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
           : `🚀 TRAILING TAKE-PROFIT SURFADO (+${gainPercent.toFixed(2)}%) · TOPO: +${peakGainFromTp.toFixed(2)}% (Recuo de ${pullbackFromTpPeak.toFixed(2)}%)`;
       }
     } else {
-      if (gainPercent >= bot.takeProfit) {
+      if (gainPercent >= effectiveTakeProfit) {
         isTakeProfit = true;
         takeProfitReason = bot.stopAfterProfit
           ? `🎯 TAKE PROFIT ATINGIDO (+${gainPercent.toFixed(2)}%) · OPERAÇÃO ÚNICA CONCLUÍDA`
@@ -392,18 +406,16 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     const isTrailingStop =
       bot.trailingStop &&
       !isTakeProfitNowArmed &&
-      peakGain >= Math.max(1.8, bot.takeProfit * 0.7) &&
+      peakGain >= Math.max(1.8, effectiveTakeProfit * 0.7) &&
       pullbackFromPeak >= (bot.trailingStopDistance || 0.6) &&
       gainPercent >= 0.50;
 
-    // 1.3 STOP LOSS DISCIPLINADO (Respeita o risco configurado sem cortes prematuros por ruído)
-    const isHardStopLoss = gainPercent <= -bot.stopLoss;
+    // 1.3 STOP LOSS DISCIPLINADO (Respeita o risco adaptativo configurado por ATR)
+    const isHardStopLoss = gainPercent <= -effectiveStopLoss;
     const isStopLoss = isHardStopLoss;
 
     // 1.4 ONE-SHOT QUICK PROFIT (Venda com lucro real conquistado)
-    // Se o robô estiver no modo de operação única, só encerra quando atingir o alvo de take profit
-    // ou no mínimo 1.8% líquido:
-    const isQuickProfit = bot.stopAfterProfit && gainPercent >= Math.max(1.8, bot.takeProfit * 0.9);
+    const isQuickProfit = bot.stopAfterProfit && gainPercent >= Math.max(1.8, effectiveTakeProfit * 0.9);
 
     let shouldSell = false;
     let sellReason = "";
@@ -630,13 +642,15 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
           }
         } catch {}
 
-        // Sizing Institucional: Posição padronizada (padrão $40 ou bot.allocationAmount)
-        // para garantir que alvos de +3.0% gerem lucros reais de +US$ 1.20 a +US$ 2.50 líquidos
+        // Sizing Compounding Dinâmico (Half-Kelly):
+        // Conforme a banca cresce (> $90), escala as posições proporcionalmente (~42-45% do saldo)
+        // para ativar os juros compostos automáticos e maximizar os lucros acumulados.
         const maxSafeCash = Math.max(0, cash * 0.95);
         const configuredAlloc = bot.allocationAmount || 40.0;
-        const dynamicAlloc = (cash >= 35.0 && cash <= 90.0)
-          ? Math.max(35.0, Math.min(maxSafeCash, cash * 0.85))
-          : Math.min(maxSafeCash, configuredAlloc);
+        const compoundingSlot = cash > 90.0
+          ? Math.max(35.0, cash * 0.45)
+          : Math.max(35.0, Math.min(maxSafeCash, cash * 0.85));
+        const dynamicAlloc = Math.max(35.0, Math.min(maxSafeCash, Math.max(configuredAlloc, compoundingSlot)));
         const targetSpend = Math.max(minRequiredCash, Math.min(maxSafeCash, dynamicAlloc));
         const quantity = parseFloat((targetSpend / freshCandPrice).toFixed(6));
         const total = parseFloat((quantity * freshCandPrice).toFixed(2));
@@ -650,6 +664,9 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
             quantity,
             total,
             customReason: reasonFormatted,
+            dynamicTakeProfit: decision.suggestedTp,
+            dynamicStopLoss: decision.suggestedSl,
+            relativeAtrAtEntry: decision.relATR,
             callbacks,
           });
           return;
@@ -722,13 +739,15 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   const { shouldBuy, reason: entryReason, checks } = decision;
 
   if (shouldBuy && currentPrice) {
-    // Sizing Institucional: Posição padronizada (padrão $40 ou bot.allocationAmount)
-    // para garantir que alvos de +3.0% gerem lucros reais de +US$ 1.20 a +US$ 2.50 líquidos
+    // Sizing Compounding Dinâmico (Half-Kelly):
+    // Conforme a banca cresce (> $90), escala as posições proporcionalmente (~42-45% do saldo)
+    // para ativar os juros compostos automáticos e maximizar os lucros acumulados.
     const maxSafeCash = Math.max(0, cash * 0.95);
     const configuredAlloc = bot.allocationAmount || 40.0;
-    const dynamicAlloc = (cash >= 35.0 && cash <= 90.0)
-      ? Math.max(35.0, Math.min(maxSafeCash, cash * 0.85))
-      : Math.min(maxSafeCash, configuredAlloc);
+    const compoundingSlot = cash > 90.0
+      ? Math.max(35.0, cash * 0.45)
+      : Math.max(35.0, Math.min(maxSafeCash, cash * 0.85));
+    const dynamicAlloc = Math.max(35.0, Math.min(maxSafeCash, Math.max(configuredAlloc, compoundingSlot)));
     const targetSpend = Math.max(minRequiredCash, Math.min(maxSafeCash, dynamicAlloc));
 
     const quantity = parseFloat((targetSpend / currentPrice).toFixed(6));
@@ -742,6 +761,9 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         quantity,
         total,
         customReason: entryReason,
+        dynamicTakeProfit: decision.suggestedTp,
+        dynamicStopLoss: decision.suggestedSl,
+        relativeAtrAtEntry: decision.relATR,
         callbacks,
       });
     }
@@ -769,6 +791,9 @@ async function executeBotBuy({
   quantity,
   total,
   customReason,
+  dynamicTakeProfit,
+  dynamicStopLoss,
+  relativeAtrAtEntry,
   callbacks,
 }: {
   bot: BotInstance;
@@ -777,6 +802,9 @@ async function executeBotBuy({
   quantity: number;
   total: number;
   customReason?: string;
+  dynamicTakeProfit?: number;
+  dynamicStopLoss?: number;
+  relativeAtrAtEntry?: number;
   callbacks?: MultiBotEngineCallbacks;
 }) {
   const store = useCryptoStore.getState();
@@ -896,16 +924,21 @@ async function executeBotBuy({
     unrealizedPnlPercent: 0,
     entryTime: new Date().toISOString(),
     mode: tradingMode,
+    dynamicTakeProfit,
+    dynamicStopLoss,
+    relativeAtrAtEntry,
   };
 
   store.updateBotPosition(bot.id, newPosition);
   store.recordBotTrade(bot.id, trade, 0);
 
-  const targetProfitPrice = (buyPrice * (1 + bot.takeProfit / 100)).toFixed(2);
+  const effectiveTarget = dynamicTakeProfit || bot.takeProfit;
+  const targetProfitPrice = (buyPrice * (1 + effectiveTarget / 100)).toFixed(4);
   const modeTag = tradingMode === "live" ? "🟢 [REAL]" : "🔷 [SIMULADO]";
+  const atrTag = dynamicTakeProfit ? ` (Alvo ATR: +${dynamicTakeProfit}% | Stop: -${dynamicStopLoss || bot.stopLoss}%)` : "";
 
   store.addBotLog({
-    message: `🚀 ${modeTag} [${bot.name}] COMPRA executada em ${execSymbol.replace("USDT", "")}! Preço: $${buyPrice.toLocaleString()} | Alvo de Lucro: +${bot.takeProfit}% ($${targetProfitPrice})`,
+    message: `🚀 ${modeTag} [${bot.name}] COMPRA executada em ${execSymbol.replace("USDT", "")}! Preço: $${buyPrice.toLocaleString()} | Alvo de Lucro: +${effectiveTarget}% ($${targetProfitPrice})${atrTag}`,
     type: "buy",
     botId: bot.id,
     botName: bot.name,
@@ -913,7 +946,7 @@ async function executeBotBuy({
 
   callbacks?.onToast?.({
     title: `🤖 ${bot.name} ${modeTag}`,
-    description: `Comprou ${finalQty.toFixed(4)} ${execSymbol.replace("USDT", "")} @ $${buyPrice.toLocaleString()} (Alvo: +${bot.takeProfit}%)`,
+    description: `Comprou ${finalQty.toFixed(4)} ${execSymbol.replace("USDT", "")} @ $${buyPrice.toLocaleString()} (Alvo: +${effectiveTarget}%)${atrTag}`,
     variant: "default",
   });
   } finally {

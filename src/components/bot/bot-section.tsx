@@ -39,7 +39,12 @@ import {
   CheckCircle2,
   Trash2,
   RotateCcw,
+  ShieldCheck,
+  Scale,
+  Award,
+  Gauge,
 } from "lucide-react";
+import { calculateRiskMetrics } from "@/lib/bot/risk-metrics";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { useShallow } from "zustand/react/shallow";
@@ -129,6 +134,10 @@ export function BotSection() {
       winRate,
     };
   }, [bots]);
+
+  const riskMetrics = useMemo(() => {
+    return calculateRiskMetrics(trades, portfolio.cashBalance || 100);
+  }, [trades, portfolio.cashBalance]);
 
   // Fleet execution loop lives in <BotBackgroundRunner /> (mounted globally in page.tsx)
   const isAnyActive = useMemo(() => bots.some((b) => b.active), [bots]);
@@ -417,6 +426,75 @@ export function BotSection() {
               <span className="text-[10px] text-muted-foreground font-normal ml-1">
                 ({fleetStats.totalWins}V / {fleetStats.totalTrades - fleetStats.totalWins}D)
               </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Quantitative Alpha & Risk Management Strip */}
+        <div className="pt-2 border-t border-white/5 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Gauge className="w-3.5 h-3.5 text-purple-400" />
+              Métricas de Risco Quantitativo & Alpha
+            </span>
+            <Badge variant="outline" className="text-[10px] font-mono border-purple-500/30 text-purple-300 bg-purple-500/10">
+              Half-Kelly Compounding Ativo
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+            {/* Sharpe Ratio */}
+            <div className="bg-secondary/20 rounded-lg p-2.5 border border-border/20">
+              <span className="text-[9px] text-muted-foreground uppercase block font-semibold">Sharpe Anualizado</span>
+              <div className="text-sm font-extrabold text-foreground flex items-center gap-1">
+                <span className={riskMetrics.sharpeRatio >= 1.5 ? "text-emerald-400" : "text-foreground"}>
+                  {riskMetrics.closedTradesCount >= 2 ? riskMetrics.sharpeRatio.toFixed(2) : "Calculando..."}
+                </span>
+                {riskMetrics.sharpeRatio >= 2.0 && <span className="text-[10px] text-emerald-400">★</span>}
+              </div>
+              <span className="text-[9px] text-muted-foreground/80">Retorno / Volatilidade</span>
+            </div>
+
+            {/* Sortino Ratio */}
+            <div className="bg-secondary/20 rounded-lg p-2.5 border border-border/20">
+              <span className="text-[9px] text-muted-foreground uppercase block font-semibold">Sortino Ratio</span>
+              <div className="text-sm font-extrabold text-foreground">
+                <span className={riskMetrics.sortinoRatio >= 2.0 ? "text-emerald-400" : "text-foreground"}>
+                  {riskMetrics.closedTradesCount >= 2 ? riskMetrics.sortinoRatio.toFixed(2) : "Calculando..."}
+                </span>
+              </div>
+              <span className="text-[9px] text-muted-foreground/80">Alpha sem queda</span>
+            </div>
+
+            {/* Profit Factor */}
+            <div className="bg-secondary/20 rounded-lg p-2.5 border border-border/20">
+              <span className="text-[9px] text-muted-foreground uppercase block font-semibold">Profit Factor</span>
+              <div className="text-sm font-extrabold text-foreground">
+                <span className={riskMetrics.profitFactor >= 1.75 ? "text-emerald-400" : "text-foreground"}>
+                  {riskMetrics.closedTradesCount >= 1 ? `${riskMetrics.profitFactor.toFixed(2)}x` : "1.00x"}
+                </span>
+              </div>
+              <span className="text-[9px] text-muted-foreground/80">Ganhos / Perdas</span>
+            </div>
+
+            {/* Expectancy */}
+            <div className="bg-secondary/20 rounded-lg p-2.5 border border-border/20">
+              <span className="text-[9px] text-muted-foreground uppercase block font-semibold">Expectativa ($E)</span>
+              <div className="text-sm font-extrabold text-foreground">
+                <span className={riskMetrics.expectancy >= 0 ? "text-emerald-400" : "text-red-400"}>
+                  {riskMetrics.expectancy >= 0 ? "+" : ""}${riskMetrics.expectancy.toFixed(2)}
+                </span>
+              </div>
+              <span className="text-[9px] text-muted-foreground/80">Lucro esperado / trade</span>
+            </div>
+
+            {/* Max Drawdown */}
+            <div className="bg-secondary/20 rounded-lg p-2.5 border border-border/20 col-span-2 sm:col-span-1">
+              <span className="text-[9px] text-muted-foreground uppercase block font-semibold">Max Drawdown</span>
+              <div className="text-sm font-extrabold text-amber-400">
+                {riskMetrics.maxDrawdownPercent.toFixed(1)}%
+              </div>
+              <span className="text-[9px] text-muted-foreground/80">Pico a vale</span>
             </div>
           </div>
         </div>
