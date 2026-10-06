@@ -241,24 +241,24 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     const peakGain = ((highestPrice - pos.entryPrice) / pos.entryPrice) * 100;
 
     // 🛡️ BREAK-EVEN AUTOMÁTICO (Risco Zero Institucional)
-    // Se a Realização Parcial (Scale-Out 50/50) for viável (ordens >= 30 USDT) e estiver ativada,
-    // o Break-Even só é acionado DEPOIS que a parcial for realizada com lucro garantido (pos.partialTpExecuted).
-    // Se a ordem for menor (< 30 USDT) ou parcial estiver desativada, exige valorização mínima real (>= 1.2%) para armar.
+    // Para evitar fatiamentos prematuros e micro-centavos, a Realização Parcial só é permitida em posições >= 60 USDT.
+    // Em posições normais (< 60 USDT), o Break-Even só é armado após valorização expressiva (>= 1.8%).
+    // O piso de proteção é 0.50% para cobrir 100% das taxas da Binance com folga e garantir lucro líquido.
     const isAutoBreakEvenEnabled = bot.autoBreakEven ?? true;
-    const isUsePartialTp = bot.usePartialTp ?? true;
-    const beBuffer = bot.breakEvenBuffer ?? 0.25;
+    const isUsePartialTp = bot.usePartialTp ?? false;
+    const beBuffer = bot.breakEvenBuffer ?? 0.50;
     const breakEvenPrice = pos.entryPrice * (1 + beBuffer / 100);
     const positionNotional = pos.quantity * currentPrice!;
-    const canUsePartialTp = isUsePartialTp && positionNotional >= 30.0;
+    const canUsePartialTp = isUsePartialTp && positionNotional >= 60.0;
 
     const isBreakEvenNowArmed = Boolean(
       pos.isBreakEvenArmed ||
       (pos.partialTpExecuted && isAutoBreakEvenEnabled) ||
-      (isAutoBreakEvenEnabled && !canUsePartialTp && peakGain >= Math.max(1.2, bot.breakEvenTrigger || 1.2))
+      (isAutoBreakEvenEnabled && !canUsePartialTp && peakGain >= Math.max(1.8, bot.breakEvenTrigger || 1.8))
     );
 
     // O Break-Even só fecha a posição se estiver devidamente armado E
-    // (a parcial já tiver ocorrido OU o robô estiver rodando sem parciais com alvo de proteção batido)
+    // o preço recuar até a margem de proteção do Break-Even (ex: +0.50% garantidos)
     const isBreakEvenTriggered =
       isAutoBreakEvenEnabled &&
       isBreakEvenNowArmed &&
@@ -266,10 +266,10 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       gainPercent <= beBuffer;
 
     // 🚀 TRAILING TAKE-PROFIT DINÂMICO (Deixar o Lucro Correr em Altas Fortes)
-    // Se ativado (padrão true), ao bater a meta de Take Profit (ex: +2.5%), o robô não vende na hora;
+    // Ao bater a meta de Take Profit (ex: +2.5% a +3.0%), o robô não vende na hora;
     // ele arma o Trailing TP, rastreia o topo do pump e só realiza quando recuar X% do pico.
     const isTrailingTakeProfitEnabled = bot.trailingTakeProfit ?? true;
-    const tpDistance = bot.trailingTakeProfitDistance ?? 0.5; // recuo percentual do pico (ex: 0.5%)
+    const tpDistance = bot.trailingTakeProfitDistance ?? 0.6; // recuo percentual do pico (ex: 0.6%)
 
     let isTakeProfitNowArmed = Boolean(pos.isTakeProfitArmed);
     if (isTrailingTakeProfitEnabled && gainPercent >= bot.takeProfit) {
@@ -285,11 +285,11 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
 
     // Condição de saída pelo Trailing TP:
     // 1. Está armado
-    // 2. Teve um recuo >= tpDistance a partir do topo OU o lucro recuou perigosamente de volta para a base do alvo (takeProfit - 0.2%)
+    // 2. Teve um recuo >= tpDistance a partir do topo OU o lucro recuou para a base de proteção (takeProfit - 0.4%)
     const isTrailingTakeProfitTriggered =
       isTrailingTakeProfitEnabled &&
       isTakeProfitNowArmed &&
-      (pullbackFromTpPeak >= tpDistance || gainPercent <= Math.max(0.4, bot.takeProfit - 0.2));
+      (pullbackFromTpPeak >= tpDistance || gainPercent <= Math.max(1.2, bot.takeProfit - 0.4));
 
     // Update position mark-to-market
     const updatedPosition: BotPosition = {
@@ -347,12 +347,13 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     });
 
     // ==========================================================
-    // 1.0 REALIZAÇÃO PARCIAL AUTOMÁTICA (Scale-Out 50/50 no 1º Alvo)
+    // 1.0 REALIZAÇÃO PARCIAL AUTOMÁTICA (Scale-Out Institucional)
     // ==========================================================
     // Para proteger posições pequenas de fatiamentos inferiores ao mínimo da Binance ($5)
-    // e evitar micro-lucros pulverizados, parciais só executam se o valor da posição for >= 30 USDT.
-    const isPartialTpEnabled = (bot.usePartialTp ?? true) && ((updatedPosition.quantity * currentPrice!) >= 30.0);
-    const partialTpTrigger = bot.partialTpTrigger ?? 1.0;
+    // e evitar micro-lucros pulverizados, parciais só executam se o valor da posição for >= 60 USDT
+    // e com gatilho mínimo de +2.0%. Posições normais seguem 100% até o alvo.
+    const isPartialTpEnabled = (bot.usePartialTp ?? false) && ((updatedPosition.quantity * currentPrice!) >= 60.0);
+    const partialTpTrigger = bot.partialTpTrigger ?? 2.0;
     if (isPartialTpEnabled && !pos.partialTpExecuted && gainPercent >= partialTpTrigger) {
       const partialOk = await executeBotPartialSell({
         bot,
@@ -386,19 +387,19 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     }
 
     // 1.2 TRAILING STOP / BREAKEVEN PROFIT LOCK
-    // Se o lucro bateu pelo menos 0.75% e recuou antes de atingir o Take Profit pleno:
+    // Só trava se a valorização tiver superado pelo menos +1.8% e recuar
     const pullbackFromPeak = peakGain - gainPercent;
     const isTrailingStop =
       bot.trailingStop &&
       !isTakeProfitNowArmed &&
-      peakGain >= Math.max(0.75, bot.takeProfit * 0.35) &&
-      pullbackFromPeak >= (bot.trailingStopDistance || 0.5) &&
-      gainPercent >= 0.25;
+      peakGain >= Math.max(1.8, bot.takeProfit * 0.7) &&
+      pullbackFromPeak >= (bot.trailingStopDistance || 0.6) &&
+      gainPercent >= 0.50;
 
     // 1.3 TECHNICAL OVERBOUGHT REVERSAL (RSI real do ativo; só realiza se já está no lucro)
     let isOverboughtProfit = false;
     let exitRsi = 0;
-    if (gainPercent >= 1.2) {
+    if (gainPercent >= 1.5) {
       const klines = await getSymbolKlines(symbol);
       if (klines.length > (bot.rsiPeriod || 14)) {
         exitRsi = calculateRSI(klines.map((k) => k.close), bot.rsiPeriod || 14);
@@ -406,16 +407,14 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       }
     }
 
-    // 1.4 STOP LOSS & INVALIDAÇÃO TÉCNICA RÁPIDA (Corte precoce de perdas)
+    // 1.4 STOP LOSS DISCIPLINADO (Respeita o risco configurado sem cortes prematuros por ruído)
     const isHardStopLoss = gainPercent <= -bot.stopLoss;
-    // Se o trade recuar >= 0.95% e já estiver aberto há mais de 2 minutos sem reagir positivamente:
-    const isMicroTrendInvalidated = gainPercent <= -Math.min(0.95, bot.stopLoss * 0.8) && minutesOpen >= 2;
-    const isStopLoss = isHardStopLoss || isMicroTrendInvalidated;
+    const isStopLoss = isHardStopLoss;
 
     // 1.5 ONE-SHOT QUICK PROFIT (Venda com lucro real conquistado)
     // Se o robô estiver no modo de operação única, só encerra quando atingir o alvo de take profit
-    // ou no mínimo 1.2% líquido (jamais a 0.4% para não queimar taxas da Binance):
-    const isQuickProfit = bot.stopAfterProfit && gainPercent >= Math.max(1.2, bot.takeProfit * 0.85);
+    // ou no mínimo 1.8% líquido:
+    const isQuickProfit = bot.stopAfterProfit && gainPercent >= Math.max(1.8, bot.takeProfit * 0.9);
 
     let shouldSell = false;
     let sellReason = "";
