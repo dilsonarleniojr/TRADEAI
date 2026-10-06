@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "trading-strategist": {
+      "source": "kukapay/crypto-skills",
+      "sourceType": "github",
+      "skillPath": "skills/trading-strategist/SKILL.md",
+      "computedHash": "4996644c3ba03400d9122f3720d4de224583f21f40d1a02b9313f50ed5bbe709"
+    }
+  }
+}

@@ -53,11 +53,11 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("BTCUSDT");
   const [strategy, setStrategy] = useState<BotStrategy>("QUANT_ENSEMBLE");
-  const [takeProfit, setTakeProfit] = useState(2.8);
-  const [stopLoss, setStopLoss] = useState(1.2);
+  const [takeProfit, setTakeProfit] = useState(2.2);
+  const [stopLoss, setStopLoss] = useState(1.0);
   const [trailingStop, setTrailingStop] = useState(true);
-  const [trailingStopDistance, setTrailingStopDistance] = useState(0.5);
-  const [allocationAmount, setAllocationAmount] = useState(100);
+  const [trailingStopDistance, setTrailingStopDistance] = useState(0.4);
+  const [allocationAmount, setAllocationAmount] = useState(25);
   const [active, setActive] = useState(false);
   const [useMarketRegime, setUseMarketRegime] = useState(true);
   const [useQuantFunnel, setUseQuantFunnel] = useState(false);
@@ -65,10 +65,10 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
   const [useMultiTimeframe, setUseMultiTimeframe] = useState(true);
   const [useAutoScreener, setUseAutoScreener] = useState(false);
   const [autoBreakEven, setAutoBreakEven] = useState(true);
-  const [breakEvenTrigger, setBreakEvenTrigger] = useState(0.8);
+  const [breakEvenTrigger, setBreakEvenTrigger] = useState(1.2);
   const [breakEvenBuffer, setBreakEvenBuffer] = useState(0.25);
   const [trailingTakeProfit, setTrailingTakeProfit] = useState(true);
-  const [trailingTakeProfitDistance, setTrailingTakeProfitDistance] = useState(0.5);
+  const [trailingTakeProfitDistance, setTrailingTakeProfitDistance] = useState(0.4);
   const [usePartialTp, setUsePartialTp] = useState(true);
   const [partialTpTrigger, setPartialTpTrigger] = useState(1.0);
   const [partialTpPercent, setPartialTpPercent] = useState(50);
@@ -267,10 +267,15 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setUseMultiTimeframe(botToEdit.useMultiTimeframe ?? true);
       setUseAutoScreener(botToEdit.useAutoScreener ?? (botToEdit.symbol === "AUTO"));
       setAutoBreakEven(botToEdit.autoBreakEven ?? true);
-      setBreakEvenTrigger(botToEdit.breakEvenTrigger ?? 1.2);
+      setBreakEvenTrigger(botToEdit.breakEvenTrigger ?? 0.8);
       setBreakEvenBuffer(botToEdit.breakEvenBuffer ?? 0.25);
       setTrailingTakeProfit(botToEdit.trailingTakeProfit ?? true);
-      setTrailingTakeProfitDistance(botToEdit.trailingTakeProfitDistance ?? 0.6);
+      setTrailingTakeProfitDistance(botToEdit.trailingTakeProfitDistance ?? 0.5);
+      setUsePartialTp(botToEdit.usePartialTp ?? true);
+      setPartialTpTrigger(botToEdit.partialTpTrigger ?? 1.0);
+      setPartialTpPercent(botToEdit.partialTpPercent ?? 50);
+      setTimeStopMinutes(botToEdit.timeStopMinutes ?? 20);
+      setUseBtcGatekeeper(botToEdit.useBtcGatekeeper ?? true);
       setUseSmartDca(botToEdit.useSmartDca ?? true);
       setDcaDipThreshold(botToEdit.dcaDipThreshold ?? 1.5);
       setMaxDcaOrders(botToEdit.maxDcaOrders ?? 1);
@@ -284,12 +289,12 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
     } else {
       setName("Novo Robô de Lucro");
       setSymbol("SOLUSDT");
-      setStrategy("RSI");
-      setTakeProfit(3.5);
-      setStopLoss(1.8);
+      setStrategy("QUANT_ENSEMBLE");
+      setTakeProfit(2.2);
+      setStopLoss(1.0);
       setTrailingStop(true);
-      setTrailingStopDistance(0.8);
-      setAllocationAmount(80);
+      setTrailingStopDistance(0.4);
+      setAllocationAmount(25);
       setActive(false);
       setUseMarketRegime(true);
       setUseQuantFunnel(false);
@@ -300,7 +305,12 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setBreakEvenTrigger(1.2);
       setBreakEvenBuffer(0.25);
       setTrailingTakeProfit(true);
-      setTrailingTakeProfitDistance(0.6);
+      setTrailingTakeProfitDistance(0.4);
+      setUsePartialTp(true);
+      setPartialTpTrigger(1.0);
+      setPartialTpPercent(50);
+      setTimeStopMinutes(20);
+      setUseBtcGatekeeper(true);
       setUseSmartDca(true);
       setDcaDipThreshold(1.5);
       setMaxDcaOrders(1);
@@ -317,10 +327,17 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
 
   const handleApplyPreset = (preset: "scalp" | "swing" | "dips" | "screener") => {
     if (preset === "scalp") {
-      setTakeProfit(1.8);
-      setStopLoss(1.2);
+      setTakeProfit(2.2);
+      setStopLoss(1.0);
       setTrailingStop(true);
-      setTrailingStopDistance(0.5);
+      setTrailingStopDistance(0.4);
+      setBreakEvenTrigger(1.2);
+      setBreakEvenBuffer(0.25);
+      setUsePartialTp(true);
+      setPartialTpTrigger(1.0);
+      setPartialTpPercent(50);
+      setTimeStopMinutes(20);
+      setUseBtcGatekeeper(true);
       setUseAutoScreener(false);
       setName(`Scalper ${symbol.replace("USDT", "")}`);
     } else if (preset === "swing") {
@@ -427,6 +444,11 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
         breakEvenBuffer,
         trailingTakeProfit,
         trailingTakeProfitDistance,
+        usePartialTp,
+        partialTpTrigger,
+        partialTpPercent,
+        timeStopMinutes,
+        useBtcGatekeeper,
         useSmartDca,
         dcaDipThreshold,
         maxDcaOrders,
@@ -463,6 +485,11 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
         breakEvenBuffer,
         trailingTakeProfit,
         trailingTakeProfitDistance,
+        usePartialTp,
+        partialTpTrigger,
+        partialTpPercent,
+        timeStopMinutes,
+        useBtcGatekeeper,
         useSmartDca,
         dcaDipThreshold,
         maxDcaOrders,
@@ -1079,6 +1106,92 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
                   />
                   <p className="text-[9px] text-muted-foreground">
                     Dispara reentrada apenas se o recuo atingir -{dcaDipThreshold}% E houver confirmação técnica de suporte/sobrevenda (RSI ≤ 38 ou rejeição de fundo).
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Realização Parcial (Scale-Out 50% no 1º Alvo) */}
+            <div className="border-t border-border/30 pt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-violet-400 flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-violet-400" />
+                    Realização Parcial (Scale-Out 50% no 1º Alvo)
+                  </span>
+                  <p className="text-[10px] text-muted-foreground">
+                    Ao atingir +{partialTpTrigger}%, vende 50% da moeda garantindo lucro em caixa e trava os 50% restantes no Break-Even com risco ZERO.
+                  </p>
+                </div>
+                <Switch checked={usePartialTp} onCheckedChange={setUsePartialTp} />
+              </div>
+
+              {usePartialTp && (
+                <div className="space-y-1.5 pt-1 bg-violet-500/10 border border-violet-500/20 p-2.5 rounded-lg">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[11px] text-violet-200">Gatilho do 1º Alvo Parcial:</span>
+                    <span className="font-bold text-violet-300">+{partialTpTrigger}%</span>
+                  </div>
+                  <Slider
+                    value={[partialTpTrigger]}
+                    min={0.6}
+                    max={2.5}
+                    step={0.1}
+                    onValueChange={([val]) => setPartialTpTrigger(parseFloat(val.toFixed(1)))}
+                  />
+                  <p className="text-[9px] text-muted-foreground">
+                    Ao bater +{partialTpTrigger}%, o robô embolsa 50% do lucro líquido imediatamente e deixa o restante surfar a alta via Trailing Stop.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Filtro Direcional do Bitcoin (BTC Market Gatekeeper) */}
+            <div className="border-t border-border/30 pt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5 text-amber-400" />
+                    Filtro Direcional do Bitcoin (BTC Gatekeeper)
+                  </span>
+                  <p className="text-[10px] text-muted-foreground">
+                    Pausa novas ordens de compra se o Bitcoin estiver em queda intradiária rápida no gráfico de 5m/15m, evitando armadilhas de baixa do mercado geral.
+                  </p>
+                </div>
+                <Switch checked={useBtcGatekeeper} onCheckedChange={setUseBtcGatekeeper} />
+              </div>
+            </div>
+
+            {/* Time-Stop (Saída por Estagnação de Capital) */}
+            <div className="border-t border-border/30 pt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-orange-400 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-orange-400" />
+                    Time-Stop (Saída por Estagnação de Capital)
+                  </span>
+                  <p className="text-[10px] text-muted-foreground">
+                    Se o trade durar mais de {timeStopMinutes} minutos sem evoluir (oscilando no zero a zero), encerra a operação para liberar o saldo para novas oportunidades.
+                  </p>
+                </div>
+                <Switch checked={timeStopMinutes > 0} onCheckedChange={(chk) => setTimeStopMinutes(chk ? 20 : 0)} />
+              </div>
+
+              {timeStopMinutes > 0 && (
+                <div className="space-y-1.5 pt-1 bg-orange-500/10 border border-orange-500/20 p-2.5 rounded-lg">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[11px] text-orange-200">Tempo Máximo sem Rompimento:</span>
+                    <span className="font-bold text-orange-300">{timeStopMinutes} minutos</span>
+                  </div>
+                  <Slider
+                    value={[timeStopMinutes]}
+                    min={5}
+                    max={60}
+                    step={5}
+                    onValueChange={([val]) => setTimeStopMinutes(val)}
+                  />
+                  <p className="text-[9px] text-muted-foreground">
+                    Evita que o robô fique com capital preso por horas em moedas dormentes.
                   </p>
                 </div>
               )}
