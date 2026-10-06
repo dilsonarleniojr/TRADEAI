@@ -71,9 +71,10 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
   const unrealizedPnlUsdt = hasPosition ? (currentPrice - entryPrice) * bot.position!.quantity : 0;
   const isProfit = gainPercent >= 0;
 
-  // Progress towards Take Profit
-  const tpProgress = hasPosition && bot.takeProfit > 0
-    ? Math.min(100, Math.max(0, (gainPercent / bot.takeProfit) * 100))
+  // Progress towards Take Profit (respeitando alvo adaptativo de ATR se configurado)
+  const effectiveTakeProfit = bot.position?.dynamicTakeProfit || bot.takeProfit || 3.0;
+  const tpProgress = hasPosition && effectiveTakeProfit > 0
+    ? Math.min(100, Math.max(0, (gainPercent / effectiveTakeProfit) * 100))
     : 0;
 
   const handleTakeProfitNow = async () => {
@@ -199,8 +200,8 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
               )}
 
               {/* Allocation Amount */}
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-secondary/50 text-muted-foreground">
-                ${bot.allocationAmount} USDT
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-secondary/50 text-muted-foreground" title="Compounding Half-Kelly ativo: escala posições dinamicamente conforme os lucros crescem">
+                ${bot.allocationAmount} USDT · Compounding
               </Badge>
 
               {/* Stop After Profit Mode Badge */}
@@ -365,7 +366,7 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
                 <div className="flex items-center justify-between text-[11px] bg-emerald-500/15 border border-emerald-500/40 px-2.5 py-1.5 rounded-lg text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.2)]">
                   <span className="flex items-center gap-1.5 font-bold">
                     <Rocket className="w-3.5 h-3.5 text-emerald-400 shrink-0 animate-bounce" />
-                    Surfando Pump (Alvo Superado!)
+                    Surfando Pump (Trailing Parabólico Ativo)
                   </span>
                   <span className="text-[10px] font-mono text-emerald-200">
                     Pico: ${formatPrice(bot.position.tpPeakPrice || currentPrice)}
@@ -405,7 +406,7 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
                 <div className="flex items-center justify-between text-[10px]">
                   <span className="text-muted-foreground flex items-center gap-1">
                     <Target className="w-2.5 h-2.5 text-crypto-cyan" />
-                    Meta de Lucro: +{bot.takeProfit}%
+                    Meta de Lucro: +{effectiveTakeProfit}% {bot.position?.dynamicTakeProfit ? "(ATR Adaptativo)" : ""}
                   </span>
                   <span className="font-semibold text-crypto-cyan">{tpProgress.toFixed(0)}% do alvo</span>
                 </div>

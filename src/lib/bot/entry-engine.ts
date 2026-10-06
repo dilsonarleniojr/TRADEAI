@@ -41,6 +41,15 @@ export interface MarketAnalysis {
   rsi: number;
 }
 
+export interface EntryDecision {
+  shouldBuy: boolean;
+  reason: string;
+  checks: BotEntryCheck[];
+  suggestedTp?: number;
+  suggestedSl?: number;
+  relATR?: number;
+}
+
 const DEFAULT_FAST = 9;
 const DEFAULT_SLOW = 21;
 
@@ -496,10 +505,25 @@ export function evaluateEntry(
     });
   }
 
+  // Alvos Dinâmicos Adaptativos por ATR (Average True Range)
+  const relATRPercent = (analysis.relATR || 0) * 100;
+  let suggestedTp = bot.takeProfit || 3.0;
+  let suggestedSl = bot.stopLoss || 1.5;
+
+  if (relATRPercent > 0) {
+    // Alvo adaptativo: escala com a volatilidade real do ativo entre 3.0% e 6.5%
+    suggestedTp = Math.max(3.0, Math.min(6.5, parseFloat((relATRPercent * 2.2).toFixed(1))));
+    // Stop adaptativo: entre 1.2% e 1.8%, garantindo relação R:R >= 2:1 sempre
+    suggestedSl = Math.min(1.8, Math.max(1.2, parseFloat((relATRPercent * 1.0).toFixed(1))));
+  }
+
   const blocker = checks.find((c) => !c.ok);
   return {
     shouldBuy: !blocker,
-    reason: blocker ? `${blocker.label}: ${blocker.detail}` : `Entrada confirmada — ${signal.detail}`,
+    reason: blocker ? `${blocker.label}: ${blocker.detail}` : `Entrada confirmada — ${signal.detail} (Alvo ATR: +${suggestedTp}%)`,
     checks,
+    suggestedTp,
+    suggestedSl,
+    relATR: analysis.relATR,
   };
 }
