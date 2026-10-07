@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
 import { useToast } from "@/hooks/use-toast";
+import { FastCloseBadge } from "@/components/bot/fast-close-badge";
 
 interface TopPick {
   rank: number;
@@ -390,32 +391,13 @@ export function AITopPicks() {
                               {pick.recommendation}
                             </Badge>
 
-                            {/* Badge Dinâmico de Status do Robô e PnL */}
-                            {activeBot && (
-                              isBotInPosition ? (
-                                <Badge
-                                  variant="outline"
-                                  className={`text-[8px] font-bold px-1.5 py-0 flex items-center gap-1 shadow-sm font-mono leading-none ${
-                                    isFloatingProfit
-                                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
-                                      : "bg-amber-500/20 text-amber-300 border-amber-500/50"
-                                  }`}
-                                  title={`Robô em posição em ${pick.symbol}: Entrada $${activeBot.position?.entryPrice?.toFixed(4) || "0"}`}
-                                >
-                                  <span className={`w-1 h-1 rounded-full animate-ping shrink-0 ${isFloatingProfit ? "bg-emerald-400" : "bg-amber-400"}`} />
-                                  {isFloatingProfit ? "🟢" : "🟡"} Em Posição ({hasFloatingPnl ? `${isFloatingProfit ? "+" : ""}${floatingPnlPct.toFixed(2)}%` : "0.00%"})
-                                </Badge>
-                              ) : (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[8px] font-bold px-1.5 py-0 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm font-mono leading-none"
-                                  title={`Robô ativo em ${pick.symbol}: ${activeBot.name}`}
-                                >
-                                  <span className="w-1 h-1 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                                  🟢 Bot Ativo
-                                </Badge>
-                              )
-                            )}
+                            {/* Badge Dinâmico de Status do Robô, PnL e Zeragem Rápida */}
+                            <FastCloseBadge
+                              symbol={pick.symbol}
+                              size="xs"
+                              showInactiveBadge={false}
+                              onActivateClick={() => handleCreateBotFromPick(pick)}
+                            />
                           </div>
                           <div
                             className="flex items-center gap-2 mt-0.5 cursor-pointer group/name"

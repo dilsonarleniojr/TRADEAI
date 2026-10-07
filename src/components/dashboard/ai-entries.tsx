@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ExitAction, ExitPlan, TradeEntry } from "@/lib/ai-entries";
+import { FastCloseBadge } from "@/components/bot/fast-close-badge";
+import { manualCloseBotPosition } from "@/lib/bot/multi-bot-engine";
 
 const MAX_PAIRS = 6;
 const RISK_PER_TRADE = 0.01; // 1% do patrimônio por operação
@@ -127,6 +129,29 @@ export function AIEntries() {
   const [filter, setFilter] = useState<EntryFilter>("destaques");
   const [rotationOffset, setRotationOffset] = useState(0);
   const [activeAiProvider, setActiveAiProvider] = useState<string>("TradeAI Quant Engine");
+  const [closingBotId, setClosingBotId] = useState<string | null>(null);
+
+  const handleFastCloseEntry = async (bot: any) => {
+    setClosingBotId(bot.id);
+    const baseSym = bot.symbol.replace("USDT", "");
+    toast({
+      title: `⚡ Zeragem Rápida a Mercado (${baseSym})`,
+      description: `Encerrando posição de ${bot.name} a preço de mercado...`,
+    });
+    try {
+      await manualCloseBotPosition(bot.id, {
+        onToast: (t) => toast(t),
+      });
+    } catch (err: any) {
+      toast({
+        title: "Erro na Zeragem",
+        description: err?.message || "Não foi possível liquidar a posição.",
+        variant: "destructive",
+      });
+    } finally {
+      setClosingBotId(null);
+    }
+  };
 
   const positions = (portfolio?.positions ?? []).filter((p) => p.quantity > 0 && p.avgPrice > 0);
   const equity = portfolio?.totalValue ?? 0;
@@ -515,16 +540,8 @@ export function AIEntries() {
                     {EXIT_LABEL[x.action]}{x.action === "PARCIAL" ? ` ${x.partialPct}%` : ""}
                   </Badge>
 
-                  {/* Badge Dinâmico de Robô em Saída */}
-                  {activeBot && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm font-mono"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                      {isBotInPosition ? "🟢 Bot Monitorando Saída" : "🟢 Bot Ativo"}
-                    </Badge>
-                  )}
+                  {/* Badge Dinâmico de Robô em Saída com Gatilho de Zeragem Rápida */}
+                  <FastCloseBadge symbol={x.symbol} />
 
                   <span className={cn("ml-auto text-xs font-mono font-semibold", x.pnlPct >= 0 ? "text-crypto-green" : "text-crypto-red")}>
                     {x.pnlPct >= 0 ? "▲ +" : "▼ −"}{Math.abs(x.pnlPct).toFixed(2)}%
@@ -621,41 +638,8 @@ export function AIEntries() {
                   {e.aiProviderName || SOURCE_LABEL[e.source]}
                 </Badge>
 
-                {/* Badge Dinâmico de Status do Robô com PnL Flutuante */}
-                {activeBot ? (
-                  isBotInPosition ? (
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] font-bold px-2 py-0.5 flex items-center gap-1 shadow-sm font-mono ${
-                        isFloatingProfit
-                          ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
-                          : "bg-amber-500/20 text-amber-300 border-amber-500/50"
-                      }`}
-                      title={`Robô em posição em ${e.symbol}: Entrada $${activeBot.position?.entryPrice?.toFixed(4) || "0"}`}
-                    >
-                      <span className={`w-1.5 h-1.5 rounded-full animate-ping shrink-0 ${isFloatingProfit ? "bg-emerald-400" : "bg-amber-400"}`} />
-                      {isFloatingProfit ? "🟢" : "🟡"} Bot em Posição ({hasFloatingPnl ? `${isFloatingProfit ? "+" : ""}${floatingPnlPct.toFixed(2)}%` : "0.00%"})
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm font-mono"
-                      title={`Robô ativo em ${e.symbol}: ${activeBot.name}`}
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                      🟢 Bot em Execução
-                    </Badge>
-                  )
-                ) : (
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] font-bold px-2 py-0.5 bg-cyan-500/10 text-cyan-300 border-cyan-500/30 flex items-center gap-1 cursor-pointer hover:bg-cyan-500/20 transition-colors"
-                    onClick={() => handleLinkBot(e)}
-                    title={`Clique para ativar robô para ${e.symbol}`}
-                  >
-                    ⚡ Clique para Ativar
-                  </Badge>
-                )}
+                {/* Badge Dinâmico de Status do Robô com PnL Flutuante e Gatilho de Zeragem Rápida */}
+                <FastCloseBadge symbol={e.symbol} onActivateClick={() => handleLinkBot(e)} />
 
                 {/* Chips de Indicadores Técnicos */}
                 {e.indicators && (
@@ -742,6 +726,25 @@ export function AIEntries() {
                         ? `🟢 Robô em Posição (${e.symbol.replace("USDT", "")})`
                         : `🟢 Robô Ativo (${e.symbol.replace("USDT", "")})`
                       : `Vincular Robô (${e.symbol.replace("USDT", "")})`}
+                  </Button>
+                )}
+
+                {/* Gatilho de Zeragem Rápida a Mercado (Fast Close / Market Flatten) */}
+                {activeBot && isBotInPosition && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={closingBotId === activeBot.id}
+                    onClick={() => handleFastCloseEntry(activeBot)}
+                    className="h-8 gap-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-sm shadow-rose-600/30 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+                    title={`Zerar posição de ${e.symbol.replace("USDT", "")} a mercado imediatamente`}
+                  >
+                    {closingBotId === activeBot.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <LogOut className="w-3.5 h-3.5" />
+                    )}
+                    Zerar a Mercado ({e.symbol.replace("USDT", "")})
                   </Button>
                 )}
               </div>
