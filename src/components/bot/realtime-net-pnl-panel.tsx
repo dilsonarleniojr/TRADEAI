@@ -964,6 +964,11 @@ export function RealtimeNetPnlPanel() {
                   const isRisk = alert.type === "risco";
                   const isWarn = alert.type === "aviso";
 
+                  const targetSymbol = (alert.symbol || (alert.metrics?.symbol as string) || "BTCUSDT").toUpperCase();
+                  const cleanSym = targetSymbol.endsWith("USDT") ? targetSymbol : `${targetSymbol}USDT`;
+                  const activeBot = botsInStore.find((b) => b.symbol === cleanSym && b.active);
+                  const isBotInPosition = activeBot && (activeBot.status === "in_position" || !!activeBot.position);
+
                   return (
                     <motion.div
                       key={alert.id}
@@ -974,7 +979,9 @@ export function RealtimeNetPnlPanel() {
                       transition={{ duration: 0.2 }}
                       onClick={() => handleExecuteAlertAction(alert)}
                       className={`p-3.5 rounded-xl border flex flex-col justify-between gap-2.5 shadow-sm transition-all duration-200 cursor-pointer hover:scale-[1.01] hover:shadow-lg active:scale-[0.99] group/card ${
-                        isOpp
+                        activeBot
+                          ? "bg-emerald-950/15 border-emerald-500/40 hover:border-emerald-500/70 shadow-emerald-950/20"
+                          : isOpp
                           ? "bg-crypto-green/5 border-crypto-green/30 hover:border-crypto-green/60"
                           : isRisk
                           ? "bg-crypto-red/5 border-crypto-red/30 hover:border-crypto-red/60"
@@ -1005,6 +1012,25 @@ export function RealtimeNetPnlPanel() {
                             {alert.symbol && (
                               <Badge variant="outline" className="text-[10px] font-mono font-bold border-border/50 text-foreground bg-background/50">
                                 {alert.symbol}
+                              </Badge>
+                            )}
+
+                            {/* Badge Dinâmico de Status do Robô */}
+                            {activeBot ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm"
+                                title={`Robô ativo em ${cleanSym}: ${activeBot.name}`}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                                {isBotInPosition ? "🟢 Bot em Posição" : "🟢 Bot em Execução"}
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] font-bold px-2 py-0.5 bg-cyan-500/10 text-cyan-300 border-cyan-500/30 flex items-center gap-1"
+                              >
+                                ⚡ Clique para Ativar
                               </Badge>
                             )}
 
@@ -1065,7 +1091,9 @@ export function RealtimeNetPnlPanel() {
                             handleExecuteAlertAction(alert);
                           }}
                           className={`w-full sm:w-auto h-7 px-2.5 text-[11px] font-bold shrink-0 transition-all active:scale-95 flex items-center justify-center gap-1 shadow-sm cursor-pointer ${
-                            isOpp
+                            activeBot
+                              ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40"
+                              : isOpp
                               ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40"
                               : isRisk
                               ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-950/40"
@@ -1075,12 +1103,12 @@ export function RealtimeNetPnlPanel() {
                           {isOpp ? (
                             <>
                               <Bot className="w-3.5 h-3.5 text-emerald-200" />
-                              Gerar Bot
+                              {activeBot ? "Ver Bot Ativo" : "Gerar Bot"}
                             </>
                           ) : isRisk ? (
                             <>
                               <ShieldAlert className="w-3.5 h-3.5 text-rose-200" />
-                              Aplicar Proteção
+                              {activeBot ? "Blindar Bot" : "Aplicar Proteção"}
                             </>
                           ) : (
                             <>

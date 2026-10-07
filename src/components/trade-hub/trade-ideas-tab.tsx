@@ -400,11 +400,19 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
           {ideas.map((idea, index) => {
             const isLong = idea.type === "LONG";
             const isFast = idea.horizon === "RAPIDO";
+            const cleanSym = idea.symbol.toUpperCase();
+            const activeBot = bots.find((b) => b.symbol === cleanSym && b.active);
+            const isBotInPosition = activeBot && (activeBot.status === "in_position" || !!activeBot.position);
+
             return (
               <Card
                 key={`${idea.symbol}-${index}`}
                 onClick={() => handleCreateBot(idea)}
-                className="group relative overflow-hidden border-border/50 bg-gradient-to-b from-card/95 via-card/60 to-card/40 backdrop-blur-md hover:border-cyan-500/60 transition-all duration-300 shadow-md hover:shadow-cyan-950/30 flex flex-col justify-between cursor-pointer hover:scale-[1.01] active:scale-[0.99]"
+                className={`group relative overflow-hidden border-border/50 bg-gradient-to-b from-card/95 via-card/60 to-card/40 backdrop-blur-md transition-all duration-300 shadow-md flex flex-col justify-between cursor-pointer hover:scale-[1.01] active:scale-[0.99] ${
+                  activeBot
+                    ? "border-emerald-500/50 hover:border-emerald-500/80 shadow-emerald-950/25"
+                    : "hover:border-cyan-500/60 hover:shadow-cyan-950/30"
+                }`}
               >
                 {/* Header Strip Indicating Long/Short */}
                 <div
@@ -435,20 +443,39 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <div className="font-black text-xl text-foreground tracking-tight">
                         {idea.symbol}
                       </div>
                       <Badge variant="outline" className="text-[11px] text-muted-foreground border-border/60 font-mono">
                         {idea.timeframe}
                       </Badge>
+
+                      {/* Badge Dinâmico de Status do Robô */}
+                      {activeBot ? (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm"
+                          title={`Robô ativo em ${idea.symbol}: ${activeBot.name}`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                          {isBotInPosition ? "🟢 Bot em Posição" : "🟢 Bot em Execução"}
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] font-bold px-2 py-0.5 bg-cyan-500/10 text-cyan-300 border-cyan-500/30 flex items-center gap-1"
+                        >
+                          ⚡ Clique para Ativar
+                        </Badge>
+                      )}
                     </div>
                     <Badge
                       className={`${
                         isLong
                           ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/40"
                           : "bg-rose-500/15 text-rose-400 border-rose-500/40"
-                      } font-bold text-xs flex items-center gap-1.5 px-2.5 py-0.5`}
+                      } font-bold text-xs flex items-center gap-1.5 px-2.5 py-0.5 shrink-0`}
                     >
                       {isLong ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
                       {isLong ? "LONG (COMPRA)" : "SHORT (VENDA)"}
@@ -588,10 +615,14 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
                             e.stopPropagation();
                             handleCreateBot(idea);
                           }}
-                          className="text-xs h-8 px-2.5 border-border/60 hover:border-cyan-500/50"
+                          className={`text-xs h-8 px-2.5 transition-all cursor-pointer ${
+                            activeBot
+                              ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+                              : "border-border/60 hover:border-cyan-500/50"
+                          }`}
                         >
-                          <Bot className="w-3.5 h-3.5 mr-1 text-cyan-400" />
-                          Criar Bot
+                          <Bot className={`w-3.5 h-3.5 mr-1 ${activeBot ? "text-emerald-400" : "text-cyan-400"}`} />
+                          {activeBot ? "Ver Bot Ativo" : "Criar Bot"}
                         </Button>
                         <Button
                           variant="secondary"
