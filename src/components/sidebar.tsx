@@ -12,6 +12,8 @@ import {
   SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
+  Gauge,
+  Sparkles,
 } from "lucide-react";
 import {
   Tooltip,
@@ -26,18 +28,21 @@ import { useShallow } from "zustand/react/shallow";
 // Desktop items with descriptive labels, subtitles and shortcut indicators
 const desktopNavItems = [
   { id: "dashboard" as const, icon: LayoutDashboard, label: "Painel Principal", desc: "Visão geral e mercado", shortcut: "1" },
+  { id: "institutional" as const, icon: Gauge, label: "Cockpit Institucional", desc: "PnL Real-Time, OFI & IA", shortcut: "8" },
   { id: "chart" as const, icon: BarChart3, label: "Gráfico & Trading", desc: "Candles e livro de ofertas", shortcut: "2" },
   { id: "bot" as const, icon: Bot, label: "Robôs de Lucro", desc: "Automação simultânea", shortcut: "3" },
+  { id: "trade-hub" as const, icon: Sparkles, label: "Estúdio Quant & IA", desc: "7 Módulos de Inteligência", shortcut: "9" },
   { id: "ai" as const, icon: Brain, label: "Assistente IA", desc: "Análise e previsões", shortcut: "4" },
   { id: "history" as const, icon: History, label: "Histórico & Ordens", desc: "Operações e relatórios", shortcut: "5" },
   { id: "backtest" as const, icon: SlidersHorizontal, label: "Backtesting", desc: "Simulação de estratégias", shortcut: "6" },
   { id: "education" as const, icon: BookOpen, label: "Academia Cripto", desc: "Guias e tutoriais", shortcut: "7" },
 ];
 
-// Mobile: 5 core items
+// Mobile: 6 core items
 const mobileNavItems = [
   { id: "dashboard" as const, icon: LayoutDashboard, label: "Painel" },
   { id: "chart" as const, icon: BarChart3, label: "Gráfico" },
+  { id: "trade-hub" as const, icon: Sparkles, label: "Estúdio" },
   { id: "bot" as const, icon: Bot, label: "Robôs" },
   { id: "ai" as const, icon: Brain, label: "IA" },
   { id: "history" as const, icon: History, label: "Histórico" },

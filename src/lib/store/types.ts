@@ -298,6 +298,7 @@ export interface TradeData {
   strategy: string;
   mode: string;
   pnl: number;
+  netPnl?: number;
   timestamp: string;
   botId?: string;
   botName?: string;
@@ -321,6 +322,47 @@ export interface AISignalData {
   stopLoss: number;
   takeProfit: number;
   createdAt: string;
+  // Campos estritos HFT / Microestrutura
+  signal?: "BUY" | "SELL" | "HOLD";
+  confidence_score?: number;
+  risk_reward_ratio?: number;
+  key_driver?: string;
+  risk_warning?: string;
+  vetoed?: boolean;
+  veto_reason?: string;
+  flow_context?: {
+    vwap?: number;
+    vwap_distance_percent?: number;
+    order_flow_imbalance?: number;
+    funding_rate_percent?: number;
+    liquidity_controller?: string;
+  };
+  // Telemetria do agente (ferramentas chamadas e falhas do LLM)
+  agent_error?: boolean;
+  error_reason?: string;
+  agent_telemetry?: AgentTelemetryData;
+}
+
+export type AgentToolStatus = "success" | "fallback" | "failed";
+
+export interface AgentToolInvocationData {
+  name: string;
+  label: string;
+  status: AgentToolStatus;
+  duration_ms: number;
+  summary?: string;
+  error?: string;
+}
+
+export interface AgentTelemetryData {
+  mode: "agent" | "fail_safe";
+  provider: string | null;
+  model: string | null;
+  iterations: number;
+  tools: AgentToolInvocationData[];
+  llm_error?: string;
+  started_at: string;
+  duration_ms: number;
 }
 
 export interface ChatMessage {
@@ -355,7 +397,7 @@ export interface PriceAlert {
   message?: string;
 }
 
-export type ActiveSection = "dashboard" | "chart" | "ai" | "bot" | "backtest" | "history" | "education";
+export type ActiveSection = "dashboard" | "chart" | "ai" | "bot" | "backtest" | "history" | "education" | "institutional" | "trade-hub";
 export type TradingMode = "paper" | "live";
 export type ConnectionStatus = "connected" | "disconnected" | "connecting" | "rest-api";
 export type SyncMode = "realtime" | "polling" | "offline";

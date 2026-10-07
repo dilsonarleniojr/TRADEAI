@@ -380,6 +380,17 @@ export function DashboardGrid() {
 
         <div className="flex items-center gap-2 ml-auto">
           <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setActiveSection("institutional")}
+            className="h-7 px-2.5 text-xs text-cyan-300 bg-cyan-950/50 border-cyan-500/40 hover:bg-cyan-500/20 gap-1.5 cursor-pointer font-medium rounded-lg shadow-[0_0_12px_rgba(6,182,212,0.2)] font-mono"
+            title="Abrir Cockpit Institucional (PnL Real-Time, OFI, Livro L2 e IA)"
+          >
+            <Zap className="w-3 h-3 text-cyan-400" />
+            <span className="font-semibold">Cockpit Institucional</span>
+          </Button>
+
+          <Button
             variant="ghost"
             size="sm"
             onClick={handleSyncMarket}

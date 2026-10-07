@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useCryptoStore } from '@/lib/store';
+import { useCryptoStore, type AgentTelemetryData } from '@/lib/store';
 import { formatPrice } from '@/lib/format';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,9 +22,14 @@ import {
   DollarSign,
   CheckCircle2,
   ShieldCheck,
+  ShieldAlert,
+  Target,
+  Activity,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useShallow } from "zustand/react/shallow";
+import { cn } from "@/lib/utils";
+import { AIBrainActivityWidget } from "@/components/ai/ai-brain-activity-widget";
 
 interface SignalResult {
   action: 'BUY' | 'SELL' | 'HOLD';
@@ -32,32 +37,53 @@ interface SignalResult {
   reasoning: string;
   stopLoss: number;
   takeProfit: number;
+  // Campos estritos HFT
+  signal: 'BUY' | 'SELL' | 'HOLD';
+  confidence_score: number;
+  risk_reward_ratio: number;
+  key_driver: string;
+  risk_warning: string;
+  vetoed?: boolean;
+  veto_reason?: string;
+  flow_context?: {
+    vwap?: number;
+    vwap_distance_percent?: number;
+    order_flow_imbalance?: number;
+    funding_rate_percent?: number;
+    liquidity_controller?: string;
+  };
+  agent_error?: boolean;
+  error_reason?: string;
+  agent_telemetry?: AgentTelemetryData;
 }
 
 const ACTION_CONFIG = {
   BUY: {
     icon: TrendingUp,
     color: 'text-emerald-400',
-    bg: 'bg-emerald-400/10',
-    border: 'border-emerald-400/20',
-    badge: 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20',
-    label: 'Sinal de Compra',
+    bg: 'bg-emerald-500/15',
+    border: 'border-emerald-500/30',
+    badge: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+    label: 'COMPRA (BUY)',
+    barColor: 'bg-emerald-500',
   },
   SELL: {
     icon: TrendingDown,
-    color: 'text-red-400',
-    bg: 'bg-red-400/10',
-    border: 'border-red-400/20',
-    badge: 'bg-red-400/10 text-red-400 border-red-400/20',
-    label: 'Sinal de Venda',
+    color: 'text-rose-400',
+    bg: 'bg-rose-500/15',
+    border: 'border-rose-500/30',
+    badge: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
+    label: 'VENDA (SELL)',
+    barColor: 'bg-rose-500',
   },
   HOLD: {
     icon: Minus,
-    color: 'text-amber-400',
-    bg: 'bg-amber-400/10',
-    border: 'border-amber-400/20',
-    badge: 'bg-amber-400/10 text-amber-400 border-amber-400/20',
-    label: 'Sinal de Espera',
+    color: 'text-zinc-400',
+    bg: 'bg-zinc-500/15',
+    border: 'border-zinc-500/30',
+    badge: 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30',
+    label: 'NEUTRO (HOLD)',
+    barColor: 'bg-zinc-500',
   },
 };
 
@@ -204,7 +230,8 @@ export function SignalGenerator() {
           symbol: selectedSymbol,
           price: ticker?.price ?? 0,
           priceChange24h: ticker?.priceChangePercent ?? 0,
-          volume: ticker?.quoteVolume ?? 0,
+          volume: ticker?.volume ?? 0,
+          quoteVolume: ticker?.quoteVolume ?? 0,
           high24h: ticker?.high ?? 0,
           low24h: ticker?.low ?? 0,
         }),
@@ -213,28 +240,65 @@ export function SignalGenerator() {
       const data = await res.json();
 
       if (data.success && data.signal) {
-        const action = (['BUY', 'SELL', 'HOLD'].includes(data.signal.action)
-          ? data.signal.action
-          : 'HOLD') as SignalResult['action'];
-        const confidence =
-          typeof data.signal.confidence === 'number'
-            ? Math.min(1, Math.max(0, data.signal.confidence))
-            : 0.5;
-        const reasoning =
-          typeof data.signal.reasoning === 'string'
-            ? data.signal.reasoning
-            : 'Nenhuma justificativa fornecida.';
+        const rawSig = data.signal.signal || data.signal.action || 'HOLD';
+        const action = (['BUY', 'SELL', 'HOLD'].includes(rawSig) ? rawSig : 'HOLD') as SignalResult['action'];
+        
+        const confidence_score = typeof data.signal.confidence_score === 'number'
+          ? Math.max(0, Math.min(100, Math.round(data.signal.confidence_score)))
+          : typeof data.signal.confidence === 'number'
+          ? Math.round(data.signal.confidence * 100)
+          : 50;
+        const confidence = confidence_score / 100;
+
+        const risk_reward_ratio = typeof data.signal.risk_reward_ratio === 'number'
+          ? Math.round(data.signal.risk_reward_ratio * 100) / 100
+          : 1.5;
+
+        const key_driver = typeof data.signal.key_driver === 'string' && data.signal.key_driver.trim().length > 0
+          ? data.signal.key_driver
+          : typeof data.signal.reasoning === 'string'
+          ? data.signal.reasoning
+          : 'Gatilho de fluxo institucional';
+
+        const risk_warning = typeof data.signal.risk_warning === 'string' && data.signal.risk_warning.trim().length > 0
+          ? data.signal.risk_warning
+          : 'Volatilidade elevada no book';
+
+        const vetoed = Boolean(data.signal.vetoed);
+        const veto_reason = data.signal.veto_reason;
 
         const stopLoss =
-          typeof data.signal.stopLoss === 'number' && data.signal.stopLoss > 0
+          typeof data.signal.stop_loss === 'number' && data.signal.stop_loss > 0
+            ? data.signal.stop_loss
+            : typeof data.signal.stopLoss === 'number' && data.signal.stopLoss > 0
             ? data.signal.stopLoss
             : ticker?.price ?? 0;
+
         const takeProfit =
-          typeof data.signal.takeProfit === 'number' && data.signal.takeProfit > 0
+          typeof data.signal.take_profit === 'number' && data.signal.take_profit > 0
+            ? data.signal.take_profit
+            : typeof data.signal.takeProfit === 'number' && data.signal.takeProfit > 0
             ? data.signal.takeProfit
             : ticker?.price ?? 0;
 
-        const newSignal: SignalResult = { action, confidence, reasoning, stopLoss, takeProfit };
+        const newSignal: SignalResult = {
+          action,
+          signal: action,
+          confidence,
+          confidence_score,
+          risk_reward_ratio,
+          key_driver,
+          risk_warning,
+          reasoning: key_driver,
+          stopLoss,
+          takeProfit,
+          vetoed,
+          veto_reason,
+          flow_context: data.signal.flow_context,
+          agent_error: Boolean(data.signal.agent_error),
+          error_reason: data.signal.error_reason,
+          agent_telemetry: data.signal.agent_telemetry,
+        };
         setSignal(newSignal);
 
         // Also add to store signals
@@ -242,29 +306,54 @@ export function SignalGenerator() {
           id: `sig-${Date.now()}`,
           symbol: selectedSymbol,
           action,
+          signal: action,
           confidence,
-          reasoning,
+          confidence_score,
+          risk_reward_ratio,
+          key_driver,
+          risk_warning,
+          vetoed,
+          veto_reason,
+          reasoning: key_driver,
           priceAtSignal: ticker?.price ?? 0,
           stopLoss,
           takeProfit,
+          flow_context: data.signal.flow_context,
+          agent_error: Boolean(data.signal.agent_error),
+          error_reason: data.signal.error_reason,
+          agent_telemetry: data.signal.agent_telemetry,
           createdAt: new Date().toISOString(),
         });
       } else {
         setSignal({
           action: 'HOLD',
-          confidence: 0.5,
-          reasoning: 'Não foi possível gerar análise no momento.',
+          signal: 'HOLD',
+          confidence: 0,
+          confidence_score: 0,
+          risk_reward_ratio: 0,
+          key_driver: 'Falha do servidor: sinal bloqueado',
+          risk_warning: 'Nenhuma decisão de mercado foi gerada',
+          reasoning: 'Falha do servidor: sinal bloqueado',
           stopLoss: ticker?.price ?? 0,
           takeProfit: ticker?.price ?? 0,
+          agent_error: true,
+          error_reason: typeof data?.details === 'string' ? data.details : `HTTP ${res.status}`,
         });
       }
-    } catch {
+    } catch (err) {
       setSignal({
         action: 'HOLD',
-        confidence: 0.5,
+        signal: 'HOLD',
+        confidence: 0,
+        confidence_score: 0,
+        risk_reward_ratio: 0,
+        key_driver: 'Erro de comunicação de rede',
+        risk_warning: 'Nenhuma decisão de mercado foi gerada',
         reasoning: 'Erro de rede. Por favor, tente novamente.',
         stopLoss: ticker?.price ?? 0,
         takeProfit: ticker?.price ?? 0,
+        agent_error: true,
+        error_reason: err instanceof Error ? err.message : 'Erro de rede',
       });
     } finally {
       setIsGenerating(false);
@@ -500,85 +589,188 @@ export function SignalGenerator() {
               transition={{ duration: 0.3 }}
               className="space-y-4"
             >
-              {/* Action & Confidence */}
-              <div
-                className={`rounded-xl border p-4 ${actionConfig?.bg} ${actionConfig?.border}`}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div
-                    className={`w-10 h-10 rounded-xl ${actionConfig?.bg} flex items-center justify-center`}
-                  >
-                    <ActionIcon className={`w-5 h-5 ${actionConfig?.color}`} />
-                  </div>
-                  <div>
-                    <p className={`text-lg font-bold ${actionConfig?.color}`}>
-                      {signal.action}
+              {/* Alerta de Travamento Sistêmico (Risk Gatekeeper Circuit Breaker) */}
+              {signal.vetoed && (
+                <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3.5 flex items-start gap-3">
+                  <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-rose-300">
+                      Operação vetada pela matriz de risco: Assimetria desfavorável
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      {selectedSymbol} •{' '}
-                      {ticker
-                        ? `$${ticker.price.toLocaleString()}`
-                        : 'Sem dados'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Confidence Meter */}
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs text-muted-foreground">
-                      Confiança
-                    </span>
-                    <span
-                      className={`text-xs font-semibold ${actionConfig?.color}`}
-                    >
-                      {Math.round(signal.confidence * 100)}%
-                    </span>
-                  </div>
-                  <Progress
-                    value={signal.confidence * 100}
-                    className="h-2"
-                  />
-                </div>
-              </div>
-
-              {/* Stop Loss / Take Profit */}
-              {(signal.stopLoss > 0 || signal.takeProfit > 0) && (
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-red-400/20 bg-red-400/5 p-3">
-                    <p className="text-[10px] text-red-400 font-medium mb-1 flex items-center gap-1">
-                      🛑 Stop Loss
-                    </p>
-                    <p className="text-sm font-bold text-red-400">
-                      ${formatPrice(signal.stopLoss)}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {formatSlTpPercent(ticker?.price ?? 0, signal.stopLoss)}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-3">
-                    <p className="text-[10px] text-emerald-400 font-medium mb-1 flex items-center gap-1">
-                      ✅ Take Profit
-                    </p>
-                    <p className="text-sm font-bold text-emerald-400">
-                      ${formatPrice(signal.takeProfit)}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {formatSlTpPercent(ticker?.price ?? 0, signal.takeProfit)}
+                    <p className="text-[11px] text-rose-200/80 mt-1">
+                      O motor quantitativo detectou relação Risco/Retorno ({signal.risk_reward_ratio?.toFixed(2) ?? '0.00'}) inferior ao limiar mínimo de 2.0:1. A ação foi sobreposta autonomamente para <span className="font-bold underline">HOLD</span>.
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* Reasoning */}
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-1">
-                  Justificativa
-                </p>
-                <p className="text-sm text-foreground leading-relaxed">
-                  {signal.reasoning}
-                </p>
+              {/* Indicador de Assimetria e Confiança (High Frequency HUD) */}
+              <div
+                className={`rounded-xl border p-4 space-y-3.5 ${actionConfig?.bg} ${actionConfig?.border}`}
+              >
+                {/* Header: Ação e Cotação */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-11 h-11 rounded-xl ${actionConfig?.bg} border ${actionConfig?.border} flex items-center justify-center`}
+                    >
+                      <ActionIcon className={`w-6 h-6 ${actionConfig?.color}`} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xl font-black tracking-tight ${actionConfig?.color}`}>
+                          {actionConfig?.label}
+                        </span>
+                        {signal.vetoed && (
+                          <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-rose-500/20 text-rose-400 border-rose-500/40">
+                            VETADO
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground font-mono">
+                        {selectedSymbol} • {ticker ? `$${formatPrice(ticker.price)}` : 'Sem dados'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Destaque Tipográfico Numérico: Risco/Retorno */}
+                  <div className="text-right">
+                    <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider block">
+                      Relação R:R
+                    </span>
+                    <div className="flex items-baseline justify-end gap-1.5">
+                      <span className="text-2xl font-black font-mono tracking-tight text-foreground">
+                        {signal.risk_reward_ratio ? signal.risk_reward_ratio.toFixed(2) : '1.50'}:1
+                      </span>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[9px] font-bold px-1 py-0",
+                        (signal.risk_reward_ratio ?? 0) >= 2.0
+                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                          : "bg-rose-500/15 text-rose-400 border-rose-500/30"
+                      )}
+                    >
+                      {(signal.risk_reward_ratio ?? 0) >= 2.0 ? "≥ 2.0 (Aprovado)" : "< 2.0 (Vetado)"}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Gauge de Confiança */}
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+                      <Target className="w-3.5 h-3.5 text-crypto-cyan" />
+                      Score de Convicção Estatística
+                    </span>
+                    <span className={`text-xs font-mono font-bold ${actionConfig?.color}`}>
+                      {signal.confidence_score ?? Math.round(signal.confidence * 100)} / 100
+                    </span>
+                  </div>
+                  <Progress
+                    value={signal.confidence_score ?? signal.confidence * 100}
+                    className="h-2 bg-secondary/80"
+                  />
+                </div>
               </div>
+
+              {/* Telemetria do agente: ferramentas usadas e status de cada uma */}
+              <AIBrainActivityWidget
+                action={signal.action}
+                vetoed={signal.vetoed}
+                agent_error={signal.agent_error}
+                error_reason={signal.error_reason}
+                agent_telemetry={signal.agent_telemetry}
+              />
+
+              {/* Indicadores Visuais Rápidos (Pills / Badges - Sem Texto Livre) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div className="rounded-lg border border-crypto-cyan/30 bg-crypto-cyan/10 p-2.5 flex items-start gap-2">
+                  <Zap className="w-3.5 h-3.5 text-crypto-cyan shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <span className="text-[9px] font-bold text-crypto-cyan uppercase tracking-wider block">
+                      Gatilho Principal (Key Driver)
+                    </span>
+                    <span className="text-xs font-semibold text-foreground truncate block">
+                      {signal.key_driver || signal.reasoning}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 flex items-start gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <span className="text-[9px] font-bold text-amber-400 uppercase tracking-wider block">
+                      Maior Ameaça (Risk Warning)
+                    </span>
+                    <span className="text-xs font-semibold text-foreground truncate block">
+                      {signal.risk_warning || "Volatilidade no book"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Métricas de Fluxo Institucional (Enriquecimento de Contexto) */}
+              {signal.flow_context && (
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-secondary/40 border border-border/50 text-[10px] font-mono text-muted-foreground">
+                  {signal.flow_context.vwap !== undefined && (
+                    <span className="flex items-center gap-1">
+                      <Activity className="w-3 h-3 text-crypto-cyan" />
+                      VWAP: ${formatPrice(signal.flow_context.vwap)} (
+                      <span className={signal.flow_context.vwap_distance_percent && signal.flow_context.vwap_distance_percent >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                        {signal.flow_context.vwap_distance_percent && signal.flow_context.vwap_distance_percent >= 0 ? "+" : ""}
+                        {signal.flow_context.vwap_distance_percent}%
+                      </span>
+                      )
+                    </span>
+                  )}
+                  {signal.flow_context.order_flow_imbalance !== undefined && (
+                    <span>
+                      OFI: <strong className={signal.flow_context.order_flow_imbalance >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                        {signal.flow_context.order_flow_imbalance >= 0 ? "+" : ""}
+                        {signal.flow_context.order_flow_imbalance}
+                      </strong>
+                    </span>
+                  )}
+                  {signal.flow_context.funding_rate_percent !== undefined && (
+                    <span>
+                      Funding: <strong className={signal.flow_context.funding_rate_percent >= 0 ? "text-amber-400" : "text-crypto-cyan"}>
+                        {signal.flow_context.funding_rate_percent >= 0 ? "+" : ""}
+                        {signal.flow_context.funding_rate_percent}%
+                      </strong>
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Stop Loss / Take Profit */}
+              {(signal.stopLoss > 0 || signal.takeProfit > 0) && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3">
+                    <p className="text-[10px] text-rose-400 font-bold mb-1 flex items-center gap-1 uppercase tracking-wider">
+                      🛑 Stop Loss
+                    </p>
+                    <p className="text-base font-black font-mono text-rose-400">
+                      ${formatPrice(signal.stopLoss)}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground font-mono">
+                      {formatSlTpPercent(ticker?.price ?? 0, signal.stopLoss)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
+                    <p className="text-[10px] text-emerald-400 font-bold mb-1 flex items-center gap-1 uppercase tracking-wider">
+                      ✅ Take Profit
+                    </p>
+                    <p className="text-base font-black font-mono text-emerald-400">
+                      ${formatPrice(signal.takeProfit)}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground font-mono">
+                      {formatSlTpPercent(ticker?.price ?? 0, signal.takeProfit)}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <Separator className="bg-border" />
 

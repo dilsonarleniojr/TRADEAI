@@ -14,9 +14,13 @@ const MAX_TAPE_ITEMS = 40;
 const SECONDS_PER_ITEM = 4;
 
 export function TickerTape() {
-  const { tickers } = useCryptoStore(
-  useShallow((s) => ({ tickers: s.tickers }))
-);
+  const { tickers, setSelectedSymbol, setActiveSection } = useCryptoStore(
+    useShallow((s) => ({
+      tickers: s.tickers,
+      setSelectedSymbol: s.setSelectedSymbol,
+      setActiveSection: s.setActiveSection,
+    }))
+  );
 
   const tickerList = Object.values(tickers)
     .sort((a, b) => b.quoteVolume - a.quoteVolume)
@@ -44,12 +48,20 @@ export function TickerTape() {
           const key = `${ticker.symbol}-${i}`;
 
           return (
-            <div key={key} className="flex items-center gap-2 text-[11px] shrink-0 font-medium">
+            <div
+              key={key}
+              onClick={() => {
+                setSelectedSymbol(ticker.symbol);
+                setActiveSection("chart");
+              }}
+              title={`Abrir gráfico de ${ticker.symbol}`}
+              className="flex items-center gap-2 text-[11px] shrink-0 font-medium cursor-pointer hover:bg-white/[0.08] px-2 py-0.5 rounded transition-all duration-150 hover:scale-105"
+            >
               <div
                 className="w-1.5 h-1.5 rounded-full shrink-0"
                 style={{ backgroundColor: color }}
               />
-              <span className="font-semibold text-slate-200 tracking-wide text-[11px]">
+              <span className="font-semibold text-slate-200 tracking-wide text-[11px] hover:text-crypto-cyan">
                 {ticker.symbol.replace("USDT", "")}
               </span>
               <span className="font-mono text-slate-400 tabular-nums text-[11px]">

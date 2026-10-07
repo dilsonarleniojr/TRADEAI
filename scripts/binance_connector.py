@@ -490,15 +490,15 @@ async def main():
     try:
         # 1. Testar step size
         btc_step = await connector.get_symbol_step_size("BTCUSDT")
-        print(f"\nStep size BTCUSDT: {btc_step}")
+        logger.info(f"Step size BTCUSDT: {btc_step}")
         
         # 2. Testar cache do step size (deve ler do cache instantaneamente)
         btc_step_cached = await connector.get_symbol_step_size("BTCUSDT")
-        print(f"Step size BTCUSDT (Cached): {btc_step_cached}")
+        logger.info(f"Step size BTCUSDT (Cached): {btc_step_cached}")
         
         # 3. Testar bid/ask do ticker
         ticker = await connector.get_orderbook_ticker("BTCUSDT")
-        print(f"Ticker BTCUSDT: Bid = {ticker.get('bidPrice')}, Ask = {ticker.get('askPrice')}\n")
+        logger.info(f"Ticker BTCUSDT: Bid = {ticker.get('bidPrice')}, Ask = {ticker.get('askPrice')}")
         
     except Exception as e:
         logger.error(f"Ocorreu um erro no teste: {e}")

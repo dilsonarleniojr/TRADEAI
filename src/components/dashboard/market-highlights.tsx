@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { TrendingUp, TrendingDown, Activity, Zap } from "lucide-react";
 import { CRYPTO_COLORS, CRYPTO_SHORTS } from "@/lib/crypto-meta";
+import { useCryptoStore } from "@/lib/store";
+import { useShallow } from "zustand/react/shallow";
 
 interface HighlightItem {
   symbol: string;
@@ -22,6 +24,12 @@ interface HighlightsData {
 }
 
 export function MarketHighlights() {
+  const { setSelectedSymbol, setActiveSection } = useCryptoStore(
+    useShallow((s) => ({
+      setSelectedSymbol: s.setSelectedSymbol,
+      setActiveSection: s.setActiveSection,
+    }))
+  );
   const [data, setData] = useState<HighlightsData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -159,14 +167,20 @@ export function MarketHighlights() {
                           initial={{ opacity: 0, y: 5 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: 0.4 + idx * 0.05, duration: 0.3 }}
-                          className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-secondary/50 transition-colors"
+                          onClick={() => {
+                            const clean = item.symbol.endsWith("USDT") ? item.symbol : `${item.symbol}USDT`;
+                            setSelectedSymbol(clean);
+                            setActiveSection("chart");
+                          }}
+                          title={`Abrir gráfico de ${item.symbol}`}
+                          className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-secondary/50 transition-all cursor-pointer group hover:scale-[1.01]"
                         >
                           <div className="flex items-center gap-2">
                             <div
                               className="w-2 h-2 rounded-full shrink-0"
                               style={{ backgroundColor: color }}
                             />
-                            <span className="text-sm font-medium">
+                            <span className="text-sm font-medium group-hover:text-crypto-cyan transition-colors">
                               {CRYPTO_SHORTS[item.symbol] || item.symbol.replace("USDT", "")}
                             </span>
                           </div>

@@ -19,7 +19,7 @@ interface BackgroundSettings {
 }
 
 function load(): { enabled: boolean; limitMinutes: number } {
-  const fallback = { enabled: false, limitMinutes: 60 };
+  const fallback = { enabled: true, limitMinutes: 1440 };
   if (typeof window === "undefined") return fallback;
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
@@ -42,8 +42,8 @@ function save(enabled: boolean, limitMinutes: number) {
 }
 
 export const useBackgroundSettings = create<BackgroundSettings>()((set, get) => ({
-  enabled: false,
-  limitMinutes: 60,
+  enabled: true,
+  limitMinutes: 1440,
   hiddenSince: null,
   expiredNotice: false,
   setEnabled: (enabled) => {

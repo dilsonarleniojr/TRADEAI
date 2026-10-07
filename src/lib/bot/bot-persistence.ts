@@ -73,11 +73,12 @@ export function startBotPersistence(): () => void {
     const bots = saved.bots.map((b) => {
       const wasActive = b.active ?? false;
       // Auto-migração transparente para parâmetros lucrativos consistentes se o robô tiver parâmetros legados
-      const takeProfit = (!b.takeProfit || b.takeProfit < 2.8) ? 3.0 : b.takeProfit;
-      const stopLoss = (!b.stopLoss || b.stopLoss < 1.4) ? 1.5 : b.stopLoss;
-      const breakEvenTrigger = (!b.breakEvenTrigger || b.breakEvenTrigger < 1.5) ? 1.8 : b.breakEvenTrigger;
-      const breakEvenBuffer = (!b.breakEvenBuffer || b.breakEvenBuffer < 0.4) ? 0.50 : b.breakEvenBuffer;
-      const allocationAmount = (!b.allocationAmount || b.allocationAmount < 35) ? 40.0 : b.allocationAmount;
+      const isCustomBot = b.strategy === "AI" || b.algorithmVersion?.includes("ai") || b.algorithmVersion === "v2.5.0-ai-linked";
+      const takeProfit = (!b.takeProfit || (!isCustomBot && b.takeProfit < 2.8)) ? (isCustomBot && b.takeProfit ? b.takeProfit : 3.0) : b.takeProfit;
+      const stopLoss = (!b.stopLoss || (!isCustomBot && b.stopLoss < 1.4)) ? (isCustomBot && b.stopLoss ? b.stopLoss : 1.5) : b.stopLoss;
+      const breakEvenTrigger = (!b.breakEvenTrigger || (!isCustomBot && b.breakEvenTrigger < 1.5)) ? (isCustomBot && b.breakEvenTrigger ? b.breakEvenTrigger : 1.8) : b.breakEvenTrigger;
+      const breakEvenBuffer = (!b.breakEvenBuffer || (!isCustomBot && b.breakEvenBuffer < 0.4)) ? (isCustomBot && b.breakEvenBuffer ? b.breakEvenBuffer : 0.50) : b.breakEvenBuffer;
+      const allocationAmount = (!b.allocationAmount || (!isCustomBot && b.allocationAmount < 35)) ? (isCustomBot && b.allocationAmount ? b.allocationAmount : 40.0) : b.allocationAmount;
       const timeStopMinutes = b.timeStopMinutes ?? 20;
       const useBtcGatekeeper = b.useBtcGatekeeper ?? true;
       const trailingTakeProfit = b.trailingTakeProfit ?? true;

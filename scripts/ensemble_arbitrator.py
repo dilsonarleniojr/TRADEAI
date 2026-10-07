@@ -1,8 +1,7 @@
 import math
+import logging
 
-# ==============================================================================
-# Micro-Especialistas
-# ==============================================================================
+logger = logging.getLogger("EnsembleArbitrator")
 
 def technical_specialist(ema_fast: float, ema_slow: float, current_price: float):
     """
@@ -180,7 +179,7 @@ class EnsembleArbitrator:
         # 1. Regra de Veto Absoluto (Failsafe) do Especialista de Risco
         risk_decision, _ = risk_specialist(atr_pct, self.risk_veto_limit_atr)
         if risk_decision == "BLOCK":
-            print(f"🛑 VETO DE RISCO ATIVADO: Volatilidade ATR de {atr_pct:.2f}% excede limite de {self.risk_veto_limit_atr}%.")
+            logger.warning(f"🛑 VETO DE RISCO ATIVADO: Volatilidade ATR de {atr_pct:.2f}% excede limite de {self.risk_veto_limit_atr}%.")
             return "AGUARDAR"
 
         # 2. Consultar os especialistas
@@ -206,7 +205,8 @@ class EnsembleArbitrator:
         return decision
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     arbitrator = EnsembleArbitrator(soft_threshold=0.70, risk_veto_limit_atr=5.0)
-    print("Testando árbitro...")
+    logger.info("Testando árbitro...")
     res = arbitrator.evaluate_market(100.0, 95.0, 102.0, 28.0, 20.0, 2.5)
-    print(f"Resultado: {res}")
+    logger.info(f"Resultado: {res}")

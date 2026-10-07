@@ -12,6 +12,7 @@ import asyncio
 import time
 import logging
 import inspect
+import collections
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("MultiAssetHftEngine")
@@ -57,7 +58,6 @@ class TickDataPool:
         tick.timestamp = 0.0
         self.pool.append(tick)
 
-import collections
 tick_pool = TickDataPool()
 
 # ==============================================================================
@@ -425,6 +425,10 @@ class AutoTunerEngine:
                 trades.append(ret)
                 is_bought = False
 
+        if is_bought and entry_price > 0 and len(history) > 0:
+            ret = (history[-1].price - entry_price) / entry_price
+            trades.append(ret)
+
         if not trades:
             return 0.0
 
@@ -432,7 +436,7 @@ class AutoTunerEngine:
         mean = sum(trades) / len(trades)
         variance = sum((t - mean) ** 2 for t in trades) / len(trades)
         std_dev = (variance) ** 0.5
-        raw_sharpe = mean / std_dev if std_dev > 0.0 else 0.0
+        raw_sharpe = mean / std_dev if std_dev > 0.0 else (mean / 0.001 if mean != 0 else 0.0)
 
         # Overfitting penalty (Focus on single trades of luck)
         total_profit = sum(t for t in trades if t > 0)
@@ -461,11 +465,11 @@ class DynamicExitCalculator:
         resistance_wall = max(order_book.asks, key=lambda x: x[1])[0] if order_book.asks else entry_price * 1.02
 
         if side == "BUY":
-            stop_loss = min(support_wall - (1.5 * atr), entry_price * 0.95)
-            take_profit = max(resistance_wall - (0.5 * atr), entry_price * 1.02)
+            stop_loss = support_wall - (1.5 * atr)
+            take_profit = resistance_wall - (0.5 * atr)
             return ExitTargets(stop_loss, take_profit)
         else:
-            stop_loss = max(resistance_wall + (1.5 * atr), entry_price * 1.05)
-            take_profit = min(support_wall + (0.5 * atr), entry_price * 0.98)
+            stop_loss = resistance_wall + (1.5 * atr)
+            take_profit = support_wall + (0.5 * atr)
             return ExitTargets(stop_loss, take_profit)
 

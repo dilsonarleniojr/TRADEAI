@@ -34,11 +34,32 @@ async function loadHistory(symbol: string): Promise<{ data: KlineData[]; stored:
 }
 
 async function loadRecent(symbol: string, interval: string = "1m"): Promise<KlineData[]> {
-  const res = await fetch(`/api/market/klines?symbol=${symbol}&interval=${interval}&limit=100`);
-  if (!res.ok) throw new Error(`klines ${res.status}`);
-  const json = await res.json();
-  if (!Array.isArray(json?.data)) throw new Error("klines inválido");
-  return toKlines(json.data);
+  const isNode = typeof window === "undefined";
+  const baseUrl = isNode ? "http://localhost:3000" : "";
+  try {
+    const res = await fetch(`${baseUrl}/api/market/klines?symbol=${symbol}&interval=${interval}&limit=100`);
+    if (res.ok) {
+      const json = await res.json();
+      if (Array.isArray(json?.data) && json.data.length >= 20) {
+        return toKlines(json.data);
+      }
+    }
+  } catch {
+    // Falha local, tenta fallback direto da Binance REST pública
+  }
+
+  // Fallback direto na Binance REST pública
+  const binanceRes = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=100`);
+  if (!binanceRes.ok) throw new Error(`Binance klines HTTP ${binanceRes.status}`);
+  const raw = await binanceRes.json();
+  return raw.map((r: any) => ({
+    time: r[0],
+    open: parseFloat(r[1]),
+    high: parseFloat(r[2]),
+    low: parseFloat(r[3]),
+    close: parseFloat(r[4]),
+    volume: parseFloat(r[5]),
+  }));
 }
 
 export async function getSymbolKlines(symbol: string, interval: string = "1m"): Promise<KlineData[]> {

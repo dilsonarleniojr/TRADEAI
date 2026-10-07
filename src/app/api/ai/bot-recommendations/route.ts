@@ -249,11 +249,23 @@ Responda APENAS com um array JSON com 6 objetos no formato:
             if (validRecs.length > 0) {
               const enriched: AIBotRecommendation[] = validRecs.map((item, idx) => {
                 const amount = Math.max(10, Math.min(availableCash * 0.4, Number(item.allocationAmount) || 50));
+                let sl = Math.max(1.8, Math.min(3.5, Number(item.stopLoss) || 2.2));
+                let tp = Math.max(3.8, Number(item.takeProfit) || 5.2);
+                if (tp < sl * 2.2) {
+                  tp = Number((sl * 2.25).toFixed(1));
+                }
+                const trailing = Math.max(1.2, Number(item.trailingStopDistance) || 1.4);
+
                 return {
                   ...item,
                   id: `rec-${providerId}-${Date.now()}-${idx}-${item.symbol}`,
                   allocationAmount: amount,
                   allocationPct: parseFloat(((amount / Math.max(1, availableCash)) * 100).toFixed(1)),
+                  takeProfit: tp,
+                  stopLoss: sl,
+                  trailingStop: true,
+                  trailingStopDistance: trailing,
+                  riskRewardRatio: `${(tp / sl).toFixed(1)}:1`,
                   aiProvider: providerId,
                   aiProviderName: pInfo.name,
                   aiModel: res.model || pModel,
@@ -365,67 +377,67 @@ Responda APENAS com um array JSON com 6 objetos no formato:
         timeframe = "15m";
         estimatedDuration = "Scalping Rápido (15 a 45 min)";
         horizonType = "SCALPING";
-        tp = 4.2;
-        sl = 1.3;
-        trailing = 0.5;
+        tp = 5.6;
+        sl = 2.2;
+        trailing = 1.4;
         regime = "ALTA_VOLATILIDADE";
         allocAmount = Math.max(15, Math.round(availableCash * 0.06));
-        reasoning = `Fluxo comprador e volatilidade em expansão em ${cleanSym} (${coin.change24h > 0 ? '+' : ''}${coin.change24h.toFixed(1)}% nas 24h). Rompimento de pivô em 15m ideal para captura rápida de momentum.`;
+        reasoning = `Fluxo comprador e volatilidade em expansão em ${cleanSym} (${coin.change24h > 0 ? '+' : ''}${coin.change24h.toFixed(1)}% nas 24h). Rompimento com alvo estendido de +5.6% e trailing stop de 1.4%.`;
       } else if (idx === 1) {
         strategy = "RSI";
         timeframe = "15m";
         estimatedDuration = "Scalping em Fundo / Repique (30 a 90 min)";
         horizonType = "SCALPING";
-        tp = 3.2;
-        sl = 1.2;
-        trailing = 0.5;
+        tp = 4.8;
+        sl = 2.0;
+        trailing = 1.3;
         regime = "CORRECAO_SOBREVENDA";
         allocAmount = Math.max(15, Math.round(availableCash * 0.07));
-        reasoning = `${cleanSym} atingiu sobrevenda técnica no curto prazo (${coin.change24h.toFixed(1)}% nas 24h). Probabilidade elevada de reversão à média com risco assimétrico controlado.`;
+        reasoning = `${cleanSym} atingiu sobrevenda técnica no curto prazo (${coin.change24h.toFixed(1)}% nas 24h). Repique com R:R de 2.4:1 (alvo +4.8% / stop -2.0%).`;
       } else if (idx === 2) {
         strategy = "MACD";
         timeframe = "1h";
         estimatedDuration = "Day Trade de Momentum (2h a 6h)";
         horizonType = "DAY_TRADE";
-        tp = 3.8;
-        sl = 1.4;
-        trailing = 0.6;
+        tp = 5.2;
+        sl = 2.2;
+        trailing = 1.4;
         regime = "TENDENCIA_ALTA";
         allocAmount = Math.max(20, Math.round(availableCash * 0.10));
-        reasoning = `Cruzamento altista sustentado por volume em ${cleanSym}. Operação horária com relação risco/retorno favorável em continuação de tendência.`;
+        reasoning = `Cruzamento altista sustentado por volume em ${cleanSym}. Operação horária com relação risco/retorno favorável de 2.36:1 em continuação de tendência.`;
       } else if (idx === 3) {
         strategy = "QUANT_ENSEMBLE";
         timeframe = "1h";
         estimatedDuration = "Day Trade Algorítmico (3h a 8h)";
         horizonType = "DAY_TRADE";
-        tp = 3.5;
-        sl = 1.3;
-        trailing = 0.5;
+        tp = 5.5;
+        sl = 2.3;
+        trailing = 1.4;
         regime = "TENDENCIA_ALTA";
         allocAmount = Math.max(20, Math.round(availableCash * 0.10));
-        reasoning = `Modelo de ensemble combinando fluxo de ordens e momentum em ${cleanSym}. Confluência de 4 indicadores técnicos apontando alta taxa de acerto.`;
+        reasoning = `Modelo de ensemble combinando fluxo de ordens e momentum em ${cleanSym}. Confluência de indicadores com assimetria de 2.39:1.`;
       } else if (idx === 4) {
         strategy = "GRID";
         timeframe = "4h";
         estimatedDuration = "Grid Contínuo de Faixa (1 a 3 dias)";
         horizonType = "SWING_TRADE";
-        tp = 2.8;
-        sl = 1.2;
-        trailing = 0.5;
+        tp = 4.5;
+        sl = 2.0;
+        trailing = 1.3;
         regime = "LATERAL_ACUMULACAO";
         allocAmount = Math.max(25, Math.round(availableCash * 0.12));
-        reasoning = `${cleanSym} consolidando em canal lateral bem definido. Algoritmo de Grid escalona ordens para capturar lucros fracionados repetidos na oscilação.`;
+        reasoning = `${cleanSym} consolidando em canal lateral bem definido. Algoritmo de Grid com meta de 4.5% e stop de 2.0% para evitar ruído.`;
       } else {
         strategy = "MEAN_REVERSION";
         timeframe = "4h";
         estimatedDuration = "Swing de Reversão (1 a 4 dias)";
         horizonType = "SWING_TRADE";
-        tp = 4.5;
-        sl = 1.5;
-        trailing = 0.6;
+        tp = 6.0;
+        sl = 2.5;
+        trailing = 1.5;
         regime = "LATERAL_ACUMULACAO";
         allocAmount = Math.max(20, Math.round(availableCash * 0.09));
-        reasoning = `Desvio padrão estatístico ampliado em ${cleanSym}. Posição de swing trade estruturada para retorno à média móvel exponencial de 50 períodos.`;
+        reasoning = `Desvio padrão estatístico ampliado em ${cleanSym}. Posição de swing trade estruturada para retorno à média móvel exponencial com R:R de 2.4:1.`;
       }
 
       return {

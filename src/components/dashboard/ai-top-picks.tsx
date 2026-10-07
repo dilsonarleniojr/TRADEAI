@@ -17,10 +17,13 @@ import {
   ArrowUpRight,
   Loader2,
   Newspaper,
+  Sparkles,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
+import { useToast } from "@/hooks/use-toast";
 
 interface TopPick {
   rank: number;
@@ -50,9 +53,28 @@ const REC_STYLES: Record<string, { bg: string; text: string; icon: typeof Trendi
 };
 
 export function AITopPicks() {
-  const { tickers, setSelectedSymbol, setActiveSection } = useCryptoStore(
-  useShallow((s) => ({ tickers: s.tickers, setSelectedSymbol: s.setSelectedSymbol, setActiveSection: s.setActiveSection }))
-);
+  const { toast } = useToast();
+  const {
+    tickers,
+    bots,
+    addBot,
+    updateBot,
+    setSelectedBotId,
+    addBotLog,
+    setSelectedSymbol,
+    setActiveSection,
+  } = useCryptoStore(
+    useShallow((s) => ({
+      tickers: s.tickers,
+      bots: s.bots,
+      addBot: s.addBot,
+      updateBot: s.updateBot,
+      setSelectedBotId: s.setSelectedBotId,
+      addBotLog: s.addBotLog,
+      setSelectedSymbol: s.setSelectedSymbol,
+      setActiveSection: s.setActiveSection,
+    }))
+  );
   const [picks, setPicks] = useState<TopPick[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCached, setIsCached] = useState(false);
@@ -98,8 +120,104 @@ export function AITopPicks() {
   }, [tickers, picks.length, fetchPicks]);
 
   const handleSymbolClick = (symbol: string) => {
-    setSelectedSymbol(symbol);
+    const clean = symbol.endsWith("USDT") ? symbol : `${symbol}USDT`;
+    setSelectedSymbol(clean);
     setActiveSection("chart");
+  };
+
+  const handleCreateBotFromPick = (pick: TopPick) => {
+    const cleanSym = pick.symbol.endsWith("USDT") ? pick.symbol : `${pick.symbol}USDT`;
+    const baseSym = cleanSym.replace("USDT", "");
+    const botId = `bot-ai-${baseSym.toLowerCase()}-${Date.now().toString(36)}`;
+
+    const curPrice = pick.currentPrice > 0 ? pick.currentPrice : (tickers[cleanSym]?.price || 1);
+    let slPct = pick.stopLoss > 0 && curPrice > 0
+      ? Math.abs(Number((((curPrice - pick.stopLoss) / curPrice) * 100).toFixed(2)))
+      : 2.2;
+    // Piso de Stop Loss para não ser pego no ruído de livro da Binance (mínimo 1.8%, máximo 3.0%)
+    slPct = Math.max(1.8, Math.min(3.0, slPct));
+
+    let tpPct = pick.targetPrice > 0 && curPrice > 0
+      ? Math.abs(Number((((pick.targetPrice - curPrice) / curPrice) * 100).toFixed(2)))
+      : 5.5;
+
+    // Trava de Assimetria Positiva: Take Profit DEVE ser no mínimo 2.2x o Stop Loss
+    if (tpPct < slPct * 2.2) {
+      tpPct = Number((slPct * 2.25).toFixed(2));
+    }
+
+    // Trailing stop calibrado para a volatilidade do ativo (mínimo 1.2% para não morrer por ruído branco)
+    const trailPct = Math.max(1.2, Number((slPct * 0.55).toFixed(2)));
+    // Break-even só arma quando houver avanço real (+2.0% ou 45% do alvo)
+    const beTrigger = Math.max(2.0, Number((tpPct * 0.45).toFixed(2)));
+    // Margem de Break-Even de +0.60% para cobrir taxas da Binance (0.20%) e garantir lucro líquido real
+    const beBuffer = 0.60;
+
+    const existingBot = bots.find((b) => b.symbol === cleanSym);
+    let targetBotId = botId;
+
+    const botConfigData = {
+      name: `IA ${baseSym} (${pick.recommendation || "Top Pick"})`,
+      symbol: cleanSym,
+      strategy: "AI" as const,
+      active: true,
+      takeProfit: tpPct,
+      stopLoss: slPct,
+      trailingStop: true,
+      trailingStopDistance: trailPct,
+      allocationAmount: 25,
+      autoBreakEven: true,
+      breakEvenTrigger: beTrigger,
+      breakEvenBuffer: beBuffer,
+      usePartialTp: true,
+      partialTpTrigger: tpPct,
+      partialTpPercent: 50,
+      trailingTakeProfit: true,
+      trailingTakeProfitDistance: trailPct,
+      signalConfidenceThreshold: Math.min(95, Math.max(50, Math.round(pick.score || 75))),
+      aiEngine: "TopPicks-Claude",
+      algorithmVersion: "v2.5.0-ai-picked",
+      autoTradeSignals: true,
+      useMarketRegime: true,
+      useMultiTimeframe: true,
+    };
+
+    if (existingBot) {
+      targetBotId = existingBot.id;
+      updateBot(existingBot.id, {
+        ...botConfigData,
+        status: existingBot.position ? "in_position" : "scanning",
+        stats: {
+          ...existingBot.stats,
+          lastAction: `Atualizado via Top 5 da IA: Alvo +${tpPct}%, Stop -${slPct}%`,
+          lastActionTime: new Date().toISOString(),
+        },
+      });
+    } else {
+      targetBotId = addBot({
+        ...botConfigData,
+        status: "scanning",
+      });
+    }
+
+    addBotLog({
+      botId: targetBotId,
+      botName: `IA ${baseSym}`,
+      type: "info",
+      message: `Robô ${baseSym} configurado e ativado via Top 5 da IA: Alvo $${formatPrice(pick.targetPrice)} (+${tpPct}%), Stop $${formatPrice(pick.stopLoss)} (-${slPct}%)`,
+    });
+
+    setSelectedBotId(targetBotId);
+    setSelectedSymbol(cleanSym);
+    setActiveSection("bot");
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    toast({
+      title: `Robô ${baseSym} Gerado e Ativado! 🤖`,
+      description: `Alvo: +${tpPct}% ($${formatPrice(pick.targetPrice)}) | Stop: -${slPct}% ($${formatPrice(pick.stopLoss)})`,
+    });
   };
 
   return (
@@ -220,7 +338,8 @@ export function AITopPicks() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <span
-                              className="text-sm font-semibold cursor-pointer hover:text-crypto-cyan transition-colors"
+                              className="text-sm font-bold cursor-pointer hover:text-crypto-cyan hover:underline transition-colors"
+                              title={`Abrir gráfico de ${pick.symbol}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleSymbolClick(pick.symbol);
@@ -250,8 +369,15 @@ export function AITopPicks() {
                               {pick.recommendation}
                             </Badge>
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] text-muted-foreground truncate">
+                          <div
+                            className="flex items-center gap-2 mt-0.5 cursor-pointer group/name"
+                            title={`Abrir gráfico de ${pick.symbol}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSymbolClick(pick.symbol);
+                            }}
+                          >
+                            <span className="text-[10px] text-muted-foreground group-hover/name:text-crypto-cyan truncate transition-colors">
                               {pick.name}
                             </span>
                             <span className="text-[9px] text-muted-foreground/60">
@@ -259,6 +385,21 @@ export function AITopPicks() {
                             </span>
                           </div>
                         </div>
+
+                        {/* Direct Create Bot Button */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-[10px] font-bold gap-1 bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 hover:text-emerald-300 shrink-0 cursor-pointer hidden sm:flex items-center transition-all hover:scale-105"
+                          title={`Criar e ativar robô para ${pick.symbol} imediatamente`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCreateBotFromPick(pick);
+                          }}
+                        >
+                          <Zap className="w-3 h-3 text-emerald-400" />
+                          <span>Criar Bot</span>
+                        </Button>
 
                         {/* Price + Change */}
                         <div className="text-right shrink-0">
@@ -277,7 +418,7 @@ export function AITopPicks() {
                         </div>
 
                         {/* Score */}
-                        <div className="text-right shrink-0 hidden sm:block">
+                        <div className="text-right shrink-0 hidden md:block">
                           <div className="text-lg font-bold text-crypto-gold">
                             {Math.round(pick.score)}
                           </div>
@@ -340,19 +481,32 @@ export function AITopPicks() {
                                 </div>
                               </div>
 
-                              {/* Action Button */}
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="w-full h-7 text-[10px] gap-1.5 border-crypto-cyan/30 text-crypto-cyan hover:bg-crypto-cyan/10 hover:text-crypto-cyan"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSymbolClick(pick.symbol);
-                                }}
-                              >
-                                <ArrowUpRight className="w-3 h-3" />
-                                Ver Gráfico de {pick.symbol.replace("USDT", "")}
-                              </Button>
+                              {/* Action Buttons */}
+                              <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
+                                <Button
+                                  size="sm"
+                                  className="w-full sm:flex-1 h-8 text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md shadow-emerald-500/20 cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCreateBotFromPick(pick);
+                                  }}
+                                >
+                                  <Sparkles className="w-3.5 h-3.5 mr-1 text-emerald-200" />
+                                  ⚡ Criar Bot com Sugestão ({pick.symbol.replace("USDT", "")})
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full sm:w-auto h-8 text-xs gap-1.5 border-crypto-cyan/30 text-crypto-cyan hover:bg-crypto-cyan/10 hover:text-crypto-cyan cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSymbolClick(pick.symbol);
+                                  }}
+                                >
+                                  <ArrowUpRight className="w-3.5 h-3.5" />
+                                  Ver Gráfico
+                                </Button>
+                              </div>
                             </div>
                           </motion.div>
                         )}

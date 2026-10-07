@@ -196,42 +196,32 @@ export async function POST(request: NextRequest) {
     let recommendation: 'COMPRA' | 'VENDA' | 'NEUTRO';
 
     if (bias === 'bullish' || priceChange24h <= 0) {
-      // For buy setups: SL below entry, TP above
-      // Use nearest support as SL anchor, nearest resistance as TP anchor
-      const slFromATR = currentPrice - 1.5 * atr;
-      const slFromSupport = sr.nearestSupport;
-      const slFromBB = bb.lower;
+      // Para setups compradores: SL ancorado em ATR (mín 1.5x ATR e piso de 1.8% para não morrer por ruído)
+      const slDist = Math.max(1.5 * atr, currentPrice * 0.018);
+      stopLoss = currentPrice - slDist;
+      if (sr.nearestSupport < currentPrice && sr.nearestSupport > currentPrice - 2.5 * atr) {
+        stopLoss = Math.min(stopLoss, sr.nearestSupport - 0.2 * atr);
+      }
+      // Trava de contenção: SL entre 1.8% e 3.0% abaixo da entrada
+      stopLoss = Math.max(currentPrice * 0.97, Math.min(currentPrice * 0.982, stopLoss));
 
-      // Take the highest SL (closest to entry but still protective)
-      stopLoss = Math.max(slFromATR, Math.max(slFromSupport, slFromBB));
-      // Ensure SL is actually below entry
-      if (stopLoss >= currentPrice) stopLoss = slFromATR;
-
-      const tpFromATR = currentPrice + 3 * atr;
-      const tpFromResistance = sr.nearestResistance;
-      const tpFromBB = bb.upper;
-
-      // Take the lowest TP (closest realistic target)
-      takeProfit = Math.min(tpFromATR, Math.min(tpFromResistance, tpFromBB));
-      // Ensure TP is above entry
-      if (takeProfit <= currentPrice) takeProfit = tpFromATR;
+      // Take Profit com Assimetria Positiva Estrita (mínimo 2.25x o risco)
+      const actualRisk = currentPrice - stopLoss;
+      takeProfit = currentPrice + Math.max(actualRisk * 2.25, 3.2 * atr);
 
       recommendation = bias === 'bullish' ? 'COMPRA' : 'NEUTRO';
     } else {
-      // For sell setups: SL above entry, TP below
-      const slFromATR = currentPrice + 1.5 * atr;
-      const slFromResistance = sr.nearestResistance;
-      const slFromBB = bb.upper;
+      // Para setups vendedores: SL acima da entrada
+      const slDist = Math.max(1.5 * atr, currentPrice * 0.018);
+      stopLoss = currentPrice + slDist;
+      if (sr.nearestResistance > currentPrice && sr.nearestResistance < currentPrice + 2.5 * atr) {
+        stopLoss = Math.max(stopLoss, sr.nearestResistance + 0.2 * atr);
+      }
+      // Trava de contenção: SL entre 1.8% e 3.0% acima da entrada
+      stopLoss = Math.min(currentPrice * 1.03, Math.max(currentPrice * 1.018, stopLoss));
 
-      stopLoss = Math.min(slFromATR, Math.min(slFromResistance, slFromBB));
-      if (stopLoss <= currentPrice) stopLoss = slFromATR;
-
-      const tpFromATR = currentPrice - 3 * atr;
-      const tpFromSupport = sr.nearestSupport;
-      const tpFromBB = bb.lower;
-
-      takeProfit = Math.max(tpFromATR, Math.max(tpFromSupport, tpFromBB));
-      if (takeProfit >= currentPrice) takeProfit = tpFromATR;
+      const actualRisk = stopLoss - currentPrice;
+      takeProfit = currentPrice - Math.max(actualRisk * 2.25, 3.2 * atr);
 
       recommendation = 'VENDA';
     }

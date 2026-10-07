@@ -18,8 +18,10 @@ import { BotBackgroundRunner } from "@/components/bot/bot-background-runner";
 import { HistoryBootstrap } from "@/components/bot/history-bootstrap";
 import { BotReadinessWatcher } from "@/components/bot/bot-readiness";
 import { HistorySection } from "@/components/history/history-section";
+import { InstitutionalCockpit } from "@/components/institutional/institutional-cockpit";
 import { BacktestSection } from "@/components/backtest/backtest-section";
 import { EducationSection } from "@/components/education/education-section";
+import { TradeHubSection } from "@/components/trade-hub";
 import { MobilePortfolioBar } from "@/components/mobile/mobile-portfolio-bar";
 import { MobileDrawer } from "@/components/mobile/mobile-drawer";
 import { AlertNotification } from "@/components/dashboard/alert-notification";
@@ -109,6 +111,18 @@ function HomePageContent() {
             <DashboardGrid />
           </motion.div>
         );
+      case "institutional":
+        return (
+          <motion.div
+            key="institutional"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="space-y-4"
+          >
+            <InstitutionalCockpit />
+          </motion.div>
+        );
       case "chart":
         return (
           <motion.div
@@ -173,6 +187,18 @@ function HomePageContent() {
             transition={{ duration: 0.3 }}
           >
             <EducationSection />
+          </motion.div>
+        );
+      case "trade-hub":
+        return (
+          <motion.div
+            key="trade-hub"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="space-y-4"
+          >
+            <TradeHubSection />
           </motion.div>
         );
       default:

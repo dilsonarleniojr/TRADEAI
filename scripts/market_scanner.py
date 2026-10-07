@@ -1,17 +1,26 @@
-import urllib.request
+import logging
 import json
+import asyncio
+import aiohttp
+from typing import Optional, List
 
-def run_market_scanner():
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("MarketScanner")
+
+def run_market_scanner() -> List[str]:
+    """
+    Executa o scanner de mercado síncrono para os top ativos de fluxo e liquidez.
+    """
     url = "https://api.binance.com/api/v3/ticker/24hr"
-    print(f"📡 Buscando dados de 24h da Binance: {url}...")
+    logger.info(f"📡 Buscando dados de 24h da Binance: {url}...")
     
     try:
-        # Fetching data using standard urllib to avoid requiring pip installs
+        import urllib.request
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=10) as response:
             data = json.loads(response.read().decode('utf-8'))
             
-        print("✅ Dados recebidos com sucesso. Filtrando e analisando pares USDT...")
+        logger.info("✅ Dados recebidos com sucesso. Filtrando e analisando pares USDT...")
         
         # 1. Filter for USDT pairs, ignore stablecoins and index pairs
         usdt_pairs = []
@@ -36,21 +45,19 @@ def run_market_scanner():
         usdt_pairs.sort(key=lambda x: x['volumeUSDT'], reverse=True)
         top_50_by_volume = usdt_pairs[:50]
         
-        # 3. From the top 50 volume leaders, sort by price change descending (highest gainers with confirmed flow)
-        # Flow Confirmation: High volume is guaranteed since they are in the top 50 volume leaders.
+        # 3. From the top 50 volume leaders, sort by price change descending
         top_50_by_volume.sort(key=lambda x: x['priceChangePercent'], reverse=True)
         top_3_picks = top_50_by_volume[:3]
         
-        print("\n🔥 === TOP 3 ATIVOS DETECTADOS PELO MARKET SCANNER ===")
-        print("Foco operacional para a próxima hora (Alta + Confirmação de Fluxo):")
+        logger.info("🔥 === TOP 3 ATIVOS DETECTADOS PELO MARKET SCANNER ===")
         for i, pick in enumerate(top_3_picks):
-            print(f"{i+1}. {pick['symbol']} | Alta: +{pick['priceChangePercent']:.2f}% | Volume: ${pick['volumeUSDT']/1e6:.2f}M | Preço: ${pick['lastPrice']:.4f}")
+            logger.info(f"  {i+1}. {pick['symbol']} | Alta: +{pick['priceChangePercent']:.2f}% | Volume: ${pick['volumeUSDT']/1e6:.2f}M | Preço: ${pick['lastPrice']:.4f}")
             
         return [pick['symbol'] for pick in top_3_picks]
         
     except Exception as e:
-        print(f"❌ Erro ao executar o scanner de mercado: {e}")
-        return ["BTCUSDT", "ETHUSDT", "SOLUSDT"] # Fallback
+        logger.error(f"❌ Erro ao executar o scanner de mercado: {e}")
+        return ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 
 if __name__ == "__main__":
     run_market_scanner()
@@ -59,15 +66,18 @@ if __name__ == "__main__":
 # ==============================================================================
 # Async Crypto Screener Daemon
 # ==============================================================================
-import asyncio
-import aiohttp
-
 class AsyncCryptoScreener:
-    def __init__(self, check_interval_seconds=3600):
+    def __init__(self, check_interval_seconds: int = 3600):
         self.check_interval_seconds = check_interval_seconds
         self.is_running = False
-        self.screener_task = None
-        self.last_picks = []
+        self.screener_task: Optional[asyncio.Task] = None
+        self.last_picks: List[str] = []
+        self._session: Optional[aiohttp.ClientSession] = None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
 
     async def start(self):
         self.is_running = True
@@ -81,19 +91,23 @@ class AsyncCryptoScreener:
                 await self.screener_task
             except asyncio.CancelledError:
                 pass
+        if self._session and not self._session.closed:
+            await self._session.close()
 
-    async def scan_market(self) -> list:
+    async def scan_market(self) -> List[str]:
         url = "https://api.binance.com/api/v3/ticker/24hr"
         ignore_symbols = ["USDCUSDT", "FDUSDUSDT", "TUSDUSDT", "BUSDUSDT", "EURUSDT"]
         
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                    else:
-                        return ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
-        except Exception:
+            session = await self._get_session()
+            async with session.get(url, timeout=10) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                else:
+                    logger.warning(f"Resposta inesperada da Binance API: {resp.status}")
+                    return ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+        except Exception as e:
+            logger.warning(f"Falha ao conectar na API Binance para scan_market: {e}")
             return ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 
         usdt_pairs = []
@@ -127,7 +141,7 @@ class AsyncCryptoScreener:
         top_3 = top_50[:3]
         
         self.last_picks = [p['symbol'] for p in top_3]
-        print(f"🔥 [Screener Daemon] Top 3 setup picks: {self.last_picks}")
+        logger.info(f"🔥 [Screener Daemon] Top 3 setup picks: {self.last_picks}")
         return self.last_picks
 
     async def run_loop(self):
@@ -138,6 +152,6 @@ class AsyncCryptoScreener:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"❌ [Screener Daemon] Error: {e}")
+                logger.error(f"❌ [Screener Daemon] Erro no loop de monitoramento: {e}")
                 await asyncio.sleep(10)
 

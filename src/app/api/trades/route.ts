@@ -371,7 +371,9 @@ export async function POST(request: NextRequest) {
       const calculatedSlippage = Math.abs(priceVal - refPrice) / refPrice;
       const maxSlippageTolerance = typeof body.slippageTolerance === 'number'
         ? body.slippageTolerance / 100
-        : 0.0075; // 0.75% de tolerância padrão
+        : typeof body.riskParams?.slippageTolerancePercent === 'number'
+        ? body.riskParams.slippageTolerancePercent / 100
+        : 0.0075; // 0.75% de tolerância máxima padrão
 
       if (calculatedSlippage > maxSlippageTolerance) {
         return NextResponse.json(

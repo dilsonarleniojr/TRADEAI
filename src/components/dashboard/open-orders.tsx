@@ -98,9 +98,14 @@ const executeTriggeredOrder = async (order: OpenOrder, fillPrice: number) => {
 };
 
 export function OpenOrders() {
-  const { tickers, tradingMode } = useCryptoStore(
-  useShallow((s) => ({ tickers: s.tickers, tradingMode: s.tradingMode }))
-);
+  const { tickers, tradingMode, setSelectedSymbol, setActiveSection } = useCryptoStore(
+    useShallow((s) => ({
+      tickers: s.tickers,
+      tradingMode: s.tradingMode,
+      setSelectedSymbol: s.setSelectedSymbol,
+      setActiveSection: s.setActiveSection,
+    }))
+  );
   const { toast } = useToast();
   const [orders, setOrders] = useState<OpenOrder[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -453,7 +458,16 @@ export function OpenOrders() {
                           </div>
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-bold text-foreground font-mono">{cleanSym}</span>
+                              <span
+                                className="text-xs font-bold text-foreground font-mono cursor-pointer hover:text-crypto-cyan hover:underline transition-colors"
+                                title={`Abrir gráfico de ${order.symbol}`}
+                                onClick={() => {
+                                  setSelectedSymbol(order.symbol);
+                                  setActiveSection("chart");
+                                }}
+                              >
+                                {cleanSym}
+                              </span>
                               <Badge className={cn(
                                 "text-[8px] uppercase font-semibold border-none px-1.5 py-0",
                                 order.type === "LIMIT" ? "bg-crypto-cyan/20 text-crypto-cyan" :

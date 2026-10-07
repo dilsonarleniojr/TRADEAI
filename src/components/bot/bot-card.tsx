@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, memo } from "react";
 import { type BotInstance } from "@/lib/store";
 import { useCryptoStore } from "@/lib/store";
 import { formatPrice } from "@/lib/format";
@@ -45,23 +45,39 @@ interface BotCardProps {
   onEdit: (bot: BotInstance) => void;
 }
 
-export function BotCard({ bot, onEdit }: BotCardProps) {
-  const { toggleBotActive, removeBot, resetBotStats, tickers, tradingMode, setActiveExecutionReport } = useCryptoStore(
+export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
+  const activeSymbol = (bot.position && bot.position.quantity > 0) ? bot.position.symbol : bot.symbol;
+  const cleanActiveSymbol = activeSymbol.endsWith("USDT") ? activeSymbol : `${activeSymbol}USDT`;
+
+  const {
+    toggleBotActive,
+    removeBot,
+    resetBotStats,
+    ticker,
+    tradingMode,
+    setActiveExecutionReport,
+    selectedBotId,
+    setSelectedBotId,
+    setSelectedSymbol,
+    setActiveSection,
+  } = useCryptoStore(
     useShallow((s) => ({
       toggleBotActive: s.toggleBotActive,
       removeBot: s.removeBot,
       resetBotStats: s.resetBotStats,
-      tickers: s.tickers,
+      ticker: s.tickers[activeSymbol] || s.tickers[cleanActiveSymbol],
       tradingMode: s.tradingMode,
       setActiveExecutionReport: s.setActiveExecutionReport,
+      selectedBotId: s.selectedBotId,
+      setSelectedBotId: s.setSelectedBotId,
+      setSelectedSymbol: s.setSelectedSymbol,
+      setActiveSection: s.setActiveSection,
     }))
   );
   const { toast } = useToast();
   const [isClosing, setIsClosing] = useState(false);
   const [isOpening, setIsOpening] = useState(false);
 
-  const activeSymbol = (bot.position && bot.position.quantity > 0) ? bot.position.symbol : bot.symbol;
-  const ticker = tickers[activeSymbol];
   const currentPrice = ticker?.price ?? (bot.position?.currentPrice || 0);
 
   // Position calculations
@@ -129,10 +145,14 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
     }
   };
 
+  const isSelected = selectedBotId === bot.id;
+
   return (
     <Card
       className={`relative overflow-hidden transition-all duration-300 border ${
-        bot.active
+        isSelected
+          ? "border-emerald-500/70 ring-2 ring-emerald-500/40 shadow-xl shadow-emerald-500/15 bg-card/90"
+          : bot.active
           ? "bg-card/75 border-border/80 shadow-lg shadow-crypto-cyan/5"
           : "bg-card/40 border-border/40 opacity-75"
       }`}
@@ -172,7 +192,17 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
 
             <div className="flex items-center gap-1.5 flex-wrap">
               {/* Symbol Badge */}
-              <Badge variant="outline" className={`text-[11px] font-semibold px-2 py-0 border-border/70 ${bot.symbol === "AUTO" || bot.useAutoScreener ? "bg-orange-500/15 border-orange-500/40 text-orange-400" : "bg-secondary/30"}`}>
+              <Badge
+                variant="outline"
+                onClick={() => {
+                  if (activeSymbol !== "AUTO") {
+                    setSelectedSymbol(cleanActiveSymbol);
+                    setActiveSection("chart");
+                  }
+                }}
+                title={activeSymbol !== "AUTO" ? `Abrir gráfico de ${cleanActiveSymbol}` : undefined}
+                className={`text-[11px] font-semibold px-2 py-0 border-border/70 ${activeSymbol !== "AUTO" ? "cursor-pointer hover:border-crypto-cyan/60 hover:text-crypto-cyan transition-colors" : ""} ${bot.symbol === "AUTO" || bot.useAutoScreener ? "bg-orange-500/15 border-orange-500/40 text-orange-400" : "bg-secondary/30"}`}
+              >
                 {bot.symbol === "AUTO" ? (hasPosition ? bot.position!.symbol.replace("USDT", "") : "🔥 TOP ALTAS") : bot.symbol.replace("USDT", "")}
                 <span className="text-[9px] text-muted-foreground ml-0.5">/USDT</span>
               </Badge>
@@ -196,6 +226,14 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
                 <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-purple-500/30 text-purple-300 bg-purple-500/10 flex items-center gap-1">
                   <Sparkles className="w-2.5 h-2.5 text-purple-400" />
                   {bot.aiEngine}
+                </Badge>
+              )}
+
+              {/* Selected / Linked Bot Badge */}
+              {isSelected && (
+                <Badge variant="outline" className="text-[10px] font-bold px-1.5 py-0 border-emerald-500/60 bg-emerald-500/20 text-emerald-300 flex items-center gap-1 shadow-sm">
+                  <Sparkles className="w-2.5 h-2.5 text-emerald-300 animate-pulse" />
+                  Vinculado
                 </Badge>
               )}
 
@@ -615,4 +653,4 @@ export function BotCard({ bot, onEdit }: BotCardProps) {
       </CardContent>
     </Card>
   );
-}
+});

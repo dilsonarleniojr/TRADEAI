@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"name": "TRADEAI",
+			"path": "../../.."
+		}
+	],
+	"settings": {
+		"python.testing.pytestArgs": [
+			"."
+		],
+		"python.testing.unittestEnabled": false,
+		"python.testing.pytestEnabled": true,
+		"python.defaultInterpreterPath": "/home/dcorrea/venv/bin",
+		"claudeCode.useTerminal": true,
+		"npm.packageManager": "npm"
+	}
+}

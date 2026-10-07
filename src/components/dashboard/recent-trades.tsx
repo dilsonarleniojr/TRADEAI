@@ -23,9 +23,13 @@ function getSideBg(side: TradeData["side"]) {
 }
 
 export function RecentTrades() {
-  const { trades } = useCryptoStore(
-  useShallow((s) => ({ trades: s.trades }))
-);
+  const { trades, setSelectedSymbol, setActiveSection } = useCryptoStore(
+    useShallow((s) => ({
+      trades: s.trades,
+      setSelectedSymbol: s.setSelectedSymbol,
+      setActiveSection: s.setActiveSection,
+    }))
+  );
 
   return (
     <motion.div
@@ -61,8 +65,13 @@ export function RecentTrades() {
                 return (
                   <div
                     key={trade.id}
+                    onClick={() => {
+                      setSelectedSymbol(trade.symbol);
+                      setActiveSection("chart");
+                    }}
+                    title={`Abrir gráfico de ${trade.symbol}`}
                     className={cn(
-                      "flex items-center gap-3 p-2.5 rounded-lg border-l-2 transition-colors hover:bg-secondary/40 hover:shadow-sm",
+                      "flex items-center gap-3 p-2.5 rounded-lg border-l-2 transition-all cursor-pointer hover:bg-secondary/60 hover:shadow-sm hover:scale-[1.01]",
                       trade.side === "BUY" ? "border-l-crypto-green bg-crypto-green/[0.03]" : "border-l-crypto-red bg-crypto-red/[0.03]"
                     )}
                   >

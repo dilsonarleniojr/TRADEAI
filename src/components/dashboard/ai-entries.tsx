@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useToast } from "@/hooks/use-toast";
 import {
   AlertTriangle,
   BarChart3,
@@ -88,7 +89,19 @@ function Level({ label, value, tone, hint }: { label: string; value: number; ton
 }
 
 export function AIEntries() {
-  const { tickers, watchlist, selectedSymbol, setSelectedSymbol, setActiveSection, portfolio } = useCryptoStore(
+  const {
+    tickers,
+    watchlist,
+    selectedSymbol,
+    setSelectedSymbol,
+    setActiveSection,
+    portfolio,
+    bots,
+    addBot,
+    updateBot,
+    setSelectedBotId,
+    addBotLog,
+  } = useCryptoStore(
     useShallow((s) => ({
       tickers: s.tickers,
       watchlist: s.watchlist,
@@ -96,8 +109,14 @@ export function AIEntries() {
       setSelectedSymbol: s.setSelectedSymbol,
       setActiveSection: s.setActiveSection,
       portfolio: s.portfolio,
+      bots: s.bots,
+      addBot: s.addBot,
+      updateBot: s.updateBot,
+      setSelectedBotId: s.setSelectedBotId,
+      addBotLog: s.addBotLog,
     }))
   );
+  const { toast } = useToast();
   const [entries, setEntries] = useState<TradeEntry[]>([]);
   const [exits, setExits] = useState<ExitPlan[]>([]);
   const [loading, setLoading] = useState(false);
@@ -296,6 +315,94 @@ export function AIEntries() {
     return { notional, riskUsd: (notional / e.entry) * riskPerUnit };
   };
 
+  // Vincula e cria automaticamente o robô com todos os dados sugeridos pela IA
+  const handleLinkBot = (e: TradeEntry) => {
+    const cleanSym = e.symbol.toUpperCase();
+    const baseSym = cleanSym.replace("USDT", "");
+
+    // 1. Alvos e métricas calculados com precisão a partir da análise da IA
+    const tpPct = Number(Math.max(0.5, ((e.takeProfit - e.entry) / e.entry) * 100).toFixed(2));
+    const slPct = Number(Math.max(0.3, (Math.abs(e.entry - e.stopLoss) / e.entry) * 100).toFixed(2));
+    const trailPct = e.trailingDistance > 0 && e.entry > 0
+      ? Number(((e.trailingDistance / e.entry) * 100).toFixed(2))
+      : 0.5;
+
+    // 2. Alocação sugerida (risco de 1%, teto de 25% do patrimônio)
+    const suggestedSize = sizing(e);
+    const allocationAmount = suggestedSize?.notional && suggestedSize.notional > 0
+      ? Math.max(10, Number(suggestedSize.notional.toFixed(2)))
+      : 25;
+
+    const existingBot = bots.find((b) => b.symbol.toUpperCase() === cleanSym);
+    let targetBotId: string;
+
+    const botName = `Bot ${baseSym} — IA (${e.source || "Claude"})`;
+    const commonParams = {
+      name: botName,
+      symbol: cleanSym,
+      strategy: "AI" as const,
+      active: true,
+      takeProfit: tpPct,
+      stopLoss: slPct,
+      trailingStop: true,
+      trailingStopDistance: trailPct,
+      allocationAmount,
+      autoBreakEven: true,
+      breakEvenTrigger: Number((tpPct * 0.5).toFixed(2)),
+      breakEvenBuffer: 0.25,
+      usePartialTp: true,
+      partialTpTrigger: tpPct,
+      partialTpPercent: 50,
+      trailingTakeProfit: true,
+      trailingTakeProfitDistance: trailPct,
+      signalConfidenceThreshold: Math.min(95, Math.max(50, Math.round(e.confidence))),
+      aiEngine: e.aiProvider || e.aiProviderName || (e.source === "regras" ? "Regras Técnicas" : (activeAiProvider || "Claude")),
+      algorithmVersion: "v2.5.0-ai-linked",
+      autoTradeSignals: true,
+      useMarketRegime: true,
+      useMultiTimeframe: true,
+    };
+
+    if (existingBot) {
+      targetBotId = existingBot.id;
+      updateBot(existingBot.id, {
+        ...commonParams,
+        status: existingBot.position ? "in_position" : "scanning",
+        stats: {
+          ...existingBot.stats,
+          lastAction: `Vinculado à análise de IA (${e.source || "Claude"}): Alvo +${tpPct}%, Stop -${slPct}%`,
+          lastActionTime: new Date().toISOString(),
+        },
+      });
+    } else {
+      targetBotId = addBot({
+        ...commonParams,
+        status: "scanning",
+      });
+    }
+
+    // Registra log operacional da vinculação
+    addBotLog({
+      botId: targetBotId,
+      botName,
+      type: "info",
+      message: `Robô ${baseSym} vinculado com sucesso via IA (${e.source}): Alvo 1 (+${tpPct}%), Stop (-${slPct}%), Trailing (${trailPct}%), Alocação ($${allocationAmount}), Parcial (50%)`,
+    });
+
+    // Seleciona o robô na frota, ativa o par e navega até a tela de robôs
+    setSelectedBotId(targetBotId);
+    setSelectedSymbol(cleanSym);
+    setActiveSection("bot");
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    toast({
+      title: `Robô ${baseSym} Vinculado e Ativado! 🤖`,
+      description: `Alvo 1: +${tpPct}% | Stop: -${slPct}% | Trailing: ${trailPct}% | Posição: $${allocationAmount} | Parcial: 50%`,
+    });
+  };
+
   return (
     <Card className="bg-card/60 backdrop-blur-md gradient-border h-full flex flex-col">
       <CardHeader className="pb-3 space-y-3">
@@ -392,7 +499,13 @@ export function AIEntries() {
             {exits.map((x) => (
               <div key={x.symbol} className={cn("rounded-lg border border-border/40 p-3 space-y-2", loadingExits && "opacity-60")}>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold">{x.symbol.replace("USDT", "")}<span className="text-muted-foreground font-normal">/USDT</span></span>
+                  <span
+                    className="text-sm font-semibold cursor-pointer hover:text-crypto-cyan transition-colors"
+                    onClick={() => openChart(x.symbol)}
+                    title={`Abrir gráfico de ${x.symbol}`}
+                  >
+                    {x.symbol.replace("USDT", "")}<span className="text-muted-foreground font-normal">/USDT</span>
+                  </span>
                   <Badge variant="outline" className={cn("text-[10px] font-bold", EXIT_STYLE[x.action])}>
                     {EXIT_LABEL[x.action]}{x.action === "PARCIAL" ? ` ${x.partialPct}%` : ""}
                   </Badge>
@@ -448,7 +561,11 @@ export function AIEntries() {
               )}
             >
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-bold tracking-tight">
+                <span
+                  className="text-sm font-bold tracking-tight cursor-pointer hover:text-crypto-cyan transition-colors"
+                  onClick={() => openChart(e.symbol)}
+                  title={`Abrir gráfico de ${e.symbol}`}
+                >
                   {e.symbol.replace("USDT", "")}
                   <span className="text-muted-foreground font-normal text-xs">/USDT</span>
                 </span>
@@ -536,10 +653,7 @@ export function AIEntries() {
                 {e.side === "BUY" && (
                   <Button
                     size="sm"
-                    onClick={() => {
-                      setSelectedSymbol(e.symbol);
-                      setActiveSection("bot");
-                    }}
+                    onClick={() => handleLinkBot(e)}
                     className="h-8 gap-1.5 text-xs font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-sm shadow-emerald-500/20 cursor-pointer"
                   >
                     <Sparkles className="w-3.5 h-3.5" /> Vincular Robô ({e.symbol.replace("USDT", "")})

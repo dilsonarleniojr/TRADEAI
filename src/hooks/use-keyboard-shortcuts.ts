@@ -5,15 +5,16 @@ import { useCryptoStore } from "@/lib/store";
 import { useTheme } from "next-themes";
 import { useShallow } from "zustand/react/shallow";
 
-type SectionKey = "dashboard" | "chart" | "ai" | "bot" | "backtest" | "history";
+type SectionKey = "dashboard" | "chart" | "ai" | "bot" | "backtest" | "history" | "institutional";
 
 const SECTION_MAP: Record<string, SectionKey> = {
   "1": "dashboard",
   "2": "chart",
-  "3": "ai",
-  "4": "bot",
-  "5": "backtest",
-  "6": "history",
+  "3": "bot",
+  "4": "ai",
+  "5": "history",
+  "6": "backtest",
+  "8": "institutional",
 };
 
 const SYMBOLS = [

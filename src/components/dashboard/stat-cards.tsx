@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { formatPrice, formatPercent } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
@@ -65,18 +66,24 @@ export function StatCards() {
   };
   const currentStatus = statusConfig[connectionStatus] || statusConfig["rest-api"];
 
-  // Find best performer from tickers
-  const tickerValues = Object.values(tickers);
-  const bestPerformer = tickerValues.length > 0
-    ? tickerValues.reduce((best, t) =>
-        t.priceChangePercent > best.priceChangePercent ? t : best
-      )
-    : null;
+  // Find best performer from tickers in a single memoized pass
+  const { bestPerformer, totalVolume } = useMemo(() => {
+    const values = Object.values(tickers);
+    if (values.length === 0) return { bestPerformer: null, totalVolume: 0 };
+    let best = values[0];
+    let vol = 0;
+    for (let i = 0; i < values.length; i++) {
+      const t = values[i];
+      vol += t.quoteVolume || 0;
+      if (t.priceChangePercent > best.priceChangePercent) {
+        best = t;
+      }
+    }
+    return { bestPerformer: best, totalVolume: vol };
+  }, [tickers]);
 
-  // Calculate total volume and win rate
-  const totalVolume = tickerValues.reduce((sum, t) => sum + (t.quoteVolume || 0), 0);
   const todayTrades = trades.length;
-  const profitableTrades = trades.filter((t) => t.pnl > 0).length;
+  const profitableTrades = useMemo(() => trades.filter((t) => t.pnl > 0).length, [trades]);
   const winRate = todayTrades > 0 ? (profitableTrades / todayTrades) * 100 : 0;
   const activeBotsCount = bots ? bots.filter((b) => b.active).length : (botActive ? 1 : 0);
   const currentPnl = portfolio.realizedPnl ?? portfolio.pnl ?? 0;

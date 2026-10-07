@@ -1,11 +1,3017 @@
 {
   "version": 1,
   "skills": {
+    "adaptive-batch-size-tuning-under-load": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/adaptive-batch-size-tuning-under-load/SKILL.md",
+      "computedHash": "4d3b567c0ea51cc253911118b70932772e9fdc7f1905716b588fc7d12340d849"
+    },
+    "adaptive-execution-under-volatility-spikes": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/adaptive-execution-under-volatility-spikes/SKILL.md",
+      "computedHash": "e2d7f776cc13ce73534b79e4e4c7f9f64102ead110944a7e49a544813d74b550"
+    },
+    "adaptive-sampling-under-extreme-tick-rates": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/adaptive-sampling-under-extreme-tick-rates/SKILL.md",
+      "computedHash": "943c7ae4978842eb33c18a3c8388ac9f043abdb4a93ea0abde398da2bfb67363"
+    },
+    "adjusted-vs-unadjusted-price-series-pitfalls": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/adjusted-vs-unadjusted-price-series-pitfalls/SKILL.md",
+      "computedHash": "cbde78800d2408d2f0f610e91b3e763a0d2b7232182f3905513236a6577d74c9"
+    },
+    "adversarial-robustness-of-trading-signals": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/adversarial-robustness-of-trading-signals/SKILL.md",
+      "computedHash": "3de2ff9b1350064539b5aa948b289822884196640e69eeb940fff69e45cdea63"
+    },
+    "adverse-selection-measurement-for-passive-orders": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/adverse-selection-measurement-for-passive-orders/SKILL.md",
+      "computedHash": "f3f10a0e84cb54f9908a79a085f56f5a2cea36e0bcf64b07ce22207cf0ed7bd7"
+    },
+    "air-gapped-signing-workflow-for-cold-storage": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/air-gapped-signing-workflow-for-cold-storage/SKILL.md",
+      "computedHash": "97d2d2c842d7e543f025ee471e199ccb2b580648c336a08142e71fccaafc214f"
+    },
+    "algo-parameter-defaults-by-instrument-liquidity-tier": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/algo-parameter-defaults-by-instrument-liquidity-tier/SKILL.md",
+      "computedHash": "129497a711a022afd113d864f937ba920c7555dd2523a6554e64376ecb09da98"
+    },
+    "algo-trading-disclosure-to-exchange-membership": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/algo-trading-disclosure-to-exchange-membership/SKILL.md",
+      "computedHash": "1824e5eed9f34828a869ce5ac7dec521ac61fab854d75ceac0c3bbf16f89be00"
+    },
+    "algo-wheel-broker-execution-quality-comparison": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/algo-wheel-broker-execution-quality-comparison/SKILL.md",
+      "computedHash": "0535e658814047cbabddf99fad9b1f228ca68cca39bf8a21ff82785c9a7b6476"
+    },
+    "algorithmic-trading-firm-licensing-thresholds": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/algorithmic-trading-firm-licensing-thresholds/SKILL.md",
+      "computedHash": "3dc3e034ef96d29e0c0577a2d34661169c09cf59cea9037801e2131a5e324e8e"
+    },
+    "alpaca-paper-live-key-separation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/alpaca-paper-live-key-separation/SKILL.md",
+      "computedHash": "df366c4e7057bfe5ac9fd5d72554769c4a2286aa1c7da74f137e164ebfc7b787"
+    },
+    "alternative-data-feature-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/alternative-data-feature-integration/SKILL.md",
+      "computedHash": "3336db63b774054420fe3d8b2b48e5963bc463f9518a2698ade726490499711e"
+    },
+    "alternative-data-vendor-due-diligence-checklist": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/alternative-data-vendor-due-diligence-checklist/SKILL.md",
+      "computedHash": "89fee12e93eb02d2b9a1c6d7254e54ad53baf68ee7d5adbd601091b5b23c61db"
+    },
+    "american-vs-european-style-option-exercise-handling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/american-vs-european-style-option-exercise-handling/SKILL.md",
+      "computedHash": "44fa8b836e32d2c6cd53b6a120a5fc4fdfa79ff0ea502e35c1261cc58e3fe99e"
+    },
+    "annual-compliance-attestation-workflow": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/annual-compliance-attestation-workflow/SKILL.md",
+      "computedHash": "d053d685482c67f092c0cb9589d4575299fd75c73445bdafb06e8998a35dd198"
+    },
+    "api-key-least-privilege-audit-tool": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/api-key-least-privilege-audit-tool/SKILL.md",
+      "computedHash": "7a4b4f023ffc0c55429c6e00dba14f047a2ff5b8223df41a730ae613ae261ae8"
+    },
+    "app-download-and-usage-data-for-consumer-companies": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/app-download-and-usage-data-for-consumer-companies/SKILL.md",
+      "computedHash": "cb0c66342a0ab6f1477f767326c9e1f104dd4e28fe0d5c4416976fbc4d5ecd67"
+    },
+    "asic-market-integrity-rules-automated-trading": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/asic-market-integrity-rules-automated-trading/SKILL.md",
+      "computedHash": "40bcafc8b1df88b0c28c27a4da1d4afe1604f12345087016be56b8929db16e97"
+    },
+    "auction-only-order-types-for-illiquid-names": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/auction-only-order-types-for-illiquid-names/SKILL.md",
+      "computedHash": "9c22688b74d7dc39a4166ca0e25a5ceed50d4852e14eed61fc119a6a5c076c83"
+    },
+    "audit-logging-for-configuration-changes": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/audit-logging-for-configuration-changes/SKILL.md",
+      "computedHash": "641706b0b6fa2510b3167b807b5c879fe634b03108d146f3c0d0e3c1a5ee8bee"
+    },
+    "australia-asic-drt-obligations": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/australia-asic-drt-obligations/SKILL.md",
+      "computedHash": "e7cfd8d2134775c8889b45b0a2e8f38d916df488d13d98cb8a3bba51c2ed09c0"
+    },
+    "australian-securities-exchange-asx-api": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/australian-securities-exchange-asx-api/SKILL.md",
+      "computedHash": "788f23b41af61051bc956b4cf30c07733e286f9a0fd92cb11da3834d55f7f040"
+    },
+    "automated-rollback-triggers-on-anomaly-detection": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/automated-rollback-triggers-on-anomaly-detection/SKILL.md",
+      "computedHash": "959fe2378d4db1bb602ed462cb15712422a3e2f26afb867b455a0f42c8e02414"
+    },
+    "automated-tax-lot-reporting-pipeline": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/automated-tax-lot-reporting-pipeline/SKILL.md",
+      "computedHash": "532d54b96877b8d3f4f423fbfc410eb72aa8197f3841cdd5b29598330cceda70"
+    },
+    "b3-brazil-exchange-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/b3-brazil-exchange-api-integration/SKILL.md",
+      "computedHash": "2e0382bea6aa01449a1e52dbe4eef1199344ca1b0036f39f191d131263f93344"
+    },
+    "backpressure-drop-degrade-policy": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/backpressure-drop-degrade-policy/SKILL.md",
+      "computedHash": "b3b505c8fcc4480002ca236da8c0b92b12a2f70f6f010a8d5dc792de6a9c527b"
+    },
+    "backtest-audit-trail-for-regulatory-review": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/backtest-audit-trail-for-regulatory-review/SKILL.md",
+      "computedHash": "48ae0273959ff82fdf3b50330a803f2eb66358ae730149f309bbb6b9ee8cccfe"
+    },
+    "backtest-database-schema-for-point-in-time-queries": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/backtest-database-schema-for-point-in-time-queries/SKILL.md",
+      "computedHash": "0c253560eb673ad0dd6e25f8b49005d97f573e307f77d6a0f728fa54d0a674a0"
+    },
+    "backtest-determinism-and-reproducibility": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/backtest-determinism-and-reproducibility/SKILL.md",
+      "computedHash": "aa806e29aa58e4f5b70ccdaad749e784a729d7e059b055776b60445622ee66d3"
+    },
+    "backtest-infrastructure-cost-budgeting": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/backtest-infrastructure-cost-budgeting/SKILL.md",
+      "computedHash": "56ffd8c3211430d9c348f54a458931463ea3a9cb46ae7b3a6230e54870c93d8f"
+    },
+    "backtest-look-ahead-in-universe-selection": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/backtest-look-ahead-in-universe-selection/SKILL.md",
+      "computedHash": "d68821d9a17d8fe2b580793fa93c322b5415fc243a1eaafd0b2cb67f270ec45a"
+    },
+    "backtest-outlier-and-bad-tick-filtering": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/backtest-outlier-and-bad-tick-filtering/SKILL.md",
+      "computedHash": "0c0fe3cc1e5169cf0a95de9bdc051edef84c5843674806396c9fabf6dfc470e7"
+    },
+    "backtest-parameter-sensitivity-analysis": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/backtest-parameter-sensitivity-analysis/SKILL.md",
+      "computedHash": "677af89d37945494cbd4e09f0e59ee0aec1c4f32b6f4c47a23ea6e193062cb20"
+    },
+    "backtest-reporting-standardized-tearsheet": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/backtest-reporting-standardized-tearsheet/SKILL.md",
+      "computedHash": "5879bb5b99a8de8773d570624502a2f44bbe36dc27bb2088ef6ce2d40466d48e"
+    },
+    "backtest-vs-live-performance-divergence-tracking": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/backtest-vs-live-performance-divergence-tracking/SKILL.md",
+      "computedHash": "e3d7e46a2d1153baf225bf4af6ed414e7f77c46f8c197ecf2278fa5441bb85e6"
+    },
+    "backtesting-alt-data-strategies-with-realistic-availability-lag": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/backtesting-alt-data-strategies-with-realistic-availability-lag/SKILL.md",
+      "computedHash": "a1face31c2798cb1d9176c2428d4adf1b7784fb3d220dbe755e83cfc0be178d2"
+    },
+    "backtesting-ml-models-against-transaction-costs": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/backtesting-ml-models-against-transaction-costs/SKILL.md",
+      "computedHash": "aadfa648e84004707e435bc1930d26dc40a9da0a0b3e4a44eedc92ae412b825d"
+    },
+    "benchmark-relative-performance-attribution": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/benchmark-relative-performance-attribution/SKILL.md",
+      "computedHash": "38b84dcba0c8513f42c07ec6fd1799367a9db216d4bc3244fe52b4fd32f34b97"
+    },
+    "benchmark-selection-for-strategy-evaluation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/benchmark-selection-for-strategy-evaluation/SKILL.md",
+      "computedHash": "8ff7610637d6ee67b17df75a4dd545f2dffd3e4420edfd723976081988c37d1d"
+    },
+    "best-execution-record-keeping-global": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/best-execution-record-keeping-global/SKILL.md",
+      "computedHash": "f3ed060c89e6b11ab06531fa5b94b1b085b6c552686dd161cd277b10f2e8bfe8"
+    },
+    "binance-futures-testnet-to-mainnet-promotion": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/binance-futures-testnet-to-mainnet-promotion/SKILL.md",
+      "computedHash": "d25353c470a0c9361075b0031ded9bf67792e261aff0faf9db87130d861a57e1"
+    },
+    "binary-options-regulatory-and-risk-considerations": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/binary-options-regulatory-and-risk-considerations/SKILL.md",
+      "computedHash": "9e828429b4c472f34ddf035fc00b8cf871833755e005084738937665aeb27ded"
+    },
+    "binary-protocol-parsing-for-low-latency-feeds": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/binary-protocol-parsing-for-low-latency-feeds/SKILL.md",
+      "computedHash": "b15a87e82c43fc876ecdae64f4d7fa3d03662bf841702874f160019cdf023a42"
+    },
+    "black-swan-playbook-for-halted-markets": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/black-swan-playbook-for-halted-markets/SKILL.md",
+      "computedHash": "394181a7dccf051ed5822a007099484cf089cbe0af1082ee69e891571a8285f9"
+    },
+    "blue-green-deployment-for-live-strategy-updates": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/blue-green-deployment-for-live-strategy-updates/SKILL.md",
+      "computedHash": "47fa03e08ba16bf5af5bc4144ac52d8389dfaf09e4487faab456fed990954469"
+    },
+    "borsa-istanbul-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/borsa-istanbul-api-integration/SKILL.md",
+      "computedHash": "7123955c0a3ff41dd8d73a10a53c2290ded2b379e2dd6e8979c2dcbc7eb2f66c"
+    },
+    "broker-account-margin-call-handling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-account-margin-call-handling/SKILL.md",
+      "computedHash": "a30956e8f41b79edfded9ae9898752c7013fadb73e61e025eb13028e4766c2da"
+    },
+    "broker-agnostic-adapter-interface": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-agnostic-adapter-interface/SKILL.md",
+      "computedHash": "157c7357a2bbc7c026fee448b02577b23616e33e4a259eb0c92b8ea9430dfea0"
+    },
+    "broker-api-changelog-diffing-tool": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-api-changelog-diffing-tool/SKILL.md",
+      "computedHash": "83997149de347be3c0c84b21f7641f9a4b429921ce2571580993b37cab3ffaf1"
+    },
+    "broker-api-deprecation-notice-monitoring": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-api-deprecation-notice-monitoring/SKILL.md",
+      "computedHash": "3316f0f439327d2808108b2d0ff2235676b505f6732a5e961a7a8f0250ca2f48"
+    },
+    "broker-api-idempotent-cancel-requests": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-api-idempotent-cancel-requests/SKILL.md",
+      "computedHash": "484ecd49c37da15943ce1f293b70a643b50a53928d891aa88298dcff6be36f6d"
+    },
+    "broker-api-versioning-migration-playbook": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-api-versioning-migration-playbook/SKILL.md",
+      "computedHash": "eb40587fb4f3ecef54bdfe0f5afabe9dff767fad50e84d3e88f52f7cd8af8b75"
+    },
+    "broker-failover-secondary-account-routing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-failover-secondary-account-routing/SKILL.md",
+      "computedHash": "520024091049e1803bf30bc83e7d253a62ab017cceaf5ce32bdc2c9df7e59cb9"
+    },
+    "broker-margin-interest-accrual-tracking": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-margin-interest-accrual-tracking/SKILL.md",
+      "computedHash": "edf23ccb6425ca997054310d5221ce330fd99dda63a143d38c900b037415eb76"
+    },
+    "broker-order-type-capability-matrix": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-order-type-capability-matrix/SKILL.md",
+      "computedHash": "57e59d33bb99abe5f555ef7240e654f556e8da43eeb6edcf5504c106589324d0"
+    },
+    "broker-side-order-throttle-detection": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-side-order-throttle-detection/SKILL.md",
+      "computedHash": "eb64ec413070f575e6a3f71ef82c802c55c03281f71803890505aa40163bef25"
+    },
+    "broker-status-page-monitoring-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/broker-status-page-monitoring-integration/SKILL.md",
+      "computedHash": "8895afd497a3c49f3048682c594bcf0f7b9956280ec5051e8a4d884edfe26fa9"
+    },
+    "bursa-malaysia-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/bursa-malaysia-api-integration/SKILL.md",
+      "computedHash": "733d65bf58ff9576253b2b807e22408e79d1879a0865ec6b25b81dd0d96d1779"
+    },
+    "bybit-derivatives-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/bybit-derivatives-api-integration/SKILL.md",
+      "computedHash": "37136ce727b096fe86abe164799f891fa06baf17de5976fe3e472318dd4a8bfb"
+    },
+    "calendar-spread-and-multi-leg-order-atomicity": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/calendar-spread-and-multi-leg-order-atomicity/SKILL.md",
+      "computedHash": "55b0b04c1e7bb74984d0e1bf281155c59ad8f9ffdcb8f689f82c4ff769becbd3"
+    },
+    "canada-iiroc-electronic-trading-rules": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/canada-iiroc-electronic-trading-rules/SKILL.md",
+      "computedHash": "5f5214eff12bc3434aedac3f03b4b22682c071d5e02927aaf4c2455ff307bb76"
+    },
+    "canary-releases-for-strategy-code-changes": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/canary-releases-for-strategy-code-changes/SKILL.md",
+      "computedHash": "8c1fe9407689e5efe9972c19cacaab553aad72e8e387bc9b5d63d27b0912d4a7"
+    },
+    "capacity-planning-for-symbol-universe-growth": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/capacity-planning-for-symbol-universe-growth/SKILL.md",
+      "computedHash": "bf94bfabcbcb1dc4021d73abae41474d6776c787e4f3b3dcf92d5ae2fcbcc335"
+    },
+    "capital-efficiency-across-cross-margined-strategies": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/capital-efficiency-across-cross-margined-strategies/SKILL.md",
+      "computedHash": "3f89f0efa969d9f27311c9417a45ff719169ed622877883f3c6e92a1e4b04770"
+    },
+    "capital-gains-vs-business-income-classification": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/capital-gains-vs-business-income-classification/SKILL.md",
+      "computedHash": "fb1347439e9ddd1e1f29d85b736a77675c408be80fa4867127a312f84df88874"
+    },
+    "capital-preservation-mode-for-degraded-conditions": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/capital-preservation-mode-for-degraded-conditions/SKILL.md",
+      "computedHash": "a6b8f33cd50ca6882cd48e40fd5eb51611bb69b83145c02f23ca94ce12fd1e16"
+    },
+    "capital-reallocation-based-on-live-performance": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/capital-reallocation-based-on-live-performance/SKILL.md",
+      "computedHash": "38513f27654404a65f04a150620a7da04e9aa97f1e2946294d45512d28642c9b"
+    },
+    "categorical-feature-encoding-for-instrument-identity": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/categorical-feature-encoding-for-instrument-identity/SKILL.md",
+      "computedHash": "c20c927cdb6db9a1b09e7f1e06b7239136d46b5dd515280bf9d0a36409a937e0"
+    },
+    "cboe-options-exchange-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cboe-options-exchange-api-integration/SKILL.md",
+      "computedHash": "1938496608156ac56b7ed048b53910c9033a259aa824ca66d3987a97551bc1ba"
+    },
+    "central-bank-communication-nlp-analysis": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/central-bank-communication-nlp-analysis/SKILL.md",
+      "computedHash": "d59fc3665433b2e0687a23957789293ee5cc9109f81b517bd19a25c7e3758cb4"
+    },
+    "centralized-secrets-management-vault-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/centralized-secrets-management-vault-integration/SKILL.md",
+      "computedHash": "bd0289f9e70368d6c88380c8c11aa0a14d2720ba5bc44805caa07768ac1b3655"
+    },
+    "cftc-commodity-pool-operator-registration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cftc-commodity-pool-operator-registration/SKILL.md",
+      "computedHash": "3138211a8bb69f7957ff89595f58a78dc396d18f54e536f1cd2a3eeaa1eefb64"
+    },
+    "chaos-engineering-for-trading-infrastructure": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/chaos-engineering-for-trading-infrastructure/SKILL.md",
+      "computedHash": "bc295fb617e48d3ab93448b52d74812e1c5765f763585a1ba6dc55c972886410"
+    },
+    "circuit-breaker-for-downstream-service-calls": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/circuit-breaker-for-downstream-service-calls/SKILL.md",
+      "computedHash": "ad3f52b915bd2957600e1c9d16923ea3c3b42f3ab936f752649d1803c3573bd3"
+    },
+    "class-imbalance-handling-for-rare-signal-events": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/class-imbalance-handling-for-rare-signal-events/SKILL.md",
+      "computedHash": "b52c0545107191f8f3a9241520a0941f3cf10bb3ced610c7a060959dad0c0919"
+    },
+    "clock-drift-monitoring-alerting-thresholds": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/clock-drift-monitoring-alerting-thresholds/SKILL.md",
+      "computedHash": "9d8fce954cff5d4d9b24fbe66d72b3466b82261e4ca5d038efd34a3221e1eb6e"
+    },
+    "clock-skew-correction-for-tick-timestamps": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/clock-skew-correction-for-tick-timestamps/SKILL.md",
+      "computedHash": "3c94bbaea613a5e15465605704e78afd8c2fb098b32815bb9bfbd2c78ce87278"
+    },
+    "clock-synchronization-ptp-for-trading-hosts": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/clock-synchronization-ptp-for-trading-hosts/SKILL.md",
+      "computedHash": "c72671b89d070cb22067ac668f6df6632d5f1324baf2e27d378223c9d79f5997"
+    },
+    "close-auction-participation-strategy": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/close-auction-participation-strategy/SKILL.md",
+      "computedHash": "44b3c782278cf0767b32c58e5a4864c10740db6b0c0272068033aa609235c11f"
+    },
+    "cme-globex-futures-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cme-globex-futures-api-integration/SKILL.md",
+      "computedHash": "6da776ba2b57f2f777d0feba7c1d17ae2d3e35c61401e70ab4529f7883a4a6dc"
+    },
+    "cme-stp-fix-and-ilink2-tag-value-encoding": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cme-stp-fix-and-ilink2-tag-value-encoding/SKILL.md",
+      "computedHash": "a0cffad0836120a96dd2ebc07b30942492504565fc618e8ec1a73f3bf29a74eb"
+    },
+    "co-location-provider-selection-and-network-topology": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/co-location-provider-selection-and-network-topology/SKILL.md",
+      "computedHash": "36784d50b9478079fb4f21ff4fa905181daa3b0d9d7e1a25e0fc08f9bec3af8f"
+    },
+    "coinbase-advanced-trade-api-migration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/coinbase-advanced-trade-api-migration/SKILL.md",
+      "computedHash": "0463e307395040880f22cc0dcc64f1484314988a9221f921cefb74dab119037b"
+    },
+    "cold-start-handling-for-newly-listed-instruments": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cold-start-handling-for-newly-listed-instruments/SKILL.md",
+      "computedHash": "8f4eb6de0226b74d354a8a047105b7b5b7a6ef621f648a8269fe5a14bceae6c7"
+    },
+    "cold-storage-geographic-distribution-strategy": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cold-storage-geographic-distribution-strategy/SKILL.md",
+      "computedHash": "18bcbed7a468ea0f3757bb4e5ae22810ea114565d694798d615a45bc33d7af0b"
+    },
+    "colocation-latency-budget-accounting": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/colocation-latency-budget-accounting/SKILL.md",
+      "computedHash": "387c244f76a65130df8aba03b0b76585db25098754aa962db2760eea30335581"
+    },
+    "commodity-futures-storage-and-carry-cost-modeling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/commodity-futures-storage-and-carry-cost-modeling/SKILL.md",
+      "computedHash": "8cc77ad2b907ebe15b49b0f4beb6e1028918d2c1e6449a639085156b8758b5c2"
+    },
+    "concentration-risk-single-name-limits": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/concentration-risk-single-name-limits/SKILL.md",
+      "computedHash": "43cc32f2ea5994a1bca0c8bd378f172318b5f8e399e30f0cead7c537ce26f662"
+    },
+    "concept-drift-vs-staleness-differentiation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/concept-drift-vs-staleness-differentiation/SKILL.md",
+      "computedHash": "07d28d8de698cf62afcb76b392c447b2fcdc5795b947505c187093e74fe90ea6"
+    },
+    "conditional-order-logic-for-execution-triggers": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/conditional-order-logic-for-execution-triggers/SKILL.md",
+      "computedHash": "fcf52f516d15785747548f4df424b3d4f3a422bd9e10d41aa11ec09f247dda09"
+    },
+    "configuration-drift-detection-across-environments": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/configuration-drift-detection-across-environments/SKILL.md",
+      "computedHash": "633cf6f92f6f0ec5f2977174dce32ebc5ac50d63d632e5105e74dd0746e82db5"
+    },
+    "conflict-of-interest-disclosure-for-prop-vs-client-flow": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/conflict-of-interest-disclosure-for-prop-vs-client-flow/SKILL.md",
+      "computedHash": "c5c11aab98882ff2ab74ca3d8a4111f3a996db9a096f8e8e4146b9fd7add3f97"
+    },
+    "constructive-sale-rule-considerations-us": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/constructive-sale-rule-considerations-us/SKILL.md",
+      "computedHash": "5f5760086e787b485b5f9eb3d145e55504813dbb5c0fb9691180fdb4488d6d12"
+    },
+    "consumer-group-rebalance-safety": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/consumer-group-rebalance-safety/SKILL.md",
+      "computedHash": "afc6e6e18e04a8e4918d0c2916acd9763a82585676afb9e672ca9bbc5428c495"
+    },
+    "convertible-bond-arbitrage-data-requirements": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/convertible-bond-arbitrage-data-requirements/SKILL.md",
+      "computedHash": "ae2e5ac79f21b72f293fa3fa20e55cb1dd3bd625d7329158d921c3562abf887d"
+    },
+    "corporate-action-adjusted-backtesting": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/corporate-action-adjusted-backtesting/SKILL.md",
+      "computedHash": "cee900ad00871cb038be779af66eed4ac43e6f219cefae3878c30a20c45cd469"
+    },
+    "corporate-action-event-calendar-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/corporate-action-event-calendar-integration/SKILL.md",
+      "computedHash": "d03bfd78923bcdffd8204dd5aaca7df1302b7fd4f610abd678febe6834ee6527"
+    },
+    "correlation-aware-exposure-limits": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/correlation-aware-exposure-limits/SKILL.md",
+      "computedHash": "dc587550bde685b59f139d597b337e78320acd0868892055853acdee2808e395"
+    },
+    "cost-monitoring-for-cloud-trading-infrastructure": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cost-monitoring-for-cloud-trading-infrastructure/SKILL.md",
+      "computedHash": "287c17b0de54966697498276ac4c8f5dc96c54d45917e0e730d91a4e04b17367"
+    },
+    "counterparty-and-broker-concentration-risk": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/counterparty-and-broker-concentration-risk/SKILL.md",
+      "computedHash": "80fb174b53cb1291c5b6184c23e27b1b694496c13792eddad9b4e864f8805c2c"
+    },
+    "counterparty-credit-risk-for-otc-derivatives": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/counterparty-credit-risk-for-otc-derivatives/SKILL.md",
+      "computedHash": "4d5ec7187feb681db5f2937cf854a9e678f59cb18c4359d71feb47bb458fd814"
+    },
+    "credit-card-transaction-data-signal-construction": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/credit-card-transaction-data-signal-construction/SKILL.md",
+      "computedHash": "22bed71d30715b86b415dd1f3ea692d69ac73b4454635174b2ba6ccc4c8fb0cd"
+    },
+    "credit-default-swap-basics-for-algo-context": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/credit-default-swap-basics-for-algo-context/SKILL.md",
+      "computedHash": "e3db5d798fe9eadbbb71fbabb3b90e14503c142b314eb5d439ad50476f307678"
+    },
+    "cross-account-aggregate-risk-view": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-account-aggregate-risk-view/SKILL.md",
+      "computedHash": "d3253db10011dbbd6a73f8aea6b6decadb8b0b38d12c21f3d1ffa14eaa28aa74"
+    },
+    "cross-asset-correlation-regime-shifts": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-asset-correlation-regime-shifts/SKILL.md",
+      "computedHash": "3c0095daccfce893fdaa7670457d9b8a9bc4c5ff34a6de352a0f4a6d456036e9"
+    },
+    "cross-asset-hedge-execution-synchronization": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-asset-hedge-execution-synchronization/SKILL.md",
+      "computedHash": "5c69b92288e1c699752d5e753e6104add0ef25b64123cb6ada5c2153e06ed994"
+    },
+    "cross-border-data-transfer-restrictions-for-trade-data": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-border-data-transfer-restrictions-for-trade-data/SKILL.md",
+      "computedHash": "0e2cb727c51e04d9e00f991a0041e032c5623afaf872ac3a6b8a8948da462373"
+    },
+    "cross-chain-address-reuse-privacy-risk": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-chain-address-reuse-privacy-risk/SKILL.md",
+      "computedHash": "617b50fa35f03e8f276c83729c5c4f5a7faf11ef50039a84420986ff233a314e"
+    },
+    "cross-chain-bridge-risk-for-multi-chain-strategies": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-chain-bridge-risk-for-multi-chain-strategies/SKILL.md",
+      "computedHash": "070f55d85c3755cbaa4baa1e6af7919771afa7394b25fa4ce64740bcdf37a8cb"
+    },
+    "cross-datacenter-clock-sync-validation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-datacenter-clock-sync-validation/SKILL.md",
+      "computedHash": "dfc811366df8a0b610274fb57312c6c3efac2373430d47e21d243f6064cd3a8d"
+    },
+    "cross-jurisdiction-regulatory-conflict-resolution": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-jurisdiction-regulatory-conflict-resolution/SKILL.md",
+      "computedHash": "70029151a5b31dae35fd54d0034133c5baa63d3de623841c8c308e0465a25176"
+    },
+    "cross-margining-across-asset-classes": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-margining-across-asset-classes/SKILL.md",
+      "computedHash": "8a81e681c9c9ad8ee1d2aa4046a6cb337c101a2597eff78f84d9fefc079f2d39"
+    },
+    "cross-region-data-replication-lag-monitoring": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-region-data-replication-lag-monitoring/SKILL.md",
+      "computedHash": "ba710fcb52eacaabc82edb858e4c0714997cf5efb2e4439a4666d0a04da70dc3"
+    },
+    "cross-sectional-vs-time-series-model-design": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-sectional-vs-time-series-model-design/SKILL.md",
+      "computedHash": "7512437c5634454a2225ae26c795b6dc062b57ba8eb11275709ba322412a17a9"
+    },
+    "cross-strategy-correlation-monitoring": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-strategy-correlation-monitoring/SKILL.md",
+      "computedHash": "dda668dd0fb8b102cab6d8ce5ae17fa957b5c6612ef336fa5d90b3fced353682"
+    },
+    "cross-strategy-shared-infrastructure-resource-contention": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-strategy-shared-infrastructure-resource-contention/SKILL.md",
+      "computedHash": "35de650ab3b291f6fa20c129a8e26982b1b6e02812dd933ccd20228f4b9c2c15"
+    },
+    "cross-strategy-signal-reuse-and-licensing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-strategy-signal-reuse-and-licensing/SKILL.md",
+      "computedHash": "6ec6d3cb311553943f822e6d2fd478e3af90e765d904d94ed2aecc5f2083b597"
+    },
+    "cross-strategy-tax-lot-optimization": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-strategy-tax-lot-optimization/SKILL.md",
+      "computedHash": "b0e49e7df77c6cbd0fd2442dfbf36f7d3ba0d1018ad4f22fee3fcacf576bd385"
+    },
+    "cross-validation-of-commission-schedules-over-time": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-validation-of-commission-schedules-over-time/SKILL.md",
+      "computedHash": "abba8aa9de777421c1654dc6af780cafea29357a057be68769f22bb730864687"
+    },
+    "cross-vendor-timestamp-precision-reconciliation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-vendor-timestamp-precision-reconciliation/SKILL.md",
+      "computedHash": "ee7efc575c22624088f497754bec008d1c591ea78d958c3a858081edf84aa0a6"
+    },
+    "cross-venue-latency-arbitrage-defensive-design": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/cross-venue-latency-arbitrage-defensive-design/SKILL.md",
+      "computedHash": "08092616b0e46d8efe98f01542c2a89e9b0824cb32e7ab9ecd8df3a9a5addb88"
+    },
+    "crypto-exchange-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/crypto-exchange-api-integration/SKILL.md",
+      "computedHash": "62461c5ba867227701e8436c9aa39b5e9e1aa77df355e70760fbf4c1ae99c2c3"
+    },
+    "crypto-transaction-tax-lot-tracking": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/crypto-transaction-tax-lot-tracking/SKILL.md",
+      "computedHash": "c0a5757d3cef7aea2578aef03d4d29f10de50f1afde89d2699b89ff0b0bbb665"
+    },
+    "crypto-wallet-key-custody-security": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/crypto-wallet-key-custody-security/SKILL.md",
+      "computedHash": "41ccb1ccaf5301f068bcc89acc088364e1f088b842bf64e612d108f2d55d5c76"
+    },
+    "currency-gain-loss-tax-treatment-for-forex-trading": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/currency-gain-loss-tax-treatment-for-forex-trading/SKILL.md",
+      "computedHash": "b505f11ef5b3c0c032e5e04cddd2694b7ec70179847691694fe17e4eb3c197eb"
+    },
+    "currency-pair-quoting-convention-normalization": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/currency-pair-quoting-convention-normalization/SKILL.md",
+      "computedHash": "01763ba342e6c9dca385b55c2f71c7a230dbea177f0d1484a6ac229e9e567a08"
+    },
+    "custodial-vs-non-custodial-tradeoff-assessment": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/custodial-vs-non-custodial-tradeoff-assessment/SKILL.md",
+      "computedHash": "5f71d42de5850ae3205e9d578999d04b863f25f61467427d0acecfbcf9c41f23"
+    },
+    "custody-solution-uptime-and-liveness-guarantees": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/custody-solution-uptime-and-liveness-guarantees/SKILL.md",
+      "computedHash": "88686a53af02ceae1b1911f894b80bdb7b15511de6aa867d272295e3739ddd15"
+    },
+    "custody-solution-vendor-due-diligence-checklist": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/custody-solution-vendor-due-diligence-checklist/SKILL.md",
+      "computedHash": "714f438495df4152d1c15d78657dff9d71642168e897e35216176781b1ea24fc"
+    },
+    "dark-pool-routing-logic": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/dark-pool-routing-logic/SKILL.md",
+      "computedHash": "439eff39416b4e329f68fefd188347ad0930e0fc739d877152c00eb81678a7a8"
+    },
+    "data-lineage-tracking-for-audit-and-debugging": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/data-lineage-tracking-for-audit-and-debugging/SKILL.md",
+      "computedHash": "67298d6fd2beaa34622a20ea1ab15086b6f1961f28d344453626654b9e1ef411"
+    },
+    "data-localization-requirements-for-trade-records": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/data-localization-requirements-for-trade-records/SKILL.md",
+      "computedHash": "1f5981324b0756b1c1beb9d940a89fac50313cbb7670d092cb9a9aa16fadb6ff"
+    },
+    "data-pipeline-schema-contract-testing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/data-pipeline-schema-contract-testing/SKILL.md",
+      "computedHash": "80bf8fb8fd905769871095997f54209442dcf194a28c64afeaa65c470f5767f6"
+    },
+    "data-quality-monitoring-dashboard": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/data-quality-monitoring-dashboard/SKILL.md",
+      "computedHash": "c96e5754baa5161e842f2b0d1ae8e0dabb2743bd2d5e2cfa3f8bcdd04e56f3ca"
+    },
+    "data-retention-policy-and-storage-tiering": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/data-retention-policy-and-storage-tiering/SKILL.md",
+      "computedHash": "04639190f6a89ecb751fb5158914c224e1eb7cba5dbd17cbbcee4716f0d1242b"
+    },
+    "data-vendor-contractual-usage-restriction-tracking": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/data-vendor-contractual-usage-restriction-tracking/SKILL.md",
+      "computedHash": "a28433ed38f447bb9a36625078cccc1a3ab2e6fe8fd82b558ae8ba192cc3e597"
+    },
+    "data-vendor-cross-validation-for-backtests": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/data-vendor-cross-validation-for-backtests/SKILL.md",
+      "computedHash": "b43c47cfad96b62b09049be3f63dbdcbc801b605f305ab31e14fbbd2e0276914"
+    },
+    "database-backup-and-point-in-time-restore-testing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/database-backup-and-point-in-time-restore-testing/SKILL.md",
+      "computedHash": "0bf83853cbba05e310af8993955fb7f1528a87e4f0122acee9aa86a379a5d67e"
+    },
+    "daylight-saving-time-transition-handling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/daylight-saving-time-transition-handling/SKILL.md",
+      "computedHash": "a5e643f2cb283dbcb6f5cacbf1180c545203a8d91a032f1648a9c9b84efd33c5"
+    },
+    "decentralized-exchange-dex-integration-uniswap-style": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/decentralized-exchange-dex-integration-uniswap-style/SKILL.md",
+      "computedHash": "7b5379c17c1434eba4542150993f80428550915a9dbea153bee3ffe5ddf785b7"
+    },
+    "degiro-unofficial-api-risk-assessment": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/degiro-unofficial-api-risk-assessment/SKILL.md",
+      "computedHash": "83826302a65a42c4265a903934c226b9708bedc1eb89a104d83195c89c0a6525"
+    },
+    "demo-account-realism-gap-assessment": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/demo-account-realism-gap-assessment/SKILL.md",
+      "computedHash": "e2a21d3cac0924f88d4d316b463ee75a6d1fc3b189eb48ad0494c8e382945593"
+    },
+    "dependency-pinning-and-reproducible-builds": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/dependency-pinning-and-reproducible-builds/SKILL.md",
+      "computedHash": "bcbde06e29760b5852d338db22ae9c0abadefd88bffa8d5ee3c2d901aa410eca"
+    },
+    "dependency-vulnerability-scanning-in-ci": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/dependency-vulnerability-scanning-in-ci/SKILL.md",
+      "computedHash": "953b797788880979644de691be31ab52d3c456c573b234d640f3c127e31be649"
+    },
+    "deployment-freeze-windows-around-market-events": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/deployment-freeze-windows-around-market-events/SKILL.md",
+      "computedHash": "1d98a8a81ee0a39820b1cbe38e08f88106847c992495ef3f2ff491d240f48f14"
+    },
+    "deribit-crypto-options-api": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/deribit-crypto-options-api/SKILL.md",
+      "computedHash": "e2fa2c9262e8715c9328c494e2b320e618deacc167a5db4383fa83bb4ad23fc2"
+    },
+    "deutsche-borse-xetra-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/deutsche-borse-xetra-api-integration/SKILL.md",
+      "computedHash": "ab2be169894ab91557190a5c2f1dcbd18152a07786bba8506da57160c4fe3214"
+    },
+    "disaster-recovery-runbook-for-full-region-outage": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/disaster-recovery-runbook-for-full-region-outage/SKILL.md",
+      "computedHash": "ff06faa3d255c8972d5dba671af389b37b2a468d1e03c5addc02fd1b6e7fe0bc"
+    },
+    "dividend-futures-and-forward-modeling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/dividend-futures-and-forward-modeling/SKILL.md",
+      "computedHash": "ba4bf9c4261fd573db5f142c4e010775bfa685be500e1d06a91697a50742f30f"
+    },
+    "double-taxation-treaty-considerations-cross-border-trading": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/double-taxation-treaty-considerations-cross-border-trading/SKILL.md",
+      "computedHash": "b83012845634848d4ddae4c5f57011354b3e56efb822d831550c727cd68fb313"
+    },
+    "dubai-financial-market-dfm-api": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/dubai-financial-market-dfm-api/SKILL.md",
+      "computedHash": "2841fab28655c7929bb5cc8a3ed6b1d053cd2b35f37fee01567078a6175b8bd8"
+    },
+    "dynamic-position-sizing-based-on-realized-volatility": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/dynamic-position-sizing-based-on-realized-volatility/SKILL.md",
+      "computedHash": "7f93f411a9df7973858b662b1127dc89dd5cbb99a9b2adb003a8b2783564e16f"
+    },
+    "early-exercise-assignment-risk-management": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/early-exercise-assignment-risk-management/SKILL.md",
+      "computedHash": "1f5eda0d36c0f800b232496be1881ec7a5ea7925d2da590087ba6e26daff6daa"
+    },
+    "earnings-call-transcript-nlp-signal-research": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/earnings-call-transcript-nlp-signal-research/SKILL.md",
+      "computedHash": "2035e86844ccf78abda18cf81039b79bf1d5905f2a89fccca17d7a1b111a9fee"
+    },
+    "emergency-manual-override-access-control": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/emergency-manual-override-access-control/SKILL.md",
+      "computedHash": "23224a60c05e9c8754f5e0d2b6650a13013153eb081892ae3ef7049a542aa958"
+    },
+    "employee-offboarding-procedure-for-custody-access": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/employee-offboarding-procedure-for-custody-access/SKILL.md",
+      "computedHash": "67298c09b3a3e44f72ac82cba0f79c11fda4f0ed0f691be71963bca3ef99dfeb"
+    },
+    "ensemble-signal-combination-without-overfitting": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/ensemble-signal-combination-without-overfitting/SKILL.md",
+      "computedHash": "7ef7bf4835d8644cff64028b9f0b4c141a966fdc2f3ee0a9274ef1a1905fa818"
+    },
+    "environment-parity-dev-staging-production": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/environment-parity-dev-staging-production/SKILL.md",
+      "computedHash": "29c1ae045ca078c5ea5e531f15af9491487f07f8bcc2eea8002d015e3bf44d61"
+    },
+    "esg-data-signal-research-and-vendor-comparison": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/esg-data-signal-research-and-vendor-comparison/SKILL.md",
+      "computedHash": "fe3965ac222d1d8d2b03ff8c4c634f8efb54dbc6313424133be5b2902e29226f"
+    },
+    "esma-double-volume-cap-mechanism": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/esma-double-volume-cap-mechanism/SKILL.md",
+      "computedHash": "7c95c8e970f27f8441d92f5569cb3f18a4fd3b4f18230fffa768367832dd08d8"
+    },
+    "estimated-tax-payment-scheduling-for-active-trading-income": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/estimated-tax-payment-scheduling-for-active-trading-income/SKILL.md",
+      "computedHash": "69f1e81d39ef952273778ee92fd68a824741da2bd52aa548bf20dbfd187c22b9"
+    },
+    "etrade-oauth1-signature-flow": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/etrade-oauth1-signature-flow/SKILL.md",
+      "computedHash": "e6d4002ef316f701632910de7df99355703fe130ed8cebe0ddfe6cfa4ef8aebc"
+    },
+    "eu-benchmark-regulation-for-strategies-referencing-indices": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/eu-benchmark-regulation-for-strategies-referencing-indices/SKILL.md",
+      "computedHash": "e8f87d166dfe97095322fb13b5dc45c54869af29267da6c2b70066241c0497db"
+    },
+    "eu-market-abuse-regulation-mar-surveillance": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/eu-market-abuse-regulation-mar-surveillance/SKILL.md",
+      "computedHash": "91303a97bd91c17f2525a877223e203c8e730d29296cc8f08232f3f786864c5b"
+    },
+    "eu-short-selling-regulation-disclosure-thresholds": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/eu-short-selling-regulation-disclosure-thresholds/SKILL.md",
+      "computedHash": "b7bb0b5bc64d9a0794e9520c58d5f7205c7feea9c7745b4ebf6515277c076ab1"
+    },
+    "eurex-market-data-and-order-api": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/eurex-market-data-and-order-api/SKILL.md",
+      "computedHash": "aa4a6cd95b89c214c5a5363ad0f0083114e682775dda36fad57c225742c3fbab"
+    },
+    "euronext-optiq-market-data-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/euronext-optiq-market-data-integration/SKILL.md",
+      "computedHash": "9787c6d4b764cef47a365694825ae9da1b58a4a20333e11dc8c7bafaaa57decd"
+    },
+    "exchange-fee-tier-and-rebate-structure-analysis": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/exchange-fee-tier-and-rebate-structure-analysis/SKILL.md",
+      "computedHash": "1fb7812fa3cdb9d1fc09a46a2626f0746d7076b40407d0ff12de73bbf12d4a6c"
+    },
+    "exchange-for-physical-efp-transactions": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/exchange-for-physical-efp-transactions/SKILL.md",
+      "computedHash": "abfd7afa829c02f2f046eb12eb9b0344444980a2ccd3e1dc100f78d5b721e8f0"
+    },
+    "exchange-gateway-redundancy-and-failover-testing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/exchange-gateway-redundancy-and-failover-testing/SKILL.md",
+      "computedHash": "2843df286341cc6d880f52a0217759694e8afde6310fec936050c7c5107df042"
+    },
+    "exchange-matching-engine-behavior-under-load": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/exchange-matching-engine-behavior-under-load/SKILL.md",
+      "computedHash": "153978d0205622b63a8d9a0ce019c37cb686c31e75152c155874241fdfc50795"
+    },
+    "exchange-multicast-feed-handling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/exchange-multicast-feed-handling/SKILL.md",
+      "computedHash": "6fadeef4ffd0f5a02e580c52d639554ed9880a5d2b0af6dd58580396a86dfa08"
+    },
+    "exchange-proof-of-reserves-verification": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/exchange-proof-of-reserves-verification/SKILL.md",
+      "computedHash": "9439f4a023d9ef4597f32efa7e912b1a22ed815f2eed0f64ae83476dc830beca"
+    },
+    "exchange-self-match-prevention-configuration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/exchange-self-match-prevention-configuration/SKILL.md",
+      "computedHash": "1b921a10265f0eaec878eca0f86cabec968f5f631fc09fbfadfd99ff06944ee5"
+    },
+    "exchange-tick-size-regime-tracking": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/exchange-tick-size-regime-tracking/SKILL.md",
+      "computedHash": "199232a034b56fd1c6ab8b0e7bc04d970bd57cfc6772897917cbee76ed8ad010"
+    },
+    "exchange-withdrawal-whitelist-enforcement": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/exchange-withdrawal-whitelist-enforcement/SKILL.md",
+      "computedHash": "d2eb315b34f53e6b7b11b4aa319d14c527a26beaf72e2a7f2ebaad09204a1765"
+    },
+    "execution-algo-behavior-under-halted-instrument": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/execution-algo-behavior-under-halted-instrument/SKILL.md",
+      "computedHash": "e467fc10deadd9fae693f9004094a6952ae5f98070ef54caeb13452c3c4dbbf4"
+    },
+    "execution-algo-parameter-optimization-via-backtest": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/execution-algo-parameter-optimization-via-backtest/SKILL.md",
+      "computedHash": "2bc4e62952b38eac9732daa8245e6f7acafa2bbc95a7ca2e2b2232c59c9da290"
+    },
+    "execution-algo-twap-vwap-slicing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/execution-algo-twap-vwap-slicing/SKILL.md",
+      "computedHash": "18a22bfb3936c56ad94dcf580c2a06d321065d711ec46cc0160830685bbe3f60"
+    },
+    "execution-algorithm-kill-switch-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/execution-algorithm-kill-switch-integration/SKILL.md",
+      "computedHash": "a1af49384a696000e3b4d9ccc7a9eae7b3a969e7fe133c994228107b21e132d5"
+    },
+    "execution-algorithm-regression-testing-suite": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/execution-algorithm-regression-testing-suite/SKILL.md",
+      "computedHash": "6dd703791d17e5bbe8cd6981725c34173d6e1c79f1bdd11b135140bb6905af65"
+    },
+    "execution-cost-model-recalibration-cadence": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/execution-cost-model-recalibration-cadence/SKILL.md",
+      "computedHash": "cd4707e0ad33657d63956d832b5abe31c6b5cf929da38e8329d068681b6266b4"
+    },
+    "execution-realistic-simulation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/execution-realistic-simulation/SKILL.md",
+      "computedHash": "5b6c6c6c2b1c7bf009fc406967c00eb19c24427afffeee6f3c2a0aa3bc7b998c"
+    },
+    "execution-slippage-attribution-timing-vs-sizing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/execution-slippage-attribution-timing-vs-sizing/SKILL.md",
+      "computedHash": "9a972f5e0dac2aa395607499029662e4636ede63a871229430df3450d532becc"
+    },
+    "execution-venue-fee-tier-optimization": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/execution-venue-fee-tier-optimization/SKILL.md",
+      "computedHash": "e51042548aac88758354747c1b4f0ccb7593013c2f0234da7736a707fa09dd06"
+    },
+    "explainability-for-live-trading-signals": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/explainability-for-live-trading-signals/SKILL.md",
+      "computedHash": "699069aff03cb0c85279a5652b976797bca51ef0229bda74854609cd05d0a467"
+    },
+    "explainable-boosting-machines-for-regulated-signals": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/explainable-boosting-machines-for-regulated-signals/SKILL.md",
+      "computedHash": "31745e91c2f70432b025556507b568554ac3e34dceb0884c5dc472c26fbb8754"
+    },
+    "factor-research-multiple-testing-correction": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/factor-research-multiple-testing-correction/SKILL.md",
+      "computedHash": "a33d6506cdb75feeb9a4f2a2630c3b2261edee9786f2fe01013b95ca7fa88e3a"
+    },
+    "feature-engineering-cost-benefit-tracking": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/feature-engineering-cost-benefit-tracking/SKILL.md",
+      "computedHash": "c9fd43121a068f11dc0021e49f79e02167bc2115c262ecde82a462d1e6b06d60"
+    },
+    "feature-engineering-without-leakage": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/feature-engineering-without-leakage/SKILL.md",
+      "computedHash": "83e2d4ccb057afb7488ba44c8da70b811a17fa7e2a8bbca3c791171b81cbfc74"
+    },
+    "feature-importance-drift-monitoring": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/feature-importance-drift-monitoring/SKILL.md",
+      "computedHash": "54eaf30cd948f9b367761eaa9ac820493571109bd3b9acb5241bdf9add36a9de"
+    },
+    "feature-selection-stability-across-folds": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/feature-selection-stability-across-folds/SKILL.md",
+      "computedHash": "f459f917201367fef3d4ba8b43906f508790d28997f2eafe4a5dedc616c491fc"
+    },
+    "feature-store-for-live-and-backtest-parity": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/feature-store-for-live-and-backtest-parity/SKILL.md",
+      "computedHash": "88435a4a749d83daa34d6defa51079b0e9e180dbf64fbc9c67ee5f6376b66366"
+    },
+    "feed-handler-canary-deployment": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/feed-handler-canary-deployment/SKILL.md",
+      "computedHash": "169b764a708c7e80ae32c1ce7cc33db655f39e3eeb267950785ee8e1ccdcf708"
+    },
+    "feed-handler-cpu-pinning-and-numa-awareness": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/feed-handler-cpu-pinning-and-numa-awareness/SKILL.md",
+      "computedHash": "b05e6d0ab5b365edcd785701ebafe61a815394994fd63230475dc30f8e7af976"
+    },
+    "fifo-vs-specific-lot-tax-accounting-methods": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/fifo-vs-specific-lot-tax-accounting-methods/SKILL.md",
+      "computedHash": "50eb5b90f8db3e07f26ebf92c87168f4beb24c1c151681a0863a4d2a35a39a73"
+    },
+    "finra-algo-trading-registration-requirements": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/finra-algo-trading-registration-requirements/SKILL.md",
+      "computedHash": "e4cefe88453181891ed7b1eff6b0a13bd511e599bcefc79a85c2e5e026024dbb"
+    },
+    "fix-protocol-session-management-across-venues": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/fix-protocol-session-management-across-venues/SKILL.md",
+      "computedHash": "6882d5da8b2186493e9f242e124e3b0b142ccd15777cc2b59e9a3dced84574e6"
+    },
+    "forex-broker-integration-oanda-mt5": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/forex-broker-integration-oanda-mt5/SKILL.md",
+      "computedHash": "254a8f33c76a154db6cf594dbed64dca5328f871a103edf6684f555aaa429733"
+    },
+    "form-1099-b-and-broker-tax-reporting-reconciliation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/form-1099-b-and-broker-tax-reporting-reconciliation/SKILL.md",
+      "computedHash": "abbb3066b7be2dcbdd4bf110754198e67e68390b43eade7dea34a6b943a62bac"
+    },
+    "fpga-based-market-data-processing-evaluation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/fpga-based-market-data-processing-evaluation/SKILL.md",
+      "computedHash": "df0863414fab72716aa772c416e73535ee7585d38e5f0d7bcd83dcf39e6893ad"
+    },
+    "ftx-style-exchange-post-collapse-risk-lessons": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/ftx-style-exchange-post-collapse-risk-lessons/SKILL.md",
+      "computedHash": "80915feaa242c6b5a5d9128700b5bb521f238f91511cea950ede438ef16aab82"
+    },
+    "futures-contract-roll-automation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/futures-contract-roll-automation/SKILL.md",
+      "computedHash": "54bff8a4c30b50f59ce9edd9d863668025b318a7ea236951239d758343769838"
+    },
+    "futures-expiry-week-liquidity-and-volatility-handling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/futures-expiry-week-liquidity-and-volatility-handling/SKILL.md",
+      "computedHash": "06dc31cd9e9911927dc615d0326db9ddd1b12e42b7958deca37fd46a33efd839"
+    },
+    "fx-forward-and-swap-position-tracking": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/fx-forward-and-swap-position-tracking/SKILL.md",
+      "computedHash": "941836d185d547e0dafe6435e53229339c158235df61508b8bb9916d3c1080b0"
+    },
+    "global-exchange-holiday-calendar-handling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/global-exchange-holiday-calendar-handling/SKILL.md",
+      "computedHash": "d3c0251f344d71c7755998b1ec5c7274e9321b4e76cce7bf8aeac412e2a3f919"
+    },
+    "global-macro-economic-calendar-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/global-macro-economic-calendar-integration/SKILL.md",
+      "computedHash": "29f3b4ef41caa87081e9dd57beb278307c423c4742ff82ffc693ac48502f414c"
+    },
+    "google-trends-and-search-volume-signal-research": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/google-trends-and-search-volume-signal-research/SKILL.md",
+      "computedHash": "254198a61c07ec47136ac462ed6abc7e5f81dd4c752062cc7050d2e2933845ea"
+    },
+    "graceful-degradation-priority-during-partial-outage": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/graceful-degradation-priority-during-partial-outage/SKILL.md",
+      "computedHash": "1a31a4700a737b8de2b2a54ba6c1a42221c1da53fef99dcb246e0a23ead8597b"
+    },
+    "graceful-degradation-to-polling-fallback": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/graceful-degradation-to-polling-fallback/SKILL.md",
+      "computedHash": "c3b4a04dbb6bd92338aeef3fe7b5bf81af1ca6ee0d426c441b76f4ee8b241751"
+    },
+    "graceful-shutdown-draining-in-flight-ticks": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/graceful-shutdown-draining-in-flight-ticks/SKILL.md",
+      "computedHash": "a637776be189a00109c656fe7f79215164e9634d2caf4f61bbac6fb562487281"
+    },
+    "gradient-boosted-tree-vs-neural-net-tradeoffs": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/gradient-boosted-tree-vs-neural-net-tradeoffs/SKILL.md",
+      "computedHash": "2a8017f0ee6701c3a255879cd1cd6e92b8336192ed5f850e784d05ced4e75386"
+    },
+    "graduated-response-to-data-quality-degradation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/graduated-response-to-data-quality-degradation/SKILL.md",
+      "computedHash": "0e9e802db12b4e731f54ab11b75a2962528cd908dd2366c28791f970124c75a6"
+    },
+    "greeks-based-portfolio-hedging-automation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/greeks-based-portfolio-hedging-automation/SKILL.md",
+      "computedHash": "e243f897a76985bf18f6226e23b8a2ce851da1672dc4f97ca108f5b98e5063b0"
+    },
+    "grpc-streaming-for-internal-service-communication": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/grpc-streaming-for-internal-service-communication/SKILL.md",
+      "computedHash": "a08a2b1c5d2c799b8dcb922c76e0b03a41731dc83b87e865620aa9c4b5c4ebb1"
+    },
+    "hardware-security-module-hsm-for-signing-keys": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/hardware-security-module-hsm-for-signing-keys/SKILL.md",
+      "computedHash": "bf63074786cc1bcab084095d19d6a456a54cb35dc26fc5b1e5b8965653a1528f"
+    },
+    "hardware-timestamping-vs-software-timestamping-accuracy": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/hardware-timestamping-vs-software-timestamping-accuracy/SKILL.md",
+      "computedHash": "e8d2208bcd1bac06e2aaf06315c5f8c6c16c0c3901b554e22d4fb550dc982101"
+    },
+    "headless-broker-auth-patterns": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/headless-broker-auth-patterns/SKILL.md",
+      "computedHash": "00cb7f58f6560c309ffaa75489e958fc2cbd41db4499dfb6f8f7269e28d9820e"
+    },
+    "historical-data-backfill-rate-limit-management": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/historical-data-backfill-rate-limit-management/SKILL.md",
+      "computedHash": "64a8b5ee6f8a1e157af18af993b95d7e9476ddb6e6cf73ca2953c61b9a704cee"
+    },
+    "historical-order-book-reconstruction-from-message-logs": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/historical-order-book-reconstruction-from-message-logs/SKILL.md",
+      "computedHash": "643a1d878784a6e4b083daa04c3aabe7f8161e81f01cce9cee4979eb406e59de"
+    },
+    "historical-tick-data-storage-and-compaction": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/historical-tick-data-storage-and-compaction/SKILL.md",
+      "computedHash": "9d5756f503106a55338f094bfff485c3d2f82725ca4af8c418e36e7b64f7b3fc"
+    },
+    "hong-kong-exchange-hkex-orion-api": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/hong-kong-exchange-hkex-orion-api/SKILL.md",
+      "computedHash": "3285cd78b70f345925faabc0e554244d78cee1a3ba0c9e1e1b92baf12ec4c219"
+    },
+    "hong-kong-sfc-algorithmic-trading-guidelines": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/hong-kong-sfc-algorithmic-trading-guidelines/SKILL.md",
+      "computedHash": "e5d6cb2237fc7a2ee4e8abbdccf36c82b7fc5bcd05fa0bf21d9eef9c893f87cd"
+    },
+    "hot-cold-wallet-split-for-trading-bots": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/hot-cold-wallet-split-for-trading-bots/SKILL.md",
+      "computedHash": "229a6cb056a0c767a7859906b16cec4488b84e73e0e88f55951a35087f6624e7"
+    },
+    "hyperparameter-tuning-without-target-leakage": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/hyperparameter-tuning-without-target-leakage/SKILL.md",
+      "computedHash": "644d09cc4161c65f383817a9637b4f6275198f48db09e0b8c92978cd349521bf"
+    },
+    "ibkr-tws-gateway-headless-launch": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/ibkr-tws-gateway-headless-launch/SKILL.md",
+      "computedHash": "185f1894af29e6e3c8fe710569b9bff2098f29f6206fca07e54dba0b462cf12f"
+    },
+    "ice-futures-us-eu-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/ice-futures-us-eu-integration/SKILL.md",
+      "computedHash": "fb190bbed39cbd93bad706d041f547e0190116613f21e7e60e004292d9316553"
+    },
+    "iceberg-order-native-broker-support-vs-simulation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/iceberg-order-native-broker-support-vs-simulation/SKILL.md",
+      "computedHash": "33a5cab49c421b8165033c151b2d5525c45efd1d9bcf1f414c88105aee0af5c6"
+    },
+    "iceberg-order-simulation-and-detection": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/iceberg-order-simulation-and-detection/SKILL.md",
+      "computedHash": "2eaefdad981c1adb1309b584a46fe39dabf5afcde8b060c3e57785482789b2bf"
+    },
+    "idx-indonesia-stock-exchange-api": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/idx-indonesia-stock-exchange-api/SKILL.md",
+      "computedHash": "5be6a0b8323e1f70c3161f0b2217fb66d39d253a7fc4a6fc549d0c5f12bead15"
+    },
+    "immutable-infrastructure-for-trading-bots": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/immutable-infrastructure-for-trading-bots/SKILL.md",
+      "computedHash": "0aadac0753d2c581da1d4a2f11db5c72d8365fba9ffa10cf50a88a7decbfbbda"
+    },
+    "implementation-shortfall-minimization": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/implementation-shortfall-minimization/SKILL.md",
+      "computedHash": "ac00682200470d9c79b0c9ab86ed4116f105fbf495e8961b3e656bc0cba595ae"
+    },
+    "incremental-capital-deployment-for-new-strategies": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/incremental-capital-deployment-for-new-strategies/SKILL.md",
+      "computedHash": "4af655a09c59d6e3356692dc5cea930c156cb61158657ddf2f8c48818b436ba0"
+    },
+    "india-sebi-algo-trading-tagging-requirements": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/india-sebi-algo-trading-tagging-requirements/SKILL.md",
+      "computedHash": "1db310f1c1a038f06b29bff323219d413e7ce962265b9935e84a7096f9551bf4"
+    },
+    "infrastructure-as-code-for-trading-hosts": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/infrastructure-as-code-for-trading-hosts/SKILL.md",
+      "computedHash": "c04dc461ad881c0131f13d4d88849462547d5fd9d3796032edd1345ce4f11a61"
+    },
+    "insider-trading-controls-for-alternative-data-usage": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/insider-trading-controls-for-alternative-data-usage/SKILL.md",
+      "computedHash": "95381d2c98caef87c84a9022a7284422a9450b557acdf2c7a81cb45f631daf96"
+    },
+    "insider-transaction-filing-signal-research": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/insider-transaction-filing-signal-research/SKILL.md",
+      "computedHash": "8b256fe3c33de90c4178338fd30ecfb0644a32da629dcd59c81c02c4dc7dc1f9"
+    },
+    "instrument-universe-change-detection-and-alerting": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/instrument-universe-change-detection-and-alerting/SKILL.md",
+      "computedHash": "33946051263771af62f8ee4b585422bb560728513463e25cf58a868d047eb05c"
+    },
+    "insurance-coverage-assessment-for-custodied-crypto": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/insurance-coverage-assessment-for-custodied-crypto/SKILL.md",
+      "computedHash": "0e30281c00653618947458ba0a6242a259c3d10004f0fc7838afb9690caaab8c"
+    },
+    "interactive-brokers-global-multi-exchange-routing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/interactive-brokers-global-multi-exchange-routing/SKILL.md",
+      "computedHash": "557daf1b97d6bb897f889bfdabfc36e46c43d6fd2f275e6c205397d6d529c24a"
+    },
+    "interest-rate-swap-exposure-in-multi-asset-portfolios": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/interest-rate-swap-exposure-in-multi-asset-portfolios/SKILL.md",
+      "computedHash": "13110799e6eb7523622f0ddff605ae41ced64b62a2dfd954d77d55af590f4619"
+    },
+    "intraday-vs-eod-backtest-granularity-tradeoffs": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/intraday-vs-eod-backtest-granularity-tradeoffs/SKILL.md",
+      "computedHash": "18ac763b4012d3547b1ef2bb55347e59124f0373e5ebc3ef3b269b6a229a5fc4"
+    },
+    "isin-cusip-sedol-cross-reference-service": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/isin-cusip-sedol-cross-reference-service/SKILL.md",
+      "computedHash": "157fe15ad80ef26918eb00c9f4d4bf0766f373983a18d40f4791ba19658ee2be"
+    },
+    "japan-exchange-group-jpx-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/japan-exchange-group-jpx-api-integration/SKILL.md",
+      "computedHash": "580d9dfed689650fa2cabe70122768964730d95ec7d495f5051b0f6fe68c253c"
+    },
+    "japan-fsa-high-speed-trading-registration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/japan-fsa-high-speed-trading-registration/SKILL.md",
+      "computedHash": "1520e5150fa8701f4c02e4ce616e17311abb5ab48abd7a585c6e95581b40aba8"
+    },
+    "job-posting-data-as-a-growth-signal": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/job-posting-data-as-a-growth-signal/SKILL.md",
+      "computedHash": "024676c2c9d48cf3592d8d3068f4d9d7fa960293f811f4a83b4eb4a27f0c1554"
+    },
+    "jse-south-africa-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/jse-south-africa-api-integration/SKILL.md",
+      "computedHash": "8201833fdd918326ab43b2a40e557063d1cb53d153d0ef84836e60d018fcd96d"
+    },
+    "kafka-based-tick-distribution-at-scale": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/kafka-based-tick-distribution-at-scale/SKILL.md",
+      "computedHash": "0d84015accec8e7e53319b094b90afd1fd2db97702241653fea20f296edd409f"
+    },
+    "key-rotation-schedule-for-hot-wallet-keys": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/key-rotation-schedule-for-hot-wallet-keys/SKILL.md",
+      "computedHash": "1c59a57ef7e8f57311b48e72a201b22a260eb12277c52be11a37f0a0b72c7311"
+    },
+    "kill-switch-and-drawdown-circuit-breakers": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/kill-switch-and-drawdown-circuit-breakers/SKILL.md",
+      "computedHash": "2ee0e20ba58f901f0fb9b12bc9c7619b7c31a1c627bbae7086e9637904872f67"
+    },
+    "korea-exchange-krx-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/korea-exchange-krx-api-integration/SKILL.md",
+      "computedHash": "98eb48b92eff2620274e481bc8ed7ca57295b8a3859509e1fcc4e4776442e77f"
+    },
+    "kraken-websocket-v2-auth-and-subscriptions": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/kraken-websocket-v2-auth-and-subscriptions/SKILL.md",
+      "computedHash": "08c66b8635344a6818e26c8494e2bc62075a17f008c6f24b3b2724c5c545af4e"
+    },
+    "kyc-aml-considerations-for-algo-trading-entities": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/kyc-aml-considerations-for-algo-trading-entities/SKILL.md",
+      "computedHash": "1f9fad305a8a7b2a119f5a64dfbb87d04a43ecc7143631a2289c567aad1e111f"
+    },
+    "label-noise-estimation-in-financial-targets": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/label-noise-estimation-in-financial-targets/SKILL.md",
+      "computedHash": "6a6c8e6d45e73b98678c4e9242b761c77cba0ec7f511dc394a7dcee4f1fe758c"
+    },
+    "latency-arbitrage-defensive-order-sizing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/latency-arbitrage-defensive-order-sizing/SKILL.md",
+      "computedHash": "ba76ac3989871361b0f84c3f978b6a18b08c78b1c63817618aa12faf7215b087"
+    },
+    "latency-monitoring-percentile-based-slas": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/latency-monitoring-percentile-based-slas/SKILL.md",
+      "computedHash": "9737720b785f67794ac2a895eefffad0239e6d8598744ae337958b83ac280ebb"
+    },
+    "leverage-limit-enforcement-across-instruments": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/leverage-limit-enforcement-across-instruments/SKILL.md",
+      "computedHash": "0d678735d46a97248843e3f1ffe695d26225049a6956ad5aa7e668ad83353769"
+    },
+    "liquidity-adjusted-position-sizing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/liquidity-adjusted-position-sizing/SKILL.md",
+      "computedHash": "ec134f33f94c581d3aca8019f3ae5458f1b8c72fcfe242016a128de40a721657"
+    },
+    "liquidity-seeking-algorithm-across-lit-and-dark-venues": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/liquidity-seeking-algorithm-across-lit-and-dark-venues/SKILL.md",
+      "computedHash": "ecfc770382423700f09667575513d2cd51b1449fafac30fe7ea0ea534c833514"
+    },
+    "lme-london-metal-exchange-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/lme-london-metal-exchange-integration/SKILL.md",
+      "computedHash": "2aa0bdb16824335c59dce14bb598d4a040bd61573768b98543377fece3c29b79"
+    },
+    "load-testing-before-scaling-to-new-instrument-universe": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/load-testing-before-scaling-to-new-instrument-universe/SKILL.md",
+      "computedHash": "0ee5ec94002d6f66e32fff0adac4b291109710001c08b2f64d8392bf9a63bda7"
+    },
+    "log-aggregation-and-centralized-observability": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/log-aggregation-and-centralized-observability/SKILL.md",
+      "computedHash": "2939dba9206e40187c7950809a44dfc3e2f36f97403cc5fb2dd1428b6f0b305a"
+    },
+    "lookahead-bias-elimination": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/lookahead-bias-elimination/SKILL.md",
+      "computedHash": "3096c95b11c7337ac7ab4f82dc15fd1a1256a4fd18ccf92b7ecd054d3ac4034a"
+    },
+    "lse-millennium-exchange-api": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/lse-millennium-exchange-api/SKILL.md",
+      "computedHash": "99f4cec9ff979a84139da17ae4d6528acd9683ce10f2d0f7266935a92a69cb6d"
+    },
+    "margin-utilization-circuit-breaker": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/margin-utilization-circuit-breaker/SKILL.md",
+      "computedHash": "7bdabbc4ec628cec21008c84199ddc37e5bbc51920d4512eebe4272396e353d2"
+    },
+    "mark-to-market-election-for-active-traders-us": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/mark-to-market-election-for-active-traders-us/SKILL.md",
+      "computedHash": "5b9313b6f5c1ce7c4bf0ae90d75f33ee1a3f14d8ca97007116e733cbff596666"
+    },
+    "market-data-cost-optimization-tiered-subscriptions": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/market-data-cost-optimization-tiered-subscriptions/SKILL.md",
+      "computedHash": "be808913bdd21b61a17e2c842ef189a201389859aa680326dd8b98c9cf55150e"
+    },
+    "market-data-entitlement-and-licensing-per-venue": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/market-data-entitlement-and-licensing-per-venue/SKILL.md",
+      "computedHash": "59332c318397dd929ea288864e05db8862f2670497609bfa07e86f618386e700"
+    },
+    "market-data-feed-arbitration-across-vendors": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/market-data-feed-arbitration-across-vendors/SKILL.md",
+      "computedHash": "b30fd75fdcb01d2e45a9264b751b206adaa180789288f3f661ad8b9a1db72b84"
+    },
+    "market-data-latency-monitoring-per-vendor": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/market-data-latency-monitoring-per-vendor/SKILL.md",
+      "computedHash": "90ac977c46ca0fb96b622924ec9e09369029e1a13215cb3d7a54c6138b0d32c4"
+    },
+    "market-data-replay-harness-for-integration-testing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/market-data-replay-harness-for-integration-testing/SKILL.md",
+      "computedHash": "c91f84707883eb4fd6f4db3c4c1338fbd8d89fe7af049c538a602e86c73eb590"
+    },
+    "market-data-simulator-for-offline-development": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/market-data-simulator-for-offline-development/SKILL.md",
+      "computedHash": "6a81cf2e93b8367f30d144c023805b3edcdd61afcd0cfe342fbfde3b8955a0f8"
+    },
+    "market-data-snapshot-plus-delta-reconciliation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/market-data-snapshot-plus-delta-reconciliation/SKILL.md",
+      "computedHash": "eca7001269e9df256fa6fd8524a5f01f6ce684bedba4923c358730927d20ac78"
+    },
+    "market-maker-vs-taker-strategy-classification": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/market-maker-vs-taker-strategy-classification/SKILL.md",
+      "computedHash": "3e13ecf065b6b85a858123a1b14303bb99af7d19c826b423e896f0efa4cf30cb"
+    },
+    "mas-singapore-algo-trading-guidelines": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/mas-singapore-algo-trading-guidelines/SKILL.md",
+      "computedHash": "94713b8d067695a3c50595b13b462d3810e619f350cdcb3c8a75ae086052fb47"
+    },
+    "matching-engine-throttle-and-message-gapping-detection": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/matching-engine-throttle-and-message-gapping-detection/SKILL.md",
+      "computedHash": "801f3d432908e49b56caefc7290820ab730593dfac7d50e2bfa4a61a7fe96dc0"
+    },
+    "memory-mapped-ring-buffer-for-ultra-low-latency": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/memory-mapped-ring-buffer-for-ultra-low-latency/SKILL.md",
+      "computedHash": "5e6ba3dee128fd63f6e4809953e001d52176446e8acaa64b05ee8cc72b5698c1"
+    },
+    "message-rate-limit-vs-latency-tradeoff-tuning": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/message-rate-limit-vs-latency-tradeoff-tuning/SKILL.md",
+      "computedHash": "c53474b8931f52306d61ecfd486baaee68a113bab74554d1571b6e25cd049cd6"
+    },
+    "meta-strategy-signal-arbitration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/meta-strategy-signal-arbitration/SKILL.md",
+      "computedHash": "7054a9a756b7410436a6e3ba7fa9a00e65eb93d839cb2844c06f02685ec432f2"
+    },
+    "microstructure-noise-filtering-for-hf-signals": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/microstructure-noise-filtering-for-hf-signals/SKILL.md",
+      "computedHash": "95156e87a26e31aa6c13bc94796ec0cf50d404d2276d1ef3178c509c15a24101"
+    },
+    "microwave-vs-fiber-network-links-for-cross-market-latency": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/microwave-vs-fiber-network-links-for-cross-market-latency/SKILL.md",
+      "computedHash": "89114ce72afd0c8c205f879d73b2e0d6a5705adf356a01c543458e1e6dc33e89"
+    },
+    "mifid-ii-algo-trading-compliance-eu": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/mifid-ii-algo-trading-compliance-eu/SKILL.md",
+      "computedHash": "f73d99191722206a98b7274739a04c40ce7ea1eac1733467d1d1de56b76dff6a"
+    },
+    "minimum-fill-size-and-lot-rounding-logic": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/minimum-fill-size-and-lot-rounding-logic/SKILL.md",
+      "computedHash": "e5306ae6317e39724b7513626efd9af95a29d11f7787aff51a38b11711d8b6d8"
+    },
+    "model-card-documentation-for-trading-models": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/model-card-documentation-for-trading-models/SKILL.md",
+      "computedHash": "f34b7401ed8995f878aee70ea373b66245fafa5ccc8e638a38b2825533a5fc62"
+    },
+    "model-inference-latency-budget-for-live-trading": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/model-inference-latency-budget-for-live-trading/SKILL.md",
+      "computedHash": "a13f5454c048209eeabf8ed95f7e1b5510ad726a52801dc533c6fea59b9d6bba"
+    },
+    "model-monitoring-dashboard-for-non-technical-stakeholders": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/model-monitoring-dashboard-for-non-technical-stakeholders/SKILL.md",
+      "computedHash": "33e218702be6e59b60a114122ac37ba8e74b094ff24828f2f4b6d62292bba6bf"
+    },
+    "model-serving-infrastructure-ab-testing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/model-serving-infrastructure-ab-testing/SKILL.md",
+      "computedHash": "e4bf47fabf9b1e1dbf4c9ec4b4d7899b61a8bf242efe499a1a8aef99873be19c"
+    },
+    "model-staleness-detection": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/model-staleness-detection/SKILL.md",
+      "computedHash": "c7a5e620dc869cf4e76af7982717ebc87c8ef7108679250a112f6b99ed85b455"
+    },
+    "model-training-data-freshness-sla": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/model-training-data-freshness-sla/SKILL.md",
+      "computedHash": "544cbb8e97634db5a5c18826aec8c2286d03f7ebe001b2c07743177fad792ae3"
+    },
+    "model-versioning-and-rollback": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/model-versioning-and-rollback/SKILL.md",
+      "computedHash": "eea9aec38e0ab0c7d671385ef870e3930163de91a694519ba8e863d8fb730168"
+    },
+    "monte-carlo-strategy-robustness-testing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/monte-carlo-strategy-robustness-testing/SKILL.md",
+      "computedHash": "b08175b5bf56f44d142844a74f115a5af41e82d5a8ddfd4d141545ce173d0e1f"
+    },
+    "moscow-exchange-moex-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/moscow-exchange-moex-api-integration/SKILL.md",
+      "computedHash": "70086e07f2e256c02dcb2f867b3ef7c1a19c9fe4165791574f36f973745865f8"
+    },
+    "mt5-python-bridge-for-forex-bots": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/mt5-python-bridge-for-forex-bots/SKILL.md",
+      "computedHash": "173ca6faf490a583fa8685a1edb320ace966339828184a3c3bd2dbd1777f508d"
+    },
+    "multi-account-same-strategy-fan-out": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-account-same-strategy-fan-out/SKILL.md",
+      "computedHash": "a4a765ff700b2bec56b676f39b62b210b13d2640dc87ab18a46e333fb1c300e7"
+    },
+    "multi-asset-backtest-currency-normalization": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-asset-backtest-currency-normalization/SKILL.md",
+      "computedHash": "952c543fa75db9a5496a0af9e9ad05d263fee5371cda4461ef5686997bd57a71"
+    },
+    "multi-broker-consolidated-position-view": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-broker-consolidated-position-view/SKILL.md",
+      "computedHash": "800cf06070133a80c80176685c15cf76a5010a375bd6e7b891344b98813f30cd"
+    },
+    "multi-broker-rate-limit-handling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-broker-rate-limit-handling/SKILL.md",
+      "computedHash": "23fecabe5f54db887ab673321e0f9e055f07a16a205e59f27e0cf72e2a39143c"
+    },
+    "multi-currency-pnl-and-fx-conversion": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-currency-pnl-and-fx-conversion/SKILL.md",
+      "computedHash": "be9bcdbd8a7a98d81402de4a11a65e023878a6374e97212ba9e1307275036d0a"
+    },
+    "multi-currency-var-aggregation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-currency-var-aggregation/SKILL.md",
+      "computedHash": "4569a1c23547fb0152d7ed27e58bf0464239673968776eb5f0607a5fe997c05f"
+    },
+    "multi-day-execution-schedules-for-very-large-orders": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-day-execution-schedules-for-very-large-orders/SKILL.md",
+      "computedHash": "2514896b7516e55e7456bd0d058ddfeff1fb75137a417fffb5394f9e9bf3832c"
+    },
+    "multi-exchange-feed-normalization": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-exchange-feed-normalization/SKILL.md",
+      "computedHash": "f8643f8744b0d68ada168af71d91e21e3139c096525c939d929879490af311ec"
+    },
+    "multi-horizon-forecasting-architecture": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-horizon-forecasting-architecture/SKILL.md",
+      "computedHash": "f553740902faf23c2b41fbd88cb9ee5b1daed23e6e307bf93443e6980ee326e9"
+    },
+    "multi-jurisdiction-tax-residency-implications": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-jurisdiction-tax-residency-implications/SKILL.md",
+      "computedHash": "7d97a29c244a806eb240c20f8f258063ed41f28ced859c2edd195c2cfd8caf10"
+    },
+    "multi-leg-strategy-margin-optimization": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-leg-strategy-margin-optimization/SKILL.md",
+      "computedHash": "aa44f029b5ba2345ec2cfb6533b2a8dc13c83a7a544d77d81ee6584b3f370359"
+    },
+    "multi-model-ensemble-weight-decay": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-model-ensemble-weight-decay/SKILL.md",
+      "computedHash": "1f3dcadc75a9029800595c16a826286bbe6846d12d00fd6ec74de400bdf1ca6e"
+    },
+    "multi-order-netting-before-routing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-order-netting-before-routing/SKILL.md",
+      "computedHash": "58a125954cfc603fef61358350844d38d46704512eff39e92707a95e9352d750"
+    },
+    "multi-party-computation-mpc-custody-solutions": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-party-computation-mpc-custody-solutions/SKILL.md",
+      "computedHash": "b70ef1e7f61a0d5416b127ff94949689b5c8e054968b77d3ca51d0a9508f0678"
+    },
+    "multi-region-active-active-tick-ingestion": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-region-active-active-tick-ingestion/SKILL.md",
+      "computedHash": "fb174750d9fce3c7def69eee84a6005e09a5fbd1e53e9a5301c8b7dea84b8fe2"
+    },
+    "multi-region-failover-for-broker-connectivity": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-region-failover-for-broker-connectivity/SKILL.md",
+      "computedHash": "56569b6a5365f03eb4812f8955f6758b1e7e52649251079c220e7c729d2a6459"
+    },
+    "multi-signature-approval-for-large-transfers": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-signature-approval-for-large-transfers/SKILL.md",
+      "computedHash": "ddb2a8ffcdc42fec65fdf89a0888c87e2b65494db002c8aea1132a233f75534f"
+    },
+    "multi-source-price-reconciliation-tie-breaking": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-source-price-reconciliation-tie-breaking/SKILL.md",
+      "computedHash": "e6d3ef93490e7fdb77c0f342bb5889e32e72b709ee495b07e05629f236c9c5b6"
+    },
+    "multi-strategy-capital-allocation-limits": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-strategy-capital-allocation-limits/SKILL.md",
+      "computedHash": "225197fdb93296409de2914e3edc118bc5d36c0cd5ee84b0b3fb2b71ff804e53"
+    },
+    "multi-strategy-reporting-consolidation-for-stakeholders": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-strategy-reporting-consolidation-for-stakeholders/SKILL.md",
+      "computedHash": "17b71d330ec0a15f4b18afcdad9cfdbedaefb66b9366071041e4a83e5a4b003e"
+    },
+    "multi-timeframe-backtest-consistency-checks": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-timeframe-backtest-consistency-checks/SKILL.md",
+      "computedHash": "099eeec3c33d8908146747781ec10f526e56409191fd47e12f3a5126113f4c5f"
+    },
+    "multi-timezone-session-scheduling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-timezone-session-scheduling/SKILL.md",
+      "computedHash": "593c484c00dd7d7c4cfe0a4890f897cd06abdef64b03d1664c58ffcee58aa6c7"
+    },
+    "multi-year-regime-coverage-requirement": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/multi-year-regime-coverage-requirement/SKILL.md",
+      "computedHash": "9e5741795b5d418fb41bec149d49cd1c260fa97d290dfe698b28abeb57a96697"
+    },
+    "nasdaq-totalview-itch-feed-parsing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/nasdaq-totalview-itch-feed-parsing/SKILL.md",
+      "computedHash": "60c388e2cd06d1ecb80736da8f615e768bf5cdf7fbb30fec6a7959e21e82269a"
+    },
+    "network-interface-level-tick-timestamping": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/network-interface-level-tick-timestamping/SKILL.md",
+      "computedHash": "f2b553b9f46cee515614d83b50254486c4eaa43cddeff5b82944b3f0e952cbeb"
+    },
+    "network-jitter-impact-on-strategy-performance": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/network-jitter-impact-on-strategy-performance/SKILL.md",
+      "computedHash": "b0f48a1a3e6c7bb4808de319247e373eca48fa1b2aea840880922993e081b9e5"
+    },
+    "network-segmentation-for-trading-infrastructure": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/network-segmentation-for-trading-infrastructure/SKILL.md",
+      "computedHash": "b723b625b87a2396940259a1f32e0084eba49bc05b65fe1f9ac8a5187b86c9fa"
+    },
+    "new-strategy-onboarding-checklist": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/new-strategy-onboarding-checklist/SKILL.md",
+      "computedHash": "fedb72d322a02c5342836e83f30ffa73f414df260962231e43f73819e1195f1b"
+    },
+    "new-zealand-exchange-nzx-api": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/new-zealand-exchange-nzx-api/SKILL.md",
+      "computedHash": "13789cbcb5495684ff6da87fff64825c60700cb842d3047572c581f46427597b"
+    },
+    "nyse-arca-integrated-feed-handling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/nyse-arca-integrated-feed-handling/SKILL.md",
+      "computedHash": "a2063a4346c35b38cd4718f4f6b97e92c9ef76d272108b3ae60d848cd9ef07fe"
+    },
+    "offline-train-online-infer-deployment": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/offline-train-online-infer-deployment/SKILL.md",
+      "computedHash": "1cf8d3234ea9e19dd8a9caf35d69a2db370428cf4804912a7be2adc0056b4e0e"
+    },
+    "okx-unified-account-api": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/okx-unified-account-api/SKILL.md",
+      "computedHash": "cccf71ce17e06c14155a6a1f4295293d3b9cb048224db7c919abc6fa00b933d2"
+    },
+    "on-call-rotation-and-escalation-for-trading-systems": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/on-call-rotation-and-escalation-for-trading-systems/SKILL.md",
+      "computedHash": "6b8d36ea879b816876cd02232b307a21fca3235cfff2e709ecf903ef30cbaf01"
+    },
+    "on-chain-transaction-monitoring-for-anomalies": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/on-chain-transaction-monitoring-for-anomalies/SKILL.md",
+      "computedHash": "cdac9a7f039e8bfeeb67259402d5b3bbd599d1f9ac978f2cb7cd525c5d4bdaff"
+    },
+    "online-learning-for-adaptive-signal-models": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/online-learning-for-adaptive-signal-models/SKILL.md",
+      "computedHash": "9315720a3206ead9c45b08a678379ead32e195e16a17464520120fd33c94a70b"
+    },
+    "opening-auction-imbalance-based-execution": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/opening-auction-imbalance-based-execution/SKILL.md",
+      "computedHash": "115570f1a7eb4077245fa264e2c273ba21ba9d93ee5d327d8c2eaf99d8b0fc65"
+    },
+    "opportunity-cost-tracking-for-idle-capital": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/opportunity-cost-tracking-for-idle-capital/SKILL.md",
+      "computedHash": "89dce5fd9f06a0aa63eadc22e1cc0eef49a374f28457cdfe6a63fb7fd0406512"
+    },
+    "options-backtesting-with-realistic-iv-surface": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/options-backtesting-with-realistic-iv-surface/SKILL.md",
+      "computedHash": "c3511de51e157a8d219bdc306a10848e27e350589614b7eb32a8514cfd0c7b0f"
+    },
+    "options-chain-data-normalization-across-vendors": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/options-chain-data-normalization-across-vendors/SKILL.md",
+      "computedHash": "303f3e081874a5b9f32cf38315cb0dfe2566cf30b76a28cb2d467328487ab605"
+    },
+    "options-chain-expiry-cycle-conventions-by-exchange": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/options-chain-expiry-cycle-conventions-by-exchange/SKILL.md",
+      "computedHash": "6e2728c79970d7dbe4d443adfa5d43f5cb84883aad0890f441fbd85bfd62460a"
+    },
+    "options-flow-unusual-activity-detection": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/options-flow-unusual-activity-detection/SKILL.md",
+      "computedHash": "ac27825414ed592a9b30c4eb8b44507e96436b5d0d8c25b4c3a3fb7ebd603b61"
+    },
+    "options-greeks-real-time-portfolio-aggregation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/options-greeks-real-time-portfolio-aggregation/SKILL.md",
+      "computedHash": "5f56afb6a6c4841dec35b94f5153e209bb45b4965b9bea576e09f64ce89195c3"
+    },
+    "options-implied-volatility-surface-construction": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/options-implied-volatility-surface-construction/SKILL.md",
+      "computedHash": "61ac2190cc1cde68beffcb32b8e35d9ddbe3bf406fa2b58ff6cd567f799ca08a"
+    },
+    "options-margin-span-calculation-global": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/options-margin-span-calculation-global/SKILL.md",
+      "computedHash": "9001c282ee8f7134eaf6189e99191edf2f1cd8a8f97d3759c7cbc54a1d5fe331"
+    },
+    "options-pin-risk-management-at-expiry": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/options-pin-risk-management-at-expiry/SKILL.md",
+      "computedHash": "8e2a20d3a8c0473f391cb3e0cb79522ea039b5d301cd2aab2c0fe7f927bfb2b8"
+    },
+    "order-book-depth-processing-l2-l3": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/order-book-depth-processing-l2-l3/SKILL.md",
+      "computedHash": "9fc8e3f4e48ccd63bff88eaed83b421838af7d14041be323673d9ba9dee97a31"
+    },
+    "order-book-imbalance-signal-pipeline": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/order-book-imbalance-signal-pipeline/SKILL.md",
+      "computedHash": "ef0b1af26304520c5c77f63755e149228c477c0c9e1f6f60472dc1f82f8e468f"
+    },
+    "order-book-microstructure-signal-research": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/order-book-microstructure-signal-research/SKILL.md",
+      "computedHash": "01aee022b94767a0e8e545579ea17e92371e384c8b67858f9342dbf74a43a7d4"
+    },
+    "order-placement-idempotency": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/order-placement-idempotency/SKILL.md",
+      "computedHash": "8140635626eaebd7ae00b4bb3f62b5b6a23a0fcede44603128395dc6943c1246"
+    },
+    "order-to-trade-ratio-fee-penalty-avoidance": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/order-to-trade-ratio-fee-penalty-avoidance/SKILL.md",
+      "computedHash": "187c2fbdc09e0abf6e46f7f736cc0ca1b293f21bfc7b2ad316394f6850d23dfb"
+    },
+    "paper-to-live-promotion-checklist": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/paper-to-live-promotion-checklist/SKILL.md",
+      "computedHash": "796ddc08740a669f48affcee8ad122d0f5de54f78e0a7b763cc294ee43fa43b1"
+    },
+    "participation-of-volume-pov-execution": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/participation-of-volume-pov-execution/SKILL.md",
+      "computedHash": "26341543b7c9b3fe845cf6986d2f0d51f6fa1f06b57d78cf126957974d56fdb8"
+    },
+    "patent-filing-data-for-innovation-signal-research": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/patent-filing-data-for-innovation-signal-research/SKILL.md",
+      "computedHash": "e90f589adc865a7b5275dba94ca1f61bace7a0dd65db4e3f00778b924c5931fd"
+    },
+    "pattern-day-trader-rule-compliance-us": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/pattern-day-trader-rule-compliance-us/SKILL.md",
+      "computedHash": "c6393a029e6393086142a76d74b35daba1ba8cb17706526d5222a5d786dfbd77"
+    },
+    "peg-order-types-for-passive-execution": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/peg-order-types-for-passive-execution/SKILL.md",
+      "computedHash": "9616bacd6dc2ecece316b59f386c541a17379e31c2018c865f4d8949da859565"
+    },
+    "perpetual-futures-funding-rate-handling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/perpetual-futures-funding-rate-handling/SKILL.md",
+      "computedHash": "c02767396899d74192caf23c42d61c76e7bb72bd6595e5e628e81256c7f599d1"
+    },
+    "philippine-stock-exchange-api": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/philippine-stock-exchange-api/SKILL.md",
+      "computedHash": "04b70d3ffb830152c379b7d188a2667be597ca28fb01b1a22c2427a67f336ebe"
+    },
+    "phishing-resistant-authentication-for-custody-access": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/phishing-resistant-authentication-for-custody-access/SKILL.md",
+      "computedHash": "02cddbf806fcb935828bc106cc74626139502f1f3784eb52c9087ea838f6fcb9"
+    },
+    "physical-vs-cash-settlement-handling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/physical-vs-cash-settlement-handling/SKILL.md",
+      "computedHash": "51ef715411b81e441ccd935ab1b363ae710b2ed4ec9826a0c42f3a1ae19d2069"
+    },
+    "point-in-time-database-for-ml-training-data": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/point-in-time-database-for-ml-training-data/SKILL.md",
+      "computedHash": "986b4a3aad620fac6bb3039c14a422fdf6e378f52c82002aedfd02867bbeed43"
+    },
+    "point-in-time-fundamentals-data-joins": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/point-in-time-fundamentals-data-joins/SKILL.md",
+      "computedHash": "e52662bb5f1fca62fd3e273f915cbc2e9937df6284bd30be202d2e8015bf54c6"
+    },
+    "point-in-time-index-constituent-tracking": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/point-in-time-index-constituent-tracking/SKILL.md",
+      "computedHash": "12953a8a0fd3ca42125026a5f262a8696b86efb4936403759a7daf252cd3f146"
+    },
+    "portfolio-construction-with-transaction-cost-awareness": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/portfolio-construction-with-transaction-cost-awareness/SKILL.md",
+      "computedHash": "08bb06ba16d9a6c82767cc0fb37516aafc69e66cea6b85b89e2d1ae41315fd7d"
+    },
+    "portfolio-level-stop-loss-independent-of-strategy-stops": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/portfolio-level-stop-loss-independent-of-strategy-stops/SKILL.md",
+      "computedHash": "4cda3f6112ae2284a1b244678d00e84c49b70f8fc0160cf7ffcf38a29b3639d3"
+    },
+    "portfolio-stress-test-including-liquidity-crunch-scenarios": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/portfolio-stress-test-including-liquidity-crunch-scenarios/SKILL.md",
+      "computedHash": "fb342e5b142b93968f1e2d72d825289f4e3c03bd56eae576cc4f2005bfa418d3"
+    },
+    "position-limit-breach-simulation-fire-drills": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/position-limit-breach-simulation-fire-drills/SKILL.md",
+      "computedHash": "d126d2c4ed08ab315a4ba16c6570008233e43598699d3b8636b6c0c966aac20b"
+    },
+    "position-limit-reporting-cftc-large-trader": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/position-limit-reporting-cftc-large-trader/SKILL.md",
+      "computedHash": "bbf9b014488e88850538939194b6656795a1cce1646d6b368485d40b5a79b0ef"
+    },
+    "post-breach-root-cause-analysis-template": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/post-breach-root-cause-analysis-template/SKILL.md",
+      "computedHash": "df552f9f099d0b33f277439ace9d30693678e9a7aad57788dce425d4019d23fe"
+    },
+    "post-incident-forensics-for-suspected-key-compromise": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/post-incident-forensics-for-suspected-key-compromise/SKILL.md",
+      "computedHash": "ae2553a27ed6e540f10f20cbfae62805f231c10461deafd7b25090da66aae095"
+    },
+    "post-mortem-culture-and-blameless-review-process": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/post-mortem-culture-and-blameless-review-process/SKILL.md",
+      "computedHash": "d9e7880e4c976bf40edffa7888c43d4ac1731de2e2390cc650bf9ae0bc34bc8b"
+    },
+    "post-only-and-maker-taker-fee-optimization": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/post-only-and-maker-taker-fee-optimization/SKILL.md",
+      "computedHash": "463921c48688f1696b2777472050429d7d8a46f1c2b7125fad469a879e766a20"
+    },
+    "post-only-limit-repricing-under-fast-markets": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/post-only-limit-repricing-under-fast-markets/SKILL.md",
+      "computedHash": "84195bca6d3b0e5bac801789931eb15b523ab4a4c0a80cd5218d593968dd517e"
+    },
+    "post-trade-execution-quality-scorecard": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/post-trade-execution-quality-scorecard/SKILL.md",
+      "computedHash": "5937d438439440281ebf076736f95c39c2637bfdd6b06818f485a40e10f4cf66"
+    },
+    "prime-brokerage-multi-venue-consolidation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/prime-brokerage-multi-venue-consolidation/SKILL.md",
+      "computedHash": "6b24f8a8c8e8461c5463df8a7f33d5e7fc91eb16f3d96415c84e37a008d1d13e"
+    },
+    "producer-consumer-tick-pipeline": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/producer-consumer-tick-pipeline/SKILL.md",
+      "computedHash": "5a1bb0f82cddb7af2e6b03c90e0e33b78b14eb46f8e125f7f99245ba5e3574b2"
+    },
+    "quantile-regression-for-uncertainty-aware-signals": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/quantile-regression-for-uncertainty-aware-signals/SKILL.md",
+      "computedHash": "30255d896b9a4075574a4f0e2113e6f18bb18532a561b0815d07f1e43b9bb32c"
+    },
+    "quanto-options-and-cross-currency-derivative-structures": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/quanto-options-and-cross-currency-derivative-structures/SKILL.md",
+      "computedHash": "fe12302dd82023bc3314a3e51d5b3722de271ef4d1b64956b64931a375676b50"
+    },
+    "questrade-api-rate-limit-and-account-types": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/questrade-api-rate-limit-and-account-types/SKILL.md",
+      "computedHash": "73b3deab3391ca10a0e62df878fb51cd30e465412309a2638aee927ab0aa84a9"
+    },
+    "queue-position-modeling-for-passive-orders": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/queue-position-modeling-for-passive-orders/SKILL.md",
+      "computedHash": "1c12b699f440af6fca0211c9f87925b690a1f4f1a38aced83ec504c8de33c89a"
+    },
+    "real-time-greeks-recalculation-on-market-moves": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/real-time-greeks-recalculation-on-market-moves/SKILL.md",
+      "computedHash": "af45b325db7d4cd8591f4dd4096ddfcbd56395c6f15bea1b2dc0236b56a154b4"
+    },
+    "real-time-liquidity-risk-monitoring": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/real-time-liquidity-risk-monitoring/SKILL.md",
+      "computedHash": "54ad0b48f832c0b799c47a455ab81f9cfd0b658daa29a52e51eb30cc07ea4340"
+    },
+    "real-time-var-backtesting-kupiec-test": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/real-time-var-backtesting-kupiec-test/SKILL.md",
+      "computedHash": "418f8f4add7051908d99e2be8b6c8d449ee7c3d0d5055d60da885a64bd13d12b"
+    },
+    "real-time-vs-delayed-data-entitlement-handling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/real-time-vs-delayed-data-entitlement-handling/SKILL.md",
+      "computedHash": "bda936064895808360be6b8690edf9227a16b85c3a71af77ec489f3d49fd1f82"
+    },
+    "rebalancing-frequency-optimization-cost-vs-drift": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/rebalancing-frequency-optimization-cost-vs-drift/SKILL.md",
+      "computedHash": "19107f5714609d6f4c6f888da48df01a222072b1214e6bc315a605f72c9ac7dd"
+    },
+    "record-keeping-requirements-for-tax-audit-defense": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/record-keeping-requirements-for-tax-audit-defense/SKILL.md",
+      "computedHash": "9822b20a61b2d3eb8ff8480ee6a6d427ab338945708b7747b064d70852fb7b40"
+    },
+    "record-retention-periods-by-jurisdiction": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/record-retention-periods-by-jurisdiction/SKILL.md",
+      "computedHash": "aaadb6598792491ec69ceb71b3d65c839abf7f41e7e03d2ca0e793c106caf08d"
+    },
+    "recovery-plan-for-lost-or-compromised-keys": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/recovery-plan-for-lost-or-compromised-keys/SKILL.md",
+      "computedHash": "6e932a64a010a59447bf2bcc93db45a75e1c85668f661794621a1991cc7eec31"
+    },
+    "redis-streams-multi-consumer-tick-fanout": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/redis-streams-multi-consumer-tick-fanout/SKILL.md",
+      "computedHash": "ef709eff2ec81fc7e1011f86ba4230664fc321caf100d217e2ab18b2545d9f42"
+    },
+    "reference-data-change-notification-pipeline": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/reference-data-change-notification-pipeline/SKILL.md",
+      "computedHash": "ca892a698f5136051b33b56d01c0dc69422904abfe6be338c84631ef8687eb3d"
+    },
+    "reference-data-golden-source-designation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/reference-data-golden-source-designation/SKILL.md",
+      "computedHash": "7f801e736fea3c3c1ca121767c9eaa07661c0300d9f268448bba3e5e9525ac78"
+    },
+    "reference-data-symbol-mapping-across-vendors": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/reference-data-symbol-mapping-across-vendors/SKILL.md",
+      "computedHash": "411c275393c214b9e89db442edffe09b1415bac8468cc1c0380097cd6afa8c7e"
+    },
+    "regime-detection-for-strategy-switching": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/regime-detection-for-strategy-switching/SKILL.md",
+      "computedHash": "c6e3b12f247ff49ece0facf9b39ef67e08955241b49a9cbfed4b0512a3f6e5d2"
+    },
+    "regional-broker-data-residency-constraints": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/regional-broker-data-residency-constraints/SKILL.md",
+      "computedHash": "eab97b2bbb861a342521add94661ed823cb38486b7a597154767ab2f20614bd2"
+    },
+    "regulatory-capital-requirement-tracking": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/regulatory-capital-requirement-tracking/SKILL.md",
+      "computedHash": "6695d1a1232a0e9ba5d4d57d2aa7c0e50ecacba7ae2eb547f83310f58426a2c7"
+    },
+    "regulatory-change-monitoring-service-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/regulatory-change-monitoring-service-integration/SKILL.md",
+      "computedHash": "4d6d13494bdba2faafd402669c135aab075de0503c876fcab47edd9db46cbbe0"
+    },
+    "regulatory-custody-requirements-by-jurisdiction": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/regulatory-custody-requirements-by-jurisdiction/SKILL.md",
+      "computedHash": "a8bd88a1c008e20ce061308c683c738e990e1c3d6156131693522a93de85d4e3"
+    },
+    "regulatory-sandbox-programs-for-fintech-testing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/regulatory-sandbox-programs-for-fintech-testing/SKILL.md",
+      "computedHash": "927cdbffd9dc59f0e9786cb741dc7f081d33c5cbbc723ccddc330da84f637719"
+    },
+    "reinforcement-learning-safety-constraints-for-execution": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/reinforcement-learning-safety-constraints-for-execution/SKILL.md",
+      "computedHash": "5a836c6a8187eded9abd30f4472c512c600fea47a70cd37e297701dcad9090bc"
+    },
+    "reproducible-ml-training-pipelines": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/reproducible-ml-training-pipelines/SKILL.md",
+      "computedHash": "3f1f21dafe71ad7ea8726ec68527447fc9e0629094dfff5ef443bfd6ff9e1b0e"
+    },
+    "research-environment-vs-production-environment-parity": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/research-environment-vs-production-environment-parity/SKILL.md",
+      "computedHash": "a520d40cf98a90fc2a5ee58a32bff993a1d525754b8b87e66088ea9788ff9dbd"
+    },
+    "research-idea-pipeline-tracking-and-prioritization": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/research-idea-pipeline-tracking-and-prioritization/SKILL.md",
+      "computedHash": "f1b5bb83abbead2aea961388a3f3241f4e9d748b420a6cd17e138c08567c1459"
+    },
+    "risk-adjusted-performance-attribution-per-strategy": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/risk-adjusted-performance-attribution-per-strategy/SKILL.md",
+      "computedHash": "06e7b27f3be1cbe67efa02930c494d3ec7f5b885fbdfe1e0edb112013dc60212"
+    },
+    "risk-budget-allocation-across-time-horizons": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/risk-budget-allocation-across-time-horizons/SKILL.md",
+      "computedHash": "c032f22ce396928b325f04256f01f84cb22ed3d7d772f9b12364d1de5903a0eb"
+    },
+    "risk-control-bypass-audit-logging": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/risk-control-bypass-audit-logging/SKILL.md",
+      "computedHash": "1699d8ea0f5410d5fdeccc32db75d9ace7b5f0e6053ac0e57a777cb3fb969ebf"
+    },
+    "risk-control-configuration-change-approval-workflow": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/risk-control-configuration-change-approval-workflow/SKILL.md",
+      "computedHash": "adddc0767276daa0304e14c22617f5368b303a696cfae3d40614b0b597a2cd26"
+    },
+    "risk-control-dependency-mapping": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/risk-control-dependency-mapping/SKILL.md",
+      "computedHash": "38dc022ad663c467b7d0f5612dce161ae88cff712b0770ec523f9f384adfbd16"
+    },
+    "risk-control-latency-budget": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/risk-control-latency-budget/SKILL.md",
+      "computedHash": "60085bd5e0701f110c43e1345d69691f12a7930e6f310b709cd29cf3957d4d13"
+    },
+    "risk-control-unit-testing-framework": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/risk-control-unit-testing-framework/SKILL.md",
+      "computedHash": "12f26b66b2eda637293b6760b962b9e29760c7349aca94d1ea7f6214d60f639f"
+    },
+    "risk-limit-breach-escalation-matrix": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/risk-limit-breach-escalation-matrix/SKILL.md",
+      "computedHash": "b78586739ad49f66c1c4b05c2ea642ebd3ecdcb19ac2ae62c9a4e1c7b6abfe5f"
+    },
+    "risk-limit-calibration-against-historical-drawdowns": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/risk-limit-calibration-against-historical-drawdowns/SKILL.md",
+      "computedHash": "9acb98b2b8003bdd109ce4e168224b3b8131e3f9e640133a3e8a17ac2891524e"
+    },
+    "risk-metric-recalculation-frequency-tuning": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/risk-metric-recalculation-frequency-tuning/SKILL.md",
+      "computedHash": "16381ee004e933a2cef99167194420d21ebfc6ba7919e33aef1a34603a38a052"
+    },
+    "risk-model-backtesting-against-realized-outcomes": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/risk-model-backtesting-against-realized-outcomes/SKILL.md",
+      "computedHash": "7fa0ff2544889ffc6d845273ff95ba3f32ba7f7ba3d0b8c0e6711d95d3b2a9da"
+    },
+    "risk-parity-allocation-across-strategies": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/risk-parity-allocation-across-strategies/SKILL.md",
+      "computedHash": "ac53f9f8ff9273946d14602ed7c985d872f1d3e28173da966fbfdf66ec61949b"
+    },
+    "risk-reporting-for-external-stakeholders": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/risk-reporting-for-external-stakeholders/SKILL.md",
+      "computedHash": "89a88ab3356df9ef10d7bc05b888455d39955030d92b5a77715ab47cd9580863"
+    },
+    "robinhood-unofficial-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/robinhood-unofficial-api-integration/SKILL.md",
+      "computedHash": "2da5a8064d1cb1f584c13f8b506a6a097219e4bdb18a015d94efabc0f6df4285"
+    },
+    "runbook-automation-for-common-incident-types": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/runbook-automation-for-common-incident-types/SKILL.md",
+      "computedHash": "9b0310f720ce71367abc3e4e090fc070f4dd3598be36c08d3feed1675188e75b"
+    },
+    "sample-weighting-for-overlapping-labels": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/sample-weighting-for-overlapping-labels/SKILL.md",
+      "computedHash": "96570d626b730ee15edd35c30ff408babf5d3e36d462ed852a52218c1dd8eda0"
+    },
+    "sanctions-screening-for-counterparties-and-instruments": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/sanctions-screening-for-counterparties-and-instruments/SKILL.md",
+      "computedHash": "53348e92353f9025460c07e464922ff55e76e6ef334e8a4ddf9e07fa2afba34e"
+    },
+    "sandbox-credential-leakage-prevention": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/sandbox-credential-leakage-prevention/SKILL.md",
+      "computedHash": "f245acaa2c9c67d46796982cfc1911611fa30338a2d4412c6d1345ccd141f766"
+    },
+    "sandbox-vs-production-endpoint-drift": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/sandbox-vs-production-endpoint-drift/SKILL.md",
+      "computedHash": "c41389b9284b5cbd3c8a5e253944ae038470219acb62beaff46e390dfa038dfd"
+    },
+    "satellite-imagery-based-signal-research": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/satellite-imagery-based-signal-research/SKILL.md",
+      "computedHash": "9e083a7727e7ad4bd16b4a6a83afdd912c5578b850aef94ca7ae0f33c7305305"
+    },
+    "saxo-bank-openapi-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/saxo-bank-openapi-integration/SKILL.md",
+      "computedHash": "40c50795b33fbf4c511d959fd113f257754d528666b7e6a53350296bd7aa1829"
+    },
+    "scenario-based-stress-testing-custom-shocks": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/scenario-based-stress-testing-custom-shocks/SKILL.md",
+      "computedHash": "16c25a2c8260bb132032a00fd0320823644b00aceff797945d244ae2038ab752"
+    },
+    "schwab-api-oauth-pkce-flow": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/schwab-api-oauth-pkce-flow/SKILL.md",
+      "computedHash": "0695871dcb343c0cf9aa641a9a0f64bbaa18e7a088cdfd8b8948cdc615fdbe01"
+    },
+    "sec-rule-15c3-5-risk-controls-us": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/sec-rule-15c3-5-risk-controls-us/SKILL.md",
+      "computedHash": "613ddf2dd2dc3d0f3ae7f6467eab1eba536c8fe2e4dfbc9680612311c94af1d3"
+    },
+    "secrets-rotation-without-bot-downtime": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/secrets-rotation-without-bot-downtime/SKILL.md",
+      "computedHash": "c6ebdb9d66aba60c1074ff5768c989a0eeae4cdba4d0babace3386b9d978b3fd"
+    },
+    "section-1256-contract-tax-treatment-us-futures": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/section-1256-contract-tax-treatment-us-futures/SKILL.md",
+      "computedHash": "82a98ca87948bb6c870e5fa7cb48fd0583e2e2fa339346854033db4b4483e288"
+    },
+    "segregation-of-duties-for-custody-operations": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/segregation-of-duties-for-custody-operations/SKILL.md",
+      "computedHash": "d940e4ca5e20ddae98e43bec43b3548f82dc2dc4e7ab81ca38dec7df59558d88"
+    },
+    "sequence-number-gap-detection-for-feeds": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/sequence-number-gap-detection-for-feeds/SKILL.md",
+      "computedHash": "6b5f956085e29c73c67c0ba29133dda88b5e9db1a92b8da0130b30e7a6e1f433"
+    },
+    "shamir-secret-sharing-for-key-backup": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/shamir-secret-sharing-for-key-backup/SKILL.md",
+      "computedHash": "8d8c78f68ad2764d801625cbf00f011dd1d3dbe536dc8f3a70723b5837dc892e"
+    },
+    "shanghai-shenzhen-connect-programs": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/shanghai-shenzhen-connect-programs/SKILL.md",
+      "computedHash": "5fe4d970772a704f70a2fd45a688f89602ea3430329babdde3404ba5def9b76b"
+    },
+    "short-selling-borrow-cost-and-availability-modeling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/short-selling-borrow-cost-and-availability-modeling/SKILL.md",
+      "computedHash": "fae7e17d2310655682c742377c911f5145c392a11d5441687a3535d3e57f9eba"
+    },
+    "singapore-exchange-sgx-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/singapore-exchange-sgx-api-integration/SKILL.md",
+      "computedHash": "6b091cac9799cb5dfbc2d20b06603179d5430b522a0edfc0e74d2acc9cdd6cdd"
+    },
+    "singapore-mas-notice-on-cyber-hygiene-for-trading-systems": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/singapore-mas-notice-on-cyber-hygiene-for-trading-systems/SKILL.md",
+      "computedHash": "fb8149c699765c9cd9d596ec67f3ae49a2cc7bb32838992b570580d20666428d"
+    },
+    "single-stock-futures-where-available": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/single-stock-futures-where-available/SKILL.md",
+      "computedHash": "5272203ff2b1db3b7d7b76a41a3c213615bca5781931ee1149c39dd0dc2f34cd"
+    },
+    "smart-contract-approval-scope-minimization": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/smart-contract-approval-scope-minimization/SKILL.md",
+      "computedHash": "16c301d9023db3e41a345d86f08117e679c5461e6f358ef903f26c81b7f995f3"
+    },
+    "smart-contract-audit-requirements-before-defi-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/smart-contract-audit-requirements-before-defi-integration/SKILL.md",
+      "computedHash": "519ed3e8dc684cb4b48b66391f18e99ba22dc6a182711f9eb1ef2771c749c709"
+    },
+    "smart-order-router-failover-on-venue-outage": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/smart-order-router-failover-on-venue-outage/SKILL.md",
+      "computedHash": "76b1cd45f3f394d9456f5e52682fde3ee3c9ce4868af7905184f0b692f636918"
+    },
+    "smart-order-routing-across-venues": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/smart-order-routing-across-venues/SKILL.md",
+      "computedHash": "023b5e0e5b1e8b29ee83644edfe186884b6e037fa14bc4dfbeb0b2024cf7f81b"
+    },
+    "social-media-sentiment-signal-with-bot-filtering": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/social-media-sentiment-signal-with-bot-filtering/SKILL.md",
+      "computedHash": "1a391be49047beb6db596ba2ebf6af368545504e529ccd0a1fa65264f4262d6d"
+    },
+    "strategy-capacity-estimation-before-scaling-capital": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/strategy-capacity-estimation-before-scaling-capital/SKILL.md",
+      "computedHash": "6e88cb8c61103e1f8edb0f2a118ad329cf956db886d4610691ecef077fe1541d"
+    },
+    "strategy-committee-governance-for-capital-allocation-decisions": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/strategy-committee-governance-for-capital-allocation-decisions/SKILL.md",
+      "computedHash": "6bb524f74d22a4043b687e4e412438aa809631ea55654b39621ddbc4fc4ead51"
+    },
+    "strategy-decommissioning-and-position-unwind-procedure": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/strategy-decommissioning-and-position-unwind-procedure/SKILL.md",
+      "computedHash": "5cc103276022a5d76c9e2afa71108f0cfd9ded9950cced0866d1cc03fadef0af"
+    },
+    "strategy-latency-budget-decomposition": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/strategy-latency-budget-decomposition/SKILL.md",
+      "computedHash": "c3056fbb7d5d6a87d3e3c2994715b0914d398ab3ce9c1e94b077839c36efcfa7"
+    },
+    "strategy-level-kill-switch-vs-portfolio-level-kill-switch": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/strategy-level-kill-switch-vs-portfolio-level-kill-switch/SKILL.md",
+      "computedHash": "07187476bcb52a0948a4ca12df073d2edb8acb480c143bb1b2e9acf6f98892a6"
+    },
+    "strategy-lifecycle-retirement-criteria": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/strategy-lifecycle-retirement-criteria/SKILL.md",
+      "computedHash": "39ec61cea4e923fa3dabf170bfc9308f1877e536597b26d0aecc501d4995a970"
+    },
+    "strategy-performance-attribution-vs-market-beta": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/strategy-performance-attribution-vs-market-beta/SKILL.md",
+      "computedHash": "0756d01accbaff2564f14356cd1d73bb0aec52a976044a0ab7dba8349eff3ccd"
+    },
+    "strategy-performance-decay-detection-vs-market-wide-decay": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/strategy-performance-decay-detection-vs-market-wide-decay/SKILL.md",
+      "computedHash": "94dfa9c3074dcd8c27b9d1b75ce7ae969d8dad741306e736a955fc98ad47b048"
+    },
+    "strategy-research-to-production-pipeline-governance": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/strategy-research-to-production-pipeline-governance/SKILL.md",
+      "computedHash": "ad0f38680c27f38fc24d2f0955704a44f1938fd5f8afbf195595ddb3b1355392"
+    },
+    "strategy-specific-data-dependency-mapping": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/strategy-specific-data-dependency-mapping/SKILL.md",
+      "computedHash": "3e1cfa30902fcc5ab93ca837cc77f2e12059c9a7cb95cd6a9c576b5045c760b9"
+    },
+    "strategy-specific-vs-shared-risk-budget-allocation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/strategy-specific-vs-shared-risk-budget-allocation/SKILL.md",
+      "computedHash": "94ed40c0a919c0e71015b4935fbef6006f0a7ecf9a14dedd339ddebb68a5b47b"
+    },
+    "strategy-underperformance-remediation-decision-tree": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/strategy-underperformance-remediation-decision-tree/SKILL.md",
+      "computedHash": "fb95b89d8236e0f1f452f3655fb07eca57e0dfeb7abe07a4ac725ca2661f9258"
+    },
+    "stress-testing-against-historical-crash-scenarios": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/stress-testing-against-historical-crash-scenarios/SKILL.md",
+      "computedHash": "6bb46fd4d5d0042b6ffe0a12fe43be69ae415fa80a01ff31b572a4e441d7eae7"
+    },
+    "structured-logging-for-post-incident-forensics": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/structured-logging-for-post-incident-forensics/SKILL.md",
+      "computedHash": "908f0d0a071d65cf3c10adca2f576807323e75e995cb42362793c31bff3555ca"
+    },
+    "supply-chain-data-for-earnings-prediction": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/supply-chain-data-for-earnings-prediction/SKILL.md",
+      "computedHash": "e37c6826602b9172b222354daa9f3e6b976b8ebc854d1e670affed1763f6de07"
+    },
+    "survivorship-bias-free-universe-construction": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/survivorship-bias-free-universe-construction/SKILL.md",
+      "computedHash": "018047a209e1ea929ed90e958f742e7925ac5363a0f5480a6574b74e1841ae8e"
+    },
+    "swiss-finma-algorithmic-trading-expectations": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/swiss-finma-algorithmic-trading-expectations/SKILL.md",
+      "computedHash": "67a8f3df573e7af7e0843780cfe44de265dc357fad1a1b6c909431e257647f27"
+    },
+    "synthetic-continuous-futures-contract-construction": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/synthetic-continuous-futures-contract-construction/SKILL.md",
+      "computedHash": "f52e02f0a1f1531919bbaccaeb1e674322cb4f46381881fbbc48b5fdbc1ba954"
+    },
+    "synthetic-data-generation-for-backtest-augmentation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/synthetic-data-generation-for-backtest-augmentation/SKILL.md",
+      "computedHash": "312f959e5677b18c92b2a2acc7f0b7242173081973888ad1957f6876ff7dcc08"
+    },
+    "synthetic-labels-from-triple-barrier-method": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/synthetic-labels-from-triple-barrier-method/SKILL.md",
+      "computedHash": "1de723acda9eaddbfdb47b78f2e8029bf883484deb7e7a9cad829f566b447a9e"
+    },
+    "systemd-supervision-for-trading-bots": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/systemd-supervision-for-trading-bots/SKILL.md",
+      "computedHash": "ad6b30cb01bf318f02adf3f825219018b56166fbd36329dd90d9901b3375d36b"
+    },
+    "tail-correlation-between-strategies-under-stress": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/tail-correlation-between-strategies-under-stress/SKILL.md",
+      "computedHash": "4ec9d204c63b59e9e50e6bb3d1eb42a04772616987e80c7d1e1d0af5a3b4a158"
+    },
+    "tail-risk-hedging-with-options": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/tail-risk-hedging-with-options/SKILL.md",
+      "computedHash": "210e7546a7073ce9d4b5de53bddb8fc667fb86df1cf842089b855a6726ca73d2"
+    },
+    "taiwan-stock-exchange-twse-api": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/taiwan-stock-exchange-twse-api/SKILL.md",
+      "computedHash": "a3f626834a6140818bb42c70280b32513b2de3c9fb144a3e69ccad0946a0556e"
+    },
+    "tase-israel-exchange-api": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/tase-israel-exchange-api/SKILL.md",
+      "computedHash": "3fca3cb41f4e36ce5a5b7998e423f4e74c6db7ff4148badc5874307effb7013c"
+    },
+    "tastytrade-api-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/tastytrade-api-integration/SKILL.md",
+      "computedHash": "0e424bf8cda5cbdc83511106f6ca7b9d951bdfbc1fc35c40e6da1d168a3a1c49"
+    },
+    "test-transaction-verification-before-large-transfers": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/test-transaction-verification-before-large-transfers/SKILL.md",
+      "computedHash": "46be78a0e2dea3d06624f6238b565f6811c07ba3347b1c42288b8b95d776e779"
+    },
+    "third-party-custody-audit-report-review-cadence": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/third-party-custody-audit-report-review-cadence/SKILL.md",
+      "computedHash": "983162d80ef963baedc62332de954fdb4d3c3d83b8fb72d13a1251ba62777835"
+    },
+    "tick-buffering-burst-handling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/tick-buffering-burst-handling/SKILL.md",
+      "computedHash": "1216db3b50bb255fd9ddd52900c8f72403e686a041af0ce6687555b8ede76f93"
+    },
+    "tick-data-schema-versioning": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/tick-data-schema-versioning/SKILL.md",
+      "computedHash": "6183846f0e6cad323b1c5274985fafe4eb9a0b05aac78b2e53d60e1b817ecafb"
+    },
+    "tick-size-pilot-program-impact-assessment": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/tick-size-pilot-program-impact-assessment/SKILL.md",
+      "computedHash": "a36f1dfe008ce39e14da752f8f0e2480f1b9e87e73e635a8caadf9788ad12494"
+    },
+    "tick-to-trade-latency-measurement": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/tick-to-trade-latency-measurement/SKILL.md",
+      "computedHash": "cc02a4f406b39e009cc8a4b425bb94cef4ddd3139f807f061b5ea65294f737a7"
+    },
+    "token-lifecycle-live-probing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/token-lifecycle-live-probing/SKILL.md",
+      "computedHash": "b3c100b51221890babe518e85fa0de76471722ff8112fbdb2c91317cc36e7b05"
+    },
+    "total-return-swap-synthetic-exposure": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/total-return-swap-synthetic-exposure/SKILL.md",
+      "computedHash": "de3a35a9d731a341aa1707534ec17238ec0a5cddfd9b73a734d58bcfbe3c9d0a"
+    },
+    "tradestation-websocket-order-updates": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/tradestation-websocket-order-updates/SKILL.md",
+      "computedHash": "44b1a4b0a6ffab45f3ac86dfa59dcb19c1d093d90d512caa4a32713c9f9496c3"
+    },
     "trading-strategist": {
       "source": "kukapay/crypto-skills",
       "sourceType": "github",
       "skillPath": "skills/trading-strategist/SKILL.md",
       "computedHash": "4996644c3ba03400d9122f3720d4de224583f21f40d1a02b9313f50ed5bbe709"
+    },
+    "transaction-cost-analysis-tca-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/transaction-cost-analysis-tca-integration/SKILL.md",
+      "computedHash": "bc0cf3fbb13d82736e42487f3fb85fa272a6f84cc72f657668864146b980cd6d"
+    },
+    "transfer-learning-across-correlated-instruments": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/transfer-learning-across-correlated-instruments/SKILL.md",
+      "computedHash": "df60dde24c4cb8de093a54f230b66f0925700d3a6a709b191f4e6f04cdca52f1"
+    },
+    "transfer-pricing-for-multi-entity-trading-operations": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/transfer-pricing-for-multi-entity-trading-operations/SKILL.md",
+      "computedHash": "715a6d417965535c1b67dca88b0a9eb5fb3735ea08f1528ca60112fbc4e5865d"
+    },
+    "uk-fca-algorithmic-trading-systems-controls": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/uk-fca-algorithmic-trading-systems-controls/SKILL.md",
+      "computedHash": "173f39e25b5e333f4ebdbc35dfd00a3ee8e0e24498685d11f06144b36516fc07"
+    },
+    "uk-senior-managers-regime-algo-accountability": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/uk-senior-managers-regime-algo-accountability/SKILL.md",
+      "computedHash": "4c24c3c9bf660f4983499b2f391679340cd3da3f589738a8ba3e0cb911cd329f"
+    },
+    "unicode-and-encoding-issues-in-global-instrument-names": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/unicode-and-encoding-issues-in-global-instrument-names/SKILL.md",
+      "computedHash": "628c6baf31d9f2e76a1d22f6bbc4fde7ecabd49d3bc9b83243b2876f2a5b170a"
+    },
+    "upstox-oauth-refresh-token-rotation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/upstox-oauth-refresh-token-rotation/SKILL.md",
+      "computedHash": "9acf4787391bb7cdf551b3deb7f8dbada5bf8067854759d7b2f31de8ef24448d"
+    },
+    "us-reg-nms-order-protection-rule-compliance": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/us-reg-nms-order-protection-rule-compliance/SKILL.md",
+      "computedHash": "7e0ae39bc04c207390da412cbd5e88a1d8dcf063b9701b405a4823f4b4172336"
+    },
+    "us-reg-sho-short-sale-locate-requirements": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/us-reg-sho-short-sale-locate-requirements/SKILL.md",
+      "computedHash": "81488403f2cbe10ffe1a08082c7d9400892acb9a5dfc376eecb9b0d961a78687"
+    },
+    "value-at-risk-var-live-monitoring": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/value-at-risk-var-live-monitoring/SKILL.md",
+      "computedHash": "e10daa70abb0dce9844365d750ebc20a7f7889bf9a99abe64db45c8cb203f260"
+    },
+    "variance-swap-and-volatility-derivative-pricing": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/variance-swap-and-volatility-derivative-pricing/SKILL.md",
+      "computedHash": "ce34fb759fd2aaa8f16ccd7fdf0f8bd91e29d763a57d480d7c2e53b0a2e93591"
+    },
+    "vat-gst-treatment-of-trading-related-services": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/vat-gst-treatment-of-trading-related-services/SKILL.md",
+      "computedHash": "5bda3dec473319db20eaad8cd984b2f5d1ac231b87d4925ace8e66375822a79a"
+    },
+    "vectorized-vs-event-driven-backtest-tradeoffs": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/vectorized-vs-event-driven-backtest-tradeoffs/SKILL.md",
+      "computedHash": "de96acd288cc86969b992f9e1f934ee5ab226bcc7f1fe99a1ca7ef42681d6351"
+    },
+    "vendor-lock-in-risk-for-proprietary-custody-formats": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/vendor-lock-in-risk-for-proprietary-custody-formats/SKILL.md",
+      "computedHash": "e7ec54c3516dc76e9aa11bee3e47939594f9de25813019160b2b4ec0908f0caf"
+    },
+    "vendor-outage-fallback-data-source-hierarchy": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/vendor-outage-fallback-data-source-hierarchy/SKILL.md",
+      "computedHash": "4b527905b976988d0257c3083f85c04e46cd836a018d7c5ad415e73a746ca5c3"
+    },
+    "vendor-specific-adjustment-methodology-reconciliation": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/vendor-specific-adjustment-methodology-reconciliation/SKILL.md",
+      "computedHash": "23f9a4951524917fd545c8c1abcaa6a9c92164af433adf70cb4be99d178b3396"
+    },
+    "vix-and-volatility-index-derivative-strategies": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/vix-and-volatility-index-derivative-strategies/SKILL.md",
+      "computedHash": "1412397b330de2066290df4e3359589a5254dbb9038953575cc82f96eee0a612"
+    },
+    "walk-forward-hyperparameter-search-budget": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/walk-forward-hyperparameter-search-budget/SKILL.md",
+      "computedHash": "40d1e4e6cbeb30c63b15efd5df07ccb075678615abbf6693bb0447f3339e4f07"
+    },
+    "walk-forward-optimization-window-management": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/walk-forward-optimization-window-management/SKILL.md",
+      "computedHash": "a6c3784b946a8c45893c89b48b83780e7e4c623edfa6f826dc64f1b4d7d98396"
+    },
+    "walk-forward-validation-setup": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/walk-forward-validation-setup/SKILL.md",
+      "computedHash": "cfd05a9f980ba2ab3062eb6f427f949a4038335b33b03790cf120b25474ca994"
+    },
+    "warrants-and-structured-product-integration": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/warrants-and-structured-product-integration/SKILL.md",
+      "computedHash": "d27fae4b7b6aa499fbe3f774b404f184fd17de6fbcb011147cc5da85bb714ccb"
+    },
+    "wash-sale-rule-tracking-us": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/wash-sale-rule-tracking-us/SKILL.md",
+      "computedHash": "edc0d95665004603c4672ff7d9f628c88f9981d5f4e38d56654d6d538bde23b3"
+    },
+    "wash-trade-and-spoofing-self-detection": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/wash-trade-and-spoofing-self-detection/SKILL.md",
+      "computedHash": "7ed30b0b5b4000ad318b059ef5264f05e5180b6d28156e17b42566e7691705bd"
+    },
+    "weather-data-signal-research-for-commodity-strategies": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/weather-data-signal-research-for-commodity-strategies/SKILL.md",
+      "computedHash": "5ac2b5b9dff39e5633890d88b433650701edbdd741ca0b828ab88399e6280898"
+    },
+    "weather-derivatives-and-niche-instrument-handling": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/weather-derivatives-and-niche-instrument-handling/SKILL.md",
+      "computedHash": "f64ee88cd10492591270b1fcf893a6ccb624959b877917fb30d6e58403f59b21"
+    },
+    "web-scraped-sentiment-data-pipeline": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/web-scraped-sentiment-data-pipeline/SKILL.md",
+      "computedHash": "ca1008697711f4b0c6bf0fd6d9e8ed03ae73d6f9521e6f433f39867aae093c1c"
+    },
+    "webhook-based-order-fill-notifications": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/webhook-based-order-fill-notifications/SKILL.md",
+      "computedHash": "8ad0dbbb80888cfadb2ca928e0aed9f379faeacd553475737b88ee1d74601c21"
+    },
+    "websocket-reconnection-with-state-recovery": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/websocket-reconnection-with-state-recovery/SKILL.md",
+      "computedHash": "07eb5268681eb308126e3c741fa72d751cc055e040c3fc6bfc4f921b5881efc7"
+    },
+    "websocket-subscription-reconciliation-after-reconnect": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/websocket-subscription-reconciliation-after-reconnect/SKILL.md",
+      "computedHash": "9c2a4625251d8ce1cb2f74af084c34443434aee470b26fed4e1570efa4850493"
+    },
+    "withdrawal-velocity-limits-and-anomaly-detection": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/withdrawal-velocity-limits-and-anomaly-detection/SKILL.md",
+      "computedHash": "3de428d1be24bbbb30cc60f3e7613a59b979c60573c42505e2a5794d05741384"
+    },
+    "zero-downtime-database-schema-migrations": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/zero-downtime-database-schema-migrations/SKILL.md",
+      "computedHash": "61f6e64f9deb425cb9d619bbdfb203045b8eb722faaa15f27890eaec923d0782"
+    },
+    "zerodha-kite-postback-webhook-verification": {
+      "source": "HimanshuJ16/Algo-Trading-Skills",
+      "sourceType": "github",
+      "skillPath": "skills/zerodha-kite-postback-webhook-verification/SKILL.md",
+      "computedHash": "941a02563eee019c4d43724b23afa59e4a9f9dc1563a0498b306cb26fc45305c"
     }
   }
 }

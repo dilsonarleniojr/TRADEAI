@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { askAIOnce, parseJsonLoose } from '@/lib/ai-client';
+import { calculatePivotPoints, checkResistanceProximity } from '@/lib/bot/indicators';
 
 // Cache for 5 minutes to avoid excessive API calls
 let cachedPicks: { data: TopPick[]; timestamp: number } | null = null;
@@ -41,29 +42,34 @@ export async function POST(request: Request) {
     // Sem busca de notícias: a busca antiga dependia do SDK da Z.AI.
     const newsContext = '';
 
-    // Prepare market summary for AI analysis
+    // Prepare market summary for AI analysis com níveis e contexto técnico
     const marketSummary = Object.entries(marketData)
       .slice(0, 30)
-      .map(([symbol, data]: [string, any]) => (
-        `${symbol}: $${data.price?.toFixed(2) || 'N/A'}, 24h: ${data.priceChangePercent?.toFixed(2) || 'N/A'}%, Vol: $${((data.quoteVolume || 0) / 1e6).toFixed(1)}M`
-      ))
+      .map(([symbol, data]: [string, any]) => {
+        const p = data.price || 0;
+        const h = data.high || data.highPrice || p * 1.02;
+        const l = data.low || data.lowPrice || p * 0.98;
+        const piv = calculatePivotPoints(h, l, p);
+        const nearRes = p > 0 && piv.r1 > 0 ? (((piv.r1 - p) / p) * 100).toFixed(1) : 'N/A';
+        return `${symbol}: $${p.toFixed(2)}, 24h: ${data.priceChangePercent?.toFixed(2) || 'N/A'}%, Vol: $${((data.quoteVolume || 0) / 1e6).toFixed(1)}M, R1 Dist: ${nearRes}%`;
+      })
       .join('\n');
 
     const newsSection = newsContext
       ? `\nNOTÍCIAS RECENTES DO MUNDO CRYPTO:\n${newsContext}\n`
       : '';
 
-    const prompt = `Você é um analista de criptomoedas experiente. Analise os dados de mercado atuais e as notícias recentes para selecionar as 5 melhores oportunidades de investimento para CURTO PRAZO (1-7 dias).
+    const prompt = `Você é um analista quantitativo sênior de criptomoedas seguindo a metodologia technical-scanner. Analise os dados de mercado atuais e selecione as 5 melhores oportunidades de investimento para CURTO PRAZO (1-7 dias).
 
 DADOS DE MERCADO ATUAIS:
 ${marketSummary}
 ${newsSection}
-INSTRUÇÕES:
-1. Selecione as 5 criptomoedas com melhor potencial de alta baseado em: momento, volume, tendência de preço e notícias recentes
-2. Considere fatores como: momentum positivo, volume crescente, rompimento de resistências, notícias positivas, tendências macro
-3. Para cada seleção, forneça análise detalhada incluindo impacto das notícias
-4. Atribua um score (0-100) baseado na força do setup
-5. Priorize ativos com tendências de alta confirmadas por dados e notícias
+REGRAS TÉCNICAS ESTRITAS (SKILL TECHNICAL-SCANNER):
+1. NUNCA recomende COMPRA se o ativo estiver a menos de 0.8% da resistência R1 ou se já subiu mais de 10% nas 24h (para evitar comprar topo institucional). Nesses casos, classifique como "AGUARDAR PULLBACK".
+2. Priorize ativos em tendência de alta saudável com volume robusto e espaço livre até as próximas resistências.
+3. Relação Risco/Retorno obrigatória: R:R >= 2.3:1 (Target pelo menos 2.3x a distância do Stop Loss).
+4. Para cada seleção, forneça análise técnica estrutural em português (2-3 frases).
+5. Atribua um score (0-100) baseado na força do setup.
 
 Responda APENAS com um array JSON contendo objetos com:
 - rank: posição (1-5)
@@ -71,9 +77,9 @@ Responda APENAS com um array JSON contendo objetos com:
 - name: nome da criptomoeda
 - currentPrice: preço atual
 - priceChange24h: variação 24h em porcentagem
-- recommendation: "COMPRA FORTE", "COMPRA", ou "ACUMULAR"
-- reason: motivo detalhado em português (2-3 frases, mencione notícias quando relevante)
-- targetPrice: preço alvo sugerido
+- recommendation: "COMPRA FORTE", "COMPRA", ou "AGUARDAR PULLBACK"
+- reason: motivo detalhado em português (2-3 frases com níveis de suporte/resistência)
+- targetPrice: preço alvo sugerido (com R:R >= 2.3:1)
 - stopLoss: preço de stop loss sugerido
 - riskLevel: "Baixo", "Médio" ou "Alto"
 - category: categoria (Layer 1, DeFi, IA, etc.)
@@ -151,8 +157,23 @@ function generateFallbackPicks(marketData: Record<string, any>): TopPick[] {
 
   return entries.map((entry, idx) => {
     const isPositive = entry.priceChangePercent > 0;
-    const targetMultiplier = isPositive ? 1 + (Math.abs(entry.priceChangePercent) / 100) * 0.5 : 1.02;
-    const stopMultiplier = isPositive ? 1 - (Math.abs(entry.priceChangePercent) / 100) * 0.8 : 0.97;
+    const rawData = marketData[entry.symbol] || {};
+    const high = rawData.high || rawData.highPrice || entry.price * 1.02;
+    const low = rawData.low || rawData.lowPrice || entry.price * 0.98;
+    const pivots = calculatePivotPoints(high, low, entry.price);
+    const resCheck = checkResistanceProximity(entry.price, pivots, 0.8);
+
+    // Assimetria Matemática Estrita: R:R >= 2.2:1
+    // Stop Loss controlado entre 2.0% e 2.8% abaixo da entrada
+    const slPct = isPositive ? Math.min(2.8, Math.max(1.8, Math.abs(entry.priceChangePercent) * 0.35)) : 2.2;
+    // Take Profit estritamente calibrado para pelo menos 2.35x o risco
+    const tpPct = Number((slPct * 2.35).toFixed(2));
+
+    const targetMultiplier = 1 + (tpPct / 100);
+    const stopMultiplier = 1 - (slPct / 100);
+
+    const isNearResistance = !resCheck.safeToBuy;
+    const isOverextended = entry.priceChangePercent > 12.0 || isNearResistance;
 
     return {
       rank: idx + 1,
@@ -160,13 +181,23 @@ function generateFallbackPicks(marketData: Record<string, any>): TopPick[] {
       name: names[entry.symbol] || entry.symbol.replace('USDT', ''),
       currentPrice: entry.price,
       priceChange24h: entry.priceChangePercent,
-      recommendation: entry.priceChangePercent > 3 ? 'COMPRA FORTE' : entry.priceChangePercent > 0 ? 'COMPRA' : 'ACUMULAR',
-      reason: `Momentum ${isPositive ? 'positivo' : 'em recuperação'} com ${isPositive ? 'alta' : 'movimento'} de ${Math.abs(entry.priceChangePercent).toFixed(1)}% nas últimas 24h. Volume de mercado significativo sustenta a tendência.`,
+      recommendation: isOverextended
+        ? 'AGUARDAR PULLBACK'
+        : entry.priceChangePercent > 3
+        ? 'COMPRA FORTE'
+        : entry.priceChangePercent > 0
+        ? 'COMPRA'
+        : 'ACUMULAR',
+      reason: isNearResistance
+        ? `Preço colado na resistência diária ${resCheck.nearestLevel} ($${resCheck.levelPrice} a ${resCheck.distancePercent}%). Aguarde correção para suporte para entrada com R:R seguro.`
+        : isOverextended
+        ? `Ativo com forte estirada (+${entry.priceChangePercent.toFixed(1)}% nas 24h). Aguarde recuo técnico em direção às médias para entrada sem risco de topo.`
+        : `Momentum altista confirmado e espaço livre até ${resCheck.nearestLevel} ($${resCheck.levelPrice} · +${resCheck.distancePercent}%). R:R assimétrico de 2.35:1 (Alvo +${tpPct.toFixed(1)}% / Stop -${slPct.toFixed(1)}%).`,
       targetPrice: parseFloat((entry.price * targetMultiplier).toFixed(4)),
       stopLoss: parseFloat((entry.price * stopMultiplier).toFixed(4)),
-      riskLevel: Math.abs(entry.priceChangePercent) > 5 ? 'Alto' : Math.abs(entry.priceChangePercent) > 2 ? 'Médio' : 'Baixo',
+      riskLevel: isOverextended ? 'Alto' : Math.abs(entry.priceChangePercent) > 5 ? 'Médio' : 'Baixo',
       category: categories[entry.symbol] || 'Outro',
-      score: Math.min(99, Math.max(60, 70 + (isPositive ? entry.priceChangePercent : 0) * 2)),
+      score: isNearResistance ? 55 : isOverextended ? 65 : Math.min(99, Math.max(60, 75 + (isPositive ? entry.priceChangePercent : 0) * 1.5)),
     };
   });
 }

@@ -17,6 +17,7 @@ import { BotReadinessBar } from "./bot-readiness";
 import { BotActivityLog } from "./bot-activity-log";
 import { BotPortfolio } from "./bot-portfolio";
 import { BotPerformanceChart } from "./bot-performance-chart";
+import { RealtimeNetPnlPanel } from "./realtime-net-pnl-panel";
 import {
   Play,
   Pause,
@@ -74,9 +75,7 @@ export function BotSection() {
     botConfig,
     tradingMode,
     portfolio,
-    tickers,
     trades,
-    klines: activeKlines,
     addBotLog,
     clearSimulatedData,
     resetAllBotStats,
@@ -92,9 +91,7 @@ export function BotSection() {
     botConfig: s.botConfig,
     tradingMode: s.tradingMode,
     portfolio: s.portfolio,
-    tickers: s.tickers,
     trades: s.trades,
-    klines: s.klines,
     addBotLog: s.addBotLog,
     clearSimulatedData: s.clearSimulatedData,
     resetAllBotStats: s.resetAllBotStats,
@@ -609,8 +606,12 @@ export function BotSection() {
       {/* ========================================================================= */}
       {/* 3. TABS: QUANT ENGINE, ACTIVITY LOGS, PORTFOLIO & CONFIGURATION */}
       {/* ========================================================================= */}
-      <Tabs defaultValue="engines" className="space-y-4 pt-2">
+      <Tabs defaultValue="realtime-pnl" className="space-y-4 pt-2">
         <TabsList className="bg-secondary/40 border border-border/40 p-1 h-auto flex flex-wrap gap-1 rounded-xl">
+          <TabsTrigger value="realtime-pnl" className="text-xs py-1.5 px-3 data-[state=active]:bg-crypto-green/15 data-[state=active]:text-crypto-green font-bold">
+            <Gauge className="w-3.5 h-3.5 mr-1.5" />
+            Painel de PnL Líquido L2 (Ao Vivo)
+          </TabsTrigger>
           <TabsTrigger value="engines" className="text-xs py-1.5 px-3 data-[state=active]:bg-crypto-cyan/15 data-[state=active]:text-crypto-cyan">
             <Brain className="w-3.5 h-3.5 mr-1.5" />
             Motores
@@ -632,6 +633,10 @@ export function BotSection() {
             Conexão Binance
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="realtime-pnl">
+          <RealtimeNetPnlPanel />
+        </TabsContent>
 
         <TabsContent value="engines">
           <EnginePanel />

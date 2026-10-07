@@ -87,8 +87,9 @@ class QuantitativeEngineV3:
                 # Next.js local SQLite persistence
                 if local_payload:
                     try:
-                        async with aiohttp.ClientSession() as session:
-                            async with session.post("http://localhost:3000/api/trades", json=local_payload, timeout=2.0) as resp:
+                        timeout_cfg = aiohttp.ClientTimeout(total=2.0)
+                        async with aiohttp.ClientSession(timeout=timeout_cfg) as session:
+                            async with session.post("http://localhost:3000/api/trades", json=local_payload) as resp:
                                 if resp.status != 200:
                                     logger.warning(f"⚠️ Local SQLite persistence API returned status {resp.status}")
                     except Exception as e:
@@ -300,17 +301,28 @@ class QuantitativeEngineV3:
         timings["db_persistence_ms"] = (time_e - time_d_start) * 1000
         timings["total_roundtrip_ms"] = (time_e - time_a) * 1000
 
-        print("\n⚡ QuantitativeEngineV3 Round-Trip Latency Diagnostic:")
-        print(f"   - Symbol: {symbol}")
-        print(f"   - Quantity: {qty_clean}")
-        print(f"   - Price Fetch (WS Cache): {timings['price_fetch_ms']:.4f} ms")
-        print(f"   - Market Order Dispatch: {timings['market_dispatch_ms']:.2f} ms")
-        print(f"   - Fill Confirmation: {timings['fill_confirmation_ms']:.2f} ms")
-        print(f"   - OCO Bracket Placement: {timings['oco_placement_ms']:.2f} ms")
-        print(f"   - DB/Firestore Queueing: {timings['db_persistence_ms']:.2f} ms")
-        print(f"   - 🏁 Total Latency (Start -> Finish): {timings['total_roundtrip_ms']:.2f} ms")
+        logger.info(
+            f"⚡ [QuantitativeEngineV3 Latency] Symbol: {symbol} | "
+            f"Price Fetch: {timings['price_fetch_ms']:.3f}ms | "
+            f"Dispatch: {timings['market_dispatch_ms']:.2f}ms | "
+            f"Fill: {timings['fill_confirmation_ms']:.2f}ms | "
+            f"OCO Bracket: {timings['oco_placement_ms']:.2f}ms | "
+            f"DB Queue: {timings['db_persistence_ms']:.2f}ms | "
+            f"Total Roundtrip: {timings['total_roundtrip_ms']:.2f}ms"
+        )
         
         return timings
+
+    async def evaluate_ai_signal(self, symbol: str):
+        """
+        Executa o ciclo do agente (ferramentas ligadas aos motores reais) com validação estrita de risco.
+        Retorna AgentResult: .payload (AISignalPayload) e .skills_invoked (telemetria das ferramentas).
+        Sem preço real o resultado é HOLD com agent_error=True; nenhum valor de mercado é inventado.
+        """
+        from signal_agent_loop import SignalAgentLoop
+        price_data = await self.connector.get_cached_price(symbol)
+        current_price = price_data.get('ask', 0.0) or price_data.get('bid', 0.0)
+        return await SignalAgentLoop().run_agent_cycle(symbol=symbol, current_price=current_price)
 
     async def close(self):
         # Cancel background DB worker
