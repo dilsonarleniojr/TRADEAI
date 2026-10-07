@@ -3,6 +3,8 @@
  * Runs functional, regression, concurrency, database load, and latency tests.
  */
 
+export {};
+
 const BASE_URL = "http://localhost:3000";
 
 interface TestResult {

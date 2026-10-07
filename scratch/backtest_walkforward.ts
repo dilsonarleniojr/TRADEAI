@@ -5,6 +5,8 @@
  * com modelagem real de taxas (0.10% compra + 0.10% venda) e slippage (0.05%).
  */
 
+export {};
+
 interface Candle {
   openTime: number;
   open: number;
