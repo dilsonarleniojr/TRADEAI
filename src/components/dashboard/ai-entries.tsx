@@ -496,8 +496,13 @@ export function AIEntries() {
         {exits.length > 0 && (
           <section aria-label="Saídas das posições abertas" className="space-y-2.5">
             <h3 className="text-xs font-semibold text-foreground">Saídas das suas posições</h3>
-            {exits.map((x) => (
-              <div key={x.symbol} className={cn("rounded-lg border border-border/40 p-3 space-y-2", loadingExits && "opacity-60")}>
+            {exits.map((x) => {
+              const cleanSym = x.symbol.toUpperCase();
+              const activeBot = bots.find((b) => b.symbol.toUpperCase() === cleanSym && b.active);
+              const isBotInPosition = activeBot && (activeBot.status === "in_position" || (!!activeBot.position && activeBot.position.quantity > 0));
+
+              return (
+              <div key={x.symbol} className={cn("rounded-lg border border-border/40 p-3 space-y-2", activeBot && "border-emerald-500/40 bg-emerald-950/10", loadingExits && "opacity-60")}>
                 <div className="flex flex-wrap items-center gap-2">
                   <span
                     className="text-sm font-semibold cursor-pointer hover:text-crypto-cyan transition-colors"
@@ -509,6 +514,18 @@ export function AIEntries() {
                   <Badge variant="outline" className={cn("text-[10px] font-bold", EXIT_STYLE[x.action])}>
                     {EXIT_LABEL[x.action]}{x.action === "PARCIAL" ? ` ${x.partialPct}%` : ""}
                   </Badge>
+
+                  {/* Badge Dinâmico de Robô em Saída */}
+                  {activeBot && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm font-mono"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                      {isBotInPosition ? "🟢 Bot Monitorando Saída" : "🟢 Bot Ativo"}
+                    </Badge>
+                  )}
+
                   <span className={cn("ml-auto text-xs font-mono font-semibold", x.pnlPct >= 0 ? "text-crypto-green" : "text-crypto-red")}>
                     {x.pnlPct >= 0 ? "▲ +" : "▼ −"}{Math.abs(x.pnlPct).toFixed(2)}%
                   </span>
@@ -524,7 +541,8 @@ export function AIEntries() {
                   <BarChart3 className="w-3.5 h-3.5" /> Ver no gráfico
                 </Button>
               </div>
-            ))}
+            );
+          })}
           </section>
         )}
 
@@ -548,6 +566,24 @@ export function AIEntries() {
         {entries.map((e) => {
           const size = showSizing ? sizing(e) : null;
           const isActionable = e.side !== "WAIT";
+          const cleanSym = e.symbol.toUpperCase();
+          const activeBot = bots.find((b) => b.symbol.toUpperCase() === cleanSym && b.active);
+          const isBotInPosition = activeBot && (activeBot.status === "in_position" || (!!activeBot.position && activeBot.position.quantity > 0));
+
+          let floatingPnlPct = 0;
+          let hasFloatingPnl = false;
+          if (isBotInPosition && activeBot.position) {
+            const curPrice = tickers[cleanSym]?.price ?? (activeBot.position.currentPrice || e.currentPrice || 0);
+            const entryPrice = activeBot.position.entryPrice || 0;
+            if (curPrice > 0 && entryPrice > 0) {
+              floatingPnlPct = ((curPrice - entryPrice) / entryPrice) * 100;
+              hasFloatingPnl = true;
+            } else if (typeof activeBot.position.unrealizedPnlPercent === "number") {
+              floatingPnlPct = activeBot.position.unrealizedPnlPercent;
+              hasFloatingPnl = true;
+            }
+          }
+          const isFloatingProfit = floatingPnlPct >= 0;
 
           return (
             <div
@@ -557,6 +593,7 @@ export function AIEntries() {
                 isActionable
                   ? "border-emerald-500/30 bg-emerald-950/10 shadow-sm"
                   : "border-border/30 bg-card/40 opacity-80",
+                activeBot && "border-emerald-500/50 shadow-emerald-950/20",
                 loading && "opacity-60"
               )}
             >
@@ -583,6 +620,42 @@ export function AIEntries() {
                 <Badge variant="outline" className="text-[10px] text-muted-foreground border-white/[0.08]">
                   {e.aiProviderName || SOURCE_LABEL[e.source]}
                 </Badge>
+
+                {/* Badge Dinâmico de Status do Robô com PnL Flutuante */}
+                {activeBot ? (
+                  isBotInPosition ? (
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] font-bold px-2 py-0.5 flex items-center gap-1 shadow-sm font-mono ${
+                        isFloatingProfit
+                          ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                          : "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                      }`}
+                      title={`Robô em posição em ${e.symbol}: Entrada $${activeBot.position?.entryPrice?.toFixed(4) || "0"}`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full animate-ping shrink-0 ${isFloatingProfit ? "bg-emerald-400" : "bg-amber-400"}`} />
+                      {isFloatingProfit ? "🟢" : "🟡"} Bot em Posição ({hasFloatingPnl ? `${isFloatingProfit ? "+" : ""}${floatingPnlPct.toFixed(2)}%` : "0.00%"})
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm font-mono"
+                      title={`Robô ativo em ${e.symbol}: ${activeBot.name}`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                      🟢 Bot em Execução
+                    </Badge>
+                  )
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] font-bold px-2 py-0.5 bg-cyan-500/10 text-cyan-300 border-cyan-500/30 flex items-center gap-1 cursor-pointer hover:bg-cyan-500/20 transition-colors"
+                    onClick={() => handleLinkBot(e)}
+                    title={`Clique para ativar robô para ${e.symbol}`}
+                  >
+                    ⚡ Clique para Ativar
+                  </Badge>
+                )}
 
                 {/* Chips de Indicadores Técnicos */}
                 {e.indicators && (
@@ -654,9 +727,21 @@ export function AIEntries() {
                   <Button
                     size="sm"
                     onClick={() => handleLinkBot(e)}
-                    className="h-8 gap-1.5 text-xs font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-sm shadow-emerald-500/20 cursor-pointer"
+                    className={cn(
+                      "h-8 gap-1.5 text-xs font-semibold cursor-pointer transition-all",
+                      activeBot
+                        ? isBotInPosition
+                          ? "bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-600 hover:to-teal-600 text-white shadow-emerald-950/40 border border-emerald-500/40"
+                          : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-500/20"
+                        : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-sm shadow-emerald-500/20"
+                    )}
                   >
-                    <Sparkles className="w-3.5 h-3.5" /> Vincular Robô ({e.symbol.replace("USDT", "")})
+                    <Sparkles className="w-3.5 h-3.5" />
+                    {activeBot
+                      ? isBotInPosition
+                        ? `🟢 Robô em Posição (${e.symbol.replace("USDT", "")})`
+                        : `🟢 Robô Ativo (${e.symbol.replace("USDT", "")})`
+                      : `Vincular Robô (${e.symbol.replace("USDT", "")})`}
                   </Button>
                 )}
               </div>

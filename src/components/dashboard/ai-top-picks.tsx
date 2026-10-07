@@ -301,6 +301,25 @@ export function AITopPicks() {
                     ? ((pick.targetPrice - pick.currentPrice) / pick.currentPrice) * 100
                     : 0;
 
+                  const cleanSym = pick.symbol.toUpperCase();
+                  const activeBot = bots.find((b) => b.symbol.toUpperCase() === cleanSym && b.active);
+                  const isBotInPosition = activeBot && (activeBot.status === "in_position" || (!!activeBot.position && activeBot.position.quantity > 0));
+
+                  let floatingPnlPct = 0;
+                  let hasFloatingPnl = false;
+                  if (isBotInPosition && activeBot.position) {
+                    const curPrice = tickers[cleanSym]?.price ?? (activeBot.position.currentPrice || pick.currentPrice);
+                    const entryPrice = activeBot.position.entryPrice || 0;
+                    if (curPrice > 0 && entryPrice > 0) {
+                      floatingPnlPct = ((curPrice - entryPrice) / entryPrice) * 100;
+                      hasFloatingPnl = true;
+                    } else if (typeof activeBot.position.unrealizedPnlPercent === "number") {
+                      floatingPnlPct = activeBot.position.unrealizedPnlPercent;
+                      hasFloatingPnl = true;
+                    }
+                  }
+                  const isFloatingProfit = floatingPnlPct >= 0;
+
                   return (
                     <motion.div
                       key={pick.symbol}
@@ -312,7 +331,9 @@ export function AITopPicks() {
                         "hover:shadow-md hover:shadow-crypto-cyan/5",
                         isExpanded
                           ? "bg-secondary/40 border-crypto-cyan/30"
-                          : "bg-secondary/20 border-border/50 hover:border-crypto-cyan/20"
+                          : activeBot
+                            ? "bg-emerald-950/15 border-emerald-500/40 hover:border-emerald-500/60"
+                            : "bg-secondary/20 border-border/50 hover:border-crypto-cyan/20"
                       )}
                       onClick={() => setExpandedPick(isExpanded ? null : idx)}
                     >
@@ -336,7 +357,7 @@ export function AITopPicks() {
 
                         {/* Symbol + Name */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span
                               className="text-sm font-bold cursor-pointer hover:text-crypto-cyan hover:underline transition-colors"
                               title={`Abrir gráfico de ${pick.symbol}`}
@@ -368,6 +389,33 @@ export function AITopPicks() {
                               <RecIcon className="w-2 h-2 mr-0.5" />
                               {pick.recommendation}
                             </Badge>
+
+                            {/* Badge Dinâmico de Status do Robô e PnL */}
+                            {activeBot && (
+                              isBotInPosition ? (
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[8px] font-bold px-1.5 py-0 flex items-center gap-1 shadow-sm font-mono leading-none ${
+                                    isFloatingProfit
+                                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                                      : "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                                  }`}
+                                  title={`Robô em posição em ${pick.symbol}: Entrada $${activeBot.position?.entryPrice?.toFixed(4) || "0"}`}
+                                >
+                                  <span className={`w-1 h-1 rounded-full animate-ping shrink-0 ${isFloatingProfit ? "bg-emerald-400" : "bg-amber-400"}`} />
+                                  {isFloatingProfit ? "🟢" : "🟡"} Em Posição ({hasFloatingPnl ? `${isFloatingProfit ? "+" : ""}${floatingPnlPct.toFixed(2)}%` : "0.00%"})
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[8px] font-bold px-1.5 py-0 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm font-mono leading-none"
+                                  title={`Robô ativo em ${pick.symbol}: ${activeBot.name}`}
+                                >
+                                  <span className="w-1 h-1 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                                  🟢 Bot Ativo
+                                </Badge>
+                              )
+                            )}
                           </div>
                           <div
                             className="flex items-center gap-2 mt-0.5 cursor-pointer group/name"
@@ -390,15 +438,28 @@ export function AITopPicks() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-7 px-2 text-[10px] font-bold gap-1 bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 hover:text-emerald-300 shrink-0 cursor-pointer hidden sm:flex items-center transition-all hover:scale-105"
-                          title={`Criar e ativar robô para ${pick.symbol} imediatamente`}
+                          className={cn(
+                            "h-7 px-2 text-[10px] font-bold gap-1 shrink-0 cursor-pointer hidden sm:flex items-center transition-all hover:scale-105",
+                            activeBot
+                              ? isBotInPosition
+                                ? "bg-emerald-500/25 text-emerald-300 border-emerald-500/50 shadow-sm"
+                                : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                              : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 hover:text-emerald-300"
+                          )}
+                          title={activeBot ? `Robô ${pick.symbol} já ativo! Clique para gerenciar na frota.` : `Criar e ativar robô para ${pick.symbol} imediatamente`}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleCreateBotFromPick(pick);
                           }}
                         >
                           <Zap className="w-3 h-3 text-emerald-400" />
-                          <span>Criar Bot</span>
+                          <span>
+                            {activeBot
+                              ? isBotInPosition
+                                ? `🟢 Em Posição`
+                                : `🟢 Bot Ativo`
+                              : `Criar Bot`}
+                          </span>
                         </Button>
 
                         {/* Price + Change */}
@@ -485,14 +546,25 @@ export function AITopPicks() {
                               <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
                                 <Button
                                   size="sm"
-                                  className="w-full sm:flex-1 h-8 text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md shadow-emerald-500/20 cursor-pointer"
+                                  className={cn(
+                                    "w-full sm:flex-1 h-8 text-xs font-bold text-white shadow-md cursor-pointer transition-all",
+                                    activeBot
+                                      ? isBotInPosition
+                                        ? "bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-600 hover:to-teal-600 shadow-emerald-950/40 border border-emerald-500/50"
+                                        : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-500/20"
+                                      : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-500/20"
+                                  )}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleCreateBotFromPick(pick);
                                   }}
                                 >
                                   <Sparkles className="w-3.5 h-3.5 mr-1 text-emerald-200" />
-                                  ⚡ Criar Bot com Sugestão ({pick.symbol.replace("USDT", "")})
+                                  {activeBot
+                                    ? isBotInPosition
+                                      ? `🟢 Gerenciar Robô em Posição (${pick.symbol.replace("USDT", "")})`
+                                      : `🟢 Gerenciar Robô Ativo (${pick.symbol.replace("USDT", "")})`
+                                    : `⚡ Criar Bot com Sugestão (${pick.symbol.replace("USDT", "")})`}
                                 </Button>
                                 <Button
                                   variant="outline"

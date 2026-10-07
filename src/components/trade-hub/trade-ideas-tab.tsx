@@ -79,7 +79,10 @@ export function TradeIdeasTab() {
       const res = await fetch("/api/ai/trade-hub", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tool: "trade_ideas", params: { category: cat, horizon: hor } }),
+        body: JSON.stringify({
+          tool: "trade_ideas",
+          params: { category: cat, horizon: hor, nonce: Date.now() },
+        }),
       });
       const json = await res.json();
       if (json.success && Array.isArray(json.data) && json.data.length > 0) {
@@ -322,22 +325,26 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
 
         {/* Row 2: Asset Categories & Refresh */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-1">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
             {[
-              { id: "all", label: "Todas as Oportunidades" },
-              { id: "layer1", label: "Layer 1s & Majors" },
-              { id: "defi", label: "DeFi Institucional" },
-              { id: "ai", label: "IA & Big Data" },
+              { id: "all", label: "🌟 Todas (Diversificado)" },
+              { id: "gainers", label: "🚀 Top Momentum / Altas" },
+              { id: "reversal", label: "🔄 Reversão / Repique" },
+              { id: "ai", label: "🧠 IA & DePIN" },
+              { id: "defi", label: "🏦 DeFi Institucional" },
+              { id: "layer1", label: "🏛️ Layer 1s & Majors" },
+              { id: "memes", label: "🔥 Memes & High Beta" },
+              { id: "volatility", label: "⚡ Alta Volatilidade" },
             ].map((cat) => (
               <Button
                 key={cat.id}
                 variant={category === cat.id ? "default" : "outline"}
                 size="sm"
                 onClick={() => setCategory(cat.id)}
-                className={`text-xs h-7 px-2.5 ${
+                className={`text-xs h-7 px-2.5 transition-all ${
                   category === cat.id
-                    ? "bg-cyan-600 hover:bg-cyan-500 text-white font-medium shadow-sm"
-                    : "text-muted-foreground border-border/40"
+                    ? "bg-cyan-600 hover:bg-cyan-500 text-white font-medium shadow-sm shadow-cyan-600/30"
+                    : "text-muted-foreground hover:text-foreground border-border/40 hover:border-cyan-500/40"
                 }`}
               >
                 {cat.label}
@@ -350,10 +357,10 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
             disabled={loading}
             variant="outline"
             size="sm"
-            className="border-cyan-500/30 text-cyan-400 hover:bg-cyan-950/40 text-xs h-8"
+            className="border-cyan-500/40 text-cyan-400 hover:bg-cyan-950/40 text-xs h-8 font-medium shadow-sm"
           >
             <RefreshCw className={`w-3.5 h-3.5 mr-2 ${loading ? "animate-spin" : ""}`} />
-            {loading ? "Escaneando Mercado..." : "Atualizar Oportunidades"}
+            {loading ? "Rotacionando Setups..." : "Gerar Novos Setups"}
           </Button>
         </div>
       </div>

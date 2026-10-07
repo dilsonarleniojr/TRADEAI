@@ -41,8 +41,29 @@ export async function GET(req: NextRequest) {
 
     const sellTrades = allTrades.filter((t) => t.side === "SELL");
 
-    // 2. Fetch live L2 depth & OFI for monitored pairs from Binance
-    const trackedSymbols = ["BTCUSDT", "RENDERUSDT", "SOLUSDT", "ETHUSDT"];
+    // 2. Fetch live L2 depth & OFI for monitored pairs from Binance with dynamic diversification
+    let botSymbols: string[] = [];
+    try {
+      const activeBots = await db.botConfig.findMany({
+        where: { isActive: true },
+        select: { symbol: true },
+        take: 10,
+      });
+      botSymbols = activeBots.map((b) => b.symbol.toUpperCase());
+    } catch {
+      // Fallback gracioso
+    }
+
+    const marketDiscoveryPool = [
+      "BTCUSDT", "SOLUSDT", "ETHUSDT", "RENDERUSDT", "NEARUSDT",
+      "AVAXUSDT", "LINKUSDT", "SUIUSDT", "DOGEUSDT", "PEPEUSDT",
+      "TAOUSDT", "UNIUSDT", "INJUSDT", "AAVEUSDT", "APTUSDT"
+    ];
+
+    // Embaralhamento rotativo para diversificar alertas preditivos a cada ciclo
+    const shuffledPool = [...marketDiscoveryPool].sort(() => Math.random() - 0.5);
+    const combinedSymbols = Array.from(new Set([...botSymbols, ...shuffledPool]));
+    const trackedSymbols = combinedSymbols.slice(0, 6);
     const l2Microstructure: Record<string, any> = {};
 
     await Promise.all(

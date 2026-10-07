@@ -371,6 +371,25 @@ export function AISignals() {
       1
     : 1;
 
+  const activeModalBot = selectedSignal
+    ? bots.find((b) => b.symbol.toUpperCase() === selectedCleanSym && b.active)
+    : null;
+  const isModalBotInPosition = activeModalBot && (activeModalBot.status === "in_position" || (!!activeModalBot.position && activeModalBot.position.quantity > 0));
+  let modalFloatingPnlPct = 0;
+  let hasModalFloatingPnl = false;
+  if (isModalBotInPosition && activeModalBot?.position) {
+    const curPrice = tickers[selectedCleanSym]?.price ?? (activeModalBot.position.currentPrice || selectedCurPrice);
+    const entryPrice = activeModalBot.position.entryPrice || 0;
+    if (curPrice > 0 && entryPrice > 0) {
+      modalFloatingPnlPct = ((curPrice - entryPrice) / entryPrice) * 100;
+      hasModalFloatingPnl = true;
+    } else if (typeof activeModalBot.position.unrealizedPnlPercent === "number") {
+      modalFloatingPnlPct = activeModalBot.position.unrealizedPnlPercent;
+      hasModalFloatingPnl = true;
+    }
+  }
+  const isModalFloatingProfit = modalFloatingPnlPct >= 0;
+
   const currentSlPct =
     selectedSignal && selectedSignal.stopLoss > 0 && selectedCurPrice > 0
       ? Math.abs(((selectedCurPrice - selectedSignal.stopLoss) / selectedCurPrice) * 100)
@@ -424,6 +443,25 @@ export function AISignals() {
                   ? "border-l-crypto-red"
                   : "border-l-amber-400";
 
+                const cleanSym = signal.symbol.endsWith("USDT") ? signal.symbol.toUpperCase() : `${signal.symbol.toUpperCase()}USDT`;
+                const activeBot = bots.find((b) => b.symbol.toUpperCase() === cleanSym && b.active);
+                const isBotInPosition = activeBot && (activeBot.status === "in_position" || (!!activeBot.position && activeBot.position.quantity > 0));
+
+                let floatingPnlPct = 0;
+                let hasFloatingPnl = false;
+                if (isBotInPosition && activeBot.position) {
+                  const curPrice = tickers[cleanSym]?.price ?? (activeBot.position.currentPrice || signal.priceAtSignal || 0);
+                  const entryPrice = activeBot.position.entryPrice || 0;
+                  if (curPrice > 0 && entryPrice > 0) {
+                    floatingPnlPct = ((curPrice - entryPrice) / entryPrice) * 100;
+                    hasFloatingPnl = true;
+                  } else if (typeof activeBot.position.unrealizedPnlPercent === "number") {
+                    floatingPnlPct = activeBot.position.unrealizedPnlPercent;
+                    hasFloatingPnl = true;
+                  }
+                }
+                const isFloatingProfit = floatingPnlPct >= 0;
+
                 return (
                   <div
                     key={signal.id}
@@ -438,6 +476,7 @@ export function AISignals() {
                     className={cn(
                       "group flex items-center justify-between p-2.5 rounded-lg border-l-2 transition-all cursor-pointer hover:bg-secondary/60 hover:border-crypto-cyan/60 hover:shadow-md active:scale-[0.99] focus:outline-none focus:ring-1 focus:ring-crypto-cyan",
                       borderColor,
+                      activeBot && "bg-emerald-950/10",
                       executedSignalSymbols.has(signal.id) && "ring-1 ring-crypto-cyan/30"
                     )}
                   >
@@ -452,7 +491,7 @@ export function AISignals() {
                         {signal.action}
                       </Badge>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span
                             className="text-xs font-semibold cursor-pointer hover:text-crypto-cyan hover:underline transition-colors"
                             title={`Abrir gráfico de ${signal.symbol}`}
@@ -468,6 +507,34 @@ export function AISignals() {
                           <span className="text-[10px] text-muted-foreground">
                             @ ${formatPrice(signal.priceAtSignal)}
                           </span>
+
+                          {/* Badge Dinâmico de Robô com PnL Flutuante */}
+                          {activeBot && (
+                            isBotInPosition ? (
+                              <Badge
+                                variant="outline"
+                                className={`text-[8px] font-bold px-1.5 py-0 flex items-center gap-1 shadow-sm font-mono leading-none ${
+                                  isFloatingProfit
+                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                                    : "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                                }`}
+                                title={`Robô em posição em ${signal.symbol}: Entrada $${activeBot.position?.entryPrice?.toFixed(4) || "0"}`}
+                              >
+                                <span className={`w-1 h-1 rounded-full animate-ping shrink-0 ${isFloatingProfit ? "bg-emerald-400" : "bg-amber-400"}`} />
+                                {isFloatingProfit ? "🟢" : "🟡"} Em Posição ({hasFloatingPnl ? `${isFloatingProfit ? "+" : ""}${floatingPnlPct.toFixed(2)}%` : "0.00%"})
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[8px] font-bold px-1.5 py-0 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm font-mono leading-none"
+                                title={`Robô ativo em ${signal.symbol}: ${activeBot.name}`}
+                              >
+                                <span className="w-1 h-1 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                                🟢 Bot Ativo
+                              </Badge>
+                            )
+                          )}
+
                           {signal.risk_reward_ratio !== undefined && (
                             <Badge
                               variant="outline"
@@ -572,8 +639,31 @@ export function AISignals() {
                           {selectedSignal.action}
                         </Badge>
                       </DialogTitle>
-                      <DialogDescription className="text-xs text-muted-foreground">
-                        {selectedBaseSym}/USDT &bull; Revise os valores preenchidos e clique em OK.
+                      <DialogDescription className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap mt-0.5">
+                        <span>{selectedBaseSym}/USDT &bull; Revise os valores preenchidos e clique em OK.</span>
+                        {activeModalBot && (
+                          isModalBotInPosition ? (
+                            <Badge
+                              variant="outline"
+                              className={`text-[9px] font-bold px-1.5 py-0 flex items-center gap-1 shadow-sm font-mono ${
+                                isModalFloatingProfit
+                                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                                  : "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                              }`}
+                            >
+                              <span className={`w-1 h-1 rounded-full animate-ping shrink-0 ${isModalFloatingProfit ? "bg-emerald-400" : "bg-amber-400"}`} />
+                              {isModalFloatingProfit ? "🟢" : "🟡"} Robô em Posição ({hasModalFloatingPnl ? `${isModalFloatingProfit ? "+" : ""}${modalFloatingPnlPct.toFixed(2)}%` : "0.00%"})
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] font-bold px-1.5 py-0 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 font-mono"
+                            >
+                              <span className="w-1 h-1 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                              🟢 Robô Ativo
+                            </Badge>
+                          )
+                        )}
                       </DialogDescription>
                     </div>
                   </div>

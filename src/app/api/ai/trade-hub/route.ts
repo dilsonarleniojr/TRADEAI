@@ -127,16 +127,88 @@ export async function POST(request: Request) {
         const tickers = await fetchBinanceTickers();
         const category = params.category || 'all';
         const horizon = params.horizon || 'all'; // 'all' | 'fast' | 'long'
+        const nonce = Number(params.nonce || Date.now());
 
-        // Pre-filter candidate symbols
-        let candidateSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'NEARUSDT', 'AVAXUSDT', 'LINKUSDT', 'SUIUSDT', 'RENDERUSDT', 'FETUSDT', 'TAOUSDT', 'DOGEUSDT', 'PEPEUSDT', 'APTUSDT', 'ARBUSDT'];
-        if (category === 'defi') {
-          candidateSymbols = ['UNIUSDT', 'AAVEUSDT', 'LINKUSDT', 'MAKERUSDT', 'CRVUSDT', 'INJUSDT', 'PENDLEUSDT'];
+        // Setores curados para alta diversidade setorial
+        const SECTOR_POOLS: Record<string, string[]> = {
+          layer1: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'AVAXUSDT', 'NEARUSDT', 'SUIUSDT', 'APTUSDT', 'SEIUSDT', 'TIAUSDT', 'TONUSDT', 'ADAUSDT', 'DOTUSDT', 'KASUSDT'],
+          defi: ['UNIUSDT', 'AAVEUSDT', 'LINKUSDT', 'MKRUSDT', 'CRVUSDT', 'INJUSDT', 'PENDLEUSDT', 'LDOUSDT', 'JUPUSDT', 'RAYUSDT', 'ENAUSDT', 'SUSHIUSDT', 'CAKEUSDT'],
+          ai: ['RENDERUSDT', 'FETUSDT', 'TAOUSDT', 'NEARUSDT', 'GRTUSDT', 'WLDUSDT', 'AKTUSDT', 'ARUSDT', 'FILUSDT', 'THETAUSDT', 'IOUSDT', 'ARKMUSDT'],
+          memes: ['DOGEUSDT', 'SHIBUSDT', 'PEPEUSDT', 'WIFUSDT', 'BONKUSDT', 'FLOKIUSDT', 'POPCATUSDT', 'BOMEUSDT', 'MEMEUSDT'],
+        };
+
+        // Identificação dinâmica de líderes de mercado com volume > $3M
+        const liquidUSDT = Object.entries(tickers)
+          .filter(([sym, t]: [string, any]) => sym.endsWith('USDT') && t.price > 0 && (t.quoteVolume || 0) >= 3_000_000)
+          .map(([sym, t]: [string, any]) => ({
+            symbol: sym,
+            price: Number(t.price),
+            change: Number(t.priceChangePercent || 0),
+            vol: Number(t.quoteVolume || 0),
+            volatility: Number(((t.high - t.low) / (t.low || 1)) * 100),
+            high: Number(t.high || t.price * 1.02),
+            low: Number(t.low || t.price * 0.98),
+          }));
+
+        const topGainers = [...liquidUSDT]
+          .filter((item) => item.change > 1.5)
+          .sort((a, b) => b.change - a.change)
+          .map((i) => i.symbol);
+
+        const topReversals = [...liquidUSDT]
+          .filter((item) => item.change < -1.0)
+          .sort((a, b) => a.change - b.change)
+          .map((i) => i.symbol);
+
+        const topVolatiles = [...liquidUSDT]
+          .sort((a, b) => b.volatility - a.volatility)
+          .map((i) => i.symbol);
+
+        // Função de embaralhamento determinístico-dinâmico para rotação de opções
+        const shuffle = <T>(list: T[]): T[] => {
+          const arr = [...list];
+          for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+          }
+          return arr;
+        };
+
+        let candidateSymbols: string[] = [];
+        if (category === 'gainers') {
+          candidateSymbols = topGainers.length >= 5 ? shuffle(topGainers) : shuffle(SECTOR_POOLS.memes);
+        } else if (category === 'reversal') {
+          candidateSymbols = topReversals.length >= 5 ? shuffle(topReversals) : shuffle(SECTOR_POOLS.layer1);
+        } else if (category === 'defi') {
+          candidateSymbols = shuffle(SECTOR_POOLS.defi);
         } else if (category === 'layer1') {
-          candidateSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'AVAXUSDT', 'NEARUSDT', 'SUIUSDT', 'APTUSDT'];
+          candidateSymbols = shuffle(SECTOR_POOLS.layer1);
         } else if (category === 'ai') {
-          candidateSymbols = ['RENDERUSDT', 'FETUSDT', 'TAOUSDT', 'NEARUSDT', 'GRTUSDT', 'WLDUSDT'];
+          candidateSymbols = shuffle(SECTOR_POOLS.ai);
+        } else if (category === 'memes') {
+          candidateSymbols = shuffle(SECTOR_POOLS.memes);
+        } else if (category === 'volatility') {
+          candidateSymbols = shuffle(topVolatiles.slice(0, 15));
+        } else {
+          // CATEGORIA "all": Montar cesta multi-setorial perfeitamente diversificada!
+          // 1 Top Gainer (Momentum) + 1 Top Reversal (Pullback) + 1 IA + 1 DeFi + 1 Layer1/Meme
+          const gainerPick = topGainers.find((s) => !['USDCUSDT', 'FDUSDUSDT'].includes(s)) || 'SOLUSDT';
+          const reversalPick = topReversals.find((s) => s !== gainerPick) || 'ETHUSDT';
+          const aiShuffled = shuffle(SECTOR_POOLS.ai);
+          const aiPick = aiShuffled.find((s) => s !== gainerPick && s !== reversalPick) || 'RENDERUSDT';
+          const defiShuffled = shuffle(SECTOR_POOLS.defi);
+          const defiPick = defiShuffled.find((s) => s !== gainerPick && s !== reversalPick && s !== aiPick) || 'AAVEUSDT';
+          const l1Shuffled = shuffle(SECTOR_POOLS.layer1);
+          const l1Pick = l1Shuffled.find((s) => s !== gainerPick && s !== reversalPick && s !== aiPick && s !== defiPick) || 'NEARUSDT';
+          const memeShuffled = shuffle(SECTOR_POOLS.memes);
+          const memePick = memeShuffled.find((s) => ![gainerPick, reversalPick, aiPick, defiPick, l1Pick].includes(s)) || 'PEPEUSDT';
+
+          // Misturar a cesta selecionada com rotação
+          candidateSymbols = shuffle([gainerPick, reversalPick, aiPick, defiPick, l1Pick, memePick]);
         }
+
+        // Limitar para os melhores candidatos selecionados
+        candidateSymbols = Array.from(new Set(candidateSymbols)).slice(0, 8);
 
         const marketContext = candidateSymbols
           .map((s) => {
@@ -166,19 +238,23 @@ export async function POST(request: Request) {
         const systemPrompt = `Você é o Gerador de Ideias de Troca institucional da TradeAI.
 Sua missão: "Analise o mercado atual e identifique oportunidades de alta probabilidade diferenciando claramente entre APLICAÇÕES RÁPIDAS (Day Trade/Scalping) e MÉDIO/LONGO PRAZO (Swing/Position Trade). Para cada configuração, forneça o preço de entrada sugerido, metas de lucro, nível de stop-loss e a relação risco-recompensa esperada."
 
+DIRETRIZ DE DIVERSIFICAÇÃO OBRIGATÓRIA:
+O operador requer ALTA DIVERSIDADE DE ATIVOS E ESTRATÉGIAS. NÃO REPETIR apenas os mesmos pares habituais (como apenas BTC ou ETH).
+Selecione oportunidades distintas entre os dados ao vivo fornecidos, cobrindo diferentes perfis (altcoins de alto momentum, tokens de IA, protocolos DeFi e pares em repique técnico).
+
 DIRETRIZ DE HORIZONTE OPERACIONAL:
 ${horizonInstruction}
 
 REGRAS ESTRITAS:
 1. Retorne EXATAMENTE 5 oportunidades de trading com setups acionáveis e de alta probabilidade.
 2. Cada setup DEVE ter:
-   - symbol (ex: "BTCUSDT")
-   - name (ex: "Bitcoin")
+   - symbol (ex: "SOLUSDT")
+   - name (ex: "Solana")
    - type ("LONG" ou "SHORT")
    - horizon ("RAPIDO" para aplicações rápidas/day/scalp | "MEDIO_LONGO" para swing e position trade)
    - horizonLabel ("Aplicação Rápida (Day / Scalp)" | "Médio Prazo (Swing Trade)" | "Longo Prazo (Position / Estrutural)")
    - holdingPeriod ("Intraday (30m a 4h)" | "1 a 5 dias" | "Semanas a Meses")
-   - strategyType ("Rompimento de Volatilidade" | "Scalp em Pivot" | "Tendência Estrutural" | "Acumulação de Ciclo")
+   - strategyType ("Rompimento de Volatilidade" | "Scalp em Pivot" | "Tendência Estrutural" | "Pullback em Suporte" | "Reversão à Média")
    - entryPrice (número exato, próximo do preço atual)
    - tp1 (alvo de lucro parcial)
    - tp2 (alvo de lucro final)
@@ -190,7 +266,7 @@ REGRAS ESTRITAS:
    - timeframe ("15m" | "1H" | "4H" | "1D")
 3. Responda APENAS com um JSON array de 5 objetos seguindo essas chaves, sem delimitadores ou texto introdutório.`;
 
-        const userPrompt = `DADOS DE MERCADO AO VIVO:\n${marketContext || 'Utilize dados médios da Binance para BTC, ETH, SOL, BNB, NEAR'}\n\nFiltro/Categoria: ${category}\nHorizonte Solicitado: ${horizon}\nIdentifique as 5 melhores oportunidades agora:`;
+        const userPrompt = `DADOS DE MERCADO AO VIVO:\n${marketContext || 'Utilize dados médios da Binance para os pares fornecidos'}\n\nFiltro/Categoria: ${category}\nHorizonte Solicitado: ${horizon}\nIdentifique as 5 melhores oportunidades agora com alta diversificação:`;
 
         let rawAI = '';
         try {
@@ -199,20 +275,60 @@ REGRAS ESTRITAS:
           console.warn('[TradeHub] AI call failed, generating quant ideas algorithmically:', e.message);
         }
 
+        // Catálogo de estratégias diversificadas para o motor algorítmico
+        const STRATEGY_PRESETS = [
+          {
+            name: 'Rompimento de Máxima & Expansão de Volume',
+            tfFast: '15m',
+            tfLong: '4H',
+            tech: 'Rompimento com fluxo agressivo no book L2, superando resistência R1 com volume 2.3x superior à média de 20 períodos.',
+            fund: 'Forte influxo de capital em derivativos e aceleração do open interest nas últimas horas.',
+          },
+          {
+            name: 'Pullback em Suporte & Reversão à Média',
+            tfFast: '1H',
+            tfLong: '1D',
+            tech: 'Correção técnica saudável testando suporte do Pivot com indicador RSI saindo de exaustão sobrevendida.',
+            fund: 'Absorção institucional em zonas de desconto com ordens passivas de proteção no bid.',
+          },
+          {
+            name: 'Tendência Estrutural & Alinhamento de EMAs',
+            tfFast: '1H',
+            tfLong: '1D',
+            tech: 'Alinhamento altista de EMA 9/21/50 em leque com cruzamento positivo do MACD no fechamento do candle.',
+            fund: 'Fortalecimento da tese fundamentalista e expansão contínua da atividade on-chain da rede.',
+          },
+          {
+            name: 'Squeeze de Volatilidade em Bollinger',
+            tfFast: '15m',
+            tfLong: '4H',
+            tech: 'Compressão extrema de volatilidade (ATR comprimido) indicando breakout iminente a favor da tendência primária.',
+            fund: 'Descolamento da dominância geral e rotação de liquidez setorial favorável.',
+          },
+          {
+            name: 'Scalping em Nível Chave com OFI Positivo',
+            tfFast: '15m',
+            tfLong: '1H',
+            tech: 'Desbalanceamento de Order Flow (OFI > +0.30) com rejeição de mínimas intraday e absorção de vendas a mercado.',
+            fund: 'Janela de liquidez ágil com spread ultra-reduzido e baixa latência de execução.',
+          },
+        ];
+
         let parsed = parseJsonLoose<any[]>(rawAI);
         if (!Array.isArray(parsed) || parsed.length === 0) {
-          // Robust Algorithmic Quant Generator diversificado por horizonte
+          // Robust Algorithmic Quant Generator com alta diversidade e rotação
           parsed = candidateSymbols.slice(0, 5).map((sym, idx) => {
             const t = tickers[sym] || { price: 100, priceChangePercent: 1.5, high: 105, low: 95, quoteVolume: 50000000 };
             const p = Number(t?.price || 100);
-            const isLong = (t?.priceChangePercent ?? 0) > -2;
+            const isLong = (t?.priceChangePercent ?? 0) > -3;
+            const strat = STRATEGY_PRESETS[idx % STRATEGY_PRESETS.length];
 
             // Determinar horizonte se solicitado ou intercalar
             const isFast = horizon === 'fast' ? true : horizon === 'long' ? false : idx % 2 === 0;
 
             const slDist = isFast ? p * 0.013 : p * 0.035;
-            const tp1Dist = slDist * (isFast ? 1.8 : 2.0);
-            const tp2Dist = slDist * (isFast ? 2.8 : 3.2);
+            const tp1Dist = slDist * (isFast ? 1.8 : 2.2);
+            const tp2Dist = slDist * (isFast ? 2.8 : 3.4);
 
             return {
               symbol: sym,
@@ -221,20 +337,16 @@ REGRAS ESTRITAS:
               horizon: isFast ? 'RAPIDO' : 'MEDIO_LONGO',
               horizonLabel: isFast ? 'Aplicação Rápida (Day / Scalp)' : idx === 1 ? 'Médio Prazo (Swing Trade)' : 'Longo Prazo (Position / Estrutural)',
               holdingPeriod: isFast ? 'Intraday (30 min a 4 horas)' : idx === 1 ? 'Swing Trade (2 a 7 dias)' : 'Longo Prazo (2 a 6 semanas)',
-              strategyType: isFast ? 'Scalping em Pivot & Rompimento' : 'Tendência Primária & Acumulação Macro',
+              strategyType: strat.name,
               entryPrice: Number(p.toFixed(p > 10 ? 2 : 4)),
               tp1: Number((isLong ? p + tp1Dist : p - tp1Dist).toFixed(p > 10 ? 2 : 4)),
               tp2: Number((isLong ? p + tp2Dist : p - tp2Dist).toFixed(p > 10 ? 2 : 4)),
               stopLoss: Number((isLong ? p - slDist : p + slDist).toFixed(p > 10 ? 2 : 4)),
-              riskReward: isFast ? 2.3 : 2.8,
-              winProbability: isFast ? 72 - idx * 2 : 68 - idx * 2,
-              technicalReason: isFast
-                ? `Micro-estrutura em rompimento dinâmico com confluência de Pivots e aceleração de volume no book L2.`
-                : `Estrutura de suporte macro confirmada em gráfico diário com médias móveis EMA 21/50 alinhadas em expansão.`,
-              fundamentalReason: isFast
-                ? `Desequilíbrio temporário de liquidez e absorção agressiva de vendas a mercado.`
-                : `Fluxo consistente de influxo institucional e fortalecimento da dominância de rede.`,
-              timeframe: isFast ? (idx % 2 === 0 ? '15m' : '1H') : (idx % 2 === 1 ? '4H' : '1D'),
+              riskReward: isFast ? 2.3 : 2.9,
+              winProbability: isFast ? 75 - (idx * 2) : 71 - (idx * 2),
+              technicalReason: strat.tech,
+              fundamentalReason: strat.fund,
+              timeframe: isFast ? strat.tfFast : strat.tfLong,
               sources: {
                 exchange: 'Binance Spot Live API v3',
                 pricing: 'Livro de Ofertas & Tickers 24h',

@@ -24,13 +24,14 @@ interface TopPick {
 export async function POST(request: Request) {
   let marketData: Record<string, any> = {};
   try {
-    // Check cache first
-    if (cachedPicks && Date.now() - cachedPicks.timestamp < CACHE_DURATION) {
+    const body = await request.json().catch(() => ({}));
+    marketData = body.marketData || {};
+    const forceRefresh = Boolean(body.forceRefresh);
+
+    // Check cache first (respeita forceRefresh para entregar novas seleções)
+    if (!forceRefresh && cachedPicks && Date.now() - cachedPicks.timestamp < CACHE_DURATION) {
       return NextResponse.json({ success: true, picks: cachedPicks.data, cached: true });
     }
-
-    const body = await request.json();
-    marketData = body.marketData || {};
 
     if (!marketData || Object.keys(marketData).length === 0) {
       return NextResponse.json(
@@ -42,9 +43,17 @@ export async function POST(request: Request) {
     // Sem busca de notícias: a busca antiga dependia do SDK da Z.AI.
     const newsContext = '';
 
+    // Amostragem diversificada: selecionar pares de alta liquidez, maiores altas, maiores quedas e altcoins variadas
+    const allMarketEntries = Object.entries(marketData).filter(([_, d]: [string, any]) => d && d.price > 0);
+    const sortedByChange = [...allMarketEntries].sort((a, b) => (b[1].priceChangePercent || 0) - (a[1].priceChangePercent || 0));
+    const topGainersSlice = sortedByChange.slice(0, 10);
+    const topLosersSlice = sortedByChange.slice(-6);
+    const randomLiquidSlice = [...allMarketEntries].sort(() => Math.random() - 0.5).slice(0, 14);
+
+    const diverseEntries = Array.from(new Map([...topGainersSlice, ...topLosersSlice, ...randomLiquidSlice]).entries()).map(([k, v]) => [k, v] as [string, any]);
+
     // Prepare market summary for AI analysis com níveis e contexto técnico
-    const marketSummary = Object.entries(marketData)
-      .slice(0, 30)
+    const marketSummary = diverseEntries
       .map(([symbol, data]: [string, any]) => {
         const p = data.price || 0;
         const h = data.high || data.highPrice || p * 1.02;
@@ -119,22 +128,6 @@ IMPORTANTE: Responda APENAS com o array JSON, sem texto adicional.`;
 function generateFallbackPicks(marketData: Record<string, any>): TopPick[] {
   if (!marketData || Object.keys(marketData).length === 0) return [];
 
-  const entries = Object.entries(marketData)
-    .map(([symbol, data]: [string, any]) => ({
-      symbol,
-      price: data.price || 0,
-      priceChangePercent: data.priceChangePercent || 0,
-      quoteVolume: data.quoteVolume || 0,
-    }))
-    .filter(e => e.price > 0)
-    .sort((a, b) => {
-      // Score: combination of positive momentum + volume
-      const scoreA = (a.priceChangePercent > 0 ? a.priceChangePercent : 0) * 2 + (a.quoteVolume / 1e9);
-      const scoreB = (b.priceChangePercent > 0 ? b.priceChangePercent : 0) * 2 + (b.quoteVolume / 1e9);
-      return scoreB - scoreA;
-    })
-    .slice(0, 5);
-
   const names: Record<string, string> = {
     BTCUSDT: 'Bitcoin', ETHUSDT: 'Ethereum', BNBUSDT: 'BNB', SOLUSDT: 'Solana',
     XRPUSDT: 'Ripple', ADAUSDT: 'Cardano', DOGEUSDT: 'Dogecoin', AVAXUSDT: 'Avalanche',
@@ -143,6 +136,7 @@ function generateFallbackPicks(marketData: Record<string, any>): TopPick[] {
     ARBUSDT: 'Arbitrum', OPUSDT: 'Optimism', UNIUSDT: 'Uniswap', AAVEUSDT: 'Aave',
     FETUSDT: 'Fetch.ai', RENDERUSDT: 'Render', SHIBUSDT: 'Shiba Inu', PEPEUSDT: 'Pepe',
     FILUSDT: 'Filecoin', LTCUSDT: 'Litecoin', TRXUSDT: 'TRON', XLMUSDT: 'Stellar',
+    TAOUSDT: 'Bittensor', WLDUSDT: 'Worldcoin', PENDLEUSDT: 'Pendle', TIAUSDT: 'Celestia',
   };
 
   const categories: Record<string, string> = {
@@ -153,7 +147,44 @@ function generateFallbackPicks(marketData: Record<string, any>): TopPick[] {
     ARBUSDT: 'Layer 2', OPUSDT: 'Layer 2', UNIUSDT: 'DeFi', AAVEUSDT: 'DeFi',
     FETUSDT: 'IA', RENDERUSDT: 'IA', SHIBUSDT: 'Meme', PEPEUSDT: 'Meme',
     FILUSDT: 'Infraestrutura', LTCUSDT: 'Layer 1', TRXUSDT: 'Exchange', XLMUSDT: 'Exchange',
+    TAOUSDT: 'IA', WLDUSDT: 'IA', PENDLEUSDT: 'DeFi', TIAUSDT: 'Layer 1',
   };
+
+  const sortedCandidates = Object.entries(marketData)
+    .map(([symbol, data]: [string, any]) => {
+      const p = Number(data.price || 0);
+      const chg = Number(data.priceChangePercent || 0);
+      const vol = Number(data.quoteVolume || 0);
+      const volLog = Math.log10(Math.max(1000, vol));
+      // Pontuação equilibrada: valoriza momentum e consistência sem deixar o volume de trilhões de BTC sufocar outras oportunidades
+      const score = (chg > 0 ? chg * 2.2 : chg * 0.4) + volLog * 1.8 + (Math.random() * 2.0);
+      return { symbol, price: p, priceChangePercent: chg, quoteVolume: vol, score };
+    })
+    .filter((e) => e.price > 0 && e.quoteVolume >= 2_000_000)
+    .sort((a, b) => b.score - a.score);
+
+  // Selecionar 5 ativos com diversificação estrita de categorias
+  const entries: typeof sortedCandidates = [];
+  const categoryCounts: Record<string, number> = {};
+
+  for (const cand of sortedCandidates) {
+    if (entries.length >= 5) break;
+    const cat = categories[cand.symbol] || 'Altcoin';
+    if ((categoryCounts[cat] || 0) < 2) {
+      entries.push(cand);
+      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+    }
+  }
+
+  // Fallback caso a restrição de categoria seja muito estreita
+  if (entries.length < 5) {
+    for (const cand of sortedCandidates) {
+      if (entries.length >= 5) break;
+      if (!entries.some((e) => e.symbol === cand.symbol)) {
+        entries.push(cand);
+      }
+    }
+  }
 
   return entries.map((entry, idx) => {
     const isPositive = entry.priceChangePercent > 0;

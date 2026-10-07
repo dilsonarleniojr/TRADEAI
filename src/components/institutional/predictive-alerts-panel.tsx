@@ -20,9 +20,12 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
+import { useCryptoStore } from "@/lib/store";
 
 export function PredictiveAlertsPanel() {
   const { toast } = useToast();
+  const bots = useCryptoStore((s) => s.bots);
+  const tickers = useCryptoStore((s) => s.tickers);
   const alerts = useAlertStore((s) => s.alerts);
   const filterSeverity = useAlertStore((s) => s.filterSeverity);
   const setFilterSeverity = useAlertStore((s) => s.setFilterSeverity);
@@ -234,18 +237,59 @@ export function PredictiveAlertsPanel() {
                 ? "border-amber-500/40 bg-[#0d121e]"
                 : "border-white/[0.06] bg-[#0b101c]";
 
+              const pairSym = alert.context.pair ? (alert.context.pair.endsWith("USDT") ? alert.context.pair.toUpperCase() : `${alert.context.pair.toUpperCase()}USDT`) : null;
+              const activeBot = pairSym ? bots.find((b) => b.symbol.toUpperCase() === pairSym && b.active) : null;
+              const isBotInPosition = activeBot && (activeBot.status === "in_position" || (!!activeBot.position && activeBot.position.quantity > 0));
+              let floatingPnlPct = 0;
+              let hasFloatingPnl = false;
+              if (isBotInPosition && activeBot?.position && pairSym) {
+                const curPrice = tickers[pairSym]?.price ?? (activeBot.position.currentPrice || 0);
+                const entryPrice = activeBot.position.entryPrice || 0;
+                if (curPrice > 0 && entryPrice > 0) {
+                  floatingPnlPct = ((curPrice - entryPrice) / entryPrice) * 100;
+                  hasFloatingPnl = true;
+                } else if (typeof activeBot.position.unrealizedPnlPercent === "number") {
+                  floatingPnlPct = activeBot.position.unrealizedPnlPercent;
+                  hasFloatingPnl = true;
+                }
+              }
+              const isFloatingProfit = floatingPnlPct >= 0;
+
               return (
                 <div
                   key={alert.id}
                   className={`p-3.5 rounded-xl border ${borderCls} space-y-2.5 transition-all hover:border-purple-500/40`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {getSeverityPill(alert.severity)}
                       <span className="font-bold text-white text-xs">{alert.title}</span>
                       <Badge variant="outline" className="text-[9px] bg-slate-900 border-white/10 text-slate-400">
                         {alert.category}
                       </Badge>
+                      {activeBot && (
+                        isBotInPosition ? (
+                          <Badge
+                            variant="outline"
+                            className={`text-[8px] font-bold px-1.5 py-0 flex items-center gap-1 shadow-sm font-mono leading-none ${
+                              isFloatingProfit
+                                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                                : "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                            }`}
+                          >
+                            <span className={`w-1 h-1 rounded-full animate-ping shrink-0 ${isFloatingProfit ? "bg-emerald-400" : "bg-amber-400"}`} />
+                            {isFloatingProfit ? "🟢" : "🟡"} Robô em Posição ({hasFloatingPnl ? `${isFloatingProfit ? "+" : ""}${floatingPnlPct.toFixed(2)}%` : "0.00%"})
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="text-[8px] font-bold px-1.5 py-0 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 font-mono leading-none"
+                          >
+                            <span className="w-1 h-1 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                            🟢 Robô Ativo
+                          </Badge>
+                        )
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 text-[10px] text-slate-400">
@@ -267,6 +311,9 @@ export function PredictiveAlertsPanel() {
                     )}
                     {alert.context.strategy && (
                       <span className="text-amber-300">[{alert.context.strategy}]</span>
+                    )}
+                    {activeBot && (
+                      <span className="text-emerald-400 font-mono font-medium">({activeBot.name})</span>
                     )}
                     <span className="ml-auto text-slate-500">Motivo: {alert.triggerReason}</span>
                   </div>
