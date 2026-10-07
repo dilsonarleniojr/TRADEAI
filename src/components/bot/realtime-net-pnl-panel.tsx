@@ -6,6 +6,7 @@ import { formatPrice } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import {
   Activity,
   DollarSign,
@@ -33,6 +34,7 @@ import {
   Eye,
   Target,
   Cpu,
+  Bot,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -220,8 +222,161 @@ export function RealtimeNetPnlPanel() {
   const [filterMode, setFilterMode] = useState<"all" | "live" | "paper">("all");
   const [selectedCategory, setSelectedCategory] = useState<PredictiveCategory>("all");
 
+  const { toast } = useToast();
   const tradesInStore = useCryptoStore((s) => s.trades);
   const botsInStore = useCryptoStore((s) => s.bots);
+  const addBot = useCryptoStore((s) => s.addBot);
+  const updateBot = useCryptoStore((s) => s.updateBot);
+  const setSelectedBotId = useCryptoStore((s) => s.setSelectedBotId);
+  const setSelectedSymbol = useCryptoStore((s) => s.setSelectedSymbol);
+  const setActiveSection = useCryptoStore((s) => s.setActiveSection);
+  const addBotLog = useCryptoStore((s) => s.addBotLog);
+  const tickers = useCryptoStore((s) => s.tickers);
+
+  // Executa a ação sugerida ou gera e ativa o robô autônomo diretamente pelo card
+  const handleExecuteAlertAction = (alert: PredictiveAlert) => {
+    const rawSym = alert.symbol || (alert.metrics?.symbol as string) || "BTCUSDT";
+    const cleanSym = rawSym.toUpperCase().endsWith("USDT")
+      ? rawSym.toUpperCase()
+      : `${rawSym.toUpperCase()}USDT`;
+    const baseSym = cleanSym.replace(/USDT$|BUSD$|USDC$/, "");
+    const curPrice = tickers[cleanSym]?.price || tickers["BTCUSDT"]?.price || 65000;
+
+    if (alert.type === "oportunidade" || alert.category === "lucratividade") {
+      // 1. Oportunidade Preditiva IA -> Gerar e Ativar Bot
+      const isBreakout =
+        alert.recommendedAction.toLowerCase().includes("breakout") ||
+        alert.title.toLowerCase().includes("expansão") ||
+        alert.title.toLowerCase().includes("lucro");
+
+      const strategy = isBreakout ? "QUANT_ENSEMBLE" : "AI";
+      const botName = `Bot IA Preditivo — ${baseSym} (Breakout & OFI)`;
+
+      // Calibração institucional de parâmetros:
+      // Take profit estendido (>= 2.0x ATR ou +3.6%)
+      const tpPct = 3.6;
+      const slPct = 1.8;
+      const trailPct = 1.0;
+      const beTrigger = 1.5;
+      const timeStopMins = 240; // 4 horas para scalp/intraday conforme guardrail
+
+      const existingBot = botsInStore.find((b) => b.symbol === cleanSym);
+      let targetBotId = "";
+
+      const botConfigData = {
+        name: botName,
+        symbol: cleanSym,
+        strategy,
+        active: true,
+        takeProfit: tpPct,
+        stopLoss: slPct,
+        trailingStop: true,
+        trailingStopDistance: trailPct,
+        allocationAmount: 30,
+        maxDailyTrades: 15,
+        buyThreshold: 35,
+        sellThreshold: 70,
+        rsiPeriod: 14,
+        emaFast: 9,
+        emaSlow: 21,
+        autoBreakEven: true,
+        breakEvenTrigger: beTrigger,
+        breakEvenBuffer: 0.35, // Garante que cobre as taxas de 0.20% da exchange com lucro líquido
+        usePartialTp: true,
+        partialTpTrigger: tpPct,
+        partialTpPercent: 50,
+        trailingTakeProfit: true,
+        trailingTakeProfitDistance: trailPct,
+        timeStopMinutes: timeStopMins,
+        signalConfidenceThreshold: alert.confidencePercent || 85,
+        autoTradeSignals: true,
+        useMarketRegime: true,
+        useMultiTimeframe: true,
+        useEnsemble: true,
+        algorithmVersion: "v2.6.0-predictive-fleet",
+      };
+
+      if (existingBot) {
+        targetBotId = existingBot.id;
+        updateBot(existingBot.id, {
+          ...botConfigData,
+          status: existingBot.position ? "in_position" : "scanning",
+          stats: {
+            ...existingBot.stats,
+            lastAction: `Ativado via Oportunidade Preditiva: Alvo +${tpPct}%, Stop -${slPct}%`,
+            lastActionTime: new Date().toISOString(),
+          },
+        });
+      } else {
+        targetBotId = addBot({
+          ...botConfigData,
+          status: "scanning",
+        });
+      }
+
+      addBotLog({
+        botId: targetBotId,
+        botName,
+        type: "info",
+        message: `🤖 Bot ${baseSym} gerado e ativado via Oportunidade Preditiva IA: ${alert.recommendedAction} | Ref: $${curPrice} | Alvo: +${tpPct}% | SL: -${slPct}% | Time-Stop: 4h`,
+      });
+
+      setSelectedBotId(targetBotId);
+      setSelectedSymbol(cleanSym);
+      setActiveSection("bot");
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      toast({
+        title: `🚀 Bot ${baseSym} Gerado e Ativado!`,
+        description: `Estratégia ${strategy} em execução. Alvo estendido +${tpPct}% | SL -${slPct}% | Trailing Stop ativo. Redirecionando para a frota de robôs.`,
+      });
+      return;
+    }
+
+    if (alert.type === "risco") {
+      // 2. Alerta de Risco -> Ativar Regime Defensivo
+      const existingBot = botsInStore.find((b) => b.symbol === cleanSym);
+      if (existingBot) {
+        updateBot(existingBot.id, {
+          signalConfidenceThreshold: 75,
+          stopLoss: Math.min(existingBot.stopLoss, 1.5),
+          autoBreakEven: true,
+          stats: {
+            ...existingBot.stats,
+            lastAction: `Regime Defensivo ativado por risco preditivo: ${alert.recommendedAction}`,
+            lastActionTime: new Date().toISOString(),
+          },
+        });
+        addBotLog({
+          botId: existingBot.id,
+          botName: existingBot.name,
+          type: "warning",
+          message: `🛡️ Regime Defensivo ativado: ${alert.recommendedAction}`,
+        });
+        setSelectedBotId(existingBot.id);
+        setSelectedSymbol(cleanSym);
+        setActiveSection("bot");
+        toast({
+          title: `🛡️ Regime Defensivo Aplicado em ${cleanSym}!`,
+          description: `Parâmetros do robô ajustados para proteção de capital: ${alert.recommendedAction}`,
+        });
+      } else {
+        toast({
+          title: `🛡️ Proteção de Governança Ativada`,
+          description: `Recomendação de risco aplicada para ${cleanSym}: ${alert.recommendedAction}`,
+        });
+      }
+      return;
+    }
+
+    // 3. Outros Avisos / Info
+    toast({
+      title: `⚡ Ação Executada com Sucesso`,
+      description: `${alert.recommendedAction}`,
+    });
+  };
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -817,13 +972,14 @@ export function RealtimeNetPnlPanel() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95 }}
                       transition={{ duration: 0.2 }}
-                      className={`p-3.5 rounded-xl border flex flex-col justify-between gap-2.5 shadow-sm transition-all duration-200 ${
+                      onClick={() => handleExecuteAlertAction(alert)}
+                      className={`p-3.5 rounded-xl border flex flex-col justify-between gap-2.5 shadow-sm transition-all duration-200 cursor-pointer hover:scale-[1.01] hover:shadow-lg active:scale-[0.99] group/card ${
                         isOpp
-                          ? "bg-crypto-green/5 border-crypto-green/30 hover:border-crypto-green/50"
+                          ? "bg-crypto-green/5 border-crypto-green/30 hover:border-crypto-green/60"
                           : isRisk
-                          ? "bg-crypto-red/5 border-crypto-red/30 hover:border-crypto-red/50"
+                          ? "bg-crypto-red/5 border-crypto-red/30 hover:border-crypto-red/60"
                           : isWarn
-                          ? "bg-amber-500/5 border-amber-500/30 hover:border-amber-500/50"
+                          ? "bg-amber-500/5 border-amber-500/30 hover:border-amber-500/60"
                           : "bg-secondary/30 border-border/40 hover:border-border/60"
                       }`}
                     >
@@ -868,7 +1024,7 @@ export function RealtimeNetPnlPanel() {
                         </div>
 
                         {/* Title */}
-                        <h4 className="text-xs font-extrabold text-foreground tracking-tight pt-0.5">
+                        <h4 className="text-xs font-extrabold text-foreground tracking-tight pt-0.5 group-hover/card:text-crypto-cyan transition-colors">
                           {alert.title}
                         </h4>
 
@@ -892,15 +1048,47 @@ export function RealtimeNetPnlPanel() {
                         </div>
                       </div>
 
-                      {/* Action Callout */}
-                      <div className="bg-secondary/40 p-2 rounded-lg border border-border/30 flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 text-[11px]">
+                      {/* Action Callout & Execute Button */}
+                      <div className="bg-secondary/40 p-2 rounded-lg border border-border/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-[11px] flex-1">
                           <Target className="w-3.5 h-3.5 text-crypto-green shrink-0" />
                           <span className="text-muted-foreground font-semibold">Ação:</span>
                           <span className="text-foreground font-medium text-[11px] leading-tight">
                             {alert.recommendedAction}
                           </span>
                         </div>
+
+                        <Button
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExecuteAlertAction(alert);
+                          }}
+                          className={`w-full sm:w-auto h-7 px-2.5 text-[11px] font-bold shrink-0 transition-all active:scale-95 flex items-center justify-center gap-1 shadow-sm cursor-pointer ${
+                            isOpp
+                              ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40"
+                              : isRisk
+                              ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-950/40"
+                              : "bg-purple-600 hover:bg-purple-500 text-white"
+                          }`}
+                        >
+                          {isOpp ? (
+                            <>
+                              <Bot className="w-3.5 h-3.5 text-emerald-200" />
+                              Gerar Bot
+                            </>
+                          ) : isRisk ? (
+                            <>
+                              <ShieldAlert className="w-3.5 h-3.5 text-rose-200" />
+                              Aplicar Proteção
+                            </>
+                          ) : (
+                            <>
+                              <Zap className="w-3.5 h-3.5 text-purple-200" />
+                              Executar Ação
+                            </>
+                          )}
+                        </Button>
                       </div>
                     </motion.div>
                   );

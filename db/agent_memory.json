@@ -1,0 +1,82 @@
+[
+  {
+    "category": "USER_PREFERENCE",
+    "title": "Preferência Operacional em Dry Run por Padrão",
+    "summary": "O usuário determinou que toda execução deve operar em dry run nativo antes de POST para a exchange.",
+    "tags": [
+      "dry-run",
+      "paper-trading",
+      "user-rules"
+    ],
+    "details": {
+      "defaultExecutionMode": "dry_run"
+    },
+    "id": "mem-1791402908025-fj8jw",
+    "timestamp": "2026-10-07T19:55:08.025Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Governança de Risco Estrito TradeAI",
+    "summary": "Estabelecido teto de 5% de banca por ativo, Stop-Loss mandatório de até 2% e Freshness < 1s.",
+    "tags": [
+      "risk-limits",
+      "guardrails",
+      "data-freshness",
+      "dry-run"
+    ],
+    "details": {
+      "maxPositionPct": 5,
+      "maxSlPct": 2,
+      "freshnessScalpMs": 1000
+    },
+    "id": "mem-1791402908024-hx9jc",
+    "timestamp": "2026-10-07T19:55:08.024Z"
+  },
+  {
+    "category": "USER_PREFERENCE",
+    "title": "Preferência Operacional em Dry Run por Padrão",
+    "summary": "O usuário determinou que toda execução deve operar em dry run nativo antes de POST para a exchange.",
+    "tags": [
+      "dry-run",
+      "paper-trading",
+      "user-rules"
+    ],
+    "details": {
+      "defaultExecutionMode": "dry_run"
+    },
+    "id": "mem-1791402840195-qddyd",
+    "timestamp": "2026-10-07T19:54:00.195Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Governança de Risco Estrito TradeAI",
+    "summary": "Estabelecido teto de 5% de banca por ativo, Stop-Loss mandatório de até 2% e Freshness < 1s.",
+    "tags": [
+      "risk-limits",
+      "guardrails",
+      "data-freshness",
+      "dry-run"
+    ],
+    "details": {
+      "maxPositionPct": 5,
+      "maxSlPct": 2,
+      "freshnessScalpMs": 1000
+    },
+    "id": "mem-1791402840193-4lslb",
+    "timestamp": "2026-10-07T19:54:00.194Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Ação Executável e Geração de Bot por Clique em Oportunidades",
+    "summary": "Todo card/item de oportunidade ou alerta preditivo no app deve ser clicável e capaz de gerar/ativar o robô autônomo e aplicar a recomendação quantitativa imediatamente.",
+    "tags": ["one-click-bot", "opportunities", "predictive-alerts", "ux-governance"],
+    "details": {
+      "realtimeNetPnlPanel": "handleExecuteAlertAction",
+      "tradeIdeasTab": "handleCreateBot on Card click",
+      "timeStopMinutes": 240,
+      "trailingStop": true
+    },
+    "id": "mem-1791408845000-oneclick",
+    "timestamp": "2026-10-07T21:34:05.000Z"
+  }
+]

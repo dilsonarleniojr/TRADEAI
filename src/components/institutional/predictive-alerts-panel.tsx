@@ -74,6 +74,12 @@ export function PredictiveAlertsPanel() {
     }
   };
 
+  // Encontrar o alerta crítico ou de maior risco ativo para guiar a sugestão de correção
+  const activeCriticalAlert =
+    alerts.find((a) => a.severity === "critico" && !a.isRead) ||
+    alerts.find((a) => a.severity === "critico") ||
+    alerts.find((a) => a.severity === "risco");
+
   return (
     <Card className="bg-[#080d17] border border-purple-500/20 shadow-xl overflow-hidden font-mono">
       <CardHeader className="p-4 pb-2 border-b border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -100,7 +106,7 @@ export function PredictiveAlertsPanel() {
             <button
               key={sev}
               onClick={() => setFilterSeverity(sev)}
-              className={`text-[10px] px-2 py-0.5 rounded-lg font-bold capitalize transition-all cursor-pointer ${
+              className={`text-[10px] px-2.5 py-1 rounded-lg font-bold capitalize transition-all cursor-pointer ${
                 filterSeverity === sev
                   ? "bg-purple-600 text-white shadow-[0_0_12px_rgba(147,51,234,0.4)]"
                   : "text-slate-400 hover:text-white hover:bg-white/[0.06]"
@@ -113,35 +119,76 @@ export function PredictiveAlertsPanel() {
       </CardHeader>
 
       <CardContent className="p-4 space-y-3 text-xs">
-        {/* Banner de Pulso de Alerta Crítico */}
+        {/* Banner de Pulso de Alerta Crítico com Sugestão de Correção Imediata */}
         <AnimatePresence>
           {criticalPulseActive && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="bg-rose-950/60 border border-rose-500/80 rounded-xl p-3 flex items-center justify-between gap-3 shadow-[0_0_20px_rgba(244,63,94,0.3)] animate-pulse"
+              className="bg-gradient-to-r from-rose-950/80 via-rose-900/40 to-slate-950/90 border-2 border-rose-500/90 rounded-xl p-3.5 space-y-3 shadow-[0_0_25px_rgba(244,63,94,0.35)]"
             >
-              <div className="flex items-center gap-2.5">
-                <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
-                <div>
-                  <span className="font-bold text-rose-200 block text-xs">
-                    🚨 ALERTA CRÍTICO DE RISCO DETECTADO
-                  </span>
-                  <span className="text-[11px] text-rose-300/90">
-                    O modelo preditivo identificou probabilidade iminente de slippage ou rompimento adverso.
-                  </span>
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <div className="p-2 rounded-lg bg-rose-500/20 border border-rose-500/50 shrink-0 text-rose-400 mt-0.5">
+                    <ShieldAlert className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-rose-200 text-xs tracking-wide">
+                        🚨 ALERTA CRÍTICO DE RISCO DETECTADO
+                      </span>
+                      <Badge className="bg-rose-500/30 text-rose-300 border border-rose-500/60 font-mono text-[9px]">
+                        AÇÃO URGENTE
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-rose-200/95 mt-1 leading-relaxed">
+                      {activeCriticalAlert?.prediction || "O modelo preditivo identificou probabilidade iminente de slippage ou rompimento adverso no livro de ofertas."}
+                    </p>
+                    {activeCriticalAlert?.triggerReason && (
+                      <p className="text-[10px] text-rose-300/70 mt-0.5 font-mono">
+                        Gatilho: {activeCriticalAlert.triggerReason}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-end sm:self-start shrink-0">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (activeCriticalAlert) handleApplyAction(activeCriticalAlert);
+                      else dismissCriticalPulse();
+                    }}
+                    className="h-7 text-[11px] bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 shadow-[0_0_12px_rgba(16,185,129,0.4)] cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    Aplicar Correção
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={dismissCriticalPulse}
+                    className="h-7 text-[10px] bg-rose-950/60 border-rose-500/50 text-rose-200 hover:bg-rose-900/60 cursor-pointer"
+                  >
+                    Dispensar
+                  </Button>
                 </div>
               </div>
 
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={dismissCriticalPulse}
-                className="h-7 text-[10px] bg-rose-900/60 border-rose-500/50 text-white hover:bg-rose-800 cursor-pointer"
-              >
-                Dispensar Alerta
-              </Button>
+              {/* Box de Sugestão de Correção Obrigatória */}
+              <div className="p-3 rounded-lg bg-black/60 border border-emerald-500/40 flex items-start gap-2.5">
+                <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="space-y-1 w-full">
+                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
+                    💡 Sugestão para Correção / Mitigação Imediata:
+                  </span>
+                  <p className="text-xs text-emerald-100 font-sans leading-relaxed">
+                    {activeCriticalAlert?.recommendedAction ||
+                      "Forçar ordens LIMIT / IOC exclusivas, suspender temporariamente ordens a mercado e ajustar Stop Loss para o suporte S1 com tolerância de slippage limitada a 0.2%."}
+                  </p>
+                </div>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -149,18 +196,38 @@ export function PredictiveAlertsPanel() {
         {/* Lista de Alertas */}
         {filteredAlerts.length === 0 ? (
           <div className="p-8 text-center bg-[#0a101d] rounded-xl border border-white/[0.04]">
-            <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-            <p className="text-sm font-semibold text-white">Nenhum Alerta Ativo</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Todos os modelos quantitativos (Temporal, Microestrutura, Volatilidade, Slippage) indicam condições nominais.
-            </p>
+            {filterSeverity === "critico" && criticalPulseActive ? (
+              <div className="space-y-2">
+                <AlertTriangle className="w-8 h-8 text-rose-400 mx-auto mb-1 animate-pulse" />
+                <p className="text-sm font-semibold text-rose-300">Alerta Crítico em Monitoramento Ativo</p>
+                <p className="text-[11px] text-slate-400 mt-0.5 max-w-md mx-auto">
+                  Consulte a sugestão de correção indicada no banner acima para mitigar a probabilidade de slippage ou rompimento adverso.
+                </p>
+              </div>
+            ) : filterSeverity !== "all" ? (
+              <div>
+                <CheckCircle2 className="w-8 h-8 text-cyan-400 mx-auto mb-2" />
+                <p className="text-sm font-semibold text-white">Nenhum Alerta Ativo na Categoria "{filterSeverity.toUpperCase()}"</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Não foram detectadas anomalias nesta faixa de risco. Consulte a aba "Todos" para acompanhar os {alerts.length} alertas ativos.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                <p className="text-sm font-semibold text-white">Nenhum Alerta Ativo</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Todos os modelos quantitativos (Temporal, Microestrutura, Volatilidade, Slippage) indicam condições nominais.
+                </p>
+              </div>
+            )}
           </div>
         ) : (
-          <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
+          <div className="space-y-3 max-h-[440px] overflow-y-auto pr-1">
             {filteredAlerts.map((alert) => {
               const isCrit = alert.severity === "critico";
               const borderCls = isCrit
-                ? "border-rose-500/60 bg-rose-950/20 shadow-[0_0_12px_rgba(244,63,94,0.15)]"
+                ? "border-rose-500/70 bg-rose-950/25 shadow-[0_0_14px_rgba(244,63,94,0.2)]"
                 : alert.severity === "risco"
                 ? "border-orange-500/40 bg-[#0d121e]"
                 : alert.severity === "atencao"
@@ -170,7 +237,7 @@ export function PredictiveAlertsPanel() {
               return (
                 <div
                   key={alert.id}
-                  className={`p-3 rounded-xl border ${borderCls} space-y-2 transition-all hover:border-purple-500/40`}
+                  className={`p-3.5 rounded-xl border ${borderCls} space-y-2.5 transition-all hover:border-purple-500/40`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
@@ -188,12 +255,12 @@ export function PredictiveAlertsPanel() {
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                  <p className="text-[11px] text-slate-300 leading-relaxed font-sans">
                     {alert.prediction}
                   </p>
 
                   {/* Contexto Operacional: Par, Estratégia, Bot */}
-                  <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400 bg-black/30 px-2 py-1 rounded">
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400 bg-black/40 px-2.5 py-1 rounded-lg border border-white/[0.04]">
                     <span>Contexto:</span>
                     {alert.context.pair && (
                       <span className="text-cyan-300 font-semibold">{alert.context.pair}</span>
@@ -204,19 +271,27 @@ export function PredictiveAlertsPanel() {
                     <span className="ml-auto text-slate-500">Motivo: {alert.triggerReason}</span>
                   </div>
 
-                  {/* Recomendação Automática & Ação Rápida */}
-                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/[0.04]">
-                    <div className="text-[11px] text-emerald-400 flex items-center gap-1 truncate">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span className="truncate"><strong>Recomendação:</strong> {alert.recommendedAction}</span>
+                  {/* Sugestão de Correção & Ação de Mitigação */}
+                  <div className="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex items-start gap-2">
+                      <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
+                          💡 Sugestão para Correção:
+                        </span>
+                        <p className="text-xs text-emerald-100 font-sans leading-relaxed">
+                          {alert.recommendedAction || "Monitorar condições de liquidez L2 e restringir ordens a mercado."}
+                        </p>
+                      </div>
                     </div>
 
                     <Button
                       size="sm"
                       onClick={() => handleApplyAction(alert)}
-                      className="h-6 text-[10px] bg-purple-600 hover:bg-purple-500 text-white px-2 py-0 shrink-0 rounded cursor-pointer"
+                      className="h-7 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 shrink-0 rounded-lg cursor-pointer self-end sm:self-center shadow-[0_0_10px_rgba(16,185,129,0.3)] flex items-center gap-1"
                     >
-                      Aplicar
+                      <Zap className="w-3 h-3" />
+                      Aplicar Correção
                     </Button>
                   </div>
                 </div>

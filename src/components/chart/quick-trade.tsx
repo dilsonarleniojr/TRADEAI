@@ -7,7 +7,29 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Zap, ShoppingCart, Target, RefreshCw, Trash2, Clock, Wallet, DollarSign } from "lucide-react";
+import { 
+  TrendingUp, 
+  TrendingDown, 
+  Zap, 
+  ShoppingCart, 
+  Target, 
+  RefreshCw, 
+  Trash2, 
+  Clock, 
+  Wallet, 
+  DollarSign,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Lock,
+  Unlock,
+  Timer,
+  Scale,
+  AlertTriangle,
+  Sparkles,
+  Activity,
+  Layers
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
@@ -26,9 +48,24 @@ export function QuickTrade() {
     scheduledOrders,
     addScheduledOrder,
     removeScheduledOrder,
-    triggerScheduledOrder
+    triggerScheduledOrder,
+    tradePrefill,
+    clearTradePrefill,
   } = useCryptoStore(
-  useShallow((s) => ({ selectedSymbol: s.selectedSymbol, tickers: s.tickers, tradingMode: s.tradingMode, portfolio: s.portfolio, botConfig: s.botConfig, binanceTestnet: s.binanceTestnet, scheduledOrders: s.scheduledOrders, addScheduledOrder: s.addScheduledOrder, removeScheduledOrder: s.removeScheduledOrder, triggerScheduledOrder: s.triggerScheduledOrder }))
+  useShallow((s) => ({
+    selectedSymbol: s.selectedSymbol,
+    tickers: s.tickers,
+    tradingMode: s.tradingMode,
+    portfolio: s.portfolio,
+    botConfig: s.botConfig,
+    binanceTestnet: s.binanceTestnet,
+    scheduledOrders: s.scheduledOrders,
+    addScheduledOrder: s.addScheduledOrder,
+    removeScheduledOrder: s.removeScheduledOrder,
+    triggerScheduledOrder: s.triggerScheduledOrder,
+    tradePrefill: s.tradePrefill,
+    clearTradePrefill: s.clearTradePrefill,
+  }))
 );
   const [tradeSide, setTradeSide] = useState<"BUY" | "SELL">("BUY");
   const [quantity, setQuantity] = useState("");
@@ -38,6 +75,12 @@ export function QuickTrade() {
   const [sltpData, setSltpData] = useState<{ stopLoss: number; takeProfit: number; riskRewardRatio: number; recommendation: string } | null>(null);
   const [sltpLoading, setSltpLoading] = useState(false);
   const { toast } = useToast();
+
+  // Gerenciador de Margem e Alavancagem Proporcional ao Horizonte
+  const [marginMode, setMarginMode] = useState<"SPOT" | "ISOLATED" | "CROSS">("SPOT");
+  const [leverage, setLeverage] = useState<number>(1);
+  const [timeStopHours, setTimeStopHours] = useState<number>(0);
+  const [timeStopActive, setTimeStopActive] = useState<boolean>(false);
 
   // Scheduled orders state
   const [scheduledSide, setScheduledSide] = useState<"BUY" | "SELL">("BUY");
@@ -64,15 +107,87 @@ export function QuickTrade() {
   const availableHoldingValueUsd = availableHoldingQty * currentPrice;
   const availableCashUsdt = portfolio.cashBalance ?? 0;
 
-  // Reset inputs when symbol changes
+  // Reset inputs when symbol changes (exceto se houver tradePrefill para este símbolo)
   useEffect(() => {
+    if (tradePrefill && (tradePrefill.symbol === selectedSymbol || tradePrefill.symbol.replace(/USDT$|BUSD$|USDC$/, "") === cleanSym)) {
+      return;
+    }
     setQuantity("");
     setUsdtAmount("");
     setIsMaxSell(false);
     setScheduledQty("");
     setScheduledUsdt("");
     setScheduledIsMaxSell(false);
-  }, [selectedSymbol]);
+  }, [selectedSymbol, tradePrefill, cleanSym]);
+
+  // Pre-fill inputs when tradePrefill is set
+  useEffect(() => {
+    if (!tradePrefill) return;
+    const matches = tradePrefill.symbol === selectedSymbol || tradePrefill.symbol.replace(/USDT$|BUSD$|USDC$/, "") === cleanSym;
+    if (!matches) return;
+
+    // Set side
+    setTradeSide(tradePrefill.side);
+
+    // Carregar Gerenciador de Margem e Alavancagem Proporcional ao Horizonte Operacional
+    const isFast = tradePrefill.horizon === "RAPIDO";
+    if (isFast) {
+      setMarginMode(tradePrefill.marginMode || "ISOLATED");
+      setLeverage(tradePrefill.suggestedLeverage || 2);
+      setTimeStopHours(tradePrefill.timeStopHours || 4);
+      setTimeStopActive(tradePrefill.timeStopEnabled ?? true);
+    } else {
+      // Médio/Longo Prazo: Forçar estritamente SPOT 1x para evitar risco de liquidação por wicking
+      setMarginMode("SPOT");
+      setLeverage(1);
+      setTimeStopHours(0);
+      setTimeStopActive(false);
+    }
+
+    // Set SL/TP recommendation
+    if (tradePrefill.stopLoss || tradePrefill.takeProfit || tradePrefill.tp1) {
+      setSltpData({
+        stopLoss: tradePrefill.stopLoss || 0,
+        takeProfit: tradePrefill.takeProfit || tradePrefill.tp1 || 0,
+        riskRewardRatio: tradePrefill.riskReward || 2.5,
+        recommendation: tradePrefill.reason || `Setup ${tradePrefill.side} do Estúdio Quant & IA`,
+      });
+    }
+
+    // Pre-fill values com dimensionamento de posição proporcional ao risco
+    if (currentPrice > 0) {
+      const decimals = currentPrice > 1000 ? 6 : currentPrice > 1 ? 4 : (currentPrice < 0.01 ? 2 : 4);
+      if (tradePrefill.side === "BUY") {
+        let cash = 25;
+        if (availableCashUsdt > 10) {
+          if (tradePrefill.riskAllocationPercent) {
+            // Alocação dinâmica calculada com base no risco do horizonte
+            const alloc = (availableCashUsdt * tradePrefill.riskAllocationPercent) / 100;
+            cash = Math.max(10, Math.min(alloc, 500));
+          } else {
+            cash = Math.min(availableCashUsdt * 0.25, 250);
+          }
+        }
+        setUsdtAmount(cash.toFixed(2));
+        setQuantity(Number((cash / currentPrice).toFixed(decimals)).toString());
+      } else {
+        // SELL
+        if (availableHoldingQty > 0) {
+          setQuantity(availableHoldingQty.toString());
+          setUsdtAmount((availableHoldingQty * currentPrice).toFixed(2));
+        } else {
+          const defaultUsd = 25;
+          setUsdtAmount(defaultUsd.toFixed(2));
+          setQuantity(Number((defaultUsd / currentPrice).toFixed(decimals)).toString());
+        }
+      }
+    }
+
+    // Pre-fill trigger price in scheduled mode if available
+    if (tradePrefill.entryPrice) {
+      setTriggerPrice(tradePrefill.entryPrice.toString());
+    }
+  }, [tradePrefill, selectedSymbol, currentPrice, availableCashUsdt, availableHoldingQty, cleanSym]);
 
   const handleUsdtChange = (val: string) => {
     setUsdtAmount(val);
@@ -304,6 +419,7 @@ export function QuickTrade() {
     if (!trigger || trigger <= 0 || !qty || qty <= 0 || currentPrice <= 0) return;
 
     const direction = trigger > currentPrice ? "above" : "below";
+    const horizon = tradePrefill?.horizon || (marginMode === "SPOT" ? "MEDIO_LONGO" : "RAPIDO");
 
     addScheduledOrder({
       id: `sched_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
@@ -313,7 +429,11 @@ export function QuickTrade() {
       quantity: qty,
       direction,
       isTriggered: false,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      marginMode,
+      leverage,
+      timeStopHours: timeStopActive ? timeStopHours : 0,
+      horizon,
     });
 
     setTriggerPrice("");
@@ -323,9 +443,9 @@ export function QuickTrade() {
 
     toast({
       title: "Ordem Programada Salva",
-      description: `${side === "BUY" ? "Compra" : "Venda"} programada de ${qty} ${selectedSymbol.replace("USDT", "")} salva @ gatilho $${formatPrice(trigger)}`,
+      description: `${side === "BUY" ? "Compra" : "Venda"} programada de ${qty} ${selectedSymbol.replace("USDT", "")} salva @ gatilho $${formatPrice(trigger)} [${marginMode} ${leverage}x${timeStopActive ? ` | Time-Stop: ${timeStopHours}h` : ''}]`,
     });
-  }, [triggerPrice, scheduledQty, currentPrice, selectedSymbol, addScheduledOrder, toast]);
+  }, [triggerPrice, scheduledQty, currentPrice, selectedSymbol, addScheduledOrder, toast, marginMode, leverage, timeStopActive, timeStopHours, tradePrefill]);
 
   const handleTrade = useCallback(async (side: "BUY" | "SELL") => {
     const qty = parseFloat(quantity);
@@ -343,6 +463,7 @@ export function QuickTrade() {
     }
 
     const isSellAll = side === "SELL" && (isMaxSell || qty >= (availableHoldingQty > 0 ? availableHoldingQty * 0.99 : 0));
+    const horizon = tradePrefill?.horizon || (marginMode === "SPOT" ? "MEDIO_LONGO" : "RAPIDO");
 
     try {
       const res = await fetch("/api/trades", {
@@ -356,10 +477,14 @@ export function QuickTrade() {
           price: currentPrice,
           quantity: qty,
           total,
-          strategy: "Manual",
+          strategy: tradePrefill?.source || "Manual",
           mode: tradingMode,
           pnl: 0,
           sellAll: isSellAll,
+          marginMode,
+          leverage,
+          timeStopHours: timeStopActive ? timeStopHours : 0,
+          horizon,
         }),
       });
 
@@ -375,7 +500,7 @@ export function QuickTrade() {
           price: result.data.price,
           quantity: result.data.quantity,
           total: result.data.total,
-          strategy: result.data.strategy || "Manual",
+          strategy: result.data.strategy || (tradePrefill?.source || "Manual"),
           mode: result.data.mode || tradingMode,
           pnl: result.data.pnl || 0,
           timestamp: result.data.timestamp || new Date().toISOString(),
@@ -392,9 +517,10 @@ export function QuickTrade() {
         setIsMaxSell(false);
 
         // Show toast notification
+        const horizonTag = (marginMode === "SPOT") ? "Spot 1x (Anti-Wicking)" : `Margem Isolada ${leverage}x`;
         toast({
-          title: `${side === "BUY" ? "🟢 Compra" : "🔴 Venda"} Executada`,
-          description: `${qty} ${selectedSymbol.replace("USDT", "")} @ $${formatPrice(currentPrice)} — Total: $${formatPrice(total)}`,
+          title: `${side === "BUY" ? "🟢 Compra" : "🔴 Venda"} Executada [${horizonTag}]`,
+          description: `${qty} ${selectedSymbol.replace("USDT", "")} @ $${formatPrice(currentPrice)} — Total: $${formatPrice(total)}${timeStopActive ? ` | Time-Stop: ${timeStopHours}h` : ''}`,
         });
 
         // Emit telemetry event
@@ -429,7 +555,7 @@ export function QuickTrade() {
         variant: "destructive",
       });
     }
-  }, [quantity, currentPrice, selectedSymbol, tradingMode, toast, isMaxSell, availableHoldingQty]);
+  }, [quantity, currentPrice, selectedSymbol, tradingMode, toast, isMaxSell, availableHoldingQty, marginMode, leverage, timeStopActive, timeStopHours, tradePrefill]);
 
   // Fetch AI SL/TP suggestions
   const fetchSLTP = useCallback(async () => {
@@ -505,6 +631,260 @@ export function QuickTrade() {
             </span>
           </div>
         </div>
+
+        {/* Banner de Setup Pré-Carregado do Estúdio Quant */}
+        {tradePrefill && (tradePrefill.symbol === selectedSymbol || tradePrefill.symbol.replace(/USDT$|BUSD$|USDC$/, "") === cleanSym) && (() => {
+          const isPrefillFast = tradePrefill.horizon === "RAPIDO";
+          const slDistancePct = tradePrefill.entryPrice && tradePrefill.stopLoss
+            ? Math.abs(((tradePrefill.stopLoss - tradePrefill.entryPrice) / tradePrefill.entryPrice) * 100).toFixed(1)
+            : "1.2";
+
+          return (
+            <div className="mb-3 p-3 rounded-xl border border-cyan-500/40 bg-gradient-to-r from-cyan-950/40 via-card/80 to-cyan-950/20 backdrop-blur-md shadow-lg shadow-cyan-950/20 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2.5">
+                  <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${tradePrefill.side === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-xs text-foreground">Setup Estúdio Quant</span>
+                      <Badge
+                        className={`${
+                          tradePrefill.side === 'BUY'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                        } text-[10px] font-bold px-2 py-0`}
+                      >
+                        {tradePrefill.side === 'BUY' ? 'ORDEM COMPRA (LONG)' : 'ORDEM VENDA (SHORT)'}
+                      </Badge>
+                      {tradePrefill.horizon && (
+                        <Badge
+                          className={cn(
+                            "text-[10px] font-bold px-2 py-0",
+                            isPrefillFast
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                              : "bg-indigo-500/20 text-indigo-300 border-indigo-500/40"
+                          )}
+                        >
+                          {isPrefillFast ? "⚡ Day/Scalp (Rápida)" : "🏛️ Médio/Longo Prazo"}
+                        </Badge>
+                      )}
+                      {tradePrefill.winProbability && (
+                        <span className="text-[10px] text-emerald-400 font-mono">
+                          {tradePrefill.winProbability}% Prob.
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono">
+                      <span>Entrada: <strong className="text-foreground">${tradePrefill.entryPrice || formatPrice(currentPrice)}</strong></span>
+                      <span>•</span>
+                      <span>Alvo: <strong className="text-emerald-400">${tradePrefill.takeProfit || tradePrefill.tp1}</strong></span>
+                      <span>•</span>
+                      <span>Stop: <strong className="text-rose-400">${tradePrefill.stopLoss}</strong></span>
+                      {tradePrefill.riskReward && (
+                        <>
+                          <span>•</span>
+                          <span className="text-cyan-300 font-bold">R:R {tradePrefill.riskReward}:1</span>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Racional de Risco e Alavancagem Proporcional ao Horizonte */}
+                    <div className="pt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                      {isPrefillFast ? (
+                        <div className="flex items-center gap-1.5 text-amber-300/90 bg-amber-950/40 border border-amber-500/30 px-2 py-0.5 rounded-md">
+                          <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+                          <span>Stop curto (~{slDistancePct}%): Alocação dinâmica calculada com Margem Isolada e trava Time-Stop de 4h.</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-emerald-300/90 bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded-md">
+                          <ShieldCheck className="w-3 h-3 text-emerald-400 shrink-0" />
+                          <span>Operação estritamente em Spot 1x para eliminar risco de liquidação em caudas de volatilidade (wicking).</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {tradePrefill.source && (
+                      <div className="text-[10px] text-cyan-400/80 flex items-center gap-1 pt-0.5">
+                        <span>Fonte: {tradePrefill.source}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => clearTradePrefill()}
+                  className="text-[11px] text-muted-foreground hover:text-foreground h-6 px-2 shrink-0"
+                  title="Limpar configuração automática"
+                >
+                  Limpar
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Gerenciador de Margem e Alavancagem Proporcional ao Horizonte */}
+        <div className="mb-3 p-2.5 rounded-xl border border-border/60 bg-secondary/30 backdrop-blur-sm space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Scale className="w-3.5 h-3.5 text-primary" />
+              <span className="text-xs font-bold text-foreground">Gerenciador de Margem & Alavancagem</span>
+            </div>
+            {tradePrefill?.horizon ? (
+              <Badge variant="outline" className={cn(
+                "text-[9px] font-semibold",
+                tradePrefill.horizon === "RAPIDO" ? "border-amber-500/50 text-amber-400 bg-amber-500/10" : "border-indigo-500/50 text-indigo-400 bg-indigo-500/10"
+              )}>
+                {tradePrefill.horizon === "RAPIDO" ? "⚡ Day/Scalp" : "🏛️ Médio/Longo"}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[9px] text-muted-foreground border-border/50">
+                Padrão
+              </Badge>
+            )}
+          </div>
+
+          {/* Modo de Margem: Spot vs Isolada vs Cruzada */}
+          <div className="grid grid-cols-3 gap-1 p-0.5 bg-background/80 rounded-lg border border-border/40">
+            <button
+              type="button"
+              onClick={() => {
+                setMarginMode("SPOT");
+                setLeverage(1);
+              }}
+              className={cn(
+                "py-1 text-[11px] font-bold rounded-md transition-all flex items-center justify-center gap-1",
+                marginMode === "SPOT"
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <ShieldCheck className="w-3 h-3" />
+              Spot (1x)
+            </button>
+            <button
+              type="button"
+              disabled={tradePrefill?.horizon === "MEDIO_LONGO"}
+              onClick={() => {
+                if (tradePrefill?.horizon === "MEDIO_LONGO") return;
+                setMarginMode("ISOLATED");
+                if (leverage === 1) setLeverage(2);
+              }}
+              title={tradePrefill?.horizon === "MEDIO_LONGO" ? "Médio/Longo Prazo exige Spot para proteção contra liquidação" : "Margem Isolada"}
+              className={cn(
+                "py-1 text-[11px] font-bold rounded-md transition-all flex items-center justify-center gap-1",
+                tradePrefill?.horizon === "MEDIO_LONGO"
+                  ? "opacity-40 cursor-not-allowed text-muted-foreground"
+                  : marginMode === "ISOLATED"
+                    ? "bg-cyan-600 text-white shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {tradePrefill?.horizon === "MEDIO_LONGO" ? <Lock className="w-3 h-3" /> : <Shield className="w-3 h-3 text-cyan-400" />}
+              Isolada
+            </button>
+            <button
+              type="button"
+              disabled={tradePrefill?.horizon === "MEDIO_LONGO"}
+              onClick={() => {
+                if (tradePrefill?.horizon === "MEDIO_LONGO") return;
+                setMarginMode("CROSS");
+                if (leverage === 1) setLeverage(2);
+              }}
+              title={tradePrefill?.horizon === "MEDIO_LONGO" ? "Médio/Longo Prazo exige Spot para proteção contra liquidação" : "Margem Cruzada"}
+              className={cn(
+                "py-1 text-[11px] font-bold rounded-md transition-all flex items-center justify-center gap-1",
+                tradePrefill?.horizon === "MEDIO_LONGO"
+                  ? "opacity-40 cursor-not-allowed text-muted-foreground"
+                  : marginMode === "CROSS"
+                    ? "bg-purple-600 text-white shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {tradePrefill?.horizon === "MEDIO_LONGO" ? <Lock className="w-3 h-3" /> : <Layers className="w-3 h-3 text-purple-400" />}
+              Cruzada
+            </button>
+          </div>
+
+          {/* Alavancagem e Trava Time-Stop */}
+          {tradePrefill?.horizon === "MEDIO_LONGO" ? (
+            <div className="flex items-center gap-1.5 p-2 rounded-lg bg-emerald-950/20 border border-emerald-500/20 text-[10px] text-emerald-300">
+              <Lock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>
+                <strong>Spot 1x Mandatório</strong>: Proteção institucional ativada para impedir liquidações em caudas de volatilidade (wicking de mercado).
+              </span>
+            </div>
+          ) : (
+            <div className="space-y-1.5 pt-0.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground flex items-center gap-1">
+                  Alavancagem:
+                  <strong className="text-foreground font-mono">{leverage}x</strong>
+                </span>
+                {/* Seletor rápido de Alavancagem */}
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3].map((lvl) => (
+                    <Button
+                      key={lvl}
+                      type="button"
+                      variant={leverage === lvl ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        setLeverage(lvl);
+                        if (lvl === 1) setMarginMode("SPOT");
+                        else if (marginMode === "SPOT") setMarginMode("ISOLATED");
+                      }}
+                      className={cn(
+                        "h-5 text-[10px] px-2",
+                        leverage === lvl ? "bg-cyan-600 hover:bg-cyan-700 text-white" : "border-border/60"
+                      )}
+                    >
+                      {lvl}x
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Trava Automática de Tempo (Time-Stop) para Day/Scalp */}
+              <div className="flex items-center justify-between p-1.5 rounded-lg bg-secondary/50 border border-border/50 text-[10px]">
+                <div className="flex items-center gap-1.5">
+                  <Timer className={cn("w-3.5 h-3.5 shrink-0", timeStopActive ? "text-amber-400" : "text-muted-foreground")} />
+                  <div>
+                    <span className="font-semibold text-foreground">Trava Automática de Tempo (Time-Stop)</span>
+                    <p className="text-muted-foreground text-[9px]">Cancela/desarma a ordem se não evoluir em 4 horas</p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={timeStopActive ? "default" : "outline"}
+                  onClick={() => {
+                    setTimeStopActive(!timeStopActive);
+                    if (!timeStopActive && timeStopHours === 0) setTimeStopHours(4);
+                  }}
+                  className={cn(
+                    "h-6 text-[10px] px-2 font-bold shrink-0",
+                    timeStopActive ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30" : "text-muted-foreground"
+                  )}
+                >
+                  {timeStopActive ? "4h ATIVO" : "INATIVO"}
+                </Button>
+              </div>
+
+              {leverage > 1 && parseFloat(usdtAmount || "0") > 0 && (
+                <div className="text-[10px] text-cyan-300/90 font-mono flex items-center justify-between px-1">
+                  <span>Poder Efetivo de Compra:</span>
+                  <strong>${(parseFloat(usdtAmount || "0") * leverage).toFixed(2)} USDT ({leverage}x alavancado)</strong>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
 
         <Tabs defaultValue="instant" className="w-full">
           <TabsList className="bg-background/80 border border-border/40 grid grid-cols-2 w-full mb-3 h-8 p-[2px]">

@@ -31,6 +31,7 @@ export type {
   TradingMode,
   ConnectionStatus,
   SyncMode,
+  TradePrefill,
 } from "./types";
 
 // Combined store type

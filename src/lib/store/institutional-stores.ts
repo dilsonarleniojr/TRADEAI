@@ -260,14 +260,23 @@ export const useAlertStore = create<AlertState>((set) => ({
       };
     }),
   setAlerts: (alerts) =>
-    set((state) => ({
-      alerts,
-      criticalPulseActive: alerts.some((a) => a.severity === "critico") ? true : state.criticalPulseActive,
-    })),
+    set((state) => {
+      const hasUnreadCritical = alerts.some((a) => a.severity === "critico" && !a.isRead);
+      return {
+        alerts,
+        // Só ativa o pulso se houver alerta crítico não lido, ou mantém se já havia crítico ativo
+        criticalPulseActive: hasUnreadCritical || (state.criticalPulseActive && alerts.some((a) => a.severity === "critico")),
+      };
+    }),
   markAsRead: (id) =>
-    set((state) => ({
-      alerts: state.alerts.map((a) => (a.id === id ? { ...a, isRead: true } : a)),
-    })),
+    set((state) => {
+      const updated = state.alerts.map((a) => (a.id === id ? { ...a, isRead: true } : a));
+      const hasUnreadCritical = updated.some((a) => a.severity === "critico" && !a.isRead);
+      return {
+        alerts: updated,
+        criticalPulseActive: hasUnreadCritical,
+      };
+    }),
   clearAlerts: () => set({ alerts: [], criticalPulseActive: false }),
   dismissCriticalPulse: () => set({ criticalPulseActive: false }),
 }));

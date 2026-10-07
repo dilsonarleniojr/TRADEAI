@@ -548,6 +548,8 @@ export function evaluateEntry(
   const relATRPercent = (analysis.relATR || 0) * 100;
   let suggestedSl = bot.stopLoss || 1.5;
   let suggestedTp = bot.takeProfit || 3.5;
+  const estimatedRoundtripFees = 0.20; // 0.10% entrada + 0.10% saída Binance Spot
+  let netGainPotential = 0;
 
   if (relATRPercent > 0) {
     // Stop adaptativo: entre 1.2% e 1.8%
@@ -556,11 +558,30 @@ export function evaluateEntry(
     const minTpByRr = parseFloat((suggestedSl * 2.25).toFixed(1));
     const atrTp = parseFloat((relATRPercent * 2.3).toFixed(1));
     suggestedTp = Math.max(minTpByRr, Math.max(3.2, Math.min(7.0, atrTp)));
+
+    // Amplitude real intrínseca do alvo ATR (impede que robô projete ganho em ativo sem volatilidade)
+    const intrinsicAtrTarget = Math.max(suggestedTp, atrTp);
+    // Se a amplitude ATR da barra for inferior a 0.74%, o alvo natural é insuficiente para 1.5% líquido
+    const realisticGain = relATRPercent < 0.74 ? atrTp : intrinsicAtrTarget;
+    netGainPotential = parseFloat((realisticGain - estimatedRoundtripFees).toFixed(2));
   } else {
     if (suggestedTp / suggestedSl < 2.2) {
       suggestedTp = parseFloat((suggestedSl * 2.25).toFixed(1));
     }
+    netGainPotential = parseFloat((suggestedTp - estimatedRoundtripFees).toFixed(2));
   }
+
+  // 🛡️ Filtro de Amplitude Mínima ATR (Anti-Overtrading em Micro-Movimentos):
+  // Proibido abrir operações em ativos cujo potencial de ganho até o alvo ATR seja inferior a 1.5% líquido de taxas.
+  const isAmplitudeSufficient = netGainPotential >= 1.50;
+
+  checks.push({
+    label: "Amplitude Mínima ATR",
+    ok: isAmplitudeSufficient,
+    detail: isAmplitudeSufficient
+      ? `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) acima do piso de 1.5% (ATR: ${relATRPercent.toFixed(2)}%)`
+      : `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) insuficiente para cobrir custos e taxas (precisa ≥ 1.50% líquido)`,
+  });
 
   const blocker = checks.find((c) => !c.ok);
   return {

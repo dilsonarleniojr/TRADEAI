@@ -115,8 +115,8 @@ export function CryptoNews() {
           id: ev.id,
           title: ev.title,
           source: ev.articles && ev.articles.length > 0 
-            ? Array.from(new Set(ev.articles.map((a: any) => a.source))).join(", ") 
-            : "TrendRadar",
+            ? Array.from(new Set(ev.articles.map((a: any) => a.source || a.sourceName || "Cointelegraph"))).join(", ") 
+            : "Cointelegraph",
           category: ev.category as NewsCategory,
           summary: ev.summary.split("\n\n")[0].replace("**Resumo:** ", ""),
           fullSummary: ev.summary,

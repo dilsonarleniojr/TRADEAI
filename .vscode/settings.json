@@ -4,7 +4,7 @@
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
-    "python.defaultInterpreterPath": "/home/dcorrea/venv/bin",
+    "python.defaultInterpreterPath": "",
     "claudeCode.useTerminal": true,
     "npm.packageManager": "npm"
 }

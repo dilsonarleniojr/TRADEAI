@@ -18,12 +18,17 @@ import {
   ArrowRight,
   Shield,
   Layers,
+  Globe,
+  ExternalLink,
 } from "lucide-react";
 
 interface NewsToTradeData {
   executiveSummary: string;
   topHeadlines: Array<{
     headline: string;
+    source?: string;
+    publishedAt?: string;
+    url?: string;
     impactScore: string;
     sentiment: string;
   }>;
@@ -174,33 +179,70 @@ export function NewsToTradeTab() {
 
             {data.topHeadlines && data.topHeadlines.length > 0 && (
               <CardContent className="pt-0 pb-4">
-                <div className="space-y-1.5 border-t border-border/30 pt-3">
-                  <div className="text-[11px] font-semibold text-muted-foreground uppercase">
-                    Principais Manchetes Monitoradas:
-                  </div>
-                  {data.topHeadlines.map((h, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between text-xs py-1 px-2.5 rounded bg-background/50 border border-border/30"
-                    >
-                      <span className="text-muted-foreground truncate mr-2">{h.headline}</span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] ${
-                            h.sentiment === "Altista"
-                              ? "text-emerald-400 border-emerald-500/30"
-                              : h.sentiment === "Baixista"
-                              ? "text-rose-400 border-rose-500/30"
-                              : "text-amber-400 border-amber-500/30"
-                          }`}
-                        >
-                          {h.sentiment}
-                        </Badge>
-                        <span className="text-[10px] text-muted-foreground">Impacto {h.impactScore}</span>
-                      </div>
+                <div className="space-y-2 border-t border-border/30 pt-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                      <Newspaper className="w-3.5 h-3.5 text-cyan-400" />
+                      Principais Manchetes Monitoradas:
                     </div>
-                  ))}
+                    <span className="text-[10px] text-muted-foreground">
+                      {data.topHeadlines.length} fontes consolidadas
+                    </span>
+                  </div>
+                  {data.topHeadlines.map((h, i) => {
+                    const cleanUrl = h.url ? h.url.replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1').trim() : '';
+                    return (
+                      <div
+                        key={i}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs py-2 px-3 rounded-lg bg-background/60 hover:bg-background/90 border border-border/40 transition-colors"
+                      >
+                        <div className="flex flex-col gap-1 min-w-0 pr-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {cleanUrl ? (
+                              <a
+                                href={cleanUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium text-foreground hover:text-cyan-400 flex items-center gap-1 group transition-colors"
+                              >
+                                <span className="line-clamp-1">{h.headline}</span>
+                                <ExternalLink className="w-3 h-3 shrink-0 opacity-60 group-hover:opacity-100 text-cyan-400" />
+                              </a>
+                            ) : (
+                              <span className="font-medium text-foreground line-clamp-1">{h.headline}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                            <span className="flex items-center gap-1 text-cyan-400 font-medium">
+                              <Globe className="w-3 h-3 shrink-0" />
+                              {h.source || "Cointelegraph"}
+                            </span>
+                            <span className="flex items-center gap-1 text-muted-foreground/80">
+                              <Calendar className="w-3 h-3 shrink-0 text-muted-foreground/60" />
+                              {h.publishedAt || "Hoje"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] font-medium ${
+                              h.sentiment === "Altista"
+                                ? "text-emerald-400 border-emerald-500/40 bg-emerald-500/10"
+                                : h.sentiment === "Baixista"
+                                ? "text-rose-400 border-rose-500/40 bg-rose-500/10"
+                                : "text-amber-400 border-amber-500/40 bg-amber-500/10"
+                            }`}
+                          >
+                            {h.sentiment}
+                          </Badge>
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border/60">
+                            Impacto {h.impactScore}
+                          </Badge>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </CardContent>
             )}

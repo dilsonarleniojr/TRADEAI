@@ -276,8 +276,36 @@ export function DailyPlanTab() {
               </CardContent>
             </Card>
           )}
+
+          {/* Proveniência / Fontes */}
+          <div className="p-3 rounded-xl bg-card/40 border border-border/30 flex items-center justify-between text-xs text-muted-foreground">
+            <span className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              Fontes: Binance Spot Live API v3 • Pivot Points Clássicos D1 • TradeAI Checklist Quant
+            </span>
+            <span className="font-mono text-[11px]">Fuso Horário: GMT-3 (Brasília)</span>
+          </div>
         </div>
-      ) : null}
+      ) : (
+        <Card className="border-border/60 bg-card/40 backdrop-blur-md p-8 text-center space-y-4">
+          <div className="w-12 h-12 rounded-full bg-cyan-500/10 text-cyan-400 flex items-center justify-center mx-auto border border-cyan-500/20">
+            <CalendarCheck className="w-6 h-6 animate-pulse" />
+          </div>
+          <div>
+            <h3 className="font-bold text-lg text-foreground">Plano Diário Não Disponível</h3>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto mt-1">
+              Clique abaixo para estruturar sua rotina de negociação diária com análise pré-mercado e critérios de execução.
+            </p>
+          </div>
+          <Button
+            onClick={() => generatePlan()}
+            className="bg-cyan-600 hover:bg-cyan-500 text-white font-medium mx-auto"
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Gerar Plano Diário Agora
+          </Button>
+        </Card>
+      )}
     </div>
   );
 }

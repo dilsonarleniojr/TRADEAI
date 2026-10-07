@@ -1,10 +1,15 @@
 import type { StateCreator } from "zustand";
-import type { PriceAlert, TickerData, ActiveSection, ScheduledOrder } from "./types";
+import type { PriceAlert, TickerData, ActiveSection, ScheduledOrder, TradePrefill } from "./types";
 
 export interface UISlice {
   // Active section/tab
   activeSection: ActiveSection;
   setActiveSection: (section: ActiveSection) => void;
+
+  // Setup pré-configurado para execução em 1 clique (ex.: vindo do Estúdio Quant)
+  tradePrefill: TradePrefill | null;
+  setTradePrefill: (prefill: TradePrefill | null) => void;
+  clearTradePrefill: () => void;
 
   // Price alerts
   alerts: PriceAlert[];
@@ -93,6 +98,11 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   // Active section
   activeSection: "dashboard",
   setActiveSection: (section) => set({ activeSection: section }),
+
+  // Setup pré-configurado
+  tradePrefill: null,
+  setTradePrefill: (prefill) => set({ tradePrefill: prefill }),
+  clearTradePrefill: () => set({ tradePrefill: null }),
 
   // Price alerts
   alerts: [],

@@ -411,5 +411,34 @@ export interface ScheduledOrder {
   direction: "above" | "below";
   isTriggered: boolean;
   createdAt: string;
+  marginMode?: "SPOT" | "ISOLATED" | "CROSS";
+  leverage?: number;
+  timeStopHours?: number;
+  horizon?: "RAPIDO" | "MEDIO_LONGO";
+}
+
+export interface TradePrefill {
+  symbol: string;
+  side: "BUY" | "SELL";
+  entryPrice?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  tp1?: number;
+  tp2?: number;
+  riskReward?: number;
+  winProbability?: number;
+  reason?: string;
+  source?: string;
+  timestamp?: number;
+
+  // Gerenciador de Horizonte, Alavancagem e Margem Institucional
+  horizon?: "RAPIDO" | "MEDIO_LONGO";
+  horizonLabel?: string;
+  marginMode?: "SPOT" | "ISOLATED" | "CROSS";
+  suggestedLeverage?: number;
+  timeStopHours?: number;
+  timeStopEnabled?: boolean;
+  riskAllocationPercent?: number;
+  maxRiskPerTradePercent?: number;
 }
 

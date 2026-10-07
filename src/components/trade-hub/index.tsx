@@ -58,7 +58,7 @@ export function TradeHubSection() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 self-start md:self-auto">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 self-start md:self-auto">
             <div className="rounded-xl bg-background/50 border border-border/40 p-2.5 flex items-center gap-3">
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
               <div className="text-xs">
@@ -66,6 +66,26 @@ export function TradeHubSection() {
                 <div className="text-[10px] text-muted-foreground font-mono">Binance API Conectada</div>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Fontes de Dados e Transparência Metodológica */}
+        <div className="mt-4 pt-4 border-t border-cyan-500/20 grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px]">
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-background/40 border border-border/30">
+            <span className="text-cyan-400 font-bold shrink-0">📡 Cotações:</span>
+            <span className="text-muted-foreground truncate">Binance Spot Live API v3</span>
+          </div>
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-background/40 border border-border/30">
+            <span className="text-emerald-400 font-bold shrink-0">📐 Quants:</span>
+            <span className="text-muted-foreground truncate">Pivots D1/H4, RSI 14, EMA 9/21</span>
+          </div>
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-background/40 border border-border/30">
+            <span className="text-purple-400 font-bold shrink-0">🧠 Inteligência:</span>
+            <span className="text-muted-foreground truncate">TradeAI Quant Engine V3</span>
+          </div>
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-background/40 border border-border/30">
+            <span className="text-amber-400 font-bold shrink-0">📰 Notícias:</span>
+            <span className="text-muted-foreground truncate">CoinTelegraph RSS Feed</span>
           </div>
         </div>
       </div>

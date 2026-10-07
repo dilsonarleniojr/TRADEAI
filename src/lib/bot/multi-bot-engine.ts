@@ -624,9 +624,30 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       if (posKlines1m.length >= 14) {
         const currentRsi = calculateRSI(posKlines1m.map((k) => k.close), 14);
         const lastCandle = posKlines1m[posKlines1m.length - 1];
-        const isBullishCandle = lastCandle.close >= lastCandle.open;
-        // Confirma suporte: RSI sobrevendido (<= 38) OU rejeição em fundo no candle atual
-        const isSupportConfirmed = currentRsi <= 38 || (currentRsi <= 45 && isBullishCandle);
+
+        // 🛡️ FIM DO DCA CEGO: Reversão Confirmada de Price Action Obrigatória
+        // É estritamente proibido DCA baseado apenas em RSI sobrevendido.
+        // Exige fechamento de candle de alta ou absorção compradora com pavio inferior expressivo (martelo)
+        const isBullishCandle = lastCandle.close > lastCandle.open;
+        const candleRange = lastCandle.high - lastCandle.low;
+        const lowerWick = Math.min(lastCandle.open, lastCandle.close) - lastCandle.low;
+        const isHammerRejection = candleRange > 0 && (lowerWick / candleRange) >= 0.35;
+        const hasPriceActionReversal = isBullishCandle || isHammerRejection;
+
+        // Checagem de Macro-Tendência (15m): Veta DCA se o 15m estiver em forte colapso abaixo da média
+        const posKlines15m = await getSymbolKlines(symbol, "15m");
+        let isMacroNotCrashing = true;
+        if (posKlines15m.length >= 10) {
+          const closes15 = posKlines15m.map((k) => k.close);
+          const ema9_15 = calculateEMA(closes15, 9);
+          const lastClose15 = closes15[closes15.length - 1];
+          if (lastClose15 < ema9_15 * 0.98) {
+            isMacroNotCrashing = false;
+          }
+        }
+
+        // Confirma suporte: RSI em sobrevenda (<= 42) E Price Action com reversão confirmada E sem colapso macro
+        const isSupportConfirmed = currentRsi <= 42 && hasPriceActionReversal && isMacroNotCrashing;
 
         if (isSupportConfirmed) {
           await executeBotDcaReentry({
@@ -636,6 +657,22 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
             gainPercent,
             currentRsi,
             callbacks,
+          });
+          return;
+        } else {
+          // Log de governança no robô para transparência institucional
+          const blockReason = !hasPriceActionReversal
+            ? `DCA bloqueado: RSI (${currentRsi.toFixed(0)}) sem candle de reversão no price action (DCA Cego Proibido).`
+            : !isMacroNotCrashing
+            ? `DCA bloqueado: Tendência macro de 15m em colapso acelerado (risco de rompimento de suporte).`
+            : `Aguardando sobrevenda com suporte (RSI atual: ${currentRsi.toFixed(0)}).`;
+
+          store.updateBot(bot.id, {
+            stats: {
+              ...bot.stats,
+              lastAction: `🛡️ Governança DCA: ${blockReason}`,
+              lastActionTime: new Date().toISOString(),
+            },
           });
           return;
         }
