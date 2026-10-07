@@ -967,7 +967,23 @@ export function RealtimeNetPnlPanel() {
                   const targetSymbol = (alert.symbol || (alert.metrics?.symbol as string) || "BTCUSDT").toUpperCase();
                   const cleanSym = targetSymbol.endsWith("USDT") ? targetSymbol : `${targetSymbol}USDT`;
                   const activeBot = botsInStore.find((b) => b.symbol === cleanSym && b.active);
-                  const isBotInPosition = activeBot && (activeBot.status === "in_position" || !!activeBot.position);
+                  const isBotInPosition = activeBot && (activeBot.status === "in_position" || (!!activeBot.position && activeBot.position.quantity > 0));
+
+                  // Cálculo de PnL Flutuante (Unrealized PnL) em tempo real
+                  let floatingPnlPct = 0;
+                  let hasFloatingPnl = false;
+                  if (isBotInPosition && activeBot.position) {
+                    const curPrice = tickers[cleanSym]?.price ?? (activeBot.position.currentPrice || 0);
+                    const entryPrice = activeBot.position.entryPrice || 0;
+                    if (curPrice > 0 && entryPrice > 0) {
+                      floatingPnlPct = ((curPrice - entryPrice) / entryPrice) * 100;
+                      hasFloatingPnl = true;
+                    } else if (typeof activeBot.position.unrealizedPnlPercent === "number") {
+                      floatingPnlPct = activeBot.position.unrealizedPnlPercent;
+                      hasFloatingPnl = true;
+                    }
+                  }
+                  const isFloatingProfit = floatingPnlPct >= 0;
 
                   return (
                     <motion.div
@@ -1015,16 +1031,31 @@ export function RealtimeNetPnlPanel() {
                               </Badge>
                             )}
 
-                            {/* Badge Dinâmico de Status do Robô */}
+                            {/* Badge Dinâmico de Status do Robô com PnL Flutuante */}
                             {activeBot ? (
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm"
-                                title={`Robô ativo em ${cleanSym}: ${activeBot.name}`}
-                              >
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                                {isBotInPosition ? "🟢 Bot em Posição" : "🟢 Bot em Execução"}
-                              </Badge>
+                              isBotInPosition ? (
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] font-bold px-2 py-0.5 flex items-center gap-1 shadow-sm font-mono ${
+                                    isFloatingProfit
+                                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                                      : "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                                  }`}
+                                  title={`Robô em posição em ${cleanSym}: Entrada $${activeBot.position?.entryPrice ? formatPrice(activeBot.position.entryPrice) : "0"}`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full animate-ping shrink-0 ${isFloatingProfit ? "bg-emerald-400" : "bg-amber-400"}`} />
+                                  {isFloatingProfit ? "🟢" : "🟡"} Bot em Posição ({hasFloatingPnl ? `${isFloatingProfit ? "+" : ""}${floatingPnlPct.toFixed(2)}%` : "0.00%"})
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm font-mono"
+                                  title={`Robô ativo em ${cleanSym}: ${activeBot.name}`}
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                                  🟢 Bot em Execução
+                                </Badge>
+                              )
                             ) : (
                               <Badge
                                 variant="outline"
