@@ -276,5 +276,24 @@
     },
     "id": "mem-1791844400000-db-sync",
     "timestamp": "2026-10-13T23:13:30.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Geração e Vinculação em Lote de Robôs Sugeridos",
+    "summary": "Adicionada funcionalidade de seleção múltipla (checkbox individual em cada card sugerido e opção 'Selecionar todos') no componente AIEntries, permitindo gerar, configurar e ativar múltiplos robôs de uma só vez a partir das análises da IA.",
+    "tags": [
+      "batch-bot-generation",
+      "ai-entries",
+      "multi-bot",
+      "ui-enhancement",
+      "checkbox-selection"
+    ],
+    "details": {
+      "component": "src/components/dashboard/ai-entries.tsx",
+      "actions": ["toggleSelectEntry", "toggleSelectAll", "handleBatchCreateBots"],
+      "features": ["individual checkbox per BUY card", "select all checkbox", "batch action bar", "toast notification with active bots"]
+    },
+    "id": "mem-1791845400000-batch-bots",
+    "timestamp": "2026-10-13T23:30:00.000Z"
   }
 ]
