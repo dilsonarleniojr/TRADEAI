@@ -58,3 +58,5 @@ __pycache__/
 
 # chave de sessão local (dev)
 .data/
+db/*.db
+db/*.db.backup*
