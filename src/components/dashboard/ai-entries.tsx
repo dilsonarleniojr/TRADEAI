@@ -130,6 +130,8 @@ export function AIEntries() {
   const [rotationOffset, setRotationOffset] = useState(0);
   const [activeAiProvider, setActiveAiProvider] = useState<string>("TradeAI Quant Engine");
   const [closingBotId, setClosingBotId] = useState<string | null>(null);
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
+  const [isBatchCreating, setIsBatchCreating] = useState(false);
 
   const handleFastCloseEntry = async (bot: any) => {
     setClosingBotId(bot.id);
@@ -260,6 +262,7 @@ export function AIEntries() {
       const receivedEntries: TradeEntry[] = data.entries ?? [];
       setEntries(receivedEntries);
       setGeneratedAt(Date.now());
+      setSelectedSymbols((prev) => prev.filter((sym) => receivedEntries.some((e) => e.symbol === sym && e.side === "BUY")));
       if (data.provider) {
         setActiveAiProvider(data.provider);
       }
@@ -340,8 +343,8 @@ export function AIEntries() {
     return { notional, riskUsd: (notional / e.entry) * riskPerUnit };
   };
 
-  // Vincula e cria automaticamente o robô com todos os dados sugeridos pela IA
-  const handleLinkBot = (e: TradeEntry) => {
+  // Cria ou atualiza o robô com todos os dados sugeridos pela IA
+  const createOrUpdateBotFromEntry = (e: TradeEntry) => {
     const cleanSym = e.symbol.toUpperCase();
     const baseSym = cleanSym.replace("USDT", "");
 
@@ -414,18 +417,90 @@ export function AIEntries() {
       message: `Robô ${baseSym} vinculado com sucesso via IA (${e.source}): Alvo 1 (+${tpPct}%), Stop (-${slPct}%), Trailing (${trailPct}%), Alocação ($${allocationAmount}), Parcial (50%)`,
     });
 
+    return { targetBotId, cleanSym, baseSym, tpPct, slPct, trailPct, allocationAmount };
+  };
+
+  // Vincula e cria individualmente o robô sugerido pela IA
+  const handleLinkBot = (e: TradeEntry) => {
+    const res = createOrUpdateBotFromEntry(e);
+
     // Seleciona o robô na frota, ativa o par e navega até a tela de robôs
-    setSelectedBotId(targetBotId);
-    setSelectedSymbol(cleanSym);
+    setSelectedBotId(res.targetBotId);
+    setSelectedSymbol(res.cleanSym);
     setActiveSection("bot");
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
     toast({
-      title: `Robô ${baseSym} Vinculado e Ativado! 🤖`,
-      description: `Alvo 1: +${tpPct}% | Stop: -${slPct}% | Trailing: ${trailPct}% | Posição: $${allocationAmount} | Parcial: 50%`,
+      title: `Robô ${res.baseSym} Vinculado e Ativado! 🤖`,
+      description: `Alvo 1: +${res.tpPct}% | Stop: -${res.slPct}% | Trailing: ${res.trailPct}% | Posição: $${res.allocationAmount} | Parcial: 50%`,
     });
+  };
+
+  // Lista de entradas com sinal de COMPRA (aptas para gerar robôs)
+  const buyEntries = useMemo(() => entries.filter((e) => e.side === "BUY"), [entries]);
+
+  // Verifica se todos os robôs sugeridos de compra estão marcados
+  const allSelected = useMemo(
+    () => buyEntries.length > 0 && buyEntries.every((e) => selectedSymbols.includes(e.symbol)),
+    [buyEntries, selectedSymbols]
+  );
+
+  const toggleSelectEntry = (symbol: string, checked: boolean) => {
+    setSelectedSymbols((prev) =>
+      checked ? [...new Set([...prev, symbol])] : prev.filter((s) => s !== symbol)
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedSymbols([]);
+    } else {
+      setSelectedSymbols(buyEntries.map((e) => e.symbol));
+    }
+  };
+
+  // Gerar e ativar em lote todos os robôs selecionados
+  const handleBatchCreateBots = () => {
+    const selectedEntriesToProcess = buyEntries.filter((e) => selectedSymbols.includes(e.symbol));
+    if (selectedEntriesToProcess.length === 0) {
+      toast({
+        title: "Nenhum robô selecionado",
+        description: "Marque ao menos um par sugerido na caixa de seleção para gerar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsBatchCreating(true);
+    try {
+      const results = selectedEntriesToProcess.map((e) => createOrUpdateBotFromEntry(e));
+
+      // Seleciona o último robô da lista
+      if (results.length > 0) {
+        const last = results[results.length - 1];
+        setSelectedBotId(last.targetBotId);
+        setSelectedSymbol(last.cleanSym);
+      }
+
+      // Limpa a seleção após concluir
+      setSelectedSymbols([]);
+
+      // Navega até a seção de robôs
+      setActiveSection("bot");
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      const symbolNames = results.map((r) => r.baseSym).join(", ");
+      toast({
+        title: `🚀 ${results.length} Robôs Gerados e Ativados!`,
+        description: `Pares: ${symbolNames}. Configurados com alvos, stops e trailing stops inteligentes da IA.`,
+      });
+    } finally {
+      setIsBatchCreating(false);
+    }
   };
 
   return (
@@ -497,17 +572,89 @@ export function AIEntries() {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="show-sizing"
-            checked={showSizing}
-            onCheckedChange={(v) => setShowSizing(v === true)}
-            className="cursor-pointer"
-          />
-          <label htmlFor="show-sizing" className="text-[11px] text-muted-foreground cursor-pointer">
-            Mostrar tamanho sugerido de posição
-          </label>
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-white/[0.05]">
+          <div className="flex flex-wrap items-center gap-4">
+            {buyEntries.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="select-all-suggested"
+                  checked={allSelected}
+                  onCheckedChange={toggleSelectAll}
+                  className="cursor-pointer border-emerald-500/50 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                />
+                <label htmlFor="select-all-suggested" className="text-[11px] font-semibold text-emerald-400 cursor-pointer select-none">
+                  Selecionar todos para gerar ({buyEntries.length})
+                </label>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="show-sizing"
+                checked={showSizing}
+                onCheckedChange={(v) => setShowSizing(v === true)}
+                className="cursor-pointer"
+              />
+              <label htmlFor="show-sizing" className="text-[11px] text-muted-foreground cursor-pointer select-none">
+                Mostrar tamanho sugerido de posição
+              </label>
+            </div>
+          </div>
+
+          {selectedSymbols.length > 0 && (
+            <Button
+              size="sm"
+              disabled={isBatchCreating}
+              onClick={handleBatchCreateBots}
+              className="h-7 px-3 gap-1.5 text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-sm shadow-emerald-500/30 cursor-pointer animate-in fade-in zoom-in-95"
+            >
+              {isBatchCreating ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" />
+              )}
+              Gerar {selectedSymbols.length} {selectedSymbols.length === 1 ? "Robô" : "Robôs"} Selecionado{selectedSymbols.length > 1 ? "s" : ""}
+            </Button>
+          )}
         </div>
+
+        {/* Barra de Ação Rápida de Lote quando há seleção */}
+        {selectedSymbols.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 shadow-md animate-in fade-in slide-in-from-top-1">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-bold text-emerald-300">
+                {selectedSymbols.length} {selectedSymbols.length === 1 ? "robô marcado" : "robôs marcados"}:
+              </span>
+              <span className="text-xs font-mono text-emerald-200/90 font-semibold">
+                {selectedSymbols.map((s) => s.replace("USDT", "")).join(", ")}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSelectedSymbols([])}
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-white cursor-pointer"
+              >
+                Limpar seleção
+              </Button>
+              <Button
+                size="sm"
+                disabled={isBatchCreating}
+                onClick={handleBatchCreateBots}
+                className="h-7 gap-1.5 text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-sm shadow-emerald-500/30 cursor-pointer"
+              >
+                {isBatchCreating ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5" />
+                )}
+                Gerar Todos ({selectedSymbols.length})
+              </Button>
+            </div>
+          </div>
+        )}
       </CardHeader>
 
       <CardContent className="space-y-2.5 flex-1 overflow-y-auto">
@@ -611,10 +758,26 @@ export function AIEntries() {
                   ? "border-emerald-500/30 bg-emerald-950/10 shadow-sm"
                   : "border-border/30 bg-card/40 opacity-80",
                 activeBot && "border-emerald-500/50 shadow-emerald-950/20",
+                selectedSymbols.includes(e.symbol) && "ring-1 ring-emerald-500/60 border-emerald-500/60 bg-emerald-950/25",
                 loading && "opacity-60"
               )}
             >
               <div className="flex flex-wrap items-center gap-2">
+                {e.side === "BUY" && (
+                  <div
+                    className="flex items-center justify-center p-0.5 rounded cursor-pointer hover:bg-emerald-500/10 transition-colors"
+                    onClick={(evt) => evt.stopPropagation()}
+                  >
+                    <Checkbox
+                      id={`check-bot-${e.symbol}`}
+                      checked={selectedSymbols.includes(e.symbol)}
+                      onCheckedChange={(checked) => toggleSelectEntry(e.symbol, !!checked)}
+                      className="cursor-pointer border-emerald-500/50 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600 w-4 h-4"
+                      title={`Selecionar ${e.symbol.replace("USDT", "")} para gerar em lote`}
+                    />
+                  </div>
+                )}
+
                 <span
                   className="text-sm font-bold tracking-tight cursor-pointer hover:text-crypto-cyan transition-colors"
                   onClick={() => openChart(e.symbol)}
@@ -750,7 +913,39 @@ export function AIEntries() {
               </div>
             </div>
           );
-        })}
+        {selectedSymbols.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-emerald-950/40 border border-emerald-500/40 shadow-lg animate-in fade-in slide-in-from-bottom-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="text-xs font-semibold text-emerald-200">
+                {selectedSymbols.length} {selectedSymbols.length === 1 ? "robô marcado" : "robôs marcados"} para ativação
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSelectedSymbols([])}
+                className="h-8 px-2.5 text-xs text-muted-foreground hover:text-white cursor-pointer"
+              >
+                Desmarcar todos
+              </Button>
+              <Button
+                size="sm"
+                disabled={isBatchCreating}
+                onClick={handleBatchCreateBots}
+                className="h-8 px-4 gap-1.5 text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md shadow-emerald-500/30 cursor-pointer"
+              >
+                {isBatchCreating ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5" />
+                )}
+                Gerar Todos ({selectedSymbols.length})
+              </Button>
+            </div>
+          </div>
+        )}
 
         {generatedAt && (
           <p className="text-[10px] text-muted-foreground text-right pt-1">

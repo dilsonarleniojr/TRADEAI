@@ -257,5 +257,24 @@
     },
     "id": "mem-1791841600000-log-purge",
     "timestamp": "2026-10-13T22:27:00.000Z"
+  },
+  {
+    "category": "WORKAROUND_OR_BUGFIX",
+    "title": "Sincronização e Criação de Tabelas Prisma em db/custom.db",
+    "summary": "Corrigido erro 'table main.Account does not exist' ao executar prisma db push com permissões adequadas em db/custom.db, recriando as tabelas Account, Trade, BotConfig e inicializando o registro de conta padrão.",
+    "tags": [
+      "prisma",
+      "sqlite",
+      "custom-db",
+      "account-table",
+      "database-sync"
+    ],
+    "details": {
+      "dbFile": "db/custom.db",
+      "command": "npx prisma db push",
+      "permissions": "rw-rw-rw-"
+    },
+    "id": "mem-1791844400000-db-sync",
+    "timestamp": "2026-10-13T23:13:30.000Z"
   }
 ]
