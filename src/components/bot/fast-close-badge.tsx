@@ -55,31 +55,47 @@ export function FastCloseBadge({
 
     setIsClosing(true);
     toast({
-      title: `⚡ Zeragem Rápida
-    toast({
-      title: `⚡ Zeragem Rápida
+      title: `⚡ Zeragem Rápida (${baseSym})`,
+      description: `Encerrando posição de ${bot.name} a preço de mercado...`,
+    });
+    try {
+      await manualCloseBotPosition(bot.id, {
+        onToast: (t) => toast(t),
+      });
+    } catch (err: any) {
+      toast({
+        title: "Erro na Zeragem",
+        description: err?.message || "Não foi possível liquidar a posição.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsClosing(false);
+    }
+  };
+
+  if (!activeBot) {
+    if (!showInactiveBadge) return null;
+    return (
+      <Badge
         variant="outline"
-        className={
-        cn(
+        className={cn(
           "font-bold bg-cyan-500/10 text-cyan-300 border-cyan-500/30 flex items-center gap-1 cursor-pointer hover:bg-cyan-500/20 transition-colors",
           size === "xs" && "text-[8px] px-1 py-0 leading-none",
-      size === "sm" && "text-[9px] px-1.5 py-0",
-      size === "default" && "text-[10px] px-2 py-0.5",
-      className
-    )
-  }
-  onClick = {(e) => {
-    if (onActivateClick) {
-      e.stopPropagation();
-      onActivateClick();
-    }
-  }
-}
-title = {`Clique para ativar robô para ${symbol}`}
+          size === "sm" && "text-[9px] px-1.5 py-0",
+          size === "default" && "text-[10px] px-2 py-0.5",
+          className
+        )}
+        onClick={(e) => {
+          if (onActivateClick) {
+            e.stopPropagation();
+            onActivateClick();
+          }
+        }}
+        title={`Clique para ativar robô para ${symbol}`}
       >
         <Zap className={cn("shrink-0", size === "xs" ? "w-2 h-2" : "w-3 h-3")} />
         <span>⚡ Clique para Ativar</span>
-      </Badge >
+      </Badge>
     );
   }
 

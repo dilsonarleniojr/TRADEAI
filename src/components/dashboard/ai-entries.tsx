@@ -913,6 +913,8 @@ export function AIEntries() {
               </div>
             </div>
           );
+        })}
+
         {selectedSymbols.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-emerald-950/40 border border-emerald-500/40 shadow-lg animate-in fade-in slide-in-from-bottom-2">
             <div className="flex items-center gap-2">
