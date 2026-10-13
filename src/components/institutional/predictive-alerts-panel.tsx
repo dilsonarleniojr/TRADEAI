@@ -16,11 +16,11 @@ import {
   Check,
   X,
   Volume2,
-  VolumeX,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { useCryptoStore } from "@/lib/store";
+import { FastCloseBadge } from "@/components/bot/fast-close-badge";
 
 export function PredictiveAlertsPanel() {
   const { toast } = useToast();
@@ -267,28 +267,12 @@ export function PredictiveAlertsPanel() {
                       <Badge variant="outline" className="text-[9px] bg-slate-900 border-white/10 text-slate-400">
                         {alert.category}
                       </Badge>
-                      {activeBot && (
-                        isBotInPosition ? (
-                          <Badge
-                            variant="outline"
-                            className={`text-[8px] font-bold px-1.5 py-0 flex items-center gap-1 shadow-sm font-mono leading-none ${
-                              isFloatingProfit
-                                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
-                                : "bg-amber-500/20 text-amber-300 border-amber-500/50"
-                            }`}
-                          >
-                            <span className={`w-1 h-1 rounded-full animate-ping shrink-0 ${isFloatingProfit ? "bg-emerald-400" : "bg-amber-400"}`} />
-                            {isFloatingProfit ? "🟢" : "🟡"} Robô em Posição ({hasFloatingPnl ? `${isFloatingProfit ? "+" : ""}${floatingPnlPct.toFixed(2)}%` : "0.00%"})
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className="text-[8px] font-bold px-1.5 py-0 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 font-mono leading-none"
-                          >
-                            <span className="w-1 h-1 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                            🟢 Robô Ativo
-                          </Badge>
-                        )
+                      {pairSym && (
+                        <FastCloseBadge
+                          symbol={pairSym}
+                          size="xs"
+                          showInactiveBadge={false}
+                        />
                       )}
                     </div>
 

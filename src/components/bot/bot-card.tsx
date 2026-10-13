@@ -10,6 +10,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
   Play,
   Pause,
   Trash2,
@@ -34,11 +42,32 @@ import {
   FileText,
   Rocket,
   BookOpen,
+  Pin,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
 import { strategyName } from "@/lib/bot/strategy-catalog";
+
+const OVERRIDE_PAIRS = [
+  { symbol: "BTCUSDT", name: "Bitcoin", tag: "Major" },
+  { symbol: "ETHUSDT", name: "Ethereum", tag: "Major" },
+  { symbol: "SOLUSDT", name: "Solana", tag: "L1 Fast" },
+  { symbol: "BNBUSDT", name: "BNB Chain", tag: "Major" },
+  { symbol: "NEARUSDT", name: "NEAR Protocol", tag: "AI/L1" },
+  { symbol: "RENDERUSDT", name: "Render", tag: "AI/GPU" },
+  { symbol: "ONDOUSDT", name: "Ondo Finance", tag: "RWA" },
+  { symbol: "SUIUSDT", name: "Sui Network", tag: "L1" },
+  { symbol: "PEPEUSDT", name: "Pepe Meme", tag: "Meme" },
+  { symbol: "DOGEUSDT", name: "Dogecoin", tag: "Meme" },
+  { symbol: "AVAXUSDT", name: "Avalanche", tag: "L1" },
+  { symbol: "FETUSDT", name: "Artificial Superintel.", tag: "AI" },
+  { symbol: "LINKUSDT", name: "Chainlink", tag: "Oracle" },
+  { symbol: "ADAUSDT", name: "Cardano", tag: "L1" },
+  { symbol: "XRPUSDT", name: "Ripple", tag: "Pay" },
+];
 
 interface BotCardProps {
   bot: BotInstance;
@@ -46,13 +75,18 @@ interface BotCardProps {
 }
 
 export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
-  const activeSymbol = (bot.position && bot.position.quantity > 0) ? bot.position.symbol : bot.symbol;
+  const currentOverride = bot.overrideSymbol && bot.overrideSymbol !== "AUTO" ? bot.overrideSymbol : undefined;
+  const activeSymbol = (bot.position && bot.position.quantity > 0)
+    ? bot.position.symbol
+    : (currentOverride || bot.symbol);
   const cleanActiveSymbol = activeSymbol.endsWith("USDT") ? activeSymbol : `${activeSymbol}USDT`;
 
   const {
     toggleBotActive,
     removeBot,
     resetBotStats,
+    updateBot,
+    tickers,
     ticker,
     tradingMode,
     setActiveExecutionReport,
@@ -65,6 +99,8 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
       toggleBotActive: s.toggleBotActive,
       removeBot: s.removeBot,
       resetBotStats: s.resetBotStats,
+      updateBot: s.updateBot,
+      tickers: s.tickers,
       ticker: s.tickers[activeSymbol] || s.tickers[cleanActiveSymbol],
       tradingMode: s.tradingMode,
       setActiveExecutionReport: s.setActiveExecutionReport,
@@ -77,6 +113,59 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
   const { toast } = useToast();
   const [isClosing, setIsClosing] = useState(false);
   const [isOpening, setIsOpening] = useState(false);
+  const [customSearch, setCustomSearch] = useState("");
+  const [overrideTtl, setOverrideTtl] = useState<"indefinite" | "single_trade" | "1h" | "4h">(
+    bot.overrideMode || "1h"
+  );
+
+  const handleSetOverride = (newSymbol: string, ttlMode?: "indefinite" | "single_trade" | "1h" | "4h") => {
+    const chosenTtl = ttlMode || overrideTtl;
+    if (newSymbol === "AUTO" || !newSymbol) {
+      updateBot(bot.id, {
+        overrideSymbol: undefined,
+        overrideMode: undefined,
+        overrideExpiresAt: undefined,
+        stats: {
+          ...bot.stats,
+          lastAction: "🔥 Auto-Screener restaurado para modo dinâmico (Binance)",
+          lastActionTime: new Date().toISOString(),
+        },
+      });
+      toast({
+        title: `${bot.name}`,
+        description: "Auto-Screener restaurado: varredura dinâmica de momentum reativada.",
+      });
+    } else {
+      const symClean = newSymbol.trim().toUpperCase();
+      const formatted = symClean.endsWith("USDT") ? symClean : `${symClean}USDT`;
+      let expiresAt: number | undefined = undefined;
+      let ttlDesc = "Até cancelamento manual";
+      if (chosenTtl === "1h") {
+        expiresAt = Date.now() + 60 * 60 * 1000;
+        ttlDesc = "Expira em 1 hora (60m)";
+      } else if (chosenTtl === "4h") {
+        expiresAt = Date.now() + 4 * 60 * 60 * 1000;
+        ttlDesc = "Expira em 4 horas (4h)";
+      } else if (chosenTtl === "single_trade") {
+        ttlDesc = "Apenas 1 trade (Auto-reset ao vender)";
+      }
+
+      updateBot(bot.id, {
+        overrideSymbol: formatted,
+        overrideMode: chosenTtl,
+        overrideExpiresAt: expiresAt,
+        stats: {
+          ...bot.stats,
+          lastAction: `📌 Override Manual ativo [${ttlDesc}]: fixado no par ${formatted.replace("USDT", "")}/USDT`,
+          lastActionTime: new Date().toISOString(),
+        },
+      });
+      toast({
+        title: `📌 Fixação de Ativo: ${formatted.replace("USDT", "")}/USDT`,
+        description: `${bot.name} agora rastreará exclusivamente ${formatted.replace("USDT", "")}/USDT · Modo: ${ttlDesc}.`,
+      });
+    }
+  };
 
   const currentPrice = ticker?.price ?? (bot.position?.currentPrice || 0);
 
@@ -201,18 +290,274 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
                   }
                 }}
                 title={activeSymbol !== "AUTO" ? `Abrir gráfico de ${cleanActiveSymbol}` : undefined}
-                className={`text-[11px] font-semibold px-2 py-0 border-border/70 ${activeSymbol !== "AUTO" ? "cursor-pointer hover:border-crypto-cyan/60 hover:text-crypto-cyan transition-colors" : ""} ${bot.symbol === "AUTO" || bot.useAutoScreener ? "bg-orange-500/15 border-orange-500/40 text-orange-400" : "bg-secondary/30"}`}
+                className={`text-[11px] font-semibold px-2 py-0 border-border/70 ${
+                  activeSymbol !== "AUTO" ? "cursor-pointer hover:border-crypto-cyan/60 hover:text-crypto-cyan transition-colors" : ""
+                } ${
+                  bot.symbol === "AUTO" || bot.useAutoScreener
+                    ? currentOverride
+                      ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-300"
+                      : "bg-orange-500/15 border-orange-500/40 text-orange-400"
+                    : "bg-secondary/30"
+                }`}
               >
-                {bot.symbol === "AUTO" ? (hasPosition ? bot.position!.symbol.replace("USDT", "") : "🔥 TOP ALTAS") : bot.symbol.replace("USDT", "")}
+                {activeSymbol === "AUTO" ? "🔥 TOP ALTAS" : activeSymbol.replace("USDT", "")}
                 <span className="text-[9px] text-muted-foreground ml-0.5">/USDT</span>
               </Badge>
 
-              {/* Auto-Screener Badge */}
-              {(bot.useAutoScreener || bot.symbol === "AUTO") && (
-                <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-orange-500/40 text-orange-400 bg-orange-500/10 flex items-center gap-1" title="Varre dinamicamente as moedas em maior alta na Binance">
-                  <Flame className="w-2.5 h-2.5 text-orange-400" />
-                  Auto-Screener
-                </Badge>
+              {/* Auto-Screener: Seletor Manual de Ativo Override */}
+              {(bot.useAutoScreener || bot.symbol === "AUTO" || Boolean(bot.overrideSymbol)) && (
+                <div className="flex items-center gap-1">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      {currentOverride ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-5 px-2 py-0 text-[10px] font-semibold border-cyan-500/50 text-cyan-300 bg-cyan-500/15 hover:bg-cyan-500/25 hover:border-cyan-400 flex items-center gap-1 shadow-sm transition-all"
+                          title={`Override Manual Ativo: ${currentOverride.replace("USDT", "")}/USDT (${
+                            bot.overrideMode === "1h" || bot.overrideMode === "4h"
+                              ? `${Math.max(0, Math.ceil(((bot.overrideExpiresAt || 0) - Date.now()) / 60000))}m restantes`
+                              : bot.overrideMode === "single_trade"
+                              ? "Auto-reset após 1 trade"
+                              : "Até cancelamento manual"
+                          }). Clique para alterar o par ou validade.`}
+                        >
+                          <Pin className="w-2.5 h-2.5 text-cyan-400 rotate-45 shrink-0" />
+                          <span>
+                            Fixado: {currentOverride.replace("USDT", "")}
+                            {bot.overrideMode === "1h" || bot.overrideMode === "4h" ? (
+                              <span className="ml-1 text-[9px] font-mono text-cyan-300/90 font-semibold">
+                                [{Math.max(0, Math.ceil(((bot.overrideExpiresAt || 0) - Date.now()) / 60000))}m]
+                              </span>
+                            ) : bot.overrideMode === "single_trade" ? (
+                              <span className="ml-1 text-[9px] font-mono text-amber-300/90 font-semibold">
+                                [1 trade]
+                              </span>
+                            ) : null}
+                          </span>
+                          <ChevronDown className="w-2.5 h-2.5 text-cyan-400/70 ml-0.5 shrink-0" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-5 px-1.5 py-0 text-[10px] font-medium border-orange-500/40 text-orange-400 bg-orange-500/10 hover:bg-orange-500/20 hover:border-orange-500/60 flex items-center gap-1 shadow-sm transition-all"
+                          title="Auto-Screener Dinâmico. Clique para fixar um ativo manualmente (Override com validade opcional)."
+                        >
+                          <Flame className="w-2.5 h-2.5 text-orange-400 animate-pulse shrink-0" />
+                          <span>Auto-Screener</span>
+                          <ChevronDown className="w-2.5 h-2.5 text-orange-400/70 ml-0.5 shrink-0" />
+                        </Button>
+                      )}
+                    </DropdownMenuTrigger>
+
+                    <DropdownMenuContent
+                      align="start"
+                      className="w-[270px] max-h-[400px] overflow-y-auto bg-[#0d131f] border border-white/[0.12] shadow-2xl p-1.5 rounded-xl z-50 text-xs"
+                    >
+                      <DropdownMenuLabel className="px-2 py-1.5 text-[11px] font-semibold text-slate-200 flex flex-col gap-0.5">
+                        <div className="flex items-center justify-between">
+                          <span>Rastreio de Ativo</span>
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 border-white/10 text-muted-foreground">
+                            {currentOverride ? "Override Ativo" : "Dinâmico"}
+                          </Badge>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground font-normal">
+                          Fixe temporariamente um par ou mantenha o screener dinâmico da Binance.
+                        </span>
+                      </DropdownMenuLabel>
+
+                      <DropdownMenuSeparator className="bg-white/10 my-1" />
+
+                      {/* Opção 1: Modo Dinâmico */}
+                      <DropdownMenuItem
+                        onClick={() => handleSetOverride("AUTO")}
+                        className={`px-2 py-1.5 rounded-lg flex items-center justify-between cursor-pointer transition-colors ${
+                          !currentOverride ? "bg-orange-500/20 text-orange-300 font-semibold" : "hover:bg-white/5 text-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Flame className="w-3.5 h-3.5 text-orange-400" />
+                          <div className="flex flex-col">
+                            <span className="text-[11px]">🔥 Modo Dinâmico (Top Altas)</span>
+                            <span className="text-[9px] text-muted-foreground">Varre as maiores altas da Binance</span>
+                          </div>
+                        </div>
+                        {!currentOverride && <Check className="w-3.5 h-3.5 text-orange-400" />}
+                      </DropdownMenuItem>
+
+                      {/* Seletor de Validade (TTL Auto-Reset) */}
+                      <div className="px-2 py-1.5 flex flex-col gap-1 bg-black/40 rounded-lg border border-white/10 my-1">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-muted-foreground flex items-center gap-1 font-semibold">
+                            <Clock className="w-3 h-3 text-cyan-400" />
+                            Validade do Override
+                          </span>
+                          <span className="text-[9px] text-cyan-300 font-mono">
+                            {overrideTtl === "1h" ? "1 hora" : overrideTtl === "4h" ? "4 horas" : overrideTtl === "single_trade" ? "1 trade" : "Indefinido"}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOverrideTtl("1h");
+                              if (currentOverride) handleSetOverride(currentOverride, "1h");
+                            }}
+                            className={`px-1 py-1 rounded text-[9px] font-semibold border transition-all cursor-pointer ${
+                              overrideTtl === "1h"
+                                ? "border-cyan-400 bg-cyan-500/20 text-cyan-300 shadow-sm"
+                                : "border-white/10 bg-white/5 text-muted-foreground hover:bg-white/10"
+                            }`}
+                            title="Expira em 1 hora e volta automaticamente para o Auto-Screener"
+                          >
+                            ⏱️ 1h
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOverrideTtl("4h");
+                              if (currentOverride) handleSetOverride(currentOverride, "4h");
+                            }}
+                            className={`px-1 py-1 rounded text-[9px] font-semibold border transition-all cursor-pointer ${
+                              overrideTtl === "4h"
+                                ? "border-cyan-400 bg-cyan-500/20 text-cyan-300 shadow-sm"
+                                : "border-white/10 bg-white/5 text-muted-foreground hover:bg-white/10"
+                            }`}
+                            title="Expira em 4 horas e volta automaticamente para o Auto-Screener"
+                          >
+                            ⏱️ 4h
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOverrideTtl("single_trade");
+                              if (currentOverride) handleSetOverride(currentOverride, "single_trade");
+                            }}
+                            className={`px-1 py-1 rounded text-[9px] font-semibold border transition-all cursor-pointer ${
+                              overrideTtl === "single_trade"
+                                ? "border-amber-400 bg-amber-500/20 text-amber-300 shadow-sm"
+                                : "border-white/10 bg-white/5 text-muted-foreground hover:bg-white/10"
+                            }`}
+                            title="Volta sozinho ao Auto-Screener após fechar a posição deste trade"
+                          >
+                            🎯 1 Trade
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOverrideTtl("indefinite");
+                              if (currentOverride) handleSetOverride(currentOverride, "indefinite");
+                            }}
+                            className={`px-1 py-1 rounded text-[9px] font-semibold border transition-all cursor-pointer ${
+                              overrideTtl === "indefinite"
+                                ? "border-slate-400 bg-slate-500/20 text-slate-200 shadow-sm"
+                                : "border-white/10 bg-white/5 text-muted-foreground hover:bg-white/10"
+                            }`}
+                            title="Fixado até cancelamento manual"
+                          >
+                            ♾️ Manual
+                          </button>
+                        </div>
+                      </div>
+
+                      <DropdownMenuSeparator className="bg-white/10 my-1" />
+
+                      <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                        <span>📌 Fixar Par Manual</span>
+                      </div>
+
+                      {/* Input de Busca/Par Customizado */}
+                      <div className="px-2 py-1">
+                        <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-md px-2 py-0.5">
+                          <input
+                            type="text"
+                            placeholder="Digitar par (ex: INJ, TIA)..."
+                            value={customSearch}
+                            onChange={(e) => setCustomSearch(e.target.value.toUpperCase())}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && customSearch.trim()) {
+                                handleSetOverride(customSearch);
+                                setCustomSearch("");
+                              }
+                            }}
+                            className="w-full bg-transparent text-[11px] text-slate-200 placeholder:text-muted-foreground outline-none uppercase font-mono"
+                          />
+                          {customSearch.trim() && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                handleSetOverride(customSearch);
+                                setCustomSearch("");
+                              }}
+                              className="h-5 px-1.5 text-[10px] text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/20"
+                            >
+                              Fixar
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Lista de Pares Rápidos */}
+                      <div className="mt-1 flex flex-col gap-0.5">
+                        {OVERRIDE_PAIRS.filter((p) =>
+                          !customSearch || p.symbol.includes(customSearch) || p.name.toUpperCase().includes(customSearch)
+                        ).map((item) => {
+                          const isSelected = currentOverride === item.symbol;
+                          const itemTicker = tickers[item.symbol];
+                          const change24h = itemTicker?.priceChangePercent;
+
+                          return (
+                            <DropdownMenuItem
+                              key={item.symbol}
+                              onClick={() => handleSetOverride(item.symbol)}
+                              className={`px-2 py-1 rounded-lg flex items-center justify-between cursor-pointer transition-colors ${
+                                isSelected ? "bg-cyan-500/20 text-cyan-300 font-semibold border border-cyan-500/40" : "hover:bg-white/5 text-slate-300"
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-[11px] font-semibold">{item.symbol.replace("USDT", "")}</span>
+                                <span className="text-[9px] text-muted-foreground">· {item.tag}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-[10px]">
+                                {typeof change24h === "number" && (
+                                  <span className={`font-mono text-[9px] ${change24h >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                    {change24h >= 0 ? "+" : ""}{change24h.toFixed(1)}%
+                                  </span>
+                                )}
+                                {isSelected ? (
+                                  <Check className="w-3 h-3 text-cyan-400" />
+                                ) : (
+                                  <Pin className="w-2.5 h-2.5 text-muted-foreground/60 opacity-0 group-hover:opacity-100" />
+                                )}
+                              </div>
+                            </DropdownMenuItem>
+                          );
+                        })}
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Botão rápido para remover override e voltar ao Auto-Screener */}
+                  {currentOverride && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSetOverride("AUTO");
+                      }}
+                      className="h-5 px-1 rounded border border-white/10 text-muted-foreground hover:text-orange-400 hover:border-orange-500/40 hover:bg-orange-500/10 transition-colors flex items-center justify-center cursor-pointer"
+                      title="Remover fixação e restaurar modo dinâmico Auto-Screener"
+                    >
+                      <RotateCcw className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+                </div>
               )}
 
               {/* Strategy Badge */}
@@ -279,6 +624,14 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
                 <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-blue-500/40 text-blue-400 bg-blue-500/10 flex items-center gap-1" title="Filtro de Livro e Spread ativo: barra compras com spread largo ou book desfavorável">
                   <BookOpen className="w-2.5 h-2.5 text-blue-400" />
                   Livro & Spread
+                </Badge>
+              )}
+
+              {/* Time-Stop Badge */}
+              {((bot.timeStopMinutes ?? 60) > 0) && (
+                <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-orange-500/40 text-orange-400 bg-orange-500/10 flex items-center gap-1" title={`Time-Stop: ${bot.timeStopMinutes ?? 60}m base + 15m tolerância a prejuízo zero`}>
+                  <Clock className="w-2.5 h-2.5 text-orange-400" />
+                  Time-Stop {bot.timeStopMinutes ?? 60}m
                 </Badge>
               )}
 
@@ -513,6 +866,158 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
               <div className="flex items-center gap-2 text-[11px] text-muted-foreground bg-secondary/35 px-2.5 py-1.5 rounded-lg border border-border/20">
                 <Clock className="w-3.5 h-3.5 text-crypto-cyan shrink-0 animate-spin" style={{ animationDuration: "6s" }} />
                 <span className="truncate">{bot.stats.lastAction || "Analisando volatilidade e ponto ideal de entrada..."}</span>
+              </div>
+
+              {/* Telemetria de Frequência de Disparo (Entry Frequency Telemetry) */}
+              <div className="bg-secondary/35 rounded-lg p-2.5 border border-border/30 space-y-2">
+                <div className="flex items-center justify-between text-[10px]">
+                  <div className="flex items-center gap-1.5 text-muted-foreground font-semibold">
+                    <Activity className="w-3 h-3 text-crypto-cyan animate-pulse" />
+                    <span className="text-foreground/90">Telemetria de Gatilho</span>
+                  </div>
+                  <div className="flex items-center gap-2 font-mono">
+                    <span className="text-crypto-cyan font-bold bg-crypto-cyan/10 px-1.5 py-0.5 rounded border border-crypto-cyan/25" title="Varreduras de mercado avaliadas por minuto (janela deslizante de 60s)">
+                      ⚡ {bot.stats.scansPerMinute || 0} scans/min
+                    </span>
+                    <span className="text-muted-foreground bg-secondary/60 px-1.5 py-0.5 rounded border border-border/30" title="Pares avaliados no ciclo atual">
+                      🎯 {bot.stats.evaluatedPairsCount || 1} {bot.stats.evaluatedPairsCount === 1 ? "par" : "pares"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Trigger Proximity Gauge */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[9px]">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <Target className="w-2.5 h-2.5 text-crypto-cyan" />
+                      Proximidade do Disparo
+                    </span>
+                    <span className={`font-mono font-bold ${
+                      (bot.stats.triggerProximityPercent ?? 0) >= 75
+                        ? "text-amber-400 animate-pulse"
+                        : (bot.stats.triggerProximityPercent ?? 0) >= 50
+                        ? "text-crypto-cyan"
+                        : "text-muted-foreground"
+                    }`}>
+                      {bot.stats.approvalsCount ?? 0}/{bot.stats.totalChecksCount ?? 4} aprovados ({bot.stats.triggerProximityPercent ?? 0}%)
+                    </span>
+                  </div>
+                  <div className="w-full bg-secondary/60 h-1.5 rounded-full overflow-hidden border border-border/20">
+                    <div
+                      className={`h-full transition-all duration-300 rounded-full ${
+                        (bot.stats.triggerProximityPercent ?? 0) >= 75
+                          ? "bg-gradient-to-r from-amber-500 to-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"
+                          : (bot.stats.triggerProximityPercent ?? 0) >= 50
+                          ? "bg-gradient-to-r from-blue-500 to-crypto-cyan"
+                          : "bg-muted-foreground/30"
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(5, bot.stats.triggerProximityPercent ?? 0))}%` }}
+                    />
+                  </div>
+
+                  {/* Sparkline de Histórico Gráfico de Proximidade (10 Ticks) */}
+                  {Array.isArray(bot.stats.proximityHistory) && bot.stats.proximityHistory.length >= 2 && (
+                    <div className="pt-1 space-y-1">
+                      <div className="flex items-center justify-between text-[8px] text-muted-foreground">
+                        <span className="flex items-center gap-1 font-medium">
+                          <Activity className="w-2.5 h-2.5 text-crypto-cyan/70" />
+                          Linha de Tendência (10 ticks)
+                        </span>
+                        {(() => {
+                          const history = bot.stats.proximityHistory!;
+                          const currentVal = history[history.length - 1];
+                          const prevVal = history[history.length - 2];
+                          const delta = currentVal - prevVal;
+                          if (delta > 0) {
+                            return (
+                              <span className="text-emerald-400 font-semibold flex items-center gap-0.5">
+                                ↗ Acelerando (+{delta}%)
+                              </span>
+                            );
+                          }
+                          if (delta < 0) {
+                            return (
+                              <span className="text-rose-400 font-semibold flex items-center gap-0.5">
+                                ↘ Rejeição recente ({delta}%)
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="text-muted-foreground font-mono">
+                              → Estável ({currentVal}%)
+                            </span>
+                          );
+                        })()}
+                      </div>
+
+                      {/* SVG Sparkline Gráfico */}
+                      {(() => {
+                        const history = bot.stats.proximityHistory!;
+                        const n = history.length;
+                        const points = history.map((val, idx) => {
+                          const x = Number(((idx / Math.max(1, n - 1)) * 96 + 2).toFixed(1));
+                          const y = Number((15 - (Math.min(100, Math.max(0, val)) / 100) * 12).toFixed(1));
+                          return { x, y, val };
+                        });
+                        const polylinePoints = points.map((p) => `${p.x},${p.y}`).join(" ");
+                        const polygonPoints = `2,16 ${polylinePoints} 98,16`;
+                        const lastPoint = points[points.length - 1];
+
+                        const isAccelerating = history[history.length - 1] > history[history.length - 2];
+                        const isRejection = history[history.length - 1] < history[history.length - 2];
+                        const strokeColor = isAccelerating ? "#34d399" : isRejection ? "#f43f5e" : "#06b6d4";
+
+                        return (
+                          <div className="w-full h-[18px] bg-black/25 rounded px-1 py-0.5 border border-white/[0.06]">
+                            <svg viewBox="0 0 100 16" className="w-full h-full overflow-visible" preserveAspectRatio="none">
+                              <defs>
+                                <linearGradient id={`sparkGrad-${bot.id}`} x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor={strokeColor} stopOpacity="0.4" />
+                                  <stop offset="100%" stopColor={strokeColor} stopOpacity="0.0" />
+                                </linearGradient>
+                              </defs>
+                              {/* Filled Area */}
+                              <polygon points={polygonPoints} fill={`url(#sparkGrad-${bot.id})`} />
+                              {/* Trend Line */}
+                              <polyline
+                                fill="none"
+                                stroke={strokeColor}
+                                strokeWidth="1.6"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                points={polylinePoints}
+                              />
+                              {/* Points */}
+                              {points.map((p, i) => (
+                                <circle
+                                  key={i}
+                                  cx={p.x}
+                                  cy={p.y}
+                                  r={i === points.length - 1 ? "2.2" : "1.2"}
+                                  fill={i === points.length - 1 ? strokeColor : "#94a3b8"}
+                                  className={i === points.length - 1 ? "animate-pulse" : ""}
+                                />
+                              ))}
+                            </svg>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                {/* Indicador de Veto Mais Recente */}
+                {bot.stats.lastVetoReason && (
+                  <div className="flex items-start gap-1.5 text-[9px] bg-red-500/10 border border-red-500/20 px-2 py-1 rounded text-red-300/90">
+                    <ShieldAlert className="w-3 h-3 text-red-400 shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <span className="font-semibold text-red-400 mr-1">
+                        Veto [{bot.stats.lastVetoIndicator || "Filtro Técnico"}]:
+                      </span>
+                      <span className="text-red-200/80 truncate block">{bot.stats.lastVetoReason}</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Por que o robô ainda não comprou: cada verificação do motor */}

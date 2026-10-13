@@ -55,119 +55,102 @@ export function FastCloseBadge({
 
     setIsClosing(true);
     toast({
-      title: `⚡ Zeragem Rápida a Mercado (${baseSym})`,
-      description: `Encerrando posição de ${bot.name} a preço de mercado...`,
-    });
-
-    try {
-      await manualCloseBotPosition(bot.id, {
-        onToast: (t) => toast(t),
-      });
-    } catch (err: any) {
-      toast({
-        title: "Erro na Zeragem",
-        description: err?.message || "Não foi possível liquidar a posição.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsClosing(false);
-    }
-  };
-
-  if (!activeBot) {
-    if (!showInactiveBadge) return null;
-    return (
-      <Badge
+      title: `⚡ Zeragem Rápida
+    toast({
+      title: `⚡ Zeragem Rápida
         variant="outline"
-        className={cn(
+        className={
+        cn(
           "font-bold bg-cyan-500/10 text-cyan-300 border-cyan-500/30 flex items-center gap-1 cursor-pointer hover:bg-cyan-500/20 transition-colors",
           size === "xs" && "text-[8px] px-1 py-0 leading-none",
-          size === "sm" && "text-[9px] px-1.5 py-0",
-          size === "default" && "text-[10px] px-2 py-0.5",
-          className
-        )}
-        onClick={(e) => {
-          if (onActivateClick) {
-            e.stopPropagation();
-            onActivateClick();
-          }
-        }}
-        title={`Clique para ativar robô para ${symbol}`}
+      size === "sm" && "text-[9px] px-1.5 py-0",
+      size === "default" && "text-[10px] px-2 py-0.5",
+      className
+    )
+  }
+  onClick = {(e) => {
+    if (onActivateClick) {
+      e.stopPropagation();
+      onActivateClick();
+    }
+  }
+}
+title = {`Clique para ativar robô para ${symbol}`}
       >
         <Zap className={cn("shrink-0", size === "xs" ? "w-2 h-2" : "w-3 h-3")} />
         <span>⚡ Clique para Ativar</span>
-      </Badge>
+      </Badge >
     );
   }
 
-  if (!isBotInPosition) {
-    return (
-      <Badge
-        variant="outline"
-        className={cn(
-          "font-bold bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm font-mono",
-          size === "xs" && "text-[8px] px-1.5 py-0 leading-none",
-          size === "sm" && "text-[9px] px-1.5 py-0",
-          size === "default" && "text-[10px] px-2 py-0.5",
-          className
-        )}
-        title={`Robô ativo em ${symbol}: ${activeBot.name}`}
-      >
-        <span className={cn("rounded-full bg-emerald-400 animate-ping shrink-0", size === "xs" ? "w-1 h-1" : "w-1.5 h-1.5")} />
-        <span>🟢 Bot em Execução</span>
-      </Badge>
-    );
-  }
-
-  // Robô em Posição: Badge com PnL Flutuante + Gatilho de Zeragem Rápida a Mercado
+if (!isBotInPosition) {
   return (
-    <div className={cn("flex items-center gap-1 group/fastclose", className)}>
-      <Badge
-        variant="outline"
-        className={cn(
-          "font-bold flex items-center gap-1 shadow-sm font-mono transition-all",
-          isFloatingProfit
-            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/30"
-            : "bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30",
-          size === "xs" && "text-[8px] px-1.5 py-0 leading-none",
-          size === "sm" && "text-[9px] px-1.5 py-0",
-          size === "default" && "text-[10px] px-2 py-0.5"
-        )}
-        title={`Robô em posição em ${symbol}: Entrada $${activeBot.position?.entryPrice?.toFixed(4) || "0"}`}
-      >
-        <span
-          className={cn(
-            "rounded-full animate-ping shrink-0",
-            isFloatingProfit ? "bg-emerald-400" : "bg-amber-400",
-            size === "xs" ? "w-1 h-1" : "w-1.5 h-1.5"
-          )}
-        />
-        <span>
-          {isFloatingProfit ? "🟢" : "🟡"} Em Posição ({hasFloatingPnl ? `${isFloatingProfit ? "+" : ""}${floatingPnlPct.toFixed(2)}%` : "0.00%"})
-        </span>
-      </Badge>
-
-      {/* Botão de Zeragem Rápida a Mercado (Fast Close / Market Flatten) */}
-      <Button
-        size="sm"
-        variant="destructive"
-        disabled={isClosing}
-        onClick={(e) => handleFastClose(e, activeBot)}
-        className={cn(
-          "font-bold bg-rose-500/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 rounded transition-all flex items-center gap-1 cursor-pointer shadow-sm",
-          size === "xs" && "h-4 px-1 text-[8px]",
-          size === "sm" && "h-5 px-1.5 text-[9px]",
-          size === "default" && "h-6 px-2 text-[10px]"
-        )}
-        title={`Zerar posição de ${baseSym} a mercado imediatamente (Fast Close)`}
-      >
-        {isClosing ? (
-          <Loader2 className={cn("animate-spin", size === "xs" ? "w-2 h-2" : "w-2.5 h-2.5")} />
-        ) : (
-          <LogOut className={cn(size === "xs" ? "w-2 h-2" : "w-2.5 h-2.5")} />
-        )}
-        <span>{isClosing ? "Zerando..." : "Zerar"}</span>
-      </Button>
-    </div>
+    <Badge
+      variant="outline"
+      className={cn(
+        "font-bold bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm font-mono",
+        size === "xs" && "text-[8px] px-1.5 py-0 leading-none",
+        size === "sm" && "text-[9px] px-1.5 py-0",
+        size === "default" && "text-[10px] px-2 py-0.5",
+        className
+      )}
+      title={`Robô ativo em ${symbol}: ${activeBot.name}`}
+    >
+      <span className={cn("rounded-full bg-emerald-400 animate-ping shrink-0", size === "xs" ? "w-1 h-1" : "w-1.5 h-1.5")} />
+      <span>🟢 Bot em Execução</span>
+    </Badge>
   );
+}
+
+// Robô em Posição: Badge com PnL Flutuante + Gatilho de Zeragem Rápida a Mercado
+return (
+  <div className={cn("flex items-center gap-1 group/fastclose", className)}>
+    <Badge
+      variant="outline"
+      className={cn(
+        "font-bold flex items-center gap-1 shadow-sm font-mono transition-all",
+        isFloatingProfit
+          ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/30"
+          : "bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30",
+        size === "xs" && "text-[8px] px-1.5 py-0 leading-none",
+        size === "sm" && "text-[9px] px-1.5 py-0",
+        size === "default" && "text-[10px] px-2 py-0.5"
+      )}
+      title={`Robô em posição em ${symbol}: Entrada $${activeBot.position?.entryPrice?.toFixed(4) || "0"}`}
+    >
+      <span
+        className={cn(
+          "rounded-full animate-ping shrink-0",
+          isFloatingProfit ? "bg-emerald-400" : "bg-amber-400",
+          size === "xs" ? "w-1 h-1" : "w-1.5 h-1.5"
+        )}
+      />
+      <span>
+        {isFloatingProfit ? "🟢" : "🟡"} Em Posição ({hasFloatingPnl ? `${isFloatingProfit ? "+" : ""}${floatingPnlPct.toFixed(2)}%` : "0.00%"})
+      </span>
+    </Badge>
+
+    {/* Botão de Zeragem Rápida a Mercado (Fast Close / Market Flatten) */}
+    <Button
+      size="sm"
+      variant="destructive"
+      disabled={isClosing}
+      onClick={(e) => handleFastClose(e, activeBot)}
+      className={cn(
+        "font-bold bg-rose-500/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 rounded transition-all flex items-center gap-1 cursor-pointer shadow-sm",
+        size === "xs" && "h-4 px-1 text-[8px]",
+        size === "sm" && "h-5 px-1.5 text-[9px]",
+        size === "default" && "h-6 px-2 text-[10px]"
+      )}
+      title={`Zerar posição de ${baseSym} a mercado imediatamente (Fast Close)`}
+    >
+      {isClosing ? (
+        <Loader2 className={cn("animate-spin", size === "xs" ? "w-2 h-2" : "w-2.5 h-2.5")} />
+      ) : (
+        <LogOut className={cn(size === "xs" ? "w-2 h-2" : "w-2.5 h-2.5")} />
+      )}
+      <span>{isClosing ? "Zerando..." : "Zerar"}</span>
+    </Button>
+  </div>
+);
 }

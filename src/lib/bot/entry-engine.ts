@@ -110,25 +110,28 @@ export function analyzeMarket(
 
   // Fluxo: avalia volume e direção com rigor institucional (rejeita candles com pavio superior de exaustão)
   const avgVol = averageVolume(klines, 20, 1);
-  const prevStrong = avgVol > 0 && prevCandle.volume >= avgVol * 0.7 && prevCandle.close >= prevCandle.open;
+  const prevStrong = avgVol > 0 && prevCandle.volume >= avgVol * 0.6 && prevCandle.close >= prevCandle.open;
   const currentGreen = last.close >= last.open;
-  const currentVolumeGood = avgVol > 0 && last.volume >= avgVol * 0.6;
-  const isHoldingEmaSupport = last.close >= fastNow * 0.997 && rsi >= 45 && rsi <= 68;
+  const currentVolumeGood = avgVol > 0 && last.volume >= avgVol * 0.45;
+  const isHoldingEmaSupport = last.close >= fastNow * 0.997 && rsi >= 40 && rsi <= 68;
 
   // Rejeição de pavio superior (Bull trap / exaustão compradora)
+  // Só qualifica rejeição de topo se o candle tiver amplitude real perceptível (≥ 0.15% do preço)
+  // e o fechamento estiver esticado acima da EMA rápida (evitando falso veto por ruído de fração de centavo)
   const candleRange = last.high - last.low;
   const upperWick = last.high - Math.max(last.open, last.close);
-  const isTopRejection = candleRange > 0 && (upperWick / candleRange) >= 0.45;
+  const hasRealRange = last.close > 0 && candleRange >= (last.close * 0.0015);
+  const isTopRejection = hasRealRange && (last.close >= fastNow * 1.002) && candleRange > 0 && (upperWick / candleRange) >= 0.50;
 
   // Voto de fluxo calibrado:
-  // BUY: impulso comprador ativo (candle verde com volume bom, sem rejeição de topo)
-  // SELL: rejeição explícita de topo ou candle vermelho com volume de despejo (> 1.2x) perdendo a média
-  // HOLD: recuos saudáveis de baixo volume em consolidação
+  // BUY: impulso comprador ativo ou sustentação sobre médias com suporte
+  // SELL: rejeição explícita de topo com volume ou candle vermelho de despejo (> 1.3x) perdendo a média
+  // HOLD: consolidação normal ou recuos saudáveis
   const isHealthyGreen = currentGreen && currentVolumeGood;
   const isSustainedBreak = prevStrong && currentGreen && !isTopRejection;
-  const flow: QuantVote = (!isTopRejection && (isHealthyGreen || isSustainedBreak))
+  const flow: QuantVote = (!isTopRejection && (isHealthyGreen || isSustainedBreak || isHoldingEmaSupport))
     ? "BUY"
-    : (isTopRejection || (last.close < last.open && avgVol > 0 && last.volume > avgVol * 1.2 && last.close < fastNow))
+    : (isTopRejection || (last.close < last.open && avgVol > 0 && last.volume > avgVol * 1.3 && last.close < fastNow * 0.997))
       ? "SELL"
       : "HOLD";
 
@@ -169,23 +172,39 @@ export function evaluateStrategySignal(
 ): SignalResult {
   const closes = klines.map((k) => k.close);
   const last = klines[klines.length - 1];
+  const prevCandle = klines.length >= 2 ? klines[klines.length - 2] : last;
 
   switch (bot.strategy) {
     case "QUANT_ENSEMBLE": {
       const { votes } = analysis;
-      // Regra de Proteção Institucional: NUNCA compra contra a tendência de baixa
-      if (votes.trend === "SELL") {
-        return { ok: false, detail: "aguarda confirmação de tendência (EMA rápida cruzando acima da lenta)" };
+      if (analysis.rsi > 74) {
+        return { ok: false, detail: `RSI (${analysis.rsi.toFixed(0)}) sobrecomprado no topo (máx ≤ 74)` };
       }
       if (votes.flow === "SELL") {
-        return { ok: false, detail: "bloqueado por pressão vendedora no fluxo de volume" };
+        return { ok: false, detail: "bloqueado por pressão vendedora acentuada no fluxo de volume" };
       }
-      if (analysis.rsi > 72) {
-        return { ok: false, detail: `RSI (${analysis.rsi.toFixed(0)}) sobrecomprado no topo (máx ≤ 72)` };
-      }
+
+      const fastP = bot.emaFast ?? DEFAULT_FAST;
+      const slowP = bot.emaSlow ?? DEFAULT_SLOW;
+      const fast = emaSeries(closes, fastP);
+      const slow = emaSeries(closes, slowP);
+      const slowNow = slow[slow.length - 1];
+
       const buys = [votes.trend, votes.momentum, votes.flow].filter((v) => v === "BUY").length;
-      const isTrendOk = votes.trend === "BUY" || analysis.votes.momentum === "BUY";
-      return { ok: buys >= 2 && isTrendOk, detail: `${buys}/3 análises favoráveis (tendência ativa e RSI ${analysis.rsi.toFixed(0)} saudável)` };
+      // Pullback com momentum positivo apoiado sobre a média
+      const isHoldingSupport = last.close >= slowNow * 0.995 && analysis.rsi >= 38 && analysis.rsi <= 68;
+      const isPullbackBuy = votes.momentum === "BUY" && isHoldingSupport && buys >= 1;
+      const isTrendBuy = buys >= 2 && votes.trend !== "SELL";
+
+      const ok = isTrendBuy || isPullbackBuy;
+      return {
+        ok,
+        detail: ok
+          ? `${buys}/3 análises favoráveis (${isPullbackBuy ? "pullback com momentum" : "tendência ativa"} · RSI ${analysis.rsi.toFixed(0)})`
+          : votes.trend === "SELL" && !isPullbackBuy
+            ? "aguarda alinhamento altista ou repique com momentum em suporte"
+            : `${buys}/3 análises favoráveis — aguardando confirmação adicional`,
+      };
     }
 
     case "RSI": {
@@ -193,18 +212,24 @@ export function evaluateStrategySignal(
       const rsi = calculateRSI(closes, period);
       const limit = bot.buyThreshold || 35;
       const isOversold = rsi <= limit;
-      const isRebound = rsi <= limit + 15 && last.close >= last.open;
-      // Suporte em tendência de alta: RSI em pullback saudável entre 35 e 72 voltando a subir
-      const isPullbackSupport = rsi >= 35 && rsi <= 72 && last.close >= last.open;
+      // Repique de sobrevenda: RSI próximo do piso com candle verde ou candle anterior de reversão
+      const isReversalCandle = last.close >= last.open || (prevCandle.close >= prevCandle.open);
+      const isRebound = rsi <= limit + 12 && isReversalCandle;
+      // Suporte em tendência: RSI em pullback saudável entre 30 e 72 sustentando sobre suporte
+      const fastP = bot.emaFast ?? DEFAULT_FAST;
+      const slowP = bot.emaSlow ?? DEFAULT_SLOW;
+      const slow = emaSeries(closes, slowP);
+      const slowNow = slow[slow.length - 1];
+      const isPullbackSupport = rsi >= 30 && rsi <= 72 && (last.close >= last.open || last.close >= slowNow * 0.997);
       const ok = isOversold || isRebound || isPullbackSupport;
       return {
         ok,
         detail: isOversold
           ? `RSI(${period}) ${rsi.toFixed(1)} em sobrevenda (≤ ${limit})`
           : isRebound
-            ? `RSI(${period}) ${rsi.toFixed(1)} com repique altista (≤ ${limit + 15})`
+            ? `RSI(${period}) ${rsi.toFixed(1)} com repique altista (≤ ${limit + 12})`
             : isPullbackSupport
-              ? `RSI(${period}) ${rsi.toFixed(1)} em suporte/pullback com candle verde`
+              ? `RSI(${period}) ${rsi.toFixed(1)} em suporte/pullback saudável`
               : `RSI(${period}) ${rsi.toFixed(1)} — aguarda sobrevenda (≤ ${limit}) ou suporte`,
       };
     }
@@ -216,33 +241,33 @@ export function evaluateStrategySignal(
       const freshCross = macd.prevHistogram <= 0 && macd.histogram > 0;
       const accelerating = macd.histogram > macd.prevHistogram && macd.histogram > 0;
       // Sustentação positiva acima da linha zero em momentum altista
-      const positiveMomentum = macd.histogram > 0 && last.close >= last.open;
-      // Reversão precoce: histograma virando para cima e candle verde
-      const turningUp = macd.histogram > macd.prevHistogram && last.close >= last.open;
+      const positiveMomentum = macd.histogram > 0 && (last.close >= last.open || prevCandle.close >= prevCandle.open);
+      // Reversão precoce: histograma virando para cima
+      const turningUp = macd.histogram > macd.prevHistogram && (last.close >= last.open || last.close >= prevCandle.close * 0.999);
       const momentumOk = freshCross || accelerating || positiveMomentum || turningUp;
 
-      const rsiOk = analysis.rsi <= 72;
+      const rsiOk = analysis.rsi <= 74;
       const candleRange = last.high - last.low;
       const upperWick = last.high - Math.max(last.open, last.close);
-      const isWickTrap = candleRange > 0 && (upperWick / candleRange) >= 0.45;
-      const isGreen = last.close >= last.open;
+      const hasRealRange = last.close > 0 && candleRange >= (last.close * 0.0015);
+      const fast = emaSeries(closes, 9);
+      const fastNow = fast[fast.length - 1];
+      const isWickTrap = hasRealRange && last.close >= fastNow * 1.002 && (upperWick / candleRange) >= 0.50;
 
-      const ok = momentumOk && rsiOk && !isWickTrap && isGreen;
+      const ok = momentumOk && rsiOk && !isWickTrap;
       return {
         ok,
         detail: !momentumOk
           ? "histograma MACD desacelerando — aguardando reversão altista"
           : !rsiOk
-            ? `RSI sobrecomprado (${analysis.rsi.toFixed(0)} > 72) no topo do movimento`
+            ? `RSI sobrecomprado (${analysis.rsi.toFixed(0)} > 74) no topo do movimento`
             : isWickTrap
-              ? "rejeição de topo com pavio superior no candle (risco de bull trap)"
-              : !isGreen
-                ? "aguardando candle comprador (verde)"
-                : freshCross
-                  ? "cruzamento altista fresco do MACD acima do sinal"
-                  : turningUp
-                    ? `curvatura altista do MACD (+${macd.histogram.toFixed(4)}) com candle verde`
-                    : `impulso altista do MACD (+${macd.histogram.toFixed(4)}) com RSI saudável`,
+              ? "rejeição de topo com pavio superior em candle esticado (risco de bull trap)"
+              : freshCross
+                ? "cruzamento altista fresco do MACD acima do sinal"
+                : turningUp
+                  ? `curvatura altista do MACD (+${macd.histogram.toFixed(4)}) com momentum ativo`
+                  : `impulso altista do MACD (+${macd.histogram.toFixed(4)}) com RSI saudável`,
       };
     }
 
@@ -388,17 +413,32 @@ export function evaluateEntry(
 
   const checks: BotEntryCheck[] = [];
 
-  // Filtro Auto-Screener: Se ativo, exige que o ativo seja uma moeda em alta real com volume significativo
-  if (bot.useAutoScreener || bot.symbol === "AUTO") {
+  // Filtro Auto-Screener: Se ativo (e sem override manual forçado pelo operador), exige momentum seguro e bloqueia exaustão
+  if ((bot.useAutoScreener || bot.symbol === "AUTO") && (!bot.overrideSymbol || bot.overrideSymbol === "AUTO")) {
     const change24h = ticker.priceChangePercent ?? 0;
     const vol = ticker.quoteVolume ?? 0;
-    const isHotCandidate = change24h >= 0.05 && vol >= 1_000_000;
+    const currentPrice = ticker.price || 0;
+    const isExhausted = change24h > 18.0;
+    const isSubPenny = currentPrice > 0 && currentPrice < 0.005;
+    const isMomentumValid = change24h >= 0.5 && !isExhausted;
+    const isVolumeValid = vol >= 3_000_000;
+    const isHotCandidate = isMomentumValid && isVolumeValid && !isSubPenny;
     checks.push({
       label: "Auto-Screener Alta",
       ok: isHotCandidate,
-      detail: isHotCandidate
-        ? `Líder em alta confirmada (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M)`
-        : `Ativo sem momentum suficiente (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M — precisa ≥ +0.1% e ≥ $1M)`,
+      detail: isExhausted
+        ? `Ativo em exaustão parabólica (+${change24h.toFixed(1)}% 24h > teto de +18%) — bloqueado contra compra no topo (Anti-FOMO)`
+        : isSubPenny
+          ? `Cotação sub-penny ($${currentPrice.toFixed(4)} < $0.005) — bloqueado contra spread tóxico`
+          : isHotCandidate
+            ? `Líder em momentum saudável (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M)`
+            : `Ativo sem momentum suficiente (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M — precisa entre +0.5% e +18.0% e ≥ $3M)`,
+    });
+  } else if (bot.overrideSymbol && bot.overrideSymbol !== "AUTO") {
+    checks.push({
+      label: "Override Manual",
+      ok: true,
+      detail: `Fixação manual no par ${bot.overrideSymbol.replace("USDT", "")}/USDT por decisão direta do operador`,
     });
   }
 
@@ -420,7 +460,7 @@ export function evaluateEntry(
     });
   }
 
-  // Filtro Multi-Timeframe (15m + 1m): Só compra no 1m se a macro-tendência de 15m estiver altista
+  // Filtro Multi-Timeframe (15m + 1m): Só compra no 1m se a macro-tendência de 15m estiver altista ou em suporte/repique saudável
   if (bot.useMultiTimeframe !== false) {
     if (klines15m && klines15m.length >= 20) {
       const closes15m = klines15m.map((k) => k.close);
@@ -430,9 +470,18 @@ export function evaluateEntry(
       const slowNow15 = slow15[slow15.length - 1];
       const lastClose15 = closes15m[closes15m.length - 1];
 
-      const trend15mOk = fastNow15 >= slowNow15;
-      const priceAboveEma15m = lastClose15 >= slowNow15 * 0.993; // tolerância para pullback controlado
-      const is15mBullish = trend15mOk && priceAboveEma15m;
+      const isReversionOrGridStrategy = bot.strategy === "RSI" || bot.strategy === "MEAN_REVERSION" || bot.strategy === "GRID";
+      // Tendência 15m: altista (fast >= slow) ou suporte em consolidação lateral onde o preço sustenta sobre a média
+      const isConsolidationSupport = fastNow15 >= slowNow15 * 0.998 && lastClose15 >= slowNow15 * 0.995;
+      const trend15mOk = isReversionOrGridStrategy ? true : (fastNow15 >= slowNow15 || isConsolidationSupport);
+      const priceAboveEma15m = isReversionOrGridStrategy
+        ? lastClose15 >= slowNow15 * 0.985 // tolerância ampliada de suporte para robôs de dip e grid
+        : lastClose15 >= slowNow15 * 0.992; // tolerância para pullback controlado
+
+      // Anti-Exaustão Macro: impede compra se o preço no 15m já estiver esticado > 2.8% acima da EMA rápida
+      const distFromEma9Pct15m = fastNow15 > 0 ? ((lastClose15 - fastNow15) / fastNow15) * 100 : 0;
+      const is15mOverextended = distFromEma9Pct15m > 2.8;
+      const is15mBullish = trend15mOk && priceAboveEma15m && !is15mOverextended;
 
       checks.push({
         label: "Multi-Timeframe 15m",
@@ -441,7 +490,9 @@ export function evaluateEntry(
           ? `Tendência 15m em baixa (EMA9 < EMA21 no 15m) — aguardando alinhamento altista`
           : !priceAboveEma15m
             ? `Preço 15m abaixo da EMA21 ($${lastClose15.toFixed(4)} < $${slowNow15.toFixed(4)}) — aguardando sustentação`
-            : `Tendência 15m altista confirmada (EMA9 > EMA21 e preço sobre a média)`,
+            : is15mOverextended
+              ? `Preço 15m esticado (+${distFromEma9Pct15m.toFixed(1)}% acima da EMA9 no 15m) — aguardando pullback macro (Anti-FOMO)`
+              : `Tendência 15m favorável (${isReversionOrGridStrategy ? "suporte para reversão/grid" : "EMA9 > EMA21 e preço sobre suporte"})`,
       });
     } else {
       const change24h = ticker.priceChangePercent ?? 0;
@@ -457,16 +508,19 @@ export function evaluateEntry(
   }
 
   // 🛡️ Filtro Anti-Topo & Pullback Saudável:
-  // Impede compra se o candle de 1m esticou demais acima da EMA9 (> 1.2%) ou se formou rejeição com pavio superior longo (> 40%)
+  // Impede compra se o candle de 1m esticou demais acima da EMA9 (> 2.0%) ou se formou exaustão clara com pavio vendedor longo em candle amplo
   const closes1m = klines.map((k) => k.close);
   const fastEma1m = emaSeries(closes1m, 9);
   const lastFastEma = fastEma1m[fastEma1m.length - 1];
   const lastCandle = klines[klines.length - 1];
   const candleRange = lastCandle.high - lastCandle.low;
   const upperWick = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
-  const wickRejection = candleRange > 0 && (upperWick / candleRange) >= 0.45;
   const distFromEma9Pct = lastFastEma > 0 ? ((lastCandle.close - lastFastEma) / lastFastEma) * 100 : 0;
-  const isExtendedFromEma = distFromEma9Pct > 1.8;
+  const isExtendedFromEma = distFromEma9Pct > 2.0;
+
+  // Só veta por pavio se o candle tiver amplitude significativa (> 0.2% da cotação) e estiver esticado (> 0.8% da EMA9)
+  const isWideCandle = candleRange > (lastCandle.close * 0.002);
+  const wickRejection = isWideCandle && distFromEma9Pct > 0.8 && candleRange > 0 && (upperWick / candleRange) >= 0.55;
 
   const isPullbackHealthy = !wickRejection && !isExtendedFromEma;
   checks.push({
@@ -515,26 +569,36 @@ export function evaluateEntry(
     });
   }
 
-  // 🛡️ SKILL technical-scanner: Filtro de Níveis Chave e Pivots Diários (Anti-Topo)
+  // 🛡️ SKILL technical-scanner: Filtro de Níveis Chave e Pivots Diários
+  // Para estratégias de rompimento (BREAKOUT), momentum (MACD) ou comitê, o teste de R1 é gatilho de aceleração
   const currentEvalPrice = ticker.price || (klines.length > 0 ? klines[klines.length - 1].close : 0);
   const dailyHigh = Math.max(ticker.high || 0, currentEvalPrice);
   const dailyLow = Math.min(ticker.low && ticker.low > 0 ? ticker.low : currentEvalPrice, currentEvalPrice);
   const pivots = calculatePivotPoints(dailyHigh, dailyLow, currentEvalPrice);
-  const resistanceCheck = checkResistanceProximity(currentEvalPrice, pivots, 0.8);
+  const isBreakoutOrTrend = bot.strategy === "BREAKOUT" || bot.strategy === "QUANT_ENSEMBLE" || bot.strategy === "MACD";
+  const resistanceCheck = checkResistanceProximity(currentEvalPrice, pivots, isBreakoutOrTrend ? 0.20 : 0.35);
 
   checks.push({
     label: "Pivots Diários (Resistência)",
-    ok: resistanceCheck.safeToBuy,
-    detail: resistanceCheck.safeToBuy
+    ok: resistanceCheck.safeToBuy || isBreakoutOrTrend,
+    detail: (resistanceCheck.safeToBuy || isBreakoutOrTrend)
       ? `Espaço livre até ${resistanceCheck.nearestLevel} ($${resistanceCheck.levelPrice} · +${resistanceCheck.distancePercent}%)`
       : (resistanceCheck.warning || "Preço colado em resistência chave"),
   });
 
-  // 🛡️ SKILL technical-scanner: Confirmação de Volume do Rompimento
+  // 🛡️ SKILL technical-scanner: Confirmação de Volume
+  // Analisa os últimos 3 candles recentes para evitar falso bloqueio no início de minutos ou consolidação pré-rompimento
   const avgVol = averageVolume(klines, 20, 1);
   const lastVol = klines.length > 0 ? klines[klines.length - 1].volume : 0;
-  const volRatio = avgVol > 0 ? lastVol / avgVol : 1;
-  const isVolumeSufficient = avgVol === 0 || volRatio >= 0.80; // Permite se volume não for totalmente murcho
+  const prevVol = klines.length >= 2 ? klines[klines.length - 2].volume : lastVol;
+  const prev2Vol = klines.length >= 3 ? klines[klines.length - 3].volume : prevVol;
+  const effectiveVol = Math.max(lastVol, prevVol, prev2Vol);
+  const volRatio = avgVol > 0 ? effectiveVol / avgVol : 1;
+
+  // Estratégias de Grid e Reversão (ex: Bot Delta e Bot Gamma) acumulam em consolidação/suporte (baixo volume)
+  const isReversionOrGridVol = bot.strategy === "GRID" || bot.strategy === "RSI" || bot.strategy === "MEAN_REVERSION";
+  const minVolRequired = isReversionOrGridVol ? 0.12 : 0.30;
+  const isVolumeSufficient = avgVol === 0 || volRatio >= minVolRequired;
 
   checks.push({
     label: "Volume vs Média",
@@ -544,34 +608,26 @@ export function evaluateEntry(
       : `Volume murcho (${volRatio.toFixed(2)}x da média) — risco de falso rompimento`,
   });
 
-  // Alvos Dinâmicos Adaptativos por ATR ancorados em Assimetria Estrita (R:R >= 2.2:1)
+  // Alvos Dinâmicos Adaptativos por ATR ancorados em Scalping Institucional
   const relATRPercent = (analysis.relATR || 0) * 100;
-  let suggestedSl = bot.stopLoss || 1.5;
-  let suggestedTp = bot.takeProfit || 3.5;
+  let suggestedSl = bot.stopLoss || 1.6;
+  let suggestedTp = bot.takeProfit || 2.2;
   const estimatedRoundtripFees = 0.20; // 0.10% entrada + 0.10% saída Binance Spot
-  let netGainPotential = 0;
 
   if (relATRPercent > 0) {
-    // Stop adaptativo: entre 1.2% e 1.8%
-    suggestedSl = Math.min(1.8, Math.max(1.2, parseFloat((relATRPercent * 1.0).toFixed(1))));
-    // Alvo adaptativo estritamente >= 2.25x o stop loss
-    const minTpByRr = parseFloat((suggestedSl * 2.25).toFixed(1));
-    const atrTp = parseFloat((relATRPercent * 2.3).toFixed(1));
-    suggestedTp = Math.max(minTpByRr, Math.max(3.2, Math.min(7.0, atrTp)));
-
-    // Amplitude real intrínseca do alvo ATR (impede que robô projete ganho em ativo sem volatilidade)
-    const intrinsicAtrTarget = Math.max(suggestedTp, atrTp);
-    // Se a amplitude ATR da barra for inferior a 0.74%, o alvo natural é insuficiente para 1.5% líquido
-    const realisticGain = relATRPercent < 0.74 ? atrTp : intrinsicAtrTarget;
-    netGainPotential = parseFloat((realisticGain - estimatedRoundtripFees).toFixed(2));
+    // Stop adaptativo: calibrado pela volatilidade, entre 1.2% e 2.0% (respeitando o teto de 2.0% dos guardrails)
+    suggestedSl = Math.min(2.0, Math.max(1.2, parseFloat((relATRPercent * 2.0).toFixed(1))));
+    // Alvo adaptativo para scalping de 1m/5m: entre 1.8% e 3.0% (alcançável antes de exaustão de tempo)
+    const dynamicAtrTp = parseFloat((relATRPercent * 2.4).toFixed(1));
+    suggestedTp = Math.max(1.8, Math.min(3.2, dynamicAtrTp || (bot.takeProfit || 2.2)));
   } else {
-    if (suggestedTp / suggestedSl < 2.2) {
-      suggestedTp = parseFloat((suggestedSl * 2.25).toFixed(1));
-    }
-    netGainPotential = parseFloat((suggestedTp - estimatedRoundtripFees).toFixed(2));
+    suggestedTp = Math.max(1.8, Math.min(3.0, bot.takeProfit || 2.2));
   }
 
-  // 🛡️ Filtro de Amplitude Mínima ATR (Anti-Overtrading em Micro-Movimentos):
+  // Potencial de ganho líquido do trade (Take Profit alvo deduzido das taxas operacionais)
+  const netGainPotential = parseFloat((suggestedTp - estimatedRoundtripFees).toFixed(2));
+
+  // 🛡️ Filtro de Amplitude Mínima ATR (Regra 6 dos Guardrails - Anti-Overtrading em Micro-Movimentos):
   // Proibido abrir operações em ativos cujo potencial de ganho até o alvo ATR seja inferior a 1.5% líquido de taxas.
   const isAmplitudeSufficient = netGainPotential >= 1.50;
 
@@ -579,7 +635,7 @@ export function evaluateEntry(
     label: "Amplitude Mínima ATR",
     ok: isAmplitudeSufficient,
     detail: isAmplitudeSufficient
-      ? `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) acima do piso de 1.5% (ATR: ${relATRPercent.toFixed(2)}%)`
+      ? `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) acima do piso institucional de 1.5% (Alvo: +${suggestedTp}%)`
       : `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) insuficiente para cobrir custos e taxas (precisa ≥ 1.50% líquido)`,
   });
 

@@ -1,7 +1,16 @@
 import { NextResponse } from 'next/server';
 import { askAIOnce, parseJsonLoose } from '@/lib/ai-client';
-import { calculateEMA, calculateRSI, calculateMACD, calculatePivotPoints, sma } from '@/lib/bot/indicators';
 import { db } from '@/lib/db';
+import {
+  calculateEMA,
+  calculateRSI,
+  calculateMACD,
+  calculatePivotPoints,
+  sma,
+  calculateReturns,
+  calculatePearsonCorrelation,
+  getCryptoSector,
+} from '@/lib/bot/indicators';
 
 export const dynamic = 'force-dynamic';
 
@@ -127,19 +136,32 @@ export async function POST(request: Request) {
         const tickers = await fetchBinanceTickers();
         const category = params.category || 'all';
         const horizon = params.horizon || 'all'; // 'all' | 'fast' | 'long'
+        const decorrelateRisk = Boolean(params.decorrelateRisk);
         const nonce = Number(params.nonce || Date.now());
 
-        // Setores curados para alta diversidade setorial
-        const SECTOR_POOLS: Record<string, string[]> = {
-          layer1: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'AVAXUSDT', 'NEARUSDT', 'SUIUSDT', 'APTUSDT', 'SEIUSDT', 'TIAUSDT', 'TONUSDT', 'ADAUSDT', 'DOTUSDT', 'KASUSDT'],
-          defi: ['UNIUSDT', 'AAVEUSDT', 'LINKUSDT', 'MKRUSDT', 'CRVUSDT', 'INJUSDT', 'PENDLEUSDT', 'LDOUSDT', 'JUPUSDT', 'RAYUSDT', 'ENAUSDT', 'SUSHIUSDT', 'CAKEUSDT'],
-          ai: ['RENDERUSDT', 'FETUSDT', 'TAOUSDT', 'NEARUSDT', 'GRTUSDT', 'WLDUSDT', 'AKTUSDT', 'ARUSDT', 'FILUSDT', 'THETAUSDT', 'IOUSDT', 'ARKMUSDT'],
-          memes: ['DOGEUSDT', 'SHIBUSDT', 'PEPEUSDT', 'WIFUSDT', 'BONKUSDT', 'FLOKIUSDT', 'POPCATUSDT', 'BOMEUSDT', 'MEMEUSDT'],
+        const excludeSymbols: string[] = Array.isArray(params.excludeSymbols)
+          ? params.excludeSymbols.map((s: any) => String(s).toUpperCase())
+          : [];
+        const isExcluded = (sym: string) => {
+          if (excludeSymbols.length === 0) return false;
+          const upper = sym.toUpperCase();
+          const base = upper.replace('USDT', '');
+          return excludeSymbols.includes(upper) || excludeSymbols.includes(base);
         };
 
-        // Identificação dinâmica de líderes de mercado com volume > $3M
+        // Setores curados para alta diversidade setorial (filtrados contra canibalização)
+        const SECTOR_POOLS: Record<string, string[]> = {
+          layer1: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'AVAXUSDT', 'NEARUSDT', 'SUIUSDT', 'APTUSDT', 'SEIUSDT', 'TIAUSDT', 'TONUSDT', 'ADAUSDT', 'DOTUSDT', 'KASUSDT'].filter(s => !isExcluded(s)),
+          defi: ['UNIUSDT', 'AAVEUSDT', 'LINKUSDT', 'MKRUSDT', 'CRVUSDT', 'INJUSDT', 'PENDLEUSDT', 'LDOUSDT', 'JUPUSDT', 'RAYUSDT', 'ENAUSDT', 'SUSHIUSDT', 'CAKEUSDT'].filter(s => !isExcluded(s)),
+          ai: ['RENDERUSDT', 'FETUSDT', 'TAOUSDT', 'NEARUSDT', 'GRTUSDT', 'WLDUSDT', 'AKTUSDT', 'ARUSDT', 'FILUSDT', 'THETAUSDT', 'IOUSDT', 'ARKMUSDT'].filter(s => !isExcluded(s)),
+          depin: ['RENDERUSDT', 'FILUSDT', 'ARUSDT', 'AKTUSDT', 'THETAUSDT', 'IOUSDT', 'HNTUSDT', 'JASMYUSDT'].filter(s => !isExcluded(s)),
+          rwa: ['ONDOUSDT', 'MKRUSDT', 'PENDLEUSDT', 'OMUSDT', 'TRUUSDT', 'SNXUSDT'].filter(s => !isExcluded(s)),
+          memes: ['DOGEUSDT', 'SHIBUSDT', 'PEPEUSDT', 'WIFUSDT', 'BONKUSDT', 'FLOKIUSDT', 'POPCATUSDT', 'BOMEUSDT', 'MEMEUSDT'].filter(s => !isExcluded(s)),
+        };
+
+        // Identificação dinâmica de líderes de mercado com volume > $3M excluindo pares sob custódia
         const liquidUSDT = Object.entries(tickers)
-          .filter(([sym, t]: [string, any]) => sym.endsWith('USDT') && t.price > 0 && (t.quoteVolume || 0) >= 3_000_000)
+          .filter(([sym, t]: [string, any]) => sym.endsWith('USDT') && t.price > 0 && (t.quoteVolume || 0) >= 3_000_000 && !isExcluded(sym))
           .map(([sym, t]: [string, any]) => ({
             symbol: sym,
             price: Number(t.price),
@@ -185,30 +207,110 @@ export async function POST(request: Request) {
           candidateSymbols = shuffle(SECTOR_POOLS.layer1);
         } else if (category === 'ai') {
           candidateSymbols = shuffle(SECTOR_POOLS.ai);
+        } else if (category === 'depin') {
+          candidateSymbols = shuffle(SECTOR_POOLS.depin);
+        } else if (category === 'rwa') {
+          candidateSymbols = shuffle(SECTOR_POOLS.rwa);
         } else if (category === 'memes') {
           candidateSymbols = shuffle(SECTOR_POOLS.memes);
         } else if (category === 'volatility') {
           candidateSymbols = shuffle(topVolatiles.slice(0, 15));
         } else {
           // CATEGORIA "all": Montar cesta multi-setorial perfeitamente diversificada!
-          // 1 Top Gainer (Momentum) + 1 Top Reversal (Pullback) + 1 IA + 1 DeFi + 1 Layer1/Meme
-          const gainerPick = topGainers.find((s) => !['USDCUSDT', 'FDUSDUSDT'].includes(s)) || 'SOLUSDT';
-          const reversalPick = topReversals.find((s) => s !== gainerPick) || 'ETHUSDT';
-          const aiShuffled = shuffle(SECTOR_POOLS.ai);
-          const aiPick = aiShuffled.find((s) => s !== gainerPick && s !== reversalPick) || 'RENDERUSDT';
-          const defiShuffled = shuffle(SECTOR_POOLS.defi);
-          const defiPick = defiShuffled.find((s) => s !== gainerPick && s !== reversalPick && s !== aiPick) || 'AAVEUSDT';
-          const l1Shuffled = shuffle(SECTOR_POOLS.layer1);
-          const l1Pick = l1Shuffled.find((s) => s !== gainerPick && s !== reversalPick && s !== aiPick && s !== defiPick) || 'NEARUSDT';
-          const memeShuffled = shuffle(SECTOR_POOLS.memes);
-          const memePick = memeShuffled.find((s) => ![gainerPick, reversalPick, aiPick, defiPick, l1Pick].includes(s)) || 'PEPEUSDT';
+          if (decorrelateRisk) {
+            // Priorizar ativos descorrelacionados (DePIN, RWA, IA) e moedas em desacoplamento
+            const depinShuffled = shuffle(SECTOR_POOLS.depin);
+            const rwaShuffled = shuffle(SECTOR_POOLS.rwa);
+            const aiShuffled = shuffle(SECTOR_POOLS.ai);
+            const defiShuffled = shuffle(SECTOR_POOLS.defi);
+            const gainerPick = topGainers.find((s) => !['USDCUSDT', 'FDUSDUSDT'].includes(s)) || 'RENDERUSDT';
 
-          // Misturar a cesta selecionada com rotação
-          candidateSymbols = shuffle([gainerPick, reversalPick, aiPick, defiPick, l1Pick, memePick]);
+            const p1 = depinShuffled[0] || 'RENDERUSDT';
+            const p2 = rwaShuffled[0] || 'ONDOUSDT';
+            const p3 = aiShuffled.find((s) => s !== p1 && s !== p2) || 'FETUSDT';
+            const p4 = defiShuffled.find((s) => s !== p1 && s !== p2 && s !== p3) || 'PENDLEUSDT';
+            const p5 = gainerPick !== p1 && gainerPick !== p2 ? gainerPick : (depinShuffled[1] || 'ARUSDT');
+
+            candidateSymbols = shuffle([p1, p2, p3, p4, p5]);
+          } else {
+            // 1 Top Gainer (Momentum) + 1 Top Reversal (Pullback) + 1 IA + 1 DeFi + 1 Layer1/Meme
+            const gainerPick = topGainers.find((s) => !['USDCUSDT', 'FDUSDUSDT'].includes(s)) || 'SOLUSDT';
+            const reversalPick = topReversals.find((s) => s !== gainerPick) || 'ETHUSDT';
+            const aiShuffled = shuffle(SECTOR_POOLS.ai);
+            const aiPick = aiShuffled.find((s) => s !== gainerPick && s !== reversalPick) || 'RENDERUSDT';
+            const defiShuffled = shuffle(SECTOR_POOLS.defi);
+            const defiPick = defiShuffled.find((s) => s !== gainerPick && s !== reversalPick && s !== aiPick) || 'AAVEUSDT';
+            const l1Shuffled = shuffle(SECTOR_POOLS.layer1);
+            const l1Pick = l1Shuffled.find((s) => s !== gainerPick && s !== reversalPick && s !== aiPick && s !== defiPick) || 'NEARUSDT';
+            const memeShuffled = shuffle(SECTOR_POOLS.memes);
+            const memePick = memeShuffled.find((s) => ![gainerPick, reversalPick, aiPick, defiPick, l1Pick].includes(s)) || 'PEPEUSDT';
+
+            candidateSymbols = shuffle([gainerPick, reversalPick, aiPick, defiPick, l1Pick, memePick]);
+          }
         }
 
-        // Limitar para os melhores candidatos selecionados
-        candidateSymbols = Array.from(new Set(candidateSymbols)).slice(0, 8);
+        // Limitar para os melhores candidatos selecionados (garantindo exclusão)
+        candidateSymbols = Array.from(new Set(candidateSymbols.filter((s) => !isExcluded(s)))).slice(0, 8);
+
+        // ==========================================================
+        // Medição em Tempo Real de Correlação Linear de Pearson (r)
+        // Coleta série de fechamentos 1h do BTC e dos candidatos
+        // ==========================================================
+        const btcCloses = await fetchBinanceKlines('BTCUSDT', '1h', 24);
+        const btcReturns = calculateReturns(btcCloses);
+
+        interface CandidateCorrelation {
+          r: number;
+          label: string;
+          sector: string;
+          isDecorrelated: boolean;
+        }
+        const correlationMap: Record<string, CandidateCorrelation> = {};
+
+        await Promise.all(
+          candidateSymbols.map(async (sym) => {
+            const secInfo = getCryptoSector(sym);
+            let rVal = secInfo.isAlternative ? 0.52 : 0.88;
+            try {
+              const klines = await fetchBinanceKlines(sym, '1h', 24);
+              if (klines.length >= 8 && btcReturns.length >= 8) {
+                const candReturns = calculateReturns(klines);
+                rVal = calculatePearsonCorrelation(candReturns, btcReturns);
+              }
+            } catch {
+              // fallback setorial
+            }
+            let lbl = 'Correlação Moderada';
+            if (rVal <= 0.60) lbl = 'Descorrelacionado (Desacoplado)';
+            else if (rVal > 0.85) lbl = 'Alta Correlação Beta (r > 0.85)';
+
+            correlationMap[sym] = {
+              r: parseFloat(rVal.toFixed(2)),
+              label: lbl,
+              sector: secInfo.sector,
+              isDecorrelated: rVal <= 0.70 || secInfo.isAlternative,
+            };
+          })
+        );
+
+        // Se a trava de correlação cruzada de risco (r > 0.85) estiver ativa:
+        // Excluir ou rebaixar ativos com r > 0.85 para proteger contra concentração sistêmica
+        if (decorrelateRisk) {
+          const filteredByCorr = candidateSymbols.filter((sym) => {
+            const corr = correlationMap[sym];
+            return !corr || corr.r <= 0.85;
+          });
+
+          // Se filtramos alguns, usamos a lista filtrada; se faltar, completamos com DePIN/RWA
+          if (filteredByCorr.length >= 3) {
+            candidateSymbols = filteredByCorr;
+          } else {
+            const backupDecorrelated = [...SECTOR_POOLS.depin, ...SECTOR_POOLS.rwa].filter(
+              (s) => !candidateSymbols.includes(s) && !isExcluded(s)
+            );
+            candidateSymbols = Array.from(new Set([...filteredByCorr, ...backupDecorrelated])).slice(0, 8);
+          }
+        }
 
         const marketContext = candidateSymbols
           .map((s) => {
@@ -224,7 +326,9 @@ export async function POST(request: Request) {
             const s1Val = Number(piv?.s1 ?? (p * 0.98));
             const chg = Number(t.priceChangePercent ?? 0).toFixed(2);
             const vol = Number(((t.quoteVolume ?? 0) / 1e6)).toFixed(1);
-            return `${s}: Preço Atual $${p.toFixed(p > 10 ? 2 : 4)}, 24h: ${chg}%, Vol 24h: $${vol}M, Pivot: $${pivotVal.toFixed(2)}, R1: $${r1Val.toFixed(2)}, S1: $${s1Val.toFixed(2)}`;
+            const corr = correlationMap[s];
+            const corrInfoStr = corr ? ` | Setor: ${corr.sector}, Beta Pearson r: ${corr.r} (${corr.label})` : '';
+            return `${s}: Preço Atual $${p.toFixed(p > 10 ? 2 : 4)}, 24h: ${chg}%, Vol 24h: $${vol}M, Pivot: $${pivotVal.toFixed(2)}, R1: $${r1Val.toFixed(2)}, S1: $${s1Val.toFixed(2)}${corrInfoStr}`;
           })
           .filter(Boolean)
           .join('\n');
@@ -235,6 +339,20 @@ export async function POST(request: Request) {
           ? 'FOCO EXCLUSIVO EM MÉDIO E LONGO PRAZO (Swing Trade e Position Trade, timeframes 4H/1D, duração de dias a semanas, acumulação estrutural e alvos amplos).'
           : 'DIVERSIFIQUE OS HORIZONTES: Apresente tanto APLICAÇÕES RÁPIDAS (Scalp/Day Trade em 15m/1H) quanto oportunidades de MÉDIO/LONGO PRAZO (Swing/Position em 4H/1D).';
 
+        const antiCannibalizationInstruction = excludeSymbols.length > 0
+          ? `DIRETRIZ DE NÃO-CANIBALIZAÇÃO (ANTI-CANNIBALIZATION FILTER):
+O operador JÁ POSSUI robôs ativos operando os seguintes pares sob custódia: [${excludeSymbols.join(', ')}].
+É TERMINANTEMENTE PROIBIDO sugerir ou selecionar qualquer um desses pares ativos.
+Forneça 100% das ideias em OPORTUNIDADES INEXPLORADAS entre os outros pares do mercado, garantindo expansão de carteira sem duplicidade operacional.`
+          : '';
+
+        const decorrelationInstruction = decorrelateRisk
+          ? `TRAVA DE ALTA CORRELAÇÃO DE RISCO (BETA CROSS-ASSET r < 0.85 ATIVA):
+A trava de correlação cruzada de carteira está ATIVA.
+PROIBIDO recomendar pares com correlação co-integrada quase perfeita com Bitcoin (r > 0.85).
+PRIORIZE estritamente ativos descorrelacionados (setores DePIN, RWA ou moedas em desacoplamento com fluxo proprietário no order flow, r <= 0.70).`
+          : '';
+
         const systemPrompt = `Você é o Gerador de Ideias de Troca institucional da TradeAI.
 Sua missão: "Analise o mercado atual e identifique oportunidades de alta probabilidade diferenciando claramente entre APLICAÇÕES RÁPIDAS (Day Trade/Scalping) e MÉDIO/LONGO PRAZO (Swing/Position Trade). Para cada configuração, forneça o preço de entrada sugerido, metas de lucro, nível de stop-loss e a relação risco-recompensa esperada."
 
@@ -242,7 +360,7 @@ DIRETRIZ DE DIVERSIFICAÇÃO OBRIGATÓRIA:
 O operador requer ALTA DIVERSIDADE DE ATIVOS E ESTRATÉGIAS. NÃO REPETIR apenas os mesmos pares habituais (como apenas BTC ou ETH).
 Selecione oportunidades distintas entre os dados ao vivo fornecidos, cobrindo diferentes perfis (altcoins de alto momentum, tokens de IA, protocolos DeFi e pares em repique técnico).
 
-DIRETRIZ DE HORIZONTE OPERACIONAL:
+${antiCannibalizationInstruction ? `${antiCannibalizationInstruction}\n\n` : ''}${decorrelationInstruction ? `${decorrelationInstruction}\n\n` : ''}DIRETRIZ DE HORIZONTE OPERACIONAL:
 ${horizonInstruction}
 
 REGRAS ESTRITAS:
@@ -266,7 +384,7 @@ REGRAS ESTRITAS:
    - timeframe ("15m" | "1H" | "4H" | "1D")
 3. Responda APENAS com um JSON array de 5 objetos seguindo essas chaves, sem delimitadores ou texto introdutório.`;
 
-        const userPrompt = `DADOS DE MERCADO AO VIVO:\n${marketContext || 'Utilize dados médios da Binance para os pares fornecidos'}\n\nFiltro/Categoria: ${category}\nHorizonte Solicitado: ${horizon}\nIdentifique as 5 melhores oportunidades agora com alta diversificação:`;
+        const userPrompt = `DADOS DE MERCADO AO VIVO:\n${marketContext || 'Utilize dados médios da Binance para os pares fornecidos'}\n\nFiltro/Categoria: ${category}\nHorizonte Solicitado: ${horizon}${excludeSymbols.length > 0 ? `\nPARES EXCLUÍDOS (JÁ OPERANDO): ${excludeSymbols.join(', ')}` : ''}${decorrelateRisk ? '\nTRAVA CROSS-ASSET ATIVA: Excluir r > 0.85, priorizar DePIN/RWA e desacoplados' : ''}\nIdentifique as 5 melhores oportunidades agora com alta diversificação (100% oportunidades inexploradas):`;
 
         let rawAI = '';
         try {
@@ -330,6 +448,13 @@ REGRAS ESTRITAS:
             const tp1Dist = slDist * (isFast ? 1.8 : 2.2);
             const tp2Dist = slDist * (isFast ? 2.8 : 3.4);
 
+            const cInfo = correlationMap[sym] || {
+              r: 0.65,
+              label: 'Correlação Moderada',
+              sector: getCryptoSector(sym).sector,
+              isDecorrelated: getCryptoSector(sym).isAlternative,
+            };
+
             return {
               symbol: sym,
               name: sym.replace('USDT', ''),
@@ -347,6 +472,10 @@ REGRAS ESTRITAS:
               technicalReason: strat.tech,
               fundamentalReason: strat.fund,
               timeframe: isFast ? strat.tfFast : strat.tfLong,
+              correlationBeta: cInfo.r,
+              correlationLabel: cInfo.label,
+              sector: cInfo.sector,
+              isDecorrelated: cInfo.isDecorrelated,
               sources: {
                 exchange: 'Binance Spot Live API v3',
                 pricing: 'Livro de Ofertas & Tickers 24h',
@@ -356,9 +485,17 @@ REGRAS ESTRITAS:
             };
           });
         } else {
-          // Enriquecer objetos retornados pela IA com fontes padronizadas e campos de horizonte
+          // Enriquecer objetos retornados pela IA com fontes padronizadas, campos de horizonte e correlação
           parsed = parsed.map((item, idx) => {
+            const sym = String(item.symbol || '').toUpperCase();
             const isFast = item.horizon === 'RAPIDO' || (item.timeframe && ['15m', '1h', '1H', '30m', '5m'].includes(item.timeframe));
+            const cInfo = correlationMap[sym] || {
+              r: 0.65,
+              label: 'Correlação Moderada',
+              sector: getCryptoSector(sym).sector,
+              isDecorrelated: getCryptoSector(sym).isAlternative,
+            };
+
             return {
               ...item,
               horizon: isFast ? 'RAPIDO' : 'MEDIO_LONGO',
@@ -366,6 +503,10 @@ REGRAS ESTRITAS:
               holdingPeriod: item.holdingPeriod || (isFast ? 'Intraday (30 min a 4 horas)' : 'Médio Prazo (2 a 7 dias)'),
               strategyType: item.strategyType || (isFast ? 'Scalping & Momentum Intraday' : 'Tendência & Acumulação Estrutural'),
               timeframe: item.timeframe || (isFast ? '1H' : '4H'),
+              correlationBeta: cInfo.r,
+              correlationLabel: cInfo.label,
+              sector: cInfo.sector,
+              isDecorrelated: cInfo.isDecorrelated,
               sources: {
                 exchange: 'Binance Spot Live API v3',
                 pricing: 'Livro de Ofertas & Tickers 24h',
@@ -385,14 +526,28 @@ REGRAS ESTRITAS:
           }
         }
 
+        // Se decorrelateRisk for estrito, purgar qualquer resultado acima de r > 0.85
+        if (decorrelateRisk) {
+          const strictlyDecorrelated = parsed.filter((item) => (item.correlationBeta ?? 0) <= 0.85);
+          if (strictlyDecorrelated.length >= 3) {
+            parsed = strictlyDecorrelated;
+          }
+        }
+
+        // Filtro estrito de Não-Canibalização: Expurgar deterministicamente qualquer ativo sob custódia
+        if (excludeSymbols.length > 0) {
+          parsed = parsed.filter((item) => !isExcluded(item.symbol));
+        }
+
         return NextResponse.json({
           success: true,
           tool: 'trade_ideas',
           data: parsed,
           sources: {
             marketData: 'Binance Spot Live API v3 (REST / WebSocket)',
-            quantMethodology: 'Pivot Points Floor Trader (PP, S1, R1) + RSI 14 Momentum + EMAs',
+            quantMethodology: 'Pearson Cross-Asset Return Correlation (r) + Pivot Points + RSI 14 + EMAs',
             aiEngine: rawAI ? 'TradeAI LLM Co-Pilot' : 'TradeAI Quant Algorithmic Engine V3',
+            decorrelateRiskApplied: decorrelateRisk,
             updatedAt: new Date().toISOString(),
           },
         });

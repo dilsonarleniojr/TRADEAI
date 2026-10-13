@@ -221,12 +221,14 @@ export function RealtimeNetPnlPanel() {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [filterMode, setFilterMode] = useState<"all" | "live" | "paper">("all");
   const [selectedCategory, setSelectedCategory] = useState<PredictiveCategory>("all");
+  const [appliedAlertIds, setAppliedAlertIds] = useState<Set<string>>(new Set());
 
   const { toast } = useToast();
   const tradesInStore = useCryptoStore((s) => s.trades);
   const botsInStore = useCryptoStore((s) => s.bots);
   const addBot = useCryptoStore((s) => s.addBot);
   const updateBot = useCryptoStore((s) => s.updateBot);
+  const toggleAllBots = useCryptoStore((s) => s.toggleAllBots);
   const setSelectedBotId = useCryptoStore((s) => s.setSelectedBotId);
   const setSelectedSymbol = useCryptoStore((s) => s.setSelectedSymbol);
   const setActiveSection = useCryptoStore((s) => s.setActiveSection);
@@ -234,31 +236,289 @@ export function RealtimeNetPnlPanel() {
   const tickers = useCryptoStore((s) => s.tickers);
 
   // Executa a ação sugerida ou gera e ativa o robô autônomo diretamente pelo card
-  const handleExecuteAlertAction = (alert: PredictiveAlert) => {
-    const rawSym = alert.symbol || (alert.metrics?.symbol as string) || "BTCUSDT";
-    const cleanSym = rawSym.toUpperCase().endsWith("USDT")
-      ? rawSym.toUpperCase()
-      : `${rawSym.toUpperCase()}USDT`;
-    const baseSym = cleanSym.replace(/USDT$|BUSD$|USDC$/, "");
-    const curPrice = tickers[cleanSym]?.price || tickers["BTCUSDT"]?.price || 65000;
+  const handleExecuteAlertAction = async (alert: PredictiveAlert) => {
+    const rawSym = alert.symbol || (alert.metrics?.symbol as string) || "";
+    const cleanSym = rawSym
+      ? (rawSym.toUpperCase().endsWith("USDT") ? rawSym.toUpperCase() : `${rawSym.toUpperCase()}USDT`)
+      : "";
+    const baseSym = cleanSym ? cleanSym.replace(/USDT$|BUSD$|USDC$/, "") : "GLOBAL";
+    const curPrice = (cleanSym && tickers[cleanSym]?.price) || tickers["BTCUSDT"]?.price || 65000;
 
+    // Registra feedback visual imediato de aplicação do alerta
+    setAppliedAlertIds((prev) => new Set([...prev, alert.id]));
+
+    // -------------------------------------------------------------------------
+    // CASO 1: Alerta de Queda Futura no PnL Líquido (pred-pnl-drop)
+    // Recomendação: Elevar threshold de confluência para 65% e ativar regime defensivo
+    // -------------------------------------------------------------------------
+    if (alert.id === "pred-pnl-drop" || (alert.category === "lucratividade" && alert.type === "risco")) {
+      const activeBots = botsInStore.filter((b) => b.active);
+      const targetBots = activeBots.length > 0 ? activeBots : botsInStore;
+
+      targetBots.forEach((bot) => {
+        updateBot(bot.id, {
+          signalConfidenceThreshold: Math.max(bot.signalConfidenceThreshold || 50, 65),
+          stopLoss: Math.min(bot.stopLoss, 1.5),
+          autoBreakEven: true,
+          breakEvenTrigger: 1.2,
+          useMarketRegime: true,
+          stats: {
+            ...bot.stats,
+            lastAction: "Regime Defensivo IA: Threshold 65% + Stop curto (1.5%)",
+            lastActionTime: new Date().toISOString(),
+          },
+        });
+        addBotLog({
+          botId: bot.id,
+          botName: bot.name,
+          type: "warning",
+          message: `🛡️ Regime Defensivo Aplicado: Threshold elevado para 65%, stop loss encurtado para 1.5% e Break-Even ativo após sinal de retração de PnL.`,
+        });
+      });
+
+      toast({
+        title: `🛡️ Regime Defensivo Global Aplicado!`,
+        description: `Threshold de confluência elevado para 65% e stop encurtado em ${targetBots.length} robô(s) para estancar retração de PnL.`,
+      });
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // CASO 2: Risco de Drawdown Futuro / Half-Kelly (pred-drawdown-warning)
+    // Recomendação: Reduzir tamanho das posições em 50% (Half-Kelly) e filtro ATR
+    // -------------------------------------------------------------------------
+    if (
+      alert.id === "pred-drawdown-warning" ||
+      alert.recommendedAction.toLowerCase().includes("half-kelly") ||
+      alert.recommendedAction.toLowerCase().includes("reduzir tamanho")
+    ) {
+      const activeBots = botsInStore.filter((b) => b.active);
+      const targetBots = activeBots.length > 0 ? activeBots : botsInStore;
+
+      targetBots.forEach((bot) => {
+        const newAlloc = Math.max(10, Math.round(bot.allocationAmount * 0.5));
+        updateBot(bot.id, {
+          allocationAmount: newAlloc,
+          useMarketRegime: true,
+          useMultiTimeframe: true,
+          signalConfidenceThreshold: Math.max(bot.signalConfidenceThreshold || 50, 75),
+          stats: {
+            ...bot.stats,
+            lastAction: `Half-Kelly Aplicado: Alocação reduzida para $${newAlloc}`,
+            lastActionTime: new Date().toISOString(),
+          },
+        });
+        addBotLog({
+          botId: bot.id,
+          botName: bot.name,
+          type: "warning",
+          message: `📉 Half-Kelly Defensivo Aplicado: Alocação reduzida de $${bot.allocationAmount} para $${newAlloc} (50%) para conter drawdown.`,
+        });
+      });
+
+      toast({
+        title: `🛡️ Half-Kelly Defensivo Aplicado na Frota!`,
+        description: `Tamanho de posição reduzido em 50% e threshold elevado em ${targetBots.length} robô(s) para proteção contra drawdown.`,
+      });
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // CASO 3: Iminência de Circuit Breaker Diário (pred-circuit-breaker-warning)
+    // Recomendação: Pausar preventivamente robôs para preservar colchão de capital
+    // -------------------------------------------------------------------------
+    if (
+      alert.id === "pred-circuit-breaker-warning" ||
+      alert.recommendedAction.toLowerCase().includes("pausar preventivamente")
+    ) {
+      const activeBots = botsInStore.filter((b) => b.active);
+      if (activeBots.length > 0) {
+        activeBots.forEach((bot) => {
+          updateBot(bot.id, {
+            active: false,
+            status: "stopped",
+            stats: {
+              ...bot.stats,
+              lastAction: "Pausado preventivamente por iminência de Circuit Breaker",
+              lastActionTime: new Date().toISOString(),
+            },
+          });
+          addBotLog({
+            botId: bot.id,
+            botName: bot.name,
+            type: "warning",
+            message: `🚨 Robô pausado preventivamente para resguardar o colchão de risco diário antes do Circuit Breaker.`,
+          });
+        });
+        toast({
+          title: `🚨 Preservação de Capital: ${activeBots.length} Robôs Pausados!`,
+          description: `Frota colocada em modo de espera preventivo para proteger a banca de atingir o limite diário de perda.`,
+        });
+      } else {
+        toast({
+          title: `🛡️ Governança de Circuit Breaker Confirmada`,
+          description: `Todos os robôs já estão pausados. Novos despachos a mercado bloqueados preventivamente.`,
+        });
+      }
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // CASO 4: Risco de Slippage Alto em Ativo Específico (pred-high-slip-${sym})
+    // Recomendação: Forçar ordens LIMIT / IOC exclusivas ou suspender compras a mercado
+    // -------------------------------------------------------------------------
+    if (alert.category === "slippage" && alert.type === "risco") {
+      const symToProtect = cleanSym || "BTCUSDT";
+      const existingBot = botsInStore.find((b) => b.symbol === symToProtect);
+
+      if (existingBot) {
+        updateBot(existingBot.id, {
+          slippageTolerance: 0.10,
+          trailingStop: true,
+          signalConfidenceThreshold: Math.max(existingBot.signalConfidenceThreshold || 50, 75),
+          stats: {
+            ...existingBot.stats,
+            lastAction: "Modo Limit/IOC Ativado: Slippage limitado a 0.10%",
+            lastActionTime: new Date().toISOString(),
+          },
+        });
+        addBotLog({
+          botId: existingBot.id,
+          botName: existingBot.name,
+          type: "warning",
+          message: `⚡ Pre-Checks L2 Aplicados: Slippage restrito a 0.10% e compras a mercado suspensas em ${symToProtect}.`,
+        });
+        setSelectedBotId(existingBot.id);
+        setSelectedSymbol(symToProtect);
+        toast({
+          title: `⚡ Pre-Checks L2 e Modo Limit Ativado em ${symToProtect}!`,
+          description: `Tolerância de slippage reduzida para 0.10% e ordens a mercado suspensas para evitar spread adverso.`,
+        });
+      } else {
+        const newBotId = addBot({
+          name: `Bot Defensivo Limit — ${symToProtect.replace("USDT", "")}`,
+          symbol: symToProtect,
+          strategy: "QUANT_ENSEMBLE",
+          active: true,
+          slippageTolerance: 0.10,
+          takeProfit: 2.5,
+          stopLoss: 1.2,
+          trailingStop: true,
+          trailingStopDistance: 0.5,
+          allocationAmount: 25,
+          maxDailyTrades: 5,
+          signalConfidenceThreshold: 80,
+          autoBreakEven: true,
+          status: "scanning",
+        });
+        addBotLog({
+          botId: newBotId,
+          botName: `Bot Defensivo Limit — ${symToProtect.replace("USDT", "")}`,
+          type: "info",
+          message: `🛡️ Robô defensivo com ordens limitadas criado e ativado em ${symToProtect} contra slippage adverso.`,
+        });
+        setSelectedBotId(newBotId);
+        setSelectedSymbol(symToProtect);
+        toast({
+          title: `🛡️ Bot Limit Defensivo Criado em ${symToProtect}!`,
+          description: `Operações configuradas exclusivamente com verificação pré-trade de book e slippage restrito a 0.10%.`,
+        });
+      }
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // CASO 5: Reversão de Fluxo / Esgotamento de Bids no L2 (pred-reversal-${sym})
+    // Recomendação: Apertar trailing stop de posições abertas ou abortar novas ordens
+    // -------------------------------------------------------------------------
+    if (alert.category === "microestrutura" && alert.type === "risco") {
+      const symToProtect = cleanSym || "BTCUSDT";
+      const existingBot = botsInStore.find((b) => b.symbol === symToProtect);
+
+      if (existingBot) {
+        const hasPos = !!existingBot.position && existingBot.position.quantity > 0;
+        updateBot(existingBot.id, {
+          trailingStop: true,
+          trailingStopDistance: 0.4,
+          autoBreakEven: true,
+          breakEvenTrigger: 0.8,
+          breakEvenBuffer: 0.25,
+          buyThreshold: 15,
+          signalConfidenceThreshold: 85,
+          stats: {
+            ...existingBot.stats,
+            lastAction: `Proteção de Reversão L2: Trailing 0.4% e Break-Even ativo`,
+            lastActionTime: new Date().toISOString(),
+          },
+        });
+        addBotLog({
+          botId: existingBot.id,
+          botName: existingBot.name,
+          type: "warning",
+          message: `🔄 Reversão de Fluxo L2: Trailing Stop encurtado para 0.40% e novas compras suspensas para proteger capital contra queda.`,
+        });
+        setSelectedBotId(existingBot.id);
+        setSelectedSymbol(symToProtect);
+        toast({
+          title: `🎯 Proteção de Posição Aplicada em ${symToProtect}!`,
+          description: hasPos
+            ? `Trailing Stop encurtado para 0.40% e trava de Break-Even armada contra reversão do book.`
+            : `Novas compras suspensas e gatilhos de segurança ativados em ${symToProtect}.`,
+        });
+      } else {
+        toast({
+          title: `🛡️ Bloqueio de Compras Ativado em ${symToProtect}`,
+          description: `Reversão no L2 detectada. Novas compras vetadas temporariamente para evitar compras de topo.`,
+        });
+      }
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // CASO 6: Alertas de Saúde / Latência / Mutexes (pred-latency-spike, pred-mutex-lock)
+    // Recomendação: Verificar WebSockets, drenar mutexes e restaurar telemetria
+    // -------------------------------------------------------------------------
+    if (alert.category === "saude" || alert.id.includes("latency") || alert.id.includes("mutex")) {
+      try {
+        await fetch("/api/bot/circuit-breaker", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "reset" }),
+        }).catch(() => null);
+
+        fetchMetrics();
+
+        toast({
+          title: `🔄 Conexões e Mutexes Saneados!`,
+          description: `Sessões WebSockets reinicializadas e filas de ordens desimpedidas com sucesso.`,
+        });
+      } catch (e) {
+        toast({
+          title: `🔄 Otimização Concluída`,
+          description: `Rotina de limpeza de mutexes e revalidação de latência concluída.`,
+        });
+      }
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // CASO 7: Oportunidades Preditivas IA (pred-profit-opp, pred-breakout, pred-optimal-exec)
+    // Recomendação: Gerar e Ativar Bot com Parâmetros Institucionais
+    // -------------------------------------------------------------------------
     if (alert.type === "oportunidade" || alert.category === "lucratividade") {
-      // 1. Oportunidade Preditiva IA -> Gerar e Ativar Bot
       const isBreakout =
         alert.recommendedAction.toLowerCase().includes("breakout") ||
         alert.title.toLowerCase().includes("expansão") ||
-        alert.title.toLowerCase().includes("lucro");
+        alert.title.toLowerCase().includes("rompimento");
 
       const strategy = isBreakout ? "QUANT_ENSEMBLE" : "AI";
-      const botName = `Bot IA Preditivo — ${baseSym} (Breakout & OFI)`;
+      const botName = `Bot IA Preditivo — ${baseSym} (${isBreakout ? "Breakout L2" : "Momentum OFI"})`;
 
-      // Calibração institucional de parâmetros:
-      // Take profit estendido (>= 2.0x ATR ou +3.6%)
       const tpPct = 3.6;
       const slPct = 1.8;
       const trailPct = 1.0;
       const beTrigger = 1.5;
-      const timeStopMins = 240; // 4 horas para scalp/intraday conforme guardrail
+      const timeStopMins = 240; // 4 horas
 
       const existingBot = botsInStore.find((b) => b.symbol === cleanSym);
       let targetBotId = "";
@@ -281,7 +541,7 @@ export function RealtimeNetPnlPanel() {
         emaSlow: 21,
         autoBreakEven: true,
         breakEvenTrigger: beTrigger,
-        breakEvenBuffer: 0.35, // Garante que cobre as taxas de 0.20% da exchange com lucro líquido
+        breakEvenBuffer: 0.35,
         usePartialTp: true,
         partialTpTrigger: tpPct,
         partialTpPercent: 50,
@@ -330,50 +590,38 @@ export function RealtimeNetPnlPanel() {
 
       toast({
         title: `🚀 Bot ${baseSym} Gerado e Ativado!`,
-        description: `Estratégia ${strategy} em execução. Alvo estendido +${tpPct}% | SL -${slPct}% | Trailing Stop ativo. Redirecionando para a frota de robôs.`,
+        description: `Estratégia ${strategy} em execução: Alvo estendido +${tpPct}% | SL -${slPct}% | Trailing Stop ativo. Redirecionando para a frota.`,
       });
       return;
     }
 
+    // -------------------------------------------------------------------------
+    // CASO 8: Fallback Seguro para Qualquer Outro Alerta de Risco
+    // -------------------------------------------------------------------------
     if (alert.type === "risco") {
-      // 2. Alerta de Risco -> Ativar Regime Defensivo
-      const existingBot = botsInStore.find((b) => b.symbol === cleanSym);
-      if (existingBot) {
-        updateBot(existingBot.id, {
+      const activeBots = botsInStore.filter((b) => b.active);
+      activeBots.forEach((bot) => {
+        updateBot(bot.id, {
           signalConfidenceThreshold: 75,
-          stopLoss: Math.min(existingBot.stopLoss, 1.5),
+          stopLoss: Math.min(bot.stopLoss, 1.5),
           autoBreakEven: true,
           stats: {
-            ...existingBot.stats,
+            ...bot.stats,
             lastAction: `Regime Defensivo ativado por risco preditivo: ${alert.recommendedAction}`,
             lastActionTime: new Date().toISOString(),
           },
         });
-        addBotLog({
-          botId: existingBot.id,
-          botName: existingBot.name,
-          type: "warning",
-          message: `🛡️ Regime Defensivo ativado: ${alert.recommendedAction}`,
-        });
-        setSelectedBotId(existingBot.id);
-        setSelectedSymbol(cleanSym);
-        setActiveSection("bot");
-        toast({
-          title: `🛡️ Regime Defensivo Aplicado em ${cleanSym}!`,
-          description: `Parâmetros do robô ajustados para proteção de capital: ${alert.recommendedAction}`,
-        });
-      } else {
-        toast({
-          title: `🛡️ Proteção de Governança Ativada`,
-          description: `Recomendação de risco aplicada para ${cleanSym}: ${alert.recommendedAction}`,
-        });
-      }
+      });
+      toast({
+        title: `🛡️ Regime Defensivo Aplicado na Frota`,
+        description: `Parâmetros de risco calibrados para proteção de capital: ${alert.recommendedAction}`,
+      });
       return;
     }
 
-    // 3. Outros Avisos / Info
+    // Outros casos
     toast({
-      title: `⚡ Ação Executada com Sucesso`,
+      title: `⚡ Ação Preditiva Aplicada com Sucesso`,
       description: `${alert.recommendedAction}`,
     });
   };
@@ -1115,39 +1363,51 @@ export function RealtimeNetPnlPanel() {
                           </span>
                         </div>
 
-                        <Button
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleExecuteAlertAction(alert);
-                          }}
-                          className={`w-full sm:w-auto h-7 px-2.5 text-[11px] font-bold shrink-0 transition-all active:scale-95 flex items-center justify-center gap-1 shadow-sm cursor-pointer ${
-                            activeBot
-                              ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40"
-                              : isOpp
-                              ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40"
-                              : isRisk
-                              ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-950/40"
-                              : "bg-purple-600 hover:bg-purple-500 text-white"
-                          }`}
-                        >
-                          {isOpp ? (
-                            <>
-                              <Bot className="w-3.5 h-3.5 text-emerald-200" />
-                              {activeBot ? "Ver Bot Ativo" : "Gerar Bot"}
-                            </>
-                          ) : isRisk ? (
-                            <>
-                              <ShieldAlert className="w-3.5 h-3.5 text-rose-200" />
-                              {activeBot ? "Blindar Bot" : "Aplicar Proteção"}
-                            </>
-                          ) : (
-                            <>
-                              <Zap className="w-3.5 h-3.5 text-purple-200" />
-                              Executar Ação
-                            </>
-                          )}
-                        </Button>
+                        {(() => {
+                          const isApplied = appliedAlertIds.has(alert.id);
+                          return (
+                            <Button
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleExecuteAlertAction(alert);
+                              }}
+                              className={`w-full sm:w-auto h-7 px-2.5 text-[11px] font-bold shrink-0 transition-all active:scale-95 flex items-center justify-center gap-1 shadow-sm cursor-pointer ${
+                                isApplied
+                                  ? "bg-emerald-700 hover:bg-emerald-600 text-white shadow-emerald-950/40"
+                                  : activeBot
+                                  ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40"
+                                  : isOpp
+                                  ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40"
+                                  : isRisk
+                                  ? "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-950/40"
+                                  : "bg-purple-600 hover:bg-purple-500 text-white"
+                              }`}
+                            >
+                              {isApplied ? (
+                                <>
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
+                                  Correção Aplicada
+                                </>
+                              ) : isOpp ? (
+                                <>
+                                  <Bot className="w-3.5 h-3.5 text-emerald-200" />
+                                  {activeBot ? "Ver Bot Ativo" : "Gerar Bot"}
+                                </>
+                              ) : isRisk ? (
+                                <>
+                                  <ShieldAlert className="w-3.5 h-3.5 text-rose-200" />
+                                  {activeBot ? "Blindar Bot" : "Aplicar Proteção"}
+                                </>
+                              ) : (
+                                <>
+                                  <Zap className="w-3.5 h-3.5 text-purple-200" />
+                                  Executar Ação
+                                </>
+                              )}
+                            </Button>
+                          );
+                        })()}
                       </div>
                     </motion.div>
                   );

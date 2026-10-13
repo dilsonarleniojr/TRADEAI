@@ -164,11 +164,48 @@ async function askOpenAICompatible(o: AskAIOptions, provider: AIProviderId, mode
   return { text, provider, model: completion.model || model, assistantContent: text };
 }
 
-/** Chamada ao motor de IA ativo (ou ao `provider` informado). */
+const ALL_AI_PROVIDERS: AIProviderId[] = ["gemini", "openai", "claude", "qwen"];
+
+/**
+ * Chamada resiliente ao motor de IA ativo.
+ * Quando o motor ativo falhar (timeout, rate limit 429 ou erro de API),
+ * a operação em andamento é automaticamente movida para o próximo motor em funcionamento.
+ */
 export async function askAI(o: AskAIOptions): Promise<AIReply> {
   const provider = o.provider ?? getActiveProvider();
   const model = getModel(provider);
-  return provider === "claude" ? askClaude(o, model) : askOpenAICompatible(o, provider, model);
+
+  try {
+    return provider === "claude" ? await askClaude(o, model) : await askOpenAICompatible(o, provider, model);
+  } catch (primaryError) {
+    // Se um provedor específico foi forçado explicitamente pelo chamador sem opção de failover, relança
+    if (o.provider && o.provider !== getActiveProvider()) {
+      throw primaryError;
+    }
+
+    // Busca outros motores que possuem chave de API disponível
+    const fallbackProviders = ALL_AI_PROVIDERS.filter((p) => p !== provider && resolveApiKey(p).key);
+
+    for (const fallback of fallbackProviders) {
+      try {
+        console.warn(
+          `[AI Engine Failover] Motor "${provider}" falhou (${(primaryError as Error)?.message}). Movendo operação para o motor em funcionamento "${fallback}"...`
+        );
+        const fallbackModel = getModel(fallback);
+        const reply =
+          fallback === "claude"
+            ? await askClaude({ ...o, provider: fallback }, fallbackModel)
+            : await askOpenAICompatible({ ...o, provider: fallback }, fallback, fallbackModel);
+
+        return reply;
+      } catch (fallbackError) {
+        console.warn(`[AI Engine Failover] Motor "${fallback}" também falhou. Tentando próximo...`);
+      }
+    }
+
+    // Se nenhum outro motor estiver em funcionamento, relança o erro do motor original
+    throw primaryError;
+  }
 }
 
 /** Atalho para uma pergunta única (system + uma mensagem do usuário); devolve só o texto. */

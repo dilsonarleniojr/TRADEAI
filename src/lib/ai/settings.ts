@@ -27,7 +27,7 @@ function read(): StoredSettings {
     return {
       provider: primary,
       activeProviders: active.length > 0 ? active : [primary],
-      multiAiEnabled: typeof raw.multiAiEnabled === "boolean" ? raw.multiAiEnabled : true,
+      multiAiEnabled: typeof raw.multiAiEnabled === "boolean" ? raw.multiAiEnabled : false,
       models: typeof raw.models === "object" && raw.models ? raw.models : {},
       keys: typeof raw.keys === "object" && raw.keys ? raw.keys : {},
     };
@@ -35,7 +35,7 @@ function read(): StoredSettings {
     return {
       provider: DEFAULT_PROVIDER,
       activeProviders: [DEFAULT_PROVIDER],
-      multiAiEnabled: true,
+      multiAiEnabled: false,
       models: {},
       keys: {},
     };
@@ -75,7 +75,12 @@ export function getActiveProvidersList(): AIProviderId[] {
 }
 
 export function getModel(id: AIProviderId): string {
-  return read().models[id] || getProvider(id).defaultModel;
+  const custom = read().models[id];
+  if (custom) return custom;
+  if (id === "gemini" && process.env.GEMINI_MODEL) {
+    return process.env.GEMINI_MODEL;
+  }
+  return getProvider(id).defaultModel;
 }
 
 export interface PublicSettings {

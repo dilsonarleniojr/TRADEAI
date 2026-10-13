@@ -5,6 +5,7 @@ import { useCryptoStore } from "@/lib/store";
 import { tickMultiBotFleet } from "@/lib/bot/multi-bot-engine";
 import { useBackgroundSettings, hydrateBackgroundSettings } from "@/lib/bot/background-settings";
 import { useToast } from "@/hooks/use-toast";
+import { useBotTrailingWatcher } from "@/hooks/use-bot-trailing-watcher";
 
 const IDLE_TICK_MS = 2500;
 const ACTIVE_POSITION_TICK_MS = 1000; // Monitoramento em tempo real (1s) para posições abertas
@@ -29,6 +30,9 @@ function createTickWorker(intervalMs: number): Worker | null {
  */
 export function BotBackgroundRunner() {
   const { toast } = useToast();
+  // Observabilidade de Break-Even, Trailing Stop e Realização Parcial em tempo real
+  useBotTrailingWatcher();
+
   const isAnyActive = useCryptoStore((s) => s.bots.some((b) => b.active));
   const hasOpenPositions = useCryptoStore((s) => s.bots.some((b) => b.active && !!b.position && b.position.quantity > 0));
 

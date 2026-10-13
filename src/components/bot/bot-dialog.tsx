@@ -65,14 +65,14 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
   const [useMultiTimeframe, setUseMultiTimeframe] = useState(true);
   const [useAutoScreener, setUseAutoScreener] = useState(false);
   const [autoBreakEven, setAutoBreakEven] = useState(true);
-  const [breakEvenTrigger, setBreakEvenTrigger] = useState(1.8);
-  const [breakEvenBuffer, setBreakEvenBuffer] = useState(0.50);
+  const [breakEvenTrigger, setBreakEvenTrigger] = useState(0.85);
+  const [breakEvenBuffer, setBreakEvenBuffer] = useState(0.30);
   const [trailingTakeProfit, setTrailingTakeProfit] = useState(true);
-  const [trailingTakeProfitDistance, setTrailingTakeProfitDistance] = useState(0.6);
-  const [usePartialTp, setUsePartialTp] = useState(false);
-  const [partialTpTrigger, setPartialTpTrigger] = useState(2.0);
+  const [trailingTakeProfitDistance, setTrailingTakeProfitDistance] = useState(0.5);
+  const [usePartialTp, setUsePartialTp] = useState(true);
+  const [partialTpTrigger, setPartialTpTrigger] = useState(1.0);
   const [partialTpPercent, setPartialTpPercent] = useState(50);
-  const [timeStopMinutes, setTimeStopMinutes] = useState(20);
+  const [timeStopMinutes, setTimeStopMinutes] = useState(45);
   const [useBtcGatekeeper, setUseBtcGatekeeper] = useState(true);
   const [useSmartDca, setUseSmartDca] = useState(true);
   const [dcaDipThreshold, setDcaDipThreshold] = useState(1.5);
@@ -274,7 +274,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setUsePartialTp(botToEdit.usePartialTp ?? true);
       setPartialTpTrigger(botToEdit.partialTpTrigger ?? 1.0);
       setPartialTpPercent(botToEdit.partialTpPercent ?? 50);
-      setTimeStopMinutes(botToEdit.timeStopMinutes ?? 20);
+      setTimeStopMinutes(botToEdit.timeStopMinutes ?? 60);
       setUseBtcGatekeeper(botToEdit.useBtcGatekeeper ?? true);
       setUseSmartDca(botToEdit.useSmartDca ?? true);
       setDcaDipThreshold(botToEdit.dcaDipThreshold ?? 1.5);
@@ -302,14 +302,14 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setUseMultiTimeframe(true);
       setUseAutoScreener(false);
       setAutoBreakEven(true);
-      setBreakEvenTrigger(1.8);
-      setBreakEvenBuffer(0.50);
+      setBreakEvenTrigger(0.85);
+      setBreakEvenBuffer(0.30);
       setTrailingTakeProfit(true);
-      setTrailingTakeProfitDistance(0.6);
-      setUsePartialTp(false);
-      setPartialTpTrigger(2.0);
+      setTrailingTakeProfitDistance(0.5);
+      setUsePartialTp(true);
+      setPartialTpTrigger(1.0);
       setPartialTpPercent(50);
-      setTimeStopMinutes(20);
+      setTimeStopMinutes(45);
       setUseBtcGatekeeper(true);
       setUseSmartDca(true);
       setDcaDipThreshold(1.5);
@@ -357,14 +357,21 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setName(`Dip Hunter ${symbol.replace("USDT", "")}`);
     } else if (preset === "screener") {
       setSymbol("AUTO");
-      setStrategy("BREAKOUT");
-      setTakeProfit(3.8);
+      setStrategy("QUANT_ENSEMBLE");
+      setTakeProfit(2.2);
       setStopLoss(1.6);
       setTrailingStop(true);
-      setTrailingStopDistance(0.8);
+      setTrailingStopDistance(0.45);
+      setAutoBreakEven(true);
+      setBreakEvenTrigger(0.85);
+      setBreakEvenBuffer(0.30);
+      setUsePartialTp(true);
+      setPartialTpTrigger(1.0);
+      setPartialTpPercent(50);
+      setTimeStopMinutes(45);
       setUseAutoScreener(true);
       setUseMultiTimeframe(true);
-      setUseMarketRegime(true);
+      setUseMarketRegime(false);
       setName("Auto-Screener Líderes de Alta");
     }
   };
@@ -1171,27 +1178,27 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
                     Time-Stop (Saída por Estagnação de Capital)
                   </span>
                   <p className="text-[10px] text-muted-foreground">
-                    Se o trade durar mais de {timeStopMinutes} minutos sem evoluir (oscilando no zero a zero), encerra a operação para liberar o saldo para novas oportunidades.
+                    Inicia com {timeStopMinutes} minutos base. Após esse tempo, aguarda mais 15 minutos buscando saída com prejuízo zero. Se expirar, encerra a operação a mercado.
                   </p>
                 </div>
-                <Switch checked={timeStopMinutes > 0} onCheckedChange={(chk) => setTimeStopMinutes(chk ? 20 : 0)} />
+                <Switch checked={timeStopMinutes > 0} onCheckedChange={(chk) => setTimeStopMinutes(chk ? 60 : 0)} />
               </div>
 
               {timeStopMinutes > 0 && (
                 <div className="space-y-1.5 pt-1 bg-orange-500/10 border border-orange-500/20 p-2.5 rounded-lg">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-[11px] text-orange-200">Tempo Máximo sem Rompimento:</span>
-                    <span className="font-bold text-orange-300">{timeStopMinutes} minutos</span>
+                    <span className="text-[11px] text-orange-200">Tempo Base de Estagnação:</span>
+                    <span className="font-bold text-orange-300">{timeStopMinutes} minutos (+15m tolerância a prejuízo zero)</span>
                   </div>
                   <Slider
                     value={[timeStopMinutes]}
-                    min={5}
-                    max={60}
+                    min={15}
+                    max={120}
                     step={5}
                     onValueChange={([val]) => setTimeStopMinutes(val)}
                   />
                   <p className="text-[9px] text-muted-foreground">
-                    Evita que o robô fique com capital preso por horas em moedas dormentes.
+                    Ao atingir {timeStopMinutes}m, o motor tenta sair no zero a zero por até 15m. Se em {timeStopMinutes + 15}m não zerar, encerra a mercado.
                   </p>
                 </div>
               )}

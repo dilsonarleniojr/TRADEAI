@@ -1,5 +1,5 @@
 import { type TickerData, type KlineData } from "@/lib/store";
-import { calculateADX, calculateRSI, emaSeries } from "./indicators";
+import { calculateADX, calculateRSI, emaSeries, getCryptoSector } from "./indicators";
 
 // ==========================================================
 // 1. Regime de mercado (ADX de Wilder)
@@ -78,6 +78,10 @@ export interface HotCoinCandidate {
   score: number;
   volumeZScore?: number;
   rangePosition?: number;
+  sector?: string;
+  isAlternative?: boolean;
+  correlationBeta?: number;
+  correlationLabel?: string;
 }
 
 const EXCLUDED_SYMBOLS = new Set([
@@ -96,15 +100,20 @@ const EXCLUDED_SYMBOLS = new Set([
  * Auto-Screener institucional da Binance:
  * Filtra moedas em USDT com liquidez robusta (> $5M), momentum positivo em 24h,
  * anomalia de fluxo (Volume Z-Score) e proximidade de máximas diárias,
- * pontuando as melhores candidatas para entrada explosiva.
+ * com trava de correlação cruzada de risco (Beta Cross-Asset r > 0.85)
+ * priorizando ativos descorrelacionados (DePIN, RWA ou desacoplamento com fluxo proprietário).
  */
 export function scanHotCoins(
   tickers: Record<string, TickerData>,
   btcTicker?: TickerData,
-  limit = 12
+  limit = 12,
+  heldSymbols: string[] = []
 ): HotCoinCandidate[] {
   const btcChange = btcTicker?.priceChangePercent ?? 0;
   const candidates: HotCoinCandidate[] = [];
+
+  const heldSet = new Set(heldSymbols.map((s) => s.toUpperCase().trim()));
+  const holdsMajors = heldSet.has("BTCUSDT") || heldSet.has("ETHUSDT") || heldSymbols.length >= 2;
 
   // 1. Amostragem transversal para cálculo do Z-Score de volume institucional
   const qualifiedTickers: Array<{ ticker: TickerData; logVol: number }> = [];
@@ -130,6 +139,8 @@ export function scanHotCoins(
   for (const ticker of Object.values(tickers)) {
     const s = ticker.symbol;
     if (!s || !s.endsWith("USDT") || EXCLUDED_SYMBOLS.has(s) || s === "BTCUSDT") continue;
+    // Não canibalizar pares idênticos já sob custódia
+    if (heldSet.has(s)) continue;
 
     const vol = ticker.quoteVolume || 0;
     const change = ticker.priceChangePercent || 0;
@@ -140,17 +151,21 @@ export function scanHotCoins(
     // Critério 1: Liquidez real na Binance (mínimo US$ 5 milhões nas últimas 24h)
     if (vol < 5_000_000) continue;
 
+    // Critério 1.1: Filtro Anti-Sub-Penny (evita spread tóxico e pips gigantescos em frações de centavo)
+    if (currentPrice < 0.005) continue;
+
     // Critério 2: Variação positiva em 24h (evita ativos em sangria/queda livre)
     if (change < 0.5) continue;
 
-    // Critério 3: Filtro Anti-Exaustão (permite capturar pumps fortes em expansão até +70%)
-    if (change > 70.0) continue;
+    // Critério 3: Filtro Anti-Exaustão & Anti-FOMO (bloqueia compras no topo de pumps parabólicos esticados)
+    // Moedas com alta > 18% já estão em fase de distribuição e sofrem retração iminente
+    if (change > 18.0) continue;
 
     // Critério 4: Posição no canal 24h (Range Position)
-    // Se a moeda bateu topo e agora recuou para a metade inferior do dia (< 38%), é dump pós-pump -> descarta!
+    // Se a moeda recuou para a metade inferior do range diário (< 50%), o fluxo comprador perdeu força -> descarta!
     const rangeSpan = high - low;
     const rangePos = rangeSpan > 0 ? Math.max(0, Math.min(1, (currentPrice - low) / rangeSpan)) : 0.5;
-    if (rangePos < 0.38 && change >= 4.0) continue;
+    if (rangePos < 0.50 && change >= 3.0) continue;
 
     const relStrength = change - btcChange;
 
@@ -161,19 +176,52 @@ export function scanHotCoins(
     const logV = Math.log10(Math.max(1, vol));
     const volumeZScore = (logV - meanLogVol) / stdLogVol;
 
-    // Pontuação quantitativa multicritério:
-    // - Momentum 24h (change * 1.2)
-    // - Faixa ideal de expansão intradiária (2% a 25%) (+4.0)
+    // Classificação setorial institucional
+    const { sector, isAlternative } = getCryptoSector(s);
+
+    // Estimativa de Correlação Linear / Beta Cross-Asset com o mercado principal (BTC)
+    // Se a moeda varia em estreita proximidade ao BTC com baixo volumeZScore, seu beta correlation r é alto (~0.90+)
+    // Se tiver Volume Z-Score elevado e força relativa descolada ou pertencer a DePIN/RWA, seu r é baixo
+    const hasFlowDecoupling = volumeZScore >= 1.2 && Math.abs(relStrength) >= 2.5;
+    let estimatedCorr = 0.88; // Default beta co-integrado
+    if (hasFlowDecoupling && isAlternative) {
+      estimatedCorr = 0.45; // Forte desacoplamento setorial
+    } else if (hasFlowDecoupling || isAlternative) {
+      estimatedCorr = 0.62; // Desacoplamento moderado
+    } else if (Math.abs(relStrength) <= 1.0 && volumeZScore < 0.5) {
+      estimatedCorr = 0.94; // Quase espelho de BTC
+    }
+
+    // Trava de Alta Correlação de Risco (r > 0.85):
+    // Se o operador já possui robôs em BTC/ETH ou carteira ativa e a moeda tem r > 0.85 sem desacoplamento:
+    let correlationAdjustment = 0;
+    let corrLabel = "Correlação Moderada";
+    if (estimatedCorr <= 0.60) {
+      corrLabel = "Descorrelacionado (Desacoplamento)";
+      correlationAdjustment = +8.0; // Bonificação por diversificação de risco
+    } else if (estimatedCorr > 0.85) {
+      corrLabel = "Alta Correlação Beta (r > 0.85)";
+      if (holdsMajors) {
+        correlationAdjustment = -12.0; // Penalização por risco concentrado
+      }
+    }
+
+    // Pontuação quantitativa multicritério calibrada:
+    // - Momentum saudável (boundedChange * 1.0)
+    // - Faixa ideal de expansão segura (+2% a +14%) (+5.0)
     // - Força relativa vs BTC (relStrength * 0.8)
     // - Z-Score de Volume (volumeZScore * 2.5)
     // - Proximidade do topo do dia (rangePos * 4.0)
-    const isSweetSpot = change >= 2.0 && change <= 25.0;
+    // - Bônus / Penalidade de Correlação Cross-Asset
+    const isSweetSpot = change >= 2.0 && change <= 14.0;
+    const boundedChangeScore = Math.min(change, 14.0) * 1.0;
     const score =
-      change * 1.2 +
-      (isSweetSpot ? 4.0 : 0) +
+      boundedChangeScore +
+      (isSweetSpot ? 5.0 : 0) +
       relStrength * 0.8 +
       volumeZScore * 2.5 +
-      rangePos * 4.0;
+      rangePos * 4.0 +
+      correlationAdjustment;
 
     candidates.push({
       symbol: s,
@@ -184,6 +232,10 @@ export function scanHotCoins(
       score,
       volumeZScore: parseFloat(volumeZScore.toFixed(2)),
       rangePosition: parseFloat((rangePos * 100).toFixed(0)),
+      sector,
+      isAlternative,
+      correlationBeta: parseFloat(estimatedCorr.toFixed(2)),
+      correlationLabel: corrLabel,
     });
   }
 

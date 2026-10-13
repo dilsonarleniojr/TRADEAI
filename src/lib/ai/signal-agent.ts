@@ -726,14 +726,33 @@ export async function runSignalAgent(
   const model = getModel(provider);
   const user = `Analise ${symbol} ao preço atual de ${price}.\n${marketBrief}\nUse as ferramentas antes de decidir e responda só com o JSON final.`;
 
-  let loop: LoopResult;
-  try {
-    loop =
-      provider === "claude"
-        ? await runClaudeLoop(key, model, user, runTool)
-        : await runOpenAICompatibleLoop(provider, key, model, user, runTool);
-  } catch (e) {
-    return failSafe(e instanceof Error ? e.message : String(e), { model });
+  let loop: LoopResult | null = null;
+  let activeModelUsed = model;
+  const candidateProviders = Array.from(new Set([provider, "gemini", "openai", "claude", "qwen"] as const)).filter(
+    (p) => resolveApiKey(p).key
+  );
+
+  let lastErrorMsg = "";
+  for (const p of candidateProviders) {
+    const k = resolveApiKey(p).key!;
+    const m = getModel(p);
+    try {
+      if (p !== provider) {
+        console.warn(`[SignalAgent Failover] Migrando operação de análise de "${provider}" para "${p}"...`);
+      }
+      loop = p === "claude"
+        ? await runClaudeLoop(k, m, user, runTool)
+        : await runOpenAICompatibleLoop(p, k, m, user, runTool);
+      activeModelUsed = m;
+      break;
+    } catch (e: any) {
+      lastErrorMsg = e instanceof Error ? e.message : String(e);
+      console.warn(`[SignalAgent Failover] Falha no motor "${p}": ${lastErrorMsg}`);
+    }
+  }
+
+  if (!loop) {
+    return failSafe(`Falha nos motores de IA: ${lastErrorMsg}`, { model: activeModelUsed });
   }
 
   const parsed = parseJsonLoose<RawDecision>(loop.text);

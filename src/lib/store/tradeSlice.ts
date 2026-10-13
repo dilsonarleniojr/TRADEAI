@@ -101,6 +101,7 @@ export interface TradeSlice {
   // Bot Logs
   botLogs: BotLogEntry[];
   addBotLog: (log: Omit<BotLogEntry, 'id' | 'timestamp'>) => void;
+  clearBotLogs: () => void;
 
   // AI Signals
   aiSignals: AISignalData[];
@@ -357,6 +358,7 @@ export const createTradeSlice: StateCreator<TradeSlice, [], [], TradeSlice> = (s
       };
       return { botLogs: [newLog, ...state.botLogs].slice(0, 100) };
     }),
+  clearBotLogs: () => set({ botLogs: [] }),
 
   // AI Signals
   aiSignals: [],

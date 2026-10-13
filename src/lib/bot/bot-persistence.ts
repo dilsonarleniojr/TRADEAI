@@ -72,17 +72,20 @@ export function startBotPersistence(): () => void {
     // Preserva o estado de execução: robôs que estavam ativos CONTINUAM ativos após F5!
     const bots = saved.bots.map((b) => {
       const wasActive = b.active ?? false;
-      // Auto-migração transparente para parâmetros lucrativos consistentes se o robô tiver parâmetros legados
+      // Auto-migração transparente para parâmetros de scalping consistentes e proteção rápida de lucro
       const isCustomBot = b.strategy === "AI" || b.algorithmVersion?.includes("ai") || b.algorithmVersion === "v2.5.0-ai-linked";
-      const takeProfit = (!b.takeProfit || (!isCustomBot && b.takeProfit < 2.8)) ? (isCustomBot && b.takeProfit ? b.takeProfit : 3.0) : b.takeProfit;
-      const stopLoss = (!b.stopLoss || (!isCustomBot && b.stopLoss < 1.4)) ? (isCustomBot && b.stopLoss ? b.stopLoss : 1.5) : b.stopLoss;
-      const breakEvenTrigger = (!b.breakEvenTrigger || (!isCustomBot && b.breakEvenTrigger < 1.5)) ? (isCustomBot && b.breakEvenTrigger ? b.breakEvenTrigger : 1.8) : b.breakEvenTrigger;
-      const breakEvenBuffer = (!b.breakEvenBuffer || (!isCustomBot && b.breakEvenBuffer < 0.4)) ? (isCustomBot && b.breakEvenBuffer ? b.breakEvenBuffer : 0.50) : b.breakEvenBuffer;
+      const takeProfit = (!b.takeProfit || (!isCustomBot && (b.takeProfit > 3.5 || b.takeProfit < 1.8))) ? (isCustomBot && b.takeProfit ? b.takeProfit : 2.2) : b.takeProfit;
+      const stopLoss = (!b.stopLoss || b.stopLoss > 2.0 || b.stopLoss < 1.2) ? 1.6 : b.stopLoss;
+      const breakEvenTrigger = (!b.breakEvenTrigger || b.breakEvenTrigger > 1.4) ? 0.85 : b.breakEvenTrigger;
+      const breakEvenBuffer = (!b.breakEvenBuffer || b.breakEvenBuffer > 0.45) ? 0.30 : b.breakEvenBuffer;
       const allocationAmount = (!b.allocationAmount || (!isCustomBot && b.allocationAmount < 35)) ? (isCustomBot && b.allocationAmount ? b.allocationAmount : 40.0) : b.allocationAmount;
-      const timeStopMinutes = b.timeStopMinutes ?? 20;
+      const timeStopMinutes = Math.min(60, b.timeStopMinutes ?? 45);
       const useBtcGatekeeper = b.useBtcGatekeeper ?? true;
       const trailingTakeProfit = b.trailingTakeProfit ?? true;
       const trailingTakeProfitDistance = b.trailingTakeProfitDistance ?? 0.6;
+      const usePartialTp = b.usePartialTp ?? true;
+      const partialTpTrigger = (!b.partialTpTrigger || b.partialTpTrigger > 1.6 || b.partialTpTrigger < 0.7) ? 1.0 : b.partialTpTrigger;
+      const partialTpPercent = b.partialTpPercent ?? 50;
       const strategy = (b.symbol === "AUTO" && b.strategy === "BREAKOUT") ? "QUANT_ENSEMBLE" : b.strategy;
       const useMarketRegime = b.symbol === "AUTO" ? false : (b.useMarketRegime ?? true);
 
@@ -94,6 +97,9 @@ export function startBotPersistence(): () => void {
         stopLoss,
         breakEvenTrigger,
         breakEvenBuffer,
+        usePartialTp,
+        partialTpTrigger,
+        partialTpPercent,
         allocationAmount,
         timeStopMinutes,
         useBtcGatekeeper,

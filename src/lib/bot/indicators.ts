@@ -376,3 +376,141 @@ export function calculateTechnicalScannerScore(klines: KlineData[]): TechnicalSc
   };
 }
 
+// ==========================================================
+// Análise de Correlação Cruzada & Beta de Carteira (Pearson r)
+// ==========================================================
+
+/**
+ * Converte uma série de preços cronológicos em retornos percentuais logarítmicos/aritméticos.
+ * R_t = (P_t - P_{t-1}) / P_{t-1}
+ */
+export function calculateReturns(prices: number[]): number[] {
+  if (prices.length < 2) return [];
+  const returns: number[] = [];
+  for (let i = 1; i < prices.length; i++) {
+    const prev = prices[i - 1];
+    if (prev <= 0 || isNaN(prev)) continue;
+    returns.push((prices[i] - prev) / prev);
+  }
+  return returns;
+}
+
+/**
+ * Coeficiente de Correlação Linear de Pearson (r) entre duas séries.
+ * r = Cov(X, Y) / (sigma_X * sigma_Y)
+ * Varia entre -1.0 e +1.0.
+ */
+export function calculatePearsonCorrelation(seriesA: number[], seriesB: number[]): number {
+  const n = Math.min(seriesA.length, seriesB.length);
+  if (n < 3) return 0;
+
+  const aSlice = seriesA.slice(seriesA.length - n);
+  const bSlice = seriesB.slice(seriesB.length - n);
+
+  const meanA = aSlice.reduce((s, v) => s + v, 0) / n;
+  const meanB = bSlice.reduce((s, v) => s + v, 0) / n;
+
+  let num = 0;
+  let denA = 0;
+  let denB = 0;
+
+  for (let i = 0; i < n; i++) {
+    const da = aSlice[i] - meanA;
+    const db = bSlice[i] - meanB;
+    num += da * db;
+    denA += da * da;
+    denB += db * db;
+  }
+
+  const den = Math.sqrt(denA * denB);
+  if (den === 0 || isNaN(den)) return 0;
+
+  const r = num / den;
+  return Math.max(-1, Math.min(1, parseFloat(r.toFixed(4))));
+}
+
+/**
+ * Mapeamento de Setores Cripto Institucionais para Gestão de Risco & Descorrelação.
+ * Setores DePIN e RWA possuem comportamento assíncrono durante rotações setoriais.
+ */
+export const CRYPTO_SECTOR_MAP: Record<string, { sector: string; isAlternative: boolean }> = {
+  // DePIN (Decentralized Physical Infrastructure)
+  RENDER: { sector: "DePIN", isAlternative: true },
+  FIL: { sector: "DePIN", isAlternative: true },
+  AR: { sector: "DePIN", isAlternative: true },
+  AKT: { sector: "DePIN", isAlternative: true },
+  THETA: { sector: "DePIN", isAlternative: true },
+  IO: { sector: "DePIN", isAlternative: true },
+  HNT: { sector: "DePIN", isAlternative: true },
+  LPT: { sector: "DePIN", isAlternative: true },
+  JASMY: { sector: "DePIN", isAlternative: true },
+
+  // RWA (Real World Assets & Tokenização Institucional)
+  ONDO: { sector: "RWA", isAlternative: true },
+  MKR: { sector: "RWA", isAlternative: true },
+  PENDLE: { sector: "RWA", isAlternative: true },
+  CFG: { sector: "RWA", isAlternative: true },
+  TRU: { sector: "RWA", isAlternative: true },
+  OM: { sector: "RWA", isAlternative: true },
+  POLYX: { sector: "RWA", isAlternative: true },
+  SNX: { sector: "RWA", isAlternative: true },
+
+  // Inteligência Artificial & Computação
+  FET: { sector: "IA & Big Data", isAlternative: true },
+  TAO: { sector: "IA & Big Data", isAlternative: true },
+  NEAR: { sector: "IA & Big Data", isAlternative: false },
+  WLD: { sector: "IA & Big Data", isAlternative: true },
+  ARKM: { sector: "IA & Big Data", isAlternative: true },
+  GRT: { sector: "IA & Big Data", isAlternative: true },
+  AGIX: { sector: "IA & Big Data", isAlternative: true },
+  OCEAN: { sector: "IA & Big Data", isAlternative: true },
+
+  // DeFi (Finanças Descentralizadas)
+  UNI: { sector: "DeFi Institucional", isAlternative: false },
+  AAVE: { sector: "DeFi Institucional", isAlternative: false },
+  LINK: { sector: "Oráculos & DeFi", isAlternative: false },
+  CRV: { sector: "DeFi Institucional", isAlternative: false },
+  INJ: { sector: "DeFi Institucional", isAlternative: false },
+  LDO: { sector: "Liquid Staking", isAlternative: false },
+  JUP: { sector: "DEX Solana", isAlternative: false },
+  RAY: { sector: "DEX Solana", isAlternative: false },
+  ENA: { sector: "DeFi Institucional", isAlternative: true },
+  CAKE: { sector: "DeFi Institucional", isAlternative: false },
+  SUSHI: { sector: "DeFi Institucional", isAlternative: false },
+
+  // Layer 1 / Majors (Alto Beta / Co-integrado com BTC)
+  BTC: { sector: "Macro Sovereign", isAlternative: false },
+  ETH: { sector: "Smart Contracts L1", isAlternative: false },
+  SOL: { sector: "High-Throughput L1", isAlternative: false },
+  BNB: { sector: "Exchange Ecosystem", isAlternative: false },
+  AVAX: { sector: "Smart Contracts L1", isAlternative: false },
+  SUI: { sector: "Next-Gen L1", isAlternative: false },
+  APT: { sector: "Next-Gen L1", isAlternative: false },
+  SEI: { sector: "Trading L1", isAlternative: false },
+  TIA: { sector: "Modular Blockchain", isAlternative: false },
+  TON: { sector: "Social Ecosystem", isAlternative: false },
+  ADA: { sector: "Smart Contracts L1", isAlternative: false },
+  DOT: { sector: "Interoperabilidade L0", isAlternative: false },
+  KAS: { sector: "PoW DAG L1", isAlternative: true },
+
+  // Memes / High-Beta Volatilidade
+  DOGE: { sector: "Memes & High-Beta", isAlternative: false },
+  SHIB: { sector: "Memes & High-Beta", isAlternative: false },
+  PEPE: { sector: "Memes & High-Beta", isAlternative: false },
+  WIF: { sector: "Memes & High-Beta", isAlternative: false },
+  BONK: { sector: "Memes & High-Beta", isAlternative: false },
+  FLOKI: { sector: "Memes & High-Beta", isAlternative: false },
+  POPCAT: { sector: "Memes & High-Beta", isAlternative: false },
+  BOME: { sector: "Memes & High-Beta", isAlternative: false },
+};
+
+/**
+ * Identifica o setor do par e se é um ativo alternativo descorrelacionado.
+ */
+export function getCryptoSector(symbol: string): { sector: string; isAlternative: boolean } {
+  const base = symbol.toUpperCase().replace("USDT", "").replace("BUSD", "").replace("USDC", "").trim();
+  const found = CRYPTO_SECTOR_MAP[base];
+  if (found) return found;
+  return { sector: "Altcoin Diversificada", isAlternative: false };
+}
+

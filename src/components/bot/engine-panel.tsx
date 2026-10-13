@@ -12,7 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Brain, CheckCircle2, XCircle, ShieldAlert, TrendingUp, Activity, Zap } from "lucide-react";
+import { Brain, CheckCircle2, XCircle, ShieldAlert, TrendingUp, Activity, Zap, RefreshCw } from "lucide-react";
+import { formatPrice } from "@/lib/format";
 import { getSymbolKlines } from "@/lib/bot/kline-cache";
 import { getOrderBookAnalysis, type OrderBookAnalysis } from "@/lib/bot/order-book-cache";
 import { analyzeMarket, evaluateEntry, type MarketAnalysis } from "@/lib/bot/entry-engine";
@@ -73,13 +74,32 @@ export function EnginePanel() {
     useShallow((s) => ({ bots: s.bots, tickers: s.tickers, aiSignals: s.aiSignals }))
   );
 
-  const symbols = useMemo(() => Array.from(new Set(bots.map((b) => b.symbol))), [bots]);
-  const { klines1m, klines15m, orderBooks } = useBotMarketData(symbols);
-  const [focusSymbol, setFocusSymbol] = useState<string>("");
-  const activeSymbol = focusSymbol && symbols.includes(focusSymbol) ? focusSymbol : symbols[0];
-
   const btc = tickers["BTCUSDT"];
   const leaders = useMemo(() => runMarketScanner(tickers), [tickers]);
+  const defaultLeader = leaders[0] || "SOLUSDT";
+
+  // Mapeia símbolos reais de mercado para buscar cotações, klines e orderbook
+  const marketSymbols = useMemo(() => {
+    const list: string[] = [];
+    for (const b of bots) {
+      if (b.symbol === "AUTO" || b.useAutoScreener) {
+        const target = b.position?.symbol || (b.overrideSymbol && b.overrideSymbol !== "AUTO" ? b.overrideSymbol : defaultLeader);
+        if (target && target !== "AUTO") list.push(target);
+      } else if (b.symbol && b.symbol !== "AUTO") {
+        list.push(b.symbol);
+      }
+    }
+    // Garante BTC e defaultLeader para leitura institucional de mercado
+    list.push("BTCUSDT");
+    if (defaultLeader && defaultLeader !== "AUTO") list.push(defaultLeader);
+    return Array.from(new Set(list));
+  }, [bots, defaultLeader]);
+
+  const { klines1m, klines15m, orderBooks } = useBotMarketData(marketSymbols);
+  const [focusSymbol, setFocusSymbol] = useState<string>("");
+  const activeSymbol = focusSymbol && marketSymbols.includes(focusSymbol)
+    ? focusSymbol
+    : (marketSymbols[0] || "BTCUSDT");
 
   const analysis: MarketAnalysis | null = useMemo(() => {
     const ticker = activeSymbol ? tickers[activeSymbol] : undefined;
@@ -90,22 +110,50 @@ export function EnginePanel() {
   const decisions = useMemo(
     () =>
       bots.map((bot) => {
-        const ticker = tickers[bot.symbol];
-        if (!ticker) return { bot, decision: null };
+        const isAuto = bot.symbol === "AUTO" || Boolean(bot.useAutoScreener);
+        const evalSymbol = isAuto ? (bot.position?.symbol || (bot.overrideSymbol && bot.overrideSymbol !== "AUTO" ? bot.overrideSymbol : defaultLeader)) : bot.symbol;
+
+        // Cotação do store ou fallback do último candle de 1m carregado
+        let ticker = tickers[evalSymbol];
+        if (!ticker) {
+          const klines = klines1m[evalSymbol];
+          if (klines && klines.length > 0) {
+            const lastClose = klines[klines.length - 1].close;
+            if (lastClose > 0) {
+              ticker = {
+                symbol: evalSymbol,
+                price: lastClose,
+                priceChange: 0,
+                priceChangePercent: 0,
+                high: lastClose,
+                low: lastClose,
+                volume: 0,
+                quoteVolume: 0,
+              };
+            }
+          }
+        }
+
+        if (!ticker || !ticker.price) {
+          return { bot, evalSymbol, isAuto, decision: null };
+        }
+
         return {
           bot,
+          evalSymbol,
+          isAuto,
           decision: evaluateEntry(
-            bot,
+            isAuto ? { ...bot, symbol: evalSymbol } : bot,
             ticker,
             btc,
-            klines1m[bot.symbol] ?? [],
+            klines1m[evalSymbol] ?? [],
             aiSignals,
-            klines15m[bot.symbol] ?? [],
-            orderBooks[bot.symbol] ?? null
+            klines15m[evalSymbol] ?? [],
+            orderBooks[evalSymbol] ?? null
           ),
         };
       }),
-    [bots, tickers, btc, klines1m, klines15m, orderBooks, aiSignals]
+    [bots, tickers, btc, klines1m, klines15m, orderBooks, aiSignals, defaultLeader]
   );
 
   const strategyStats = useMemo(() => {
@@ -138,50 +186,75 @@ export function EnginePanel() {
           </p>
         </CardHeader>
         <CardContent className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {decisions.map(({ bot, decision }) => (
-            <div key={bot.id} className="rounded-xl border border-border/40 bg-secondary/20 p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="text-xs font-bold truncate">{bot.name}</div>
-                  <div className="text-[10px] text-muted-foreground">
-                    {bot.symbol.replace("USDT", "/USDT")} · {strategyName(bot.strategy)}
+          {decisions.map(({ bot, evalSymbol, isAuto, decision }) => {
+            const displaySymbol = evalSymbol ? evalSymbol.replace("USDT", "/USDT") : bot.symbol;
+            const currentPrice = tickers[evalSymbol]?.price || (klines1m[evalSymbol]?.length ? klines1m[evalSymbol][klines1m[evalSymbol].length - 1].close : 0);
+
+            return (
+              <div key={bot.id} className="rounded-xl border border-border/40 bg-secondary/20 p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold truncate flex items-center gap-1.5">
+                      <span>{bot.name}</span>
+                      {isAuto && (
+                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-orange-500/10 border-orange-500/30 text-orange-400 font-semibold">
+                          AUTO
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                      <span className="font-semibold text-foreground/90">
+                        {isAuto ? `Alvo: ${displaySymbol}` : displaySymbol}
+                      </span>
+                      <span>·</span>
+                      <span>{strategyName(bot.strategy)}</span>
+                      {currentPrice > 0 ? (
+                        <>
+                          <span>·</span>
+                          <span className="text-crypto-cyan font-mono font-medium">${formatPrice(currentPrice)}</span>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
+                  {decision && (
+                    <Badge
+                      className={cn(
+                        "text-[10px] shrink-0 font-medium",
+                        decision.shouldBuy
+                          ? "bg-crypto-green/15 text-crypto-green border-crypto-green/30"
+                          : "bg-secondary text-muted-foreground border-border"
+                      )}
+                      variant="outline"
+                    >
+                      {decision.shouldBuy ? "Compraria agora" : "Aguardando confluência"}
+                    </Badge>
+                  )}
                 </div>
-                {decision && (
-                  <Badge
-                    className={cn(
-                      "text-[10px] shrink-0",
-                      decision.shouldBuy
-                        ? "bg-crypto-green/15 text-crypto-green border-crypto-green/30"
-                        : "bg-secondary text-muted-foreground border-border"
-                    )}
-                    variant="outline"
-                  >
-                    {decision.shouldBuy ? "Compraria agora" : "Aguardando"}
-                  </Badge>
+                {decision ? (
+                  <ul className="space-y-1">
+                    {decision.checks.map((c) => (
+                      <li key={c.label} className="flex items-start gap-1.5 text-[10px] leading-snug">
+                        {c.ok ? (
+                          <CheckCircle2 className="w-3 h-3 text-crypto-green shrink-0 mt-px" />
+                        ) : (
+                          <XCircle className="w-3 h-3 text-crypto-red shrink-0 mt-px" />
+                        )}
+                        <span>
+                          <strong className="text-foreground">{c.label}:</strong>{" "}
+                          <span className="text-muted-foreground">{c.detail}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground py-1">
+                    <RefreshCw className="w-3 h-3 animate-spin text-crypto-cyan shrink-0" />
+                    <span>Conectando cotação de {displaySymbol}...</span>
+                  </div>
                 )}
               </div>
-              {decision ? (
-                <ul className="space-y-1">
-                  {decision.checks.map((c) => (
-                    <li key={c.label} className="flex items-start gap-1.5 text-[10px] leading-snug">
-                      {c.ok ? (
-                        <CheckCircle2 className="w-3 h-3 text-crypto-green shrink-0 mt-px" />
-                      ) : (
-                        <XCircle className="w-3 h-3 text-crypto-red shrink-0 mt-px" />
-                      )}
-                      <span>
-                        <strong className="text-foreground">{c.label}:</strong>{" "}
-                        <span className="text-muted-foreground">{c.detail}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-[10px] text-muted-foreground">Aguardando cotação...</p>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </CardContent>
       </Card>
 
@@ -199,7 +272,7 @@ export function EnginePanel() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {symbols.map((s) => (
+                  {marketSymbols.map((s) => (
                     <SelectItem key={s} value={s}>
                       {s.replace("USDT", "/USDT")}
                     </SelectItem>

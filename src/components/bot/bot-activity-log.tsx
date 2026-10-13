@@ -5,19 +5,13 @@ import { useCryptoStore } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Activity, TrendingUp, TrendingDown, DollarSign, Zap, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Activity, TrendingUp, TrendingDown, DollarSign, Zap, AlertTriangle, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { BotLogEntry } from "@/lib/store/types";
 import { useShallow } from "zustand/react/shallow";
 
-const INITIAL_LOG_ENTRIES: BotLogEntry[] = [
-  {
-    id: "l1",
-    timestamp: Date.now() - 3600000,
-    message: "Bot iniciado e escutando sinais",
-    type: "system",
-  },
-];
+const INITIAL_LOG_ENTRIES: BotLogEntry[] = [];
 
 function getLogIcon(type: BotLogEntry["type"]) {
   switch (type) {
@@ -92,8 +86,9 @@ function getRelativeTime(timestamp: number): string {
 
 export function BotActivityLog() {
   const { botActive, trades, botLogs } = useCryptoStore(
-  useShallow((s) => ({ botActive: s.botActive, trades: s.trades, botLogs: s.botLogs }))
-);
+    useShallow((s) => ({ botActive: s.botActive, trades: s.trades, botLogs: s.botLogs }))
+  );
+  const clearBotLogs = useCryptoStore((s) => s.clearBotLogs);
   const lastTradeIdRef = useRef<string>("");
 
   // Convert recent trades to log entries via useMemo
@@ -153,9 +148,22 @@ export function BotActivityLog() {
             <Activity className="w-4 h-4 text-crypto-cyan" />
             Log de Atividade
           </CardTitle>
-          <Badge variant="outline" className="text-[10px] border-border">
-            {allLogs.length} entradas
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-[10px] border-border">
+              {allLogs.length} entradas
+            </Badge>
+            {allLogs.length > 0 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-crypto-red hover:bg-crypto-red/10 transition-colors"
+                title="Limpar logs de atividade"
+                onClick={() => clearBotLogs()}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="p-0 relative">

@@ -548,6 +548,13 @@ export function AITopPicks() {
                                       : `🟢 Gerenciar Robô Ativo (${pick.symbol.replace("USDT", "")})`
                                     : `⚡ Criar Bot com Sugestão (${pick.symbol.replace("USDT", "")})`}
                                 </Button>
+                                {isBotInPosition && activeBot && (
+                                  <FastCloseBadge
+                                    symbol={pick.symbol}
+                                    size="sm"
+                                    showInactiveBadge={false}
+                                  />
+                                )}
                                 <Button
                                   variant="outline"
                                   size="sm"

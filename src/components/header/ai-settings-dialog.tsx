@@ -68,7 +68,7 @@ interface AiSettingsDialogProps {
 export function AiSettingsDialog({ open, onOpenChange }: AiSettingsDialogProps) {
   const { toast } = useToast();
   const [data, setData] = useState<SettingsData | null>(null);
-  const [editing, setEditing] = useState<AIProviderId>("claude");
+  const [editing, setEditing] = useState<AIProviderId>("gemini");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);

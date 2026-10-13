@@ -37,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
 import { AIBrainActivityWidget } from "@/components/ai/ai-brain-activity-widget";
+import { FastCloseBadge } from "@/components/bot/fast-close-badge";
 
 function getActionColor(action: AISignalData["action"]) {
   switch (action) {
@@ -508,32 +509,12 @@ export function AISignals() {
                             @ ${formatPrice(signal.priceAtSignal)}
                           </span>
 
-                          {/* Badge Dinâmico de Robô com PnL Flutuante */}
-                          {activeBot && (
-                            isBotInPosition ? (
-                              <Badge
-                                variant="outline"
-                                className={`text-[8px] font-bold px-1.5 py-0 flex items-center gap-1 shadow-sm font-mono leading-none ${
-                                  isFloatingProfit
-                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
-                                    : "bg-amber-500/20 text-amber-300 border-amber-500/50"
-                                }`}
-                                title={`Robô em posição em ${signal.symbol}: Entrada $${activeBot.position?.entryPrice?.toFixed(4) || "0"}`}
-                              >
-                                <span className={`w-1 h-1 rounded-full animate-ping shrink-0 ${isFloatingProfit ? "bg-emerald-400" : "bg-amber-400"}`} />
-                                {isFloatingProfit ? "🟢" : "🟡"} Em Posição ({hasFloatingPnl ? `${isFloatingProfit ? "+" : ""}${floatingPnlPct.toFixed(2)}%` : "0.00%"})
-                              </Badge>
-                            ) : (
-                              <Badge
-                                variant="outline"
-                                className="text-[8px] font-bold px-1.5 py-0 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm font-mono leading-none"
-                                title={`Robô ativo em ${signal.symbol}: ${activeBot.name}`}
-                              >
-                                <span className="w-1 h-1 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                                🟢 Bot Ativo
-                              </Badge>
-                            )
-                          )}
+                          {/* Badge Dinâmico de Robô com PnL Flutuante e Zeragem Rápida */}
+                          <FastCloseBadge
+                            symbol={signal.symbol}
+                            size="xs"
+                            showInactiveBadge={false}
+                          />
 
                           {signal.risk_reward_ratio !== undefined && (
                             <Badge
@@ -641,29 +622,11 @@ export function AISignals() {
                       </DialogTitle>
                       <DialogDescription className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap mt-0.5">
                         <span>{selectedBaseSym}/USDT &bull; Revise os valores preenchidos e clique em OK.</span>
-                        {activeModalBot && (
-                          isModalBotInPosition ? (
-                            <Badge
-                              variant="outline"
-                              className={`text-[9px] font-bold px-1.5 py-0 flex items-center gap-1 shadow-sm font-mono ${
-                                isModalFloatingProfit
-                                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
-                                  : "bg-amber-500/20 text-amber-300 border-amber-500/50"
-                              }`}
-                            >
-                              <span className={`w-1 h-1 rounded-full animate-ping shrink-0 ${isModalFloatingProfit ? "bg-emerald-400" : "bg-amber-400"}`} />
-                              {isModalFloatingProfit ? "🟢" : "🟡"} Robô em Posição ({hasModalFloatingPnl ? `${isModalFloatingProfit ? "+" : ""}${modalFloatingPnlPct.toFixed(2)}%` : "0.00%"})
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="text-[9px] font-bold px-1.5 py-0 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 font-mono"
-                            >
-                              <span className="w-1 h-1 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                              🟢 Robô Ativo
-                            </Badge>
-                          )
-                        )}
+                        <FastCloseBadge
+                          symbol={selectedCleanSym}
+                          size="sm"
+                          showInactiveBadge={false}
+                        />
                       </DialogDescription>
                     </div>
                   </div>

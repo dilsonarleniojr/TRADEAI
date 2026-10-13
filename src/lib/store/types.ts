@@ -121,6 +121,17 @@ export interface BotStats {
   profitFactor?: number;
   expectancy?: number;
   maxDrawdown?: number;
+
+  /** Telemetria de Frequência de Disparo (Entry Frequency Telemetry) */
+  scansPerMinute?: number;
+  evaluatedPairsCount?: number;
+  approvalsCount?: number;
+  totalChecksCount?: number;
+  triggerProximityPercent?: number;
+  lastVetoReason?: string;
+  lastVetoIndicator?: string;
+  /** Mini histórico dos últimos 10 ticks de proximidade (0-100%) para Sparkline */
+  proximityHistory?: number[];
 }
 
 export interface BotEntryCheck {
@@ -136,6 +147,11 @@ export interface BotInstance {
   strategy: BotStrategy;
   active: boolean;
   status: "idle" | "scanning" | "in_position" | "take_profit" | "stopped";
+
+  // Override manual de ativo para Auto-Screener (fixação temporária de par pelo operador)
+  overrideSymbol?: string;
+  overrideMode?: "indefinite" | "single_trade" | "1h" | "4h";
+  overrideExpiresAt?: number; // timestamp ms quando expira (para 1h e 4h)
 
   // Profit-seeking parameters
   takeProfit: number; // Target profit % to trigger sell (e.g. 2.5%, 3.5%)
@@ -186,14 +202,14 @@ export interface BotInstance {
   usePartialTp?: boolean; // Realização Parcial de 50% no primeiro alvo
   partialTpTrigger?: number; // % de lucro para parcial (padrão 1.0%)
   partialTpPercent?: number; // % da posição a vender (padrão 50%)
-  timeStopMinutes?: number; // Saída por tempo se trade estagnar (padrão 20 min, 0 desativa)
+  timeStopMinutes?: number; // Saída por estagnação de capital (padrão 60 min base + 15 min de tolerância com saída a prejuízo zero)
   useBtcGatekeeper?: boolean; // Filtro Direcional BTC (bloqueia compras se BTC cair no 5m)
 
   // Governança e Controle de Risco Institucional (v2.5.0)
   algorithmVersion?: string; // Versão formal do algoritmo (ex: "v2.5.0-institutional")
   slippageTolerance?: number; // Tolerância máxima de slippage em % (ex: 0.35%)
   riskPerTradePercent?: number; // % explícita de risco por ordem do saldo livre (ex: 35.0%)
-  maxHoldingMinutes?: number; // Holding time máximo para encerramento intradiário de proteção (ex: 30 min)
+  maxHoldingMinutes?: number; // Holding time máximo para encerramento intradiário de proteção (padrão 60 min)
 
   // Último relatório de execução gerado ao finalizar
   lastReport?: BotExecutionReport | null;

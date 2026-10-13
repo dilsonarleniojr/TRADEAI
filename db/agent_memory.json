@@ -69,7 +69,12 @@
     "category": "ARCHITECTURE_DECISION",
     "title": "Ação Executável e Geração de Bot por Clique em Oportunidades",
     "summary": "Todo card/item de oportunidade ou alerta preditivo no app deve ser clicável e capaz de gerar/ativar o robô autônomo e aplicar a recomendação quantitativa imediatamente.",
-    "tags": ["one-click-bot", "opportunities", "predictive-alerts", "ux-governance"],
+    "tags": [
+      "one-click-bot",
+      "opportunities",
+      "predictive-alerts",
+      "ux-governance"
+    ],
     "details": {
       "realtimeNetPnlPanel": "handleExecuteAlertAction",
       "tradeIdeasTab": "handleCreateBot on Card click",
@@ -78,5 +83,179 @@
     },
     "id": "mem-1791408845000-oneclick",
     "timestamp": "2026-10-07T21:34:05.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Filtro de Anti-Canibalização e Motor Gemini Principal",
+    "summary": "Implementado checkbox opcional no Estúdio Quant para ocultar e excluir pares que já possuem robôs ativos sob custódia, forçando 100% de oportunidades inexploradas. Motor de IA configurado para Gemini como motor principal e único.",
+    "tags": [
+      "anti-cannibalization",
+      "gemini-primary-engine",
+      "trade-hub",
+      "portfolio-protection"
+    ],
+    "details": {
+      "checkbox": "Ocultar pares que já possuem robôs ativos",
+      "backendParam": "excludeSymbols",
+      "promptDirective": "ANTI-CANNIBALIZATION FILTER",
+      "defaultProvider": "gemini",
+      "multiAiEnabled": false
+    },
+    "id": "mem-1791412000000-anticannibalization",
+    "timestamp": "2026-10-07T22:48:30.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Execução Efetiva de Correções do Centro de Alertas Preditivos",
+    "summary": "Corrigido o manipulador de ações do Centro de Alertas Preditivos. Antes, alertas de risco de drawdown ou sem símbolo caíam em toasts genéricos sem alterar a frota; o alerta de queda de PnL era classificado como oportunidade. Agora cada categoria aplica correções concretas no store (Half-Kelly 50%, elevação de confluência para 65%, pausa de circuit breaker, modo Limit L2 e trailing 0.4%) com feedback visual imediato 'Correção Aplicada'.",
+    "tags": [
+      "predictive-alerts",
+      "risk-enforcement",
+      "half-kelly",
+      "circuit-breaker",
+      "realtime-panel"
+    ],
+    "details": {
+      "pnlDrop": "elevar threshold para 65% + stop 1.5%",
+      "drawdownWarning": "reduzir allocationAmount em 50%",
+      "circuitBreakerWarning": "pausar preventivamente frota ativa",
+      "slippageRisk": "modo LIMIT 0.10% + L2 checks",
+      "reversalRisk": "trailing stop 0.40% + break-even",
+      "appliedAlertIds": "feedback visual com CheckCircle2"
+    },
+    "id": "mem-1791413800000-predictive-actions",
+    "timestamp": "2026-10-07T22:56:40.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Trava de Alta Correlação de Risco (Beta Cross-Asset r > 0.85)",
+    "summary": "Implementada governança quantitativa de risco por correlação cruzada (Pearson r) nos retornos temporais. Quando ativada a trava [x] Descorrelacionar Carteira ou no Auto-Screener da frota, altcoins com correlação r > 0.85 em relação a BTC/ETH são filtradas/penalizadas, priorizando ativamente ativos descorrelacionados (setores DePIN, RWA e moedas em desacoplamento com fluxo proprietário no order flow).",
+    "tags": [
+      "cross-asset-correlation",
+      "pearson-beta",
+      "depin",
+      "rwa",
+      "order-flow-decoupling",
+      "risk-gate"
+    ],
+    "details": {
+      "threshold": 0.85,
+      "alternativeSectors": [
+        "DePIN",
+        "RWA",
+        "IA"
+      ],
+      "pearsonFormula": "Cov(returnsA, returnsB) / (stdA * stdB)",
+      "screenerPenalty": "decaimento de score para pares co-integrados r > 0.85",
+      "uiBadge": "r <= 0.60 (Desacoplado), 0.60 < r <= 0.85 (Moderado), r > 0.85 (Alta Corr)"
+    },
+    "id": "mem-1791417400000-decorrelation-risk",
+    "timestamp": "2026-10-07T23:57:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Calibração de Take Profit Realista e Break-Even Rápido (Fase 1)",
+    "summary": "Substituída a imposição de R:R 2.2x rígido (que inflava o Take Profit para 4.5% em scalp de 1m gerando apenas 2.7% de taxa de acerto no TP) por alvos dinâmicos realistas de 1.8% a 2.5% (garantindo lucro líquido >= 1.5% após taxas conforme guardrails). Reduzido o gatilho de Break-Even de +1.8% para +0.85% com buffer de +0.30%, blindando lucros conquistados e eliminando a devolução de ganhos.",
+    "tags": [
+      "take-profit-calibration",
+      "fast-break-even",
+      "pnl-optimization",
+      "scalping-targets",
+      "risk-governance"
+    ],
+    "details": {
+      "breakEvenTrigger": 0.85,
+      "breakEvenBuffer": 0.30,
+      "takeProfitRange": "1.8% a 2.8%",
+      "trailingArmThreshold": "1.1% ou 65% do TP",
+      "stopLossRange": "1.2% a 2.0%"
+    },
+    "id": "mem-1791839500000-phase1-pnl-fix",
+    "timestamp": "2026-10-13T21:56:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Blindagem Anti-FOMO e Filtro de Exaustão no Auto-Screener (Fase 2)",
+    "summary": "Implementado teto máximo de variação diária de +18% (reduzido do teto legado de +70% que induzia compras em topos esticados como GTC +66% e OGN +22%), exclusão de sub-pennies < $0.005 para evitar spread tóxico, exigência de posição no canal diário >= 50% para eliminar pumps em distribuição, e trava de exaustão macro de 15m (bloqueia compras se o preço estiver > 2.8% afastado da EMA9 no 15m).",
+    "tags": [
+      "anti-fomo",
+      "screener-capping",
+      "exhaustion-filter",
+      "sub-penny-filter",
+      "multi-timeframe-15m"
+    ],
+    "details": {
+      "max24hChange": 18.0,
+      "minPriceUsdt": 0.005,
+      "minRangePosition": 0.50,
+      "max15mEmaExtension": 2.8,
+      "min24hVolume": 3000000
+    },
+    "id": "mem-1791840100000-phase2-antifomo",
+    "timestamp": "2026-10-13T22:03:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Time-Stop Disciplinado, Quarentena por Par e Consecutive Loss Brake (Fase 3)",
+    "summary": "Implementado encerramento disciplinado por tempo em 45 minutos (máximo 60m) com tolerância de 5m estancando operações arrastadas a mercado. Criada Quarentena Institucional por Par (lockout de 4 horas para qualquer ativo que registre >= 2 stops em 6 horas, evitando sequências de perda em cascata como MBL e SOL). Implementado Consecutive Loss Brake que pausa compulsoriamente robôs que sofram 3 derrotas consecutivas via Circuit Breaker.",
+    "tags": [
+      "time-stop-disciplined",
+      "pair-quarantine",
+      "consecutive-loss-brake",
+      "circuit-breakers",
+      "risk-governance"
+    ],
+    "details": {
+      "timeStopMinutes": 45,
+      "maxTimeStopGraceMinutes": 5,
+      "pairQuarantineLossThreshold": 2,
+      "pairQuarantineHours": 4,
+      "consecutiveLossLimit": 3,
+      "circuitBreakerAction": "auto-pause bot"
+    },
+    "id": "mem-1791840700000-phase3-circuitbreakers",
+    "timestamp": "2026-10-13T22:15:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Realização Parcial Automática de 50% e Scale-Out Institucional (Fase 4)",
+    "summary": "Ativada Realização Parcial padrão de 50% em +1.0% de valorização em toda a frota institucional. Removida a barreira nocional artificial de >= 60 USDT que impedia parciais em posições padrão de 20 a 50 USDT, substituindo-a por validação do minNotional da Binance (>= 5.20 USDT para a fatia vendida e para o resíduo mantido). Ao atingir +1.0%, o bot embolsa 50% a mercado e sobe imediatamente o Break-Even do saldo remanescente com margem positiva (+0.30%), transformando o trade em risco zero absoluto.",
+    "tags": [
+      "partial-take-profit",
+      "scale-out",
+      "risk-free-trade",
+      "binance-min-notional",
+      "profit-lockin",
+      "pnl-stabilization"
+    ],
+    "details": {
+      "usePartialTp": true,
+      "partialTpPercent": 50,
+      "partialTpTrigger": 1.0,
+      "minNotionalSlice": 5.20,
+      "postPartialBreakEvenBuffer": 0.30
+    },
+    "id": "mem-1791841200000-phase4-partial-tp",
+    "timestamp": "2026-10-13T22:20:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Purga de Logs Antigos e Reset de Histórico com Backup Seguro",
+    "summary": "Realizado backup integral do banco de dados SQLite para db/custom.db.backup-pre-clean.db. Esvaziados os arquivos de log legados em logs/*.log (5.5 MB liberados). Limpa a tabela Trade no banco de dados para reiniciar a curva de PnL a partir do zero sob a nova governança quantitativa das Fases 1 a 4. Adicionada ação clearBotLogs e botão de limpeza instantânea no componente BotActivityLog.",
+    "tags": [
+      "log-cleanup",
+      "trade-history-reset",
+      "database-backup",
+      "pnl-fresh-start",
+      "bot-activity-log"
+    ],
+    "details": {
+      "backupFile": "db/custom.db.backup-pre-clean.db",
+      "clearedLogs": "logs/*.log (binance_service, caddy_service, next_dev, next_service)",
+      "clearedTable": "Trade (158 registros anteriores)",
+      "uiAction": "clearBotLogs on BotActivityLog"
+    },
+    "id": "mem-1791841600000-log-purge",
+    "timestamp": "2026-10-13T22:27:00.000Z"
   }
 ]

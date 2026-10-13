@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useCryptoStore } from "@/lib/store";
 import { useToast } from "@/hooks/use-toast";
+import { FastCloseBadge } from "@/components/bot/fast-close-badge";
 import {
   Sparkles,
   TrendingUp,
@@ -25,6 +27,7 @@ import {
   Info,
   AlertTriangle,
   Clock,
+  ShieldCheck,
 } from "lucide-react";
 
 interface TradeIdea {
@@ -44,6 +47,10 @@ interface TradeIdea {
   horizonLabel?: string;
   holdingPeriod?: string;
   strategyType?: string;
+  correlationBeta?: number;
+  correlationLabel?: string;
+  sector?: string;
+  isDecorrelated?: boolean;
   sources?: {
     exchange?: string;
     pricing?: string;
@@ -52,9 +59,16 @@ interface TradeIdea {
   };
 }
 
+const normalizeSym = (s: string) => {
+  const u = (s || "").toUpperCase().trim();
+  return u.endsWith("USDT") ? u : `${u}USDT`;
+};
+
 export function TradeIdeasTab() {
   const [category, setCategory] = useState<string>("all");
   const [horizon, setHorizon] = useState<string>("all");
+  const [hideActiveBots, setHideActiveBots] = useState<boolean>(false);
+  const [decorrelateRisk, setDecorrelateRisk] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [ideas, setIdeas] = useState<TradeIdea[]>([]);
   const [copiedSymbol, setCopiedSymbol] = useState<string | null>(null);
@@ -72,16 +86,28 @@ export function TradeIdeasTab() {
 
   const { toast } = useToast();
 
-  const fetchIdeas = async (cat = category, hor = horizon) => {
+  // Lista normalizada de símbolos com robôs ativos sob custódia
+  const activeBotSymbols = useMemo(() => {
+    return Array.from(new Set(bots.filter((b) => b.active).map((b) => normalizeSym(b.symbol))));
+  }, [bots]);
+
+  const fetchIdeas = async (cat = category, hor = horizon, hide = hideActiveBots, decorr = decorrelateRisk) => {
     setLoading(true);
     setErrorMsg(null);
     try {
+      const excludeList = hide ? activeBotSymbols : [];
       const res = await fetch("/api/ai/trade-hub", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tool: "trade_ideas",
-          params: { category: cat, horizon: hor, nonce: Date.now() },
+          params: {
+            category: cat,
+            horizon: hor,
+            excludeSymbols: excludeList,
+            decorrelateRisk: decorr,
+            nonce: Date.now(),
+          },
         }),
       });
       const json = await res.json();
@@ -99,8 +125,20 @@ export function TradeIdeasTab() {
   };
 
   useEffect(() => {
-    fetchIdeas(category, horizon);
+    fetchIdeas(category, horizon, hideActiveBots, decorrelateRisk);
   }, [category, horizon]);
+
+  const handleToggleHideActiveBots = (checked: boolean) => {
+    setHideActiveBots(checked);
+    // Dispara nova varredura com IA excluindo os ativos sob custódia
+    fetchIdeas(category, horizon, checked, decorrelateRisk);
+  };
+
+  const handleToggleDecorrelateRisk = (checked: boolean) => {
+    setDecorrelateRisk(checked);
+    // Dispara nova varredura aplicando a trava cross-asset
+    fetchIdeas(category, horizon, hideActiveBots, checked);
+  };
 
   const copySetup = (idea: TradeIdea) => {
     const isFast = idea.horizon === "RAPIDO";
@@ -260,11 +298,12 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
       });
     }
 
+    const corrDetails = idea.correlationBeta !== undefined ? ` | Pearson r=${idea.correlationBeta} (${idea.sector || 'Geral'})` : '';
     addBotLog({
       botId: targetBotId,
       botName,
       type: "info",
-      message: `Robô ${baseSym} criado e ativado via Estúdio Quant: Entrada $${curPrice} | Alvo 1 $${idea.tp1} (+${tpPct}%) | Stop $${idea.stopLoss} (-${slPct}%) | Time-Stop: ${timeStopMins / 60}h`,
+      message: `Robô ${baseSym} criado e ativado via Estúdio Quant: Entrada $${curPrice} | Alvo 1 $${idea.tp1} (+${tpPct}%) | Stop $${idea.stopLoss} (-${slPct}%) | Time-Stop: ${timeStopMins / 60}h${corrDetails}`,
     });
 
     setSelectedBotId(targetBotId);
@@ -330,11 +369,13 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
               { id: "all", label: "🌟 Todas (Diversificado)" },
               { id: "gainers", label: "🚀 Top Momentum / Altas" },
               { id: "reversal", label: "🔄 Reversão / Repique" },
-              { id: "ai", label: "🧠 IA & DePIN" },
-              { id: "defi", label: "🏦 DeFi Institucional" },
-              { id: "layer1", label: "🏛️ Layer 1s & Majors" },
-              { id: "memes", label: "🔥 Memes & High Beta" },
-              { id: "volatility", label: "⚡ Alta Volatilidade" },
+              { id: "depin", label: "🌐 DePIN" },
+              { id: "rwa", label: "🏛️ RWA Institucional" },
+              { id: "ai", label: "🧠 IA & Dados" },
+              { id: "defi", label: "🏦 DeFi" },
+              { id: "layer1", label: "🏛️ Layer 1s" },
+              { id: "memes", label: "🔥 Memes" },
+              { id: "volatility", label: "⚡ Volatilidade" },
             ].map((cat) => (
               <Button
                 key={cat.id}
@@ -353,15 +394,97 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
           </div>
 
           <Button
-            onClick={() => fetchIdeas(category, horizon)}
+            onClick={() => fetchIdeas(category, horizon, hideActiveBots, decorrelateRisk)}
             disabled={loading}
             variant="outline"
             size="sm"
-            className="border-cyan-500/40 text-cyan-400 hover:bg-cyan-950/40 text-xs h-8 font-medium shadow-sm"
+            className="border-cyan-500/40 text-cyan-400 hover:bg-cyan-950/40 text-xs h-8 font-medium shadow-sm shrink-0"
           >
             <RefreshCw className={`w-3.5 h-3.5 mr-2 ${loading ? "animate-spin" : ""}`} />
             {loading ? "Rotacionando Setups..." : "Gerar Novos Setups"}
           </Button>
+        </div>
+
+        {/* Row 3: Filtros Institucionais de Não-Canibalização & Trava de Correlação Cruzada (Beta r < 0.85) */}
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pt-3 border-t border-border/30">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 w-full lg:w-auto">
+            {/* Filtro 1: Não-Canibalização */}
+            <label
+              htmlFor="hide-active-bots-checkbox"
+              className="flex items-center gap-2.5 cursor-pointer select-none group"
+            >
+              <Checkbox
+                id="hide-active-bots-checkbox"
+                checked={hideActiveBots}
+                onCheckedChange={(checked) => handleToggleHideActiveBots(!!checked)}
+                className="border-slate-500 data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
+              />
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-foreground group-hover:text-emerald-400 transition-colors">
+                  Ocultar pares com robôs ativos
+                </span>
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] h-5 px-1.5 font-mono transition-colors ${
+                    hideActiveBots
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                      : "border-border/60 text-muted-foreground"
+                  }`}
+                >
+                  <Bot className="w-3 h-3 mr-1" />
+                  {activeBotSymbols.length} sob custódia
+                </Badge>
+              </div>
+            </label>
+
+            {/* Filtro 2: Trava de Correlação Cruzada de Risco (Beta Cross-Asset r < 0.85) */}
+            <label
+              htmlFor="decorrelate-risk-checkbox"
+              className="flex items-center gap-2.5 cursor-pointer select-none group"
+            >
+              <Checkbox
+                id="decorrelate-risk-checkbox"
+                checked={decorrelateRisk}
+                onCheckedChange={(checked) => handleToggleDecorrelateRisk(!!checked)}
+                className="border-slate-500 data-[state=checked]:bg-cyan-500 data-[state=checked]:border-cyan-500"
+              />
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-foreground group-hover:text-cyan-400 transition-colors">
+                  Descorrelacionar Carteira (Beta Cross-Asset r &lt; 0.85)
+                </span>
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] h-5 px-1.5 font-mono transition-colors ${
+                    decorrelateRisk
+                      ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-400"
+                      : "border-border/60 text-muted-foreground"
+                  }`}
+                >
+                  <ShieldAlert className="w-3 h-3 mr-1" />
+                  DePIN & RWA
+                </Badge>
+              </div>
+            </label>
+          </div>
+
+          <div className="text-[11px] font-medium flex items-center gap-1.5 shrink-0">
+            {decorrelateRisk ? (
+              <span className="text-cyan-400 flex items-center gap-1.5 animate-fadeIn">
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                Trava Cross-Asset Ativa (prioriza DePIN/RWA e desacoplamento r &lt; 0.85)
+              </span>
+            ) : hideActiveBots ? (
+              <span className="text-emerald-400 flex items-center gap-1.5 animate-fadeIn">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                100% oportunidades inexploradas (anti-canibalização ativo)
+              </span>
+            ) : (
+              <span className="text-muted-foreground/80 flex items-center gap-1">
+                <Info className="w-3 h-3" />
+                Trava de risco: protege a carteira contra concentração de risco correlacionada a BTC/ETH
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -380,31 +503,74 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
             </div>
           ))}
         </div>
-      ) : ideas.length === 0 ? (
-        <Card className="border-border/60 bg-card/40 backdrop-blur-md p-8 text-center space-y-4">
-          <div className="w-12 h-12 rounded-full bg-cyan-500/10 text-cyan-400 flex items-center justify-center mx-auto border border-cyan-500/20">
-            <Sparkles className="w-6 h-6 animate-pulse" />
-          </div>
-          <div>
-            <h3 className="font-bold text-lg text-foreground">
-              {errorMsg ? "Falha ao Carregar Oportunidades" : "Nenhuma Oportunidade Identificada"}
-            </h3>
-            <p className="text-sm text-muted-foreground max-w-md mx-auto mt-1">
-              {errorMsg ||
-                "O scanner quantitativo não encontrou operações que atendam aos critérios de Relação Risco-Retorno >= 2.0:1 no filtro selecionado."}
-            </p>
-          </div>
-          <Button
-            onClick={() => fetchIdeas(category, horizon)}
-            className="bg-cyan-600 hover:bg-cyan-500 text-white font-medium mx-auto"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Escanear Novamente com IA & Quants
-          </Button>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {ideas.map((idea, index) => {
+      ) : (() => {
+        const displayedIdeas = hideActiveBots
+          ? ideas.filter((idea) => !activeBotSymbols.includes(normalizeSym(idea.symbol)))
+          : ideas;
+
+        if (ideas.length > 0 && displayedIdeas.length === 0 && hideActiveBots) {
+          return (
+            <Card className="border-emerald-500/30 bg-emerald-950/10 backdrop-blur-md p-8 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/20">
+                <Bot className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg text-foreground">
+                  Todos os setups gerados já estão sob custódia de robôs ativos!
+                </h3>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto mt-1">
+                  O filtro de anti-canibalização ocultou os pares em operação ({activeBotSymbols.join(", ")}). Clique abaixo para forçar a IA a buscar novas oportunidades inéditas.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <Button
+                  onClick={() => fetchIdeas(category, horizon, true)}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs h-9"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 mr-2" />
+                  Forçar Nova Varredura Inédita
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => handleToggleHideActiveBots(false)}
+                  className="border-border text-muted-foreground hover:text-foreground text-xs h-9"
+                >
+                  Exibir Todos os Pares
+                </Button>
+              </div>
+            </Card>
+          );
+        }
+
+        if (displayedIdeas.length === 0) {
+          return (
+            <Card className="border-border/60 bg-card/40 backdrop-blur-md p-8 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-cyan-500/10 text-cyan-400 flex items-center justify-center mx-auto border border-cyan-500/20">
+                <Sparkles className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg text-foreground">
+                  {errorMsg ? "Falha ao Carregar Oportunidades" : "Nenhuma Oportunidade Identificada"}
+                </h3>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto mt-1">
+                  {errorMsg ||
+                    "O scanner quantitativo não encontrou operações que atendam aos critérios de Relação Risco-Retorno >= 2.0:1 no filtro selecionado."}
+                </p>
+              </div>
+              <Button
+                onClick={() => fetchIdeas(category, horizon, hideActiveBots)}
+                className="bg-cyan-600 hover:bg-cyan-500 text-white font-medium mx-auto"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Escanear Novamente com IA & Quants
+              </Button>
+            </Card>
+          );
+        }
+
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {displayedIdeas.map((idea, index) => {
             const isLong = idea.type === "LONG";
             const isFast = idea.horizon === "RAPIDO";
             const cleanSym = idea.symbol.toUpperCase();
@@ -474,39 +640,11 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
                         {idea.timeframe}
                       </Badge>
 
-                      {/* Badge Dinâmico de Status do Robô com PnL Flutuante */}
-                      {activeBot ? (
-                        isBotInPosition ? (
-                          <Badge
-                            variant="outline"
-                            className={`text-[10px] font-bold px-2 py-0.5 flex items-center gap-1 shadow-sm font-mono ${
-                              isFloatingProfit
-                                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
-                                : "bg-amber-500/20 text-amber-300 border-amber-500/50"
-                            }`}
-                            title={`Robô em posição em ${idea.symbol}: Entrada $${activeBot.position?.entryPrice?.toFixed(2) || "0"}`}
-                          >
-                            <span className={`w-1.5 h-1.5 rounded-full animate-ping shrink-0 ${isFloatingProfit ? "bg-emerald-400" : "bg-amber-400"}`} />
-                            {isFloatingProfit ? "🟢" : "🟡"} Bot em Posição ({hasFloatingPnl ? `${isFloatingProfit ? "+" : ""}${floatingPnlPct.toFixed(2)}%` : "0.00%"})
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 flex items-center gap-1 shadow-sm font-mono"
-                            title={`Robô ativo em ${idea.symbol}: ${activeBot.name}`}
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                            🟢 Bot em Execução
-                          </Badge>
-                        )
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] font-bold px-2 py-0.5 bg-cyan-500/10 text-cyan-300 border-cyan-500/30 flex items-center gap-1"
-                        >
-                          ⚡ Clique para Ativar
-                        </Badge>
-                      )}
+                      {/* Badge Dinâmico de Status do Robô com PnL Flutuante e Zeragem Rápida */}
+                      <FastCloseBadge
+                        symbol={idea.symbol}
+                        onActivateClick={() => handleCreateBot(idea)}
+                      />
                     </div>
                     <Badge
                       className={`${
@@ -532,6 +670,32 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
                       <span className="text-foreground/90 font-normal">{idea.strategyType}</span>
                     </div>
                   )}
+
+                  {/* Setor & Beta Cross-Asset de Correlação */}
+                  <div className="flex items-center justify-between gap-1.5 pt-1.5 border-t border-border/20 mt-1 flex-wrap">
+                    {idea.sector ? (
+                      <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-border/60 text-muted-foreground bg-muted/20">
+                        {idea.sector}
+                      </Badge>
+                    ) : <span />}
+                    {idea.correlationBeta !== undefined && (
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] h-5 px-1.5 font-mono flex items-center gap-1 ${
+                          idea.correlationBeta <= 0.60
+                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                            : idea.correlationBeta <= 0.85
+                            ? "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                            : "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                        }`}
+                        title={idea.correlationLabel || `Beta Pearson r: ${idea.correlationBeta}`}
+                      >
+                        {idea.correlationBeta <= 0.60 ? "🌿" : idea.correlationBeta <= 0.85 ? "⚖️" : "⚠️"}
+                        r = {idea.correlationBeta.toFixed(2)}
+                        {idea.correlationBeta <= 0.60 ? " (Desacoplado)" : idea.correlationBeta > 0.85 ? " (Alta Corr.)" : ""}
+                      </Badge>
+                    )}
+                  </div>
                 </CardHeader>
 
                 <CardContent className="space-y-4 text-xs flex-1 flex flex-col justify-between">
@@ -646,6 +810,13 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
                       </Button>
 
                       <div className="flex items-center gap-1.5">
+                        {isBotInPosition && activeBot && (
+                          <FastCloseBadge
+                            symbol={idea.symbol}
+                            size="sm"
+                            showInactiveBadge={false}
+                          />
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
@@ -682,7 +853,8 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
             );
           })}
         </div>
-      )}
+      );
+    })()}
     </div>
   );
 }

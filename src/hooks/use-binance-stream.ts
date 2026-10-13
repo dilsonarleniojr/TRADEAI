@@ -13,11 +13,28 @@ let activeHookCount = 0;
 function getNeededSymbols(): string[] {
   const store = useCryptoStore.getState();
   const set = new Set<string>();
-  if (store.selectedSymbol) set.add(store.selectedSymbol.toUpperCase());
+  if (store.selectedSymbol && store.selectedSymbol !== "AUTO") {
+    set.add(store.selectedSymbol.toUpperCase());
+  }
   store.bots.forEach((b) => {
-    if (b.active && b.symbol) set.add(b.symbol.toUpperCase());
+    if (b.active) {
+      if (b.overrideSymbol && b.overrideSymbol !== "AUTO") {
+        set.add(b.overrideSymbol.toUpperCase());
+      }
+      if (b.symbol === "AUTO" || b.useAutoScreener) {
+        if (b.position?.symbol) {
+          set.add(b.position.symbol.toUpperCase());
+        }
+      } else if (b.symbol && b.symbol !== "AUTO") {
+        set.add(b.symbol.toUpperCase());
+      }
+    }
   });
-  return Array.from(set);
+  // Sempre monitorar pares-chave da Binance para screener e benchmark
+  set.add("BTCUSDT");
+  set.add("ETHUSDT");
+  set.add("SOLUSDT");
+  return Array.from(set).filter((s) => s && s !== "AUTO" && s.endsWith("USDT"));
 }
 
 function syncSocketSubscriptions(socket: Socket) {
@@ -114,7 +131,7 @@ export function useBinanceStream() {
       selectedSymbol: s.selectedSymbol,
       activeBotSymbolsKey: s.bots
         .filter((b) => b.active)
-        .map((b) => b.symbol)
+        .map((b) => (b.position?.symbol || (b.overrideSymbol && b.overrideSymbol !== "AUTO" ? b.overrideSymbol : (b.symbol === "AUTO" || b.useAutoScreener ? "AUTO" : b.symbol))))
         .sort()
         .join(","),
     }))

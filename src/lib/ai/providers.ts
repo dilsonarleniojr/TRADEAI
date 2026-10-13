@@ -53,11 +53,12 @@ export const AI_PROVIDERS: AIProviderInfo[] = [
     name: "Gemini",
     vendor: "Google",
     envKeys: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-    defaultModel: "gemini-3.8-flash",
+    defaultModel: "gemini-flash-lite-latest",
     suggestedModels: [
-      "gemini-3.8-flash",
+      "gemini-flash-lite-latest",
       "gemini-2.5-flash",
       "gemini-2.5-pro",
+      "gemini-3.8-flash",
     ],
     keyUrl: "https://aistudio.google.com/apikey",
   },
@@ -77,7 +78,7 @@ export const AI_PROVIDERS: AIProviderInfo[] = [
   },
 ];
 
-export const DEFAULT_PROVIDER: AIProviderId = "claude";
+export const DEFAULT_PROVIDER: AIProviderId = "gemini";
 
 export function isProviderId(v: unknown): v is AIProviderId {
   return typeof v === "string" && AI_PROVIDERS.some((p) => p.id === v);

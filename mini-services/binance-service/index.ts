@@ -597,13 +597,17 @@ streamManager.setIO(io);
 io.on("connection", (socket) => {
   console.log(`[SocketIO] Client connected: ${socket.id}`);
   socket.on("subscribe", (symbol: string) => {
-    const s = symbol.toUpperCase();
+    if (!symbol || typeof symbol !== "string") return;
+    const s = symbol.toUpperCase().trim();
+    if (s === "AUTO" || !s.endsWith("USDT")) return;
     socket.join(`market:${s}`);
     streamManager.subscribe(socket.id, s);
     socket.emit("subscribed", { symbol: s });
   });
   socket.on("unsubscribe", (symbol: string) => {
-    const s = symbol.toUpperCase();
+    if (!symbol || typeof symbol !== "string") return;
+    const s = symbol.toUpperCase().trim();
+    if (s === "AUTO" || !s.endsWith("USDT")) return;
     socket.leave(`market:${s}`);
     streamManager.unsubscribe(socket.id, s);
     socket.emit("unsubscribed", { symbol: s });
