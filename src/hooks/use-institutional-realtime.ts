@@ -303,7 +303,7 @@ export function useInstitutionalRealtime() {
           wsState: "connected",
           sqliteWalStatus: data.sqliteAuditVerification?.divergenceDetected ? "ERROR" : "WAL_SYNCED",
           sqliteDivergenceDetected: !!data.sqliteAuditVerification?.divergenceDetected,
-          sqliteAuditedTradesCount: data.sqliteAuditVerification?.totalTradesAudited ?? tradesInStore.length,
+          sqliteAuditedTradesCount: data.sqliteAuditVerification?.totalTradesAudited ?? useCryptoStore.getState().trades.length,
           circuitBreakerTripped: !!data.botHealth.circuitBreaker?.tripped,
           circuitBreakerReason: data.botHealth.circuitBreaker?.reason,
           circuitBreakerLossUsd: data.botHealth.circuitBreaker?.accumulatedDailyLossUsd ?? 0,

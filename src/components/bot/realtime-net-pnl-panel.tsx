@@ -226,20 +226,9 @@ export function RealtimeNetPnlPanel() {
 
   const { toast } = useToast();
   const tradesCount = useCryptoStore((s) => s.trades.length);
-  const activeBotsCount = useCryptoStore((s) => s.bots.filter((b) => b.active).length);
-  const totalBotsCount = useCryptoStore((s) => s.bots.length);
-  const activePositions = useCryptoStore(
-    useShallow((s) =>
-      s.bots
-        .filter((b) => b.active && b.position && b.position.quantity > 0)
-        .map((b) => ({
-          symbol: b.symbol.toUpperCase(),
-          currentPrice: b.position?.currentPrice || 0,
-          entryPrice: b.position?.entryPrice || 0,
-          unrealizedPnlPercent: b.position?.unrealizedPnlPercent || 0,
-        }))
-    )
-  );
+  const bots = useCryptoStore((s) => s.bots);
+  const activeBotsCount = bots.filter((b) => b.active).length;
+  const totalBotsCount = bots.length;
   const addBot = useCryptoStore((s) => s.addBot);
   const updateBot = useCryptoStore((s) => s.updateBot);
   const toggleAllBots = useCryptoStore((s) => s.toggleAllBots);
@@ -1231,20 +1220,20 @@ export function RealtimeNetPnlPanel() {
 
                   const targetSymbol = (alert.symbol || (alert.metrics?.symbol as string) || "BTCUSDT").toUpperCase();
                   const cleanSym = targetSymbol.endsWith("USDT") ? targetSymbol : `${targetSymbol}USDT`;
-                  const pos = activePositions.find((p) => p.symbol === cleanSym);
-                  const isBotInPosition = !!pos;
+                  const activeBot = bots.find((b) => b.symbol === cleanSym && b.active);
+                  const isBotInPosition = activeBot && (activeBot.status === "in_position" || (!!activeBot.position && activeBot.position.quantity > 0));
 
                   // Cálculo de PnL Flutuante (Unrealized PnL) em tempo real
                   let floatingPnlPct = 0;
                   let hasFloatingPnl = false;
-                  if (pos) {
-                    const curPrice = pos.currentPrice || (useCryptoStore.getState().tickers[cleanSym]?.price ?? 0);
-                    const entryPrice = pos.entryPrice;
+                  if (isBotInPosition && activeBot.position) {
+                    const curPrice = activeBot.position.currentPrice || (useCryptoStore.getState().tickers[cleanSym]?.price ?? 0);
+                    const entryPrice = activeBot.position.entryPrice || 0;
                     if (curPrice > 0 && entryPrice > 0) {
                       floatingPnlPct = ((curPrice - entryPrice) / entryPrice) * 100;
                       hasFloatingPnl = true;
-                    } else if (typeof pos.unrealizedPnlPercent === "number") {
-                      floatingPnlPct = pos.unrealizedPnlPercent;
+                    } else if (typeof activeBot.position.unrealizedPnlPercent === "number") {
+                      floatingPnlPct = activeBot.position.unrealizedPnlPercent;
                       hasFloatingPnl = true;
                     }
                   }
