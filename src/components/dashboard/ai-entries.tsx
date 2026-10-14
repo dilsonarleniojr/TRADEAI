@@ -463,9 +463,9 @@ export function AIEntries() {
     }
   };
 
-  // Gerar e ativar em lote todos os robôs selecionados
+  // Gerar e ativar em lote todos os robôs selecionados (com teto institucional de 4 robôs simultâneos)
   const handleBatchCreateBots = () => {
-    const selectedEntriesToProcess = buyEntries.filter((e) => selectedSymbols.includes(e.symbol));
+    let selectedEntriesToProcess = buyEntries.filter((e) => selectedSymbols.includes(e.symbol));
     if (selectedEntriesToProcess.length === 0) {
       toast({
         title: "Nenhum robô selecionado",
@@ -473,6 +473,14 @@ export function AIEntries() {
         variant: "destructive",
       });
       return;
+    }
+
+    if (selectedEntriesToProcess.length > 4) {
+      selectedEntriesToProcess = [...selectedEntriesToProcess].sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 4);
+      toast({
+        title: "🛡️ Teto Institucional Aplicado (Máx 4 Robôs)",
+        description: "Limitado aos 4 pares de maior pontuação e liquidez para concentrar o capital e evitar pulverização.",
+      });
     }
 
     setIsBatchCreating(true);
