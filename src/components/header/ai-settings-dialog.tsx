@@ -39,7 +39,10 @@ import { AI_PROVIDERS, type AIProviderId, type AIProviderInfo } from "@/lib/ai/p
 
 interface ProviderStatus {
   id: AIProviderId;
+  name?: string;
+  vendor?: string;
   configured: boolean;
+  active?: boolean;
   keySource: "app" | "env" | null;
   envKey: string | null;
   model: string;
@@ -51,6 +54,22 @@ interface SettingsData {
   multiAiEnabled: boolean;
   providers: ProviderStatus[];
 }
+
+const DEFAULT_SETTINGS: SettingsData = {
+  provider: "gemini",
+  activeProviders: ["gemini"],
+  multiAiEnabled: false,
+  providers: AI_PROVIDERS.map((p) => ({
+    id: p.id,
+    name: p.name,
+    vendor: p.vendor,
+    model: p.defaultModel,
+    configured: false,
+    active: p.id === "gemini",
+    keySource: null,
+    envKey: null,
+  })),
+};
 
 interface TestResult {
   ok: boolean;
@@ -67,7 +86,9 @@ interface AiSettingsDialogProps {
 /** Escolha do motor de IA (Claude, OpenAI, Gemini, Qwen), do modelo e da chave de cada um de forma independente. */
 export function AiSettingsDialog({ open, onOpenChange }: AiSettingsDialogProps) {
   const { toast } = useToast();
-  const [data, setData] = useState<SettingsData | null>(null);
+  const [data, setData] = useState<SettingsData>(DEFAULT_SETTINGS);
+  const [loadingSettings, setLoadingSettings] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState<AIProviderId>("gemini");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -152,22 +173,32 @@ export function AiSettingsDialog({ open, onOpenChange }: AiSettingsDialogProps) 
     }
   };
 
-  // Carrega configurações ao abrir
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    fetch("/api/ai/settings")
-      .then((r) => r.json())
-      .then((j) => {
-        if (cancelled || !j.success) return;
+  // Carrega configurações ao abrir ou ao solicitar
+  const loadSettings = async () => {
+    setLoadingSettings(true);
+    setLoadError(null);
+    try {
+      const res = await fetch("/api/ai/settings", { cache: "no-store" });
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      const j = await res.json();
+      if (j && j.success && j.data) {
         const d: SettingsData = j.data;
         setData(d);
         selectProvider(d.provider, d);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+      } else {
+        throw new Error(j?.error || "Resposta inválida do servidor");
+      }
+    } catch (err: any) {
+      console.warn("Falha ao sincronizar configurações de IA:", err);
+      setLoadError(err?.message || "Erro ao conectar ao servidor");
+    } finally {
+      setLoadingSettings(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    loadSettings();
   }, [open]);
 
   const put = async (body: Record<string, unknown>) => {
@@ -324,22 +355,49 @@ export function AiSettingsDialog({ open, onOpenChange }: AiSettingsDialogProps) 
         </div>
 
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base font-bold">
-            <div className="w-8 h-8 rounded-lg bg-crypto-cyan/15 border border-crypto-cyan/30 flex items-center justify-center text-crypto-cyan">
-              <Brain className="w-4 h-4" />
-            </div>
-            <span>Motor de Inteligência Artificial</span>
-          </DialogTitle>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <div className="w-8 h-8 rounded-lg bg-crypto-cyan/15 border border-crypto-cyan/30 flex items-center justify-center text-crypto-cyan">
+                <Brain className="w-4 h-4" />
+              </div>
+              <span>Motor de Inteligência Artificial</span>
+              {loadingSettings && (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-crypto-cyan ml-1" />
+              )}
+            </DialogTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={loadSettings}
+              disabled={loadingSettings}
+              className="h-7 px-2 text-[11px] text-muted-foreground hover:text-crypto-cyan cursor-pointer"
+              title="Recarregar configurações do servidor"
+            >
+              <RefreshCw className={cn("w-3 h-3 mr-1", loadingSettings && "animate-spin")} />
+              Atualizar
+            </Button>
+          </div>
           <DialogDescription className="text-xs text-muted-foreground">
             Configure as chaves e modelos de cada IA separadamente. Habilite o modo Multi-IA para consultar motores em paralelo e comparar recomendações.
           </DialogDescription>
         </DialogHeader>
 
-        {!data ? (
-          <div className="flex items-center justify-center py-12 text-xs text-muted-foreground">
-            <Loader2 className="w-5 h-5 mr-2 animate-spin text-crypto-cyan" /> Carregando configurações de IA...
+        {loadError && (
+          <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Usando definições locais ({loadError}).</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={loadSettings}
+              className="h-6 px-2 text-[10px] text-amber-300 hover:text-amber-200"
+            >
+              Tentar novamente
+            </Button>
           </div>
-        ) : (
+        )}
           <div className="space-y-4 pt-1">
             {/* Banner Modo Multi-IA Simultâneo */}
             <div className="flex items-center justify-between p-3.5 rounded-xl bg-gradient-to-r from-purple-500/10 via-cyan-500/10 to-blue-500/10 border border-purple-500/30 shadow-sm">
@@ -773,7 +831,6 @@ export function AiSettingsDialog({ open, onOpenChange }: AiSettingsDialogProps) 
               </div>
             </div>
           </div>
-        )}
       </DialogContent>
     </Dialog>
   );
