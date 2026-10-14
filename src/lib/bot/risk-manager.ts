@@ -42,6 +42,8 @@ export interface CircuitBreakerStatus {
   reason?: string;
   cooldownExpiresAt?: number;
   circuitBreakerType?: "DAILY_DRAWDOWN" | "CONSECUTIVE_LOSS" | "MAX_NAV_EXPOSURE";
+}
+
 export interface ProtectionSettings {
   // 1. Trava de Perda Diária (Daily Drawdown Kill Switch)
   dailyDrawdownProtection: boolean;
@@ -465,6 +467,12 @@ export class RiskManager {
 
     // Trava 2: Cooldown por Perdas Consecutivas (se ativa)
     if (this.settings.consecutiveLossProtection) {
+      const maxLosses = this.settings.maxConsecutiveLosses || RiskManager.MAX_CONSECUTIVE_LOSSES;
+      if (this.currentConsecutiveLosses >= maxLosses && this.consecutiveLossCooldownUntil <= now) {
+        const cooldownMs = (this.settings.consecutiveLossCooldownMinutes || 60) * 60 * 1000;
+        this.consecutiveLossCooldownUntil = now + cooldownMs;
+      }
+
       if (this.consecutiveLossCooldownUntil > now) {
         const remainingMin = Math.ceil((this.consecutiveLossCooldownUntil - now) / 60000);
         return {
@@ -490,18 +498,16 @@ export class RiskManager {
       this.dailyLossUsdt += loss;
       this.currentConsecutiveLosses += 1;
 
-      // Se atingiu o teto de perdas consecutivas e a proteção estiver ativada
-      if (this.settings.consecutiveLossProtection && this.currentConsecutiveLosses >= this.settings.maxConsecutiveLosses) {
+      const maxLosses = this.settings.maxConsecutiveLosses || RiskManager.MAX_CONSECUTIVE_LOSSES;
+      if (this.currentConsecutiveLosses >= maxLosses) {
         const cooldownMs = (this.settings.consecutiveLossCooldownMinutes || 60) * 60 * 1000;
         this.consecutiveLossCooldownUntil = Date.now() + cooldownMs;
       }
 
-      // Se estourou a perda diária e a proteção estiver ativada
-      if (this.settings.dailyDrawdownProtection) {
-        const maxDailyLossAllowed = totalNavUsdt * this.settings.maxDailyDrawdownPct;
-        if (this.dailyLossUsdt >= maxDailyLossAllowed) {
-          this.dailyHaltedUntil = Date.now() + RiskManager.DAILY_HIBERNATION_MS;
-        }
+      const maxDailyDrawdown = this.settings.maxDailyDrawdownPct || RiskManager.MAX_DAILY_DRAWDOWN_PCT;
+      const maxDailyLossAllowed = totalNavUsdt * maxDailyDrawdown;
+      if (totalNavUsdt > 0 && this.dailyLossUsdt >= maxDailyLossAllowed) {
+        this.dailyHaltedUntil = Date.now() + RiskManager.DAILY_HIBERNATION_MS;
       }
     } else if (netPnlUsdt > 0) {
       // Ganho reseta o contador de perdas consecutivas

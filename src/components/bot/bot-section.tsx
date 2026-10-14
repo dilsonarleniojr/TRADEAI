@@ -86,6 +86,9 @@ export function BotSection() {
     setActiveExecutionReport,
     openBotCreateModal,
     setOpenBotCreateModal,
+    openProtectionModal,
+    setOpenProtectionModal,
+    protectionSettings,
   } = useCryptoStore(
   useShallow((s) => ({
     bots: s.bots,

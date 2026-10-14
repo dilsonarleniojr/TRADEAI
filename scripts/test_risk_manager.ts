@@ -104,4 +104,63 @@ console.log("Nível de Break-Even:", be);
 assert(be.shouldArmBreakEven === true, "Ao atingir 1R ($101.50), Break-Even DEVE ser armado");
 assert(be.newStopLossPrice >= 100.35, "Novo Stop Loss deve ficar em +0.35% ($100.35) garantindo lucro livre de taxas");
 
-console.log("\n🎉 TODOS OS TESTES PASSARAM COM SUCESSO ABSOLUTO!");
+// 7. Teste de Ativação / Desativação Dinâmica dos Modos de Proteção pelo Usuário
+console.log("\n--- 7. TESTE DE ATIVAÇÃO / DESATIVAÇÃO PELO USUÁRIO (USER TOGGLES) ---");
+riskManager.resetStateForTests();
+riskManager.resetProtectionSettings();
+
+// Verifica configurações padrão (todas ON)
+const defaultSettings = riskManager.getProtectionSettings();
+assert(defaultSettings.dailyDrawdownProtection === true, "Kill switch diário deve estar ON por padrão");
+assert(defaultSettings.consecutiveLossProtection === true, "Freio de perdas consecutivas deve estar ON por padrão");
+assert(defaultSettings.operationalViabilityFilter === true, "Filtro de viabilidade operacional deve estar ON por padrão");
+assert(defaultSettings.dynamicBreakEven === true, "Break-even dinâmico deve estar ON por padrão");
+
+// Cenário A: Usuário desativa o Freio de Perdas Consecutivas
+console.log("-> Desativando Freio de Perdas Consecutivas...");
+riskManager.setProtectionSettings({ consecutiveLossProtection: false });
+riskManager.recordTradeResult(-0.50, 100.0);
+riskManager.recordTradeResult(-0.50, 100.0);
+riskManager.recordTradeResult(-0.50, 100.0);
+const cbWithBrakeOff = riskManager.checkCircuitBreakers(100.0);
+console.log("Status com freio desligado:", cbWithBrakeOff);
+assert(cbWithBrakeOff.blocked === false, "Com consecutiveLossProtection=false, o freio NÃO deve bloquear o bot mesmo após 3 perdas");
+
+// Cenário B: Usuário reativa o Freio de Perdas Consecutivas
+console.log("-> Reativando Freio de Perdas Consecutivas...");
+riskManager.setProtectionSettings({ consecutiveLossProtection: true });
+const cbWithBrakeOn = riskManager.checkCircuitBreakers(100.0);
+console.log("Status após reativação:", cbWithBrakeOn);
+assert(cbWithBrakeOn.blocked === true, "Após reativar, deve aplicar imediatamente a trava de perdas consecutivas");
+
+// Cenário C: Usuário desativa o Filtro de Viabilidade Operacional
+console.log("-> Desativando Filtro de Viabilidade Operacional...");
+riskManager.setProtectionSettings({ operationalViabilityFilter: false });
+const permissiveSetup = riskManager.evaluateOperationalViability({
+  entryPrice: 100.0,
+  stopLossPrice: 98.5,
+  takeProfitPrice: 101.5, // Setup 1:1 taker (normalmente rejeitado)
+  isMaker: false,
+});
+console.log("Setup com filtro de viabilidade desligado:", permissiveSetup);
+assert(permissiveSetup.viable === true, "Com operationalViabilityFilter=false, setup deve ser liberado em modo permissivo");
+assert(permissiveSetup.reason.includes("desativado pelo usuário"), "Razão deve indicar modo permissivo configurado pelo usuário");
+
+// Cenário D: Usuário desativa Break-Even Dinâmico
+console.log("-> Desativando Break-Even Dinâmico...");
+riskManager.setProtectionSettings({ dynamicBreakEven: false });
+const beDisabled = riskManager.calculateDynamicBreakEven({
+  entryPrice: 100.0,
+  currentPrice: 105.0, // 3R+ de lucro
+  initialStopLossPrice: 98.5,
+});
+console.log("Break-even com chave desligada:", beDisabled);
+assert(beDisabled.shouldArmBreakEven === false, "Com dynamicBreakEven=false, não deve armar break-even");
+
+// Restaura padrões institucionais
+riskManager.resetProtectionSettings();
+riskManager.resetStateForTests();
+assert(riskManager.getProtectionSettings().consecutiveLossProtection === true, "Reset deve restaurar proteção para true");
+
+console.log("\n🎉 TODOS OS TESTES PASSARAM COM SUCESSO ABSOLUTO (INCLUINDO CONTROLES DO USUÁRIO)!");
+
