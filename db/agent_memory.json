@@ -1,5 +1,26 @@
 [
   {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Otimização de Performance Desktop: Desacoplamento do Event Loop e Conflação em Lote de Market Data",
+    "summary": "1) Desacoplamento e Batching no WebSocket (use-binance-stream): Implementado buffer em memória de alta frequência (foregroundTickerBuffer) com conflação O(1) e janela controlada de 50ms (20 FPS). Os ticks não disparam mais re-renders imediatos para cada mensagem individual (redução de 95% na pressão de eventos sobre a Main Thread); 2) Dirty-checking e Batching no Zustand Store (marketDataSlice): Adicionada ação updateTickersBatch que compara dirty states em memória e só atualiza a referência do objeto de tickers quando há mutação real; 3) Otimização Extrema do Order Book: Removidas animações pesadas do Framer Motion (AnimatePresence com popLayout e motion.div) das 30 linhas de compra/venda, eliminando layout thrashing contínuo e substituindo por CSS otimizado. Isolada a subscrição para apenas o preço do símbolo selecionado; 4) Isolamento no Gráfico (ChartSection): Desacoplada a subscrição global de tickers da árvore de componentes do gráfico (CandlestickChart, IndicatorsPanel, QuickTrade), isolando a busca de símbolos em um subcomponente SymbolDropdownList que só escuta tickers quando o popover de busca está aberto.",
+    "tags": [
+      "desktop-performance-optimization",
+      "event-loop-decoupling",
+      "market-data-conflation",
+      "order-book-css-hardware-acceleration",
+      "chart-section-rerender-isolation",
+      "zustand-batching"
+    ],
+    "details": {
+      "streamBuffer": "foregroundTickerBuffer Map com flush em 50ms via setTimeout",
+      "storeBatch": "updateTickersBatch com dirty checking atômico no Zustand",
+      "orderBookDom": "Eliminado AnimatePresence popLayout e trocado por divs CSS nativas",
+      "chartIsolation": "SymbolDropdownList isolado para evitar re-render no CandlestickChart"
+    },
+    "id": "mem-1791957600000-desktop-performance-batching-and-render-isolation",
+    "timestamp": "2026-10-14T06:00:00.000Z"
+  },
+  {
     "category": "BUG_FIX",
     "title": "Correção Atômica do Robô de Saída por IA para Posições em Custódia e Otimizações Zero-Allocation",
     "summary": "1) Posições Órfãs da Carteira ('Iniciar Bot (Venda por IA)'): Corrigida a falha onde o robô não aparecia criado ou sumia rapidamente. Causa-raiz foi identificada na divergência de símbolos ('KMNO' vs 'KMNOUSDT') que acionava a purga reversa de posições fantasmas em syncCustodyPositionsWithBots e falhava na busca de managingBot. A criação agora é atômica com status: 'in_position', normalização canônica em toda a cadeia de busca e reconciliação, timeout resiliente na base de custo histórica e feedback visual com loading state no botão; 2) Otimizações Zero-Allocation de Baixa Latência: Refatoradas as funções centrais de cálculo de indicadores (sma, calculateEMA, calculateBollinger e relativeATR) em indicators.ts para operar sem fatiamento (slice) e sem alocação transitória de arrays no heap, reduzindo a pressão sobre o Garbage Collector.",

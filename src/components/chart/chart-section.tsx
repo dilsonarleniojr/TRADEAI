@@ -20,7 +20,6 @@ import { MousePointer2, TrendingUp, Minus, Trash2, Search, ChevronDown } from 'l
 import { ALL_SYMBOLS } from '@/lib/crypto-meta';
 import { cn } from '@/lib/utils';
 import type { DrawingTool, Drawing } from './candlestick-chart';
-import { useShallow } from "zustand/react/shallow";
 
 const INTERVALS = [
   { value: '1m', label: '1m' },
@@ -60,24 +59,63 @@ function calculateRSI(closes: number[], period = 14): number[] {
   return rsi;
 }
 
-export function ChartSection() {
-  const { selectedSymbol, setSelectedSymbol, tickers } = useCryptoStore(
-  useShallow((s) => ({ selectedSymbol: s.selectedSymbol, setSelectedSymbol: s.setSelectedSymbol, tickers: s.tickers }))
-);
-  const [interval, setInterval] = useState('1h');
-  const [symbolSearch, setSymbolSearch] = useState('');
-  const [symbolSelectOpen, setSymbolSelectOpen] = useState(false);
-
+function SymbolDropdownList({
+  selectedSymbol,
+  onSelect,
+  symbolSearch,
+}: {
+  selectedSymbol: string;
+  onSelect: (sym: string) => void;
+  symbolSearch: string;
+}) {
+  const tickers = useCryptoStore((s) => s.tickers);
   const filteredSymbols = useMemo(() => {
     const query = symbolSearch.toLowerCase().trim();
     if (!query) {
-      // Sort by volume if available
       return [...ALL_SYMBOLS]
         .sort((a, b) => (tickers[b]?.quoteVolume || 0) - (tickers[a]?.quoteVolume || 0))
         .slice(0, 50);
     }
     return ALL_SYMBOLS.filter((s) => s.toLowerCase().includes(query)).slice(0, 60);
-  }, [symbolSearch, ALL_SYMBOLS.length, tickers]);
+  }, [symbolSearch, tickers]);
+
+  return (
+    <div className="max-h-[220px] overflow-y-auto cyan-scrollbar p-1">
+      {filteredSymbols.map((sym) => {
+        const t = tickers[sym];
+        return (
+          <button
+            key={sym}
+            onClick={() => onSelect(sym)}
+            className={cn(
+              "w-full text-left px-2 py-1.5 text-xs rounded hover:bg-secondary/40 flex items-center justify-between transition-colors",
+              sym === selectedSymbol && "bg-crypto-cyan/15 text-crypto-cyan font-bold"
+            )}
+          >
+            <span>{sym.replace('USDT', '/USDT')}</span>
+            {t && (
+              <span className="text-[10px] font-mono text-muted-foreground">
+                ${t.price < 1 ? t.price.toFixed(4) : t.price.toFixed(2)}
+              </span>
+            )}
+          </button>
+        );
+      })}
+      {filteredSymbols.length === 0 && (
+        <div className="p-3 text-center text-xs text-muted-foreground">
+          Nenhuma moeda encontrada
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ChartSection() {
+  const selectedSymbol = useCryptoStore((s) => s.selectedSymbol);
+  const setSelectedSymbol = useCryptoStore((s) => s.setSelectedSymbol);
+  const [interval, setInterval] = useState('1h');
+  const [symbolSearch, setSymbolSearch] = useState('');
+  const [symbolSelectOpen, setSymbolSelectOpen] = useState(false);
   const [showSMA20, setShowSMA20] = useState(true);
   const [showSMA50, setShowSMA50] = useState(true);
   const [showBollinger, setShowBollinger] = useState(false);
@@ -240,34 +278,15 @@ export function ChartSection() {
                     />
                   </div>
                 </div>
-                <div className="max-h-[220px] overflow-y-auto cyan-scrollbar p-1">
-                  {filteredSymbols.map((sym) => (
-                    <button
-                      key={sym}
-                      onClick={() => {
-                        setSelectedSymbol(sym);
-                        setSymbolSelectOpen(false);
-                        setSymbolSearch('');
-                      }}
-                      className={cn(
-                        "w-full text-left px-2 py-1.5 text-xs rounded hover:bg-secondary/40 flex items-center justify-between transition-colors",
-                        sym === selectedSymbol && "bg-crypto-cyan/15 text-crypto-cyan font-bold"
-                      )}
-                    >
-                      <span>{sym.replace('USDT', '/USDT')}</span>
-                      {tickers[sym] && (
-                        <span className="text-[10px] font-mono text-muted-foreground">
-                          ${tickers[sym].price < 1 ? tickers[sym].price.toFixed(4) : tickers[sym].price.toFixed(2)}
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                  {filteredSymbols.length === 0 && (
-                    <div className="p-3 text-center text-xs text-muted-foreground">
-                      Nenhuma moeda encontrada
-                    </div>
-                  )}
-                </div>
+                <SymbolDropdownList
+                  selectedSymbol={selectedSymbol}
+                  symbolSearch={symbolSearch}
+                  onSelect={(sym) => {
+                    setSelectedSymbol(sym);
+                    setSymbolSelectOpen(false);
+                    setSymbolSearch('');
+                  }}
+                />
               </PopoverContent>
             </Popover>
           </div>

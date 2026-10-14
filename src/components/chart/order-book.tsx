@@ -5,9 +5,8 @@ import { useCryptoStore } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BookOpen, RefreshCw, Minimize2, Maximize2 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { getOrFetch, CACHE_TTL, invalidateCache } from "@/lib/cache";
-import { useShallow } from "zustand/react/shallow";
 
 interface OrderBookLevel {
   price: number;
