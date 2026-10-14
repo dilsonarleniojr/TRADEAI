@@ -1,5 +1,25 @@
 [
   {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Auto-Cura de Posições Órfãs e Mitigação de Rate Limit em Parciais",
+    "summary": "Implementado encerramento automático de posições órfãs com saldo $0 na Binance, desarme de parciais com notional < $5 USDT, cooldown/backoff exponencial e expansão do rate limit para 120 req/min para prevenir travamento da frota de robôs.",
+    "tags": [
+      "orphan-positions",
+      "partial-tp",
+      "rate-limit",
+      "binance",
+      "self-healing",
+      "multi-bot"
+    ],
+    "details": {
+      "rateLimitPerMin": 120,
+      "maxPartialRetries": 3,
+      "minPartialNotionalUsd": 5.20
+    },
+    "id": "mem-1791934700000-orphan-heal",
+    "timestamp": "2026-10-14T00:38:00.000Z"
+  },
+  {
     "category": "USER_PREFERENCE",
     "title": "Preferência Operacional em Dry Run por Padrão",
     "summary": "O usuário determinou que toda execução deve operar em dry run nativo antes de POST para a exchange.",

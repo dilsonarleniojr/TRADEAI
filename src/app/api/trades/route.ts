@@ -316,11 +316,11 @@ export async function GET(request: NextRequest) {
 // POST /api/trades - Create a new trade and update balance in a transaction
 export async function POST(request: NextRequest) {
   try {
-    // 1. Rate Limiting Check
+    // 1. Rate Limiting Check (120 req/min para acomodar múltiplos robôs em operação simultânea)
     const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
-    if (isRateLimited(ip, 30)) {
+    if (isRateLimited(ip, 120)) {
       return NextResponse.json(
-        { success: false, error: 'Too many requests. Please wait before executing more trades.' },
+        { success: false, error: 'Too many requests. Please wait before executing more trades.', code: 'RATE_LIMITED' },
         { status: 429 }
       );
     }
@@ -602,9 +602,15 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('[Trades API] POST error:', error.message);
+    const isClientError = error.code === "MIN_NOTIONAL_DUST" || error.code === "NO_BALANCE" || error.code === "INVALID_SYMBOL";
     return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
+      {
+        success: false,
+        error: error.message,
+        code: error.code || "INTERNAL_ERROR",
+        residualUsdt: error.residualUsdt,
+      },
+      { status: isClientError ? 400 : 500 }
     );
   }
 }

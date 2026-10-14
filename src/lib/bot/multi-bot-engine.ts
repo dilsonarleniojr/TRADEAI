@@ -90,6 +90,8 @@ const botConsecutiveLosses = new Map<string, number>();
 const symbolLossTimestamps = new Map<string, number[]>();
 const inFlightBuys = new Set<string>();
 const inFlightSells = new Set<string>();
+const partialRetryCooldown = new Map<string, number>();
+const partialRetryCount = new Map<string, number>();
 
 // Telemetria de Frequência de Disparo em tempo real (Entry Frequency Telemetry)
 const botScanTimestamps = new Map<string, number[]>();
@@ -684,7 +686,10 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // garantindo lucro líquido no bolso e travando o restante no Break-Even com risco ZERO.
     // Requer apenas que a fatia vendida e a remanescente atendam ao minNotional da Binance (>= 5.20 USDT).
     const partialTpTrigger = Math.max(0.85, Math.min(1.6, bot.partialTpTrigger ?? 1.0));
-    if (canUsePartialTp && !pos.partialTpExecuted && gainPercent >= partialTpTrigger) {
+    const now = Date.now();
+    const isPartialCooldown = now < (partialRetryCooldown.get(bot.id) || 0);
+
+    if (canUsePartialTp && !pos.partialTpExecuted && gainPercent >= partialTpTrigger && !isPartialCooldown) {
       const partialOk = await executeBotPartialSell({
         bot,
         position: updatedPosition,
@@ -1730,6 +1735,21 @@ async function executeBotPartialSell({
 
     // Binance spot order requires min $5 notional
     if (tradingMode === "live" && partialTotal < 5.20) {
+      // Se a fatia calculada for inferior a $5.20, desativa a parcial nesta posição
+      // para evitar loops infinitos a cada segundo. A operação seguirá protegida até o Take Profit total ou Stop Loss.
+      store.updateBotPosition(bot.id, {
+        ...position,
+        partialTpExecuted: true,
+      });
+      partialRetryCount.delete(bot.id);
+      partialRetryCooldown.delete(bot.id);
+
+      store.addBotLog({
+        message: `ℹ️ [${bot.name}] Parcial desativada: fatia ($${partialTotal.toFixed(2)} USDT) é inferior ao lote mínimo de $5 da Binance. A posição continuará aberta até o Take Profit total ou Stop Loss.`,
+        type: "info",
+        botId: bot.id,
+        botName: bot.name,
+      });
       return false;
     }
 
@@ -1773,14 +1793,103 @@ async function executeBotPartialSell({
       });
       const result = await res.json();
       if (!res.ok || !result.success) {
-        store.addBotLog({
-          message: `⚠️ [${bot.name}] Parcial não executada na Binance: ${result.error || "Ordem rejeitada"}`,
-          type: "warning",
-          botId: bot.id,
-          botName: bot.name,
-        });
+        const errMsg = result.error || "Ordem rejeitada";
+        const errCode = result.code || "";
+
+        // 1. Caso Posição Órfã / Saldo Zerado na Binance (ex: $0.00 USDT ou NO_BALANCE)
+        const isZeroBalance =
+          errCode === "NO_BALANCE" ||
+          errMsg.includes("não possui saldo") ||
+          errMsg.includes("$0.00 USDT") ||
+          result.residualUsdt === 0;
+
+        if (isZeroBalance) {
+          store.updateBotPosition(bot.id, null);
+          store.updateBot(bot.id, {
+            status: "scanning",
+            stats: {
+              ...bot.stats,
+              lastAction: `⚠️ Posição órfã de ${execSymbol.replace("USDT", "")} ($0.00 na Binance) encerrada automaticamente`,
+              lastActionTime: new Date().toISOString(),
+            },
+          });
+          partialRetryCount.delete(bot.id);
+          partialRetryCooldown.delete(bot.id);
+
+          store.addBotLog({
+            message: `⚠️ [${bot.name}] Posição órfã de ${execSymbol.replace("USDT", "")} encerrada no robô: saldo na Binance é $0.00 USDT. Robô liberado para novas varreduras.`,
+            type: "warning",
+            botId: bot.id,
+            botName: bot.name,
+          });
+
+          callbacks?.onToast?.({
+            title: `⚠️ Posição Órfã Limpa [${bot.name}]`,
+            description: `Saldo de ${execSymbol.replace("USDT", "")} era $0.00 na Binance. Robô liberado para novas operações.`,
+            variant: "default",
+          });
+          return false;
+        }
+
+        // 2. Caso Dust / Fatia inferior ao mínimo de $5 da Binance (mas com saldo existente)
+        const isDustOrMinNotional =
+          errCode === "MIN_NOTIONAL_DUST" ||
+          errMsg.includes("inferior ao mínimo");
+
+        if (isDustOrMinNotional) {
+          // Desativa a realização parcial para que a posição inteira possa ser vendida no Take Profit total ou Stop Loss
+          store.updateBotPosition(bot.id, {
+            ...position,
+            partialTpExecuted: true,
+          });
+          partialRetryCount.delete(bot.id);
+          partialRetryCooldown.delete(bot.id);
+
+          store.addBotLog({
+            message: `ℹ️ [${bot.name}] Parcial desativada: fatia de ${execSymbol.replace("USDT", "")} é inferior a $5 USDT na Binance. A posição continuará aberta até o Take Profit total ou Stop Loss.`,
+            type: "info",
+            botId: bot.id,
+            botName: bot.name,
+          });
+          return false;
+        }
+
+        // 3. Caso Rate Limit (Too many requests) ou erro transitório de rede
+        const retries = (partialRetryCount.get(bot.id) || 0) + 1;
+        partialRetryCount.set(bot.id, retries);
+
+        if (retries >= 3) {
+          partialRetryCount.delete(bot.id);
+          partialRetryCooldown.delete(bot.id);
+          store.updateBotPosition(bot.id, {
+            ...position,
+            partialTpExecuted: true,
+          });
+
+          store.addBotLog({
+            message: `⚠️ [${bot.name}] Parcial desativada após 3 tentativas sem sucesso (${errMsg}). Operação continuará até o Take Profit total.`,
+            type: "warning",
+            botId: bot.id,
+            botName: bot.name,
+          });
+        } else {
+          const waitSeconds = retries === 1 ? 20 : 45;
+          partialRetryCooldown.set(bot.id, Date.now() + waitSeconds * 1000);
+
+          store.addBotLog({
+            message: `⚠️ [${bot.name}] Parcial não executada na Binance (${errMsg}). Aguardando ${waitSeconds}s antes de tentar novamente (tentativa ${retries}/3).`,
+            type: "warning",
+            botId: bot.id,
+            botName: bot.name,
+          });
+        }
+
         return false;
       }
+
+      // Sucesso na parcial
+      partialRetryCount.delete(bot.id);
+      partialRetryCooldown.delete(bot.id);
 
       const executedTrade: TradeData = {
         ...trade,
@@ -1794,12 +1903,34 @@ async function executeBotPartialSell({
       store.applyTradeToPortfolio(executedTrade);
       if (result.account) store.setAccount(result.account);
     } catch (e: any) {
-      store.addBotLog({
-        message: `⚠️ [${bot.name}] Erro de rede ao executar parcial: ${e.message}`,
-        type: "warning",
-        botId: bot.id,
-        botName: bot.name,
-      });
+      const retries = (partialRetryCount.get(bot.id) || 0) + 1;
+      partialRetryCount.set(bot.id, retries);
+
+      if (retries >= 3) {
+        partialRetryCount.delete(bot.id);
+        partialRetryCooldown.delete(bot.id);
+        store.updateBotPosition(bot.id, {
+          ...position,
+          partialTpExecuted: true,
+        });
+
+        store.addBotLog({
+          message: `⚠️ [${bot.name}] Parcial desativada após 3 falhas de rede: ${e.message}. Operação continuará até o Take Profit total.`,
+          type: "warning",
+          botId: bot.id,
+          botName: bot.name,
+        });
+      } else {
+        const waitSeconds = retries === 1 ? 20 : 45;
+        partialRetryCooldown.set(bot.id, Date.now() + waitSeconds * 1000);
+
+        store.addBotLog({
+          message: `⚠️ [${bot.name}] Erro de rede ao executar parcial: ${e.message}. Aguardando ${waitSeconds}s (tentativa ${retries}/3).`,
+          type: "warning",
+          botId: bot.id,
+          botName: bot.name,
+        });
+      }
       return false;
     }
   } else {
@@ -1979,8 +2110,9 @@ async function executeBotSell({
           return;
         }
 
+        botErrorCooldown.set(bot.id, Date.now() + 15_000);
         store.addBotLog({
-          message: `🔴 [${bot.name}] Falha na ordem de venda Binance: ${result.error || "Erro"}`,
+          message: `🔴 [${bot.name}] Falha na ordem de venda Binance: ${result.error || "Erro"} (novo teste em 15s)`,
           type: "error",
           botId: bot.id,
           botName: bot.name,
@@ -2003,8 +2135,9 @@ async function executeBotSell({
         store.setAccount(result.account);
       }
     } catch (e: any) {
+      botErrorCooldown.set(bot.id, Date.now() + 15_000);
       store.addBotLog({
-        message: `🔴 [${bot.name}] Erro ao enviar venda Binance: ${e.message}`,
+        message: `🔴 [${bot.name}] Erro ao enviar venda Binance: ${e.message} (novo teste em 15s)`,
         type: "error",
         botId: bot.id,
         botName: bot.name,
