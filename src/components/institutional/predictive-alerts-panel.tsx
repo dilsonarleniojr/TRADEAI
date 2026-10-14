@@ -20,12 +20,23 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { useCryptoStore } from "@/lib/store";
+import { useShallow } from "zustand/react/shallow";
 import { FastCloseBadge } from "@/components/bot/fast-close-badge";
 
 export function PredictiveAlertsPanel() {
   const { toast } = useToast();
-  const bots = useCryptoStore((s) => s.bots);
-  const tickers = useCryptoStore((s) => s.tickers);
+  const activePositions = useCryptoStore(
+    useShallow((s) =>
+      s.bots
+        .filter((b) => b.active && b.position && b.position.quantity > 0)
+        .map((b) => ({
+          symbol: b.symbol.toUpperCase(),
+          currentPrice: b.position?.currentPrice || 0,
+          entryPrice: b.position?.entryPrice || 0,
+          unrealizedPnlPercent: b.position?.unrealizedPnlPercent || 0,
+        }))
+    )
+  );
   const alerts = useAlertStore((s) => s.alerts);
   const filterSeverity = useAlertStore((s) => s.filterSeverity);
   const setFilterSeverity = useAlertStore((s) => s.setFilterSeverity);
@@ -238,18 +249,18 @@ export function PredictiveAlertsPanel() {
                 : "border-white/[0.06] bg-[#0b101c]";
 
               const pairSym = alert.context.pair ? (alert.context.pair.endsWith("USDT") ? alert.context.pair.toUpperCase() : `${alert.context.pair.toUpperCase()}USDT`) : null;
-              const activeBot = pairSym ? bots.find((b) => b.symbol.toUpperCase() === pairSym && b.active) : null;
-              const isBotInPosition = activeBot && (activeBot.status === "in_position" || (!!activeBot.position && activeBot.position.quantity > 0));
+              const pos = pairSym ? activePositions.find((p) => p.symbol === pairSym) : null;
+              const isBotInPosition = !!pos;
               let floatingPnlPct = 0;
               let hasFloatingPnl = false;
-              if (isBotInPosition && activeBot?.position && pairSym) {
-                const curPrice = tickers[pairSym]?.price ?? (activeBot.position.currentPrice || 0);
-                const entryPrice = activeBot.position.entryPrice || 0;
+              if (pos && pairSym) {
+                const curPrice = pos.currentPrice || (useCryptoStore.getState().tickers[pairSym]?.price ?? 0);
+                const entryPrice = pos.entryPrice;
                 if (curPrice > 0 && entryPrice > 0) {
                   floatingPnlPct = ((curPrice - entryPrice) / entryPrice) * 100;
                   hasFloatingPnl = true;
-                } else if (typeof activeBot.position.unrealizedPnlPercent === "number") {
-                  floatingPnlPct = activeBot.position.unrealizedPnlPercent;
+                } else if (typeof pos.unrealizedPnlPercent === "number") {
+                  floatingPnlPct = pos.unrealizedPnlPercent;
                   hasFloatingPnl = true;
                 }
               }

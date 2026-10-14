@@ -25,19 +25,17 @@ export function FastCloseBadge({
   showInactiveBadge = true,
 }: FastCloseBadgeProps) {
   const { toast } = useToast();
-  const bots = useCryptoStore((s) => s.bots);
-  const tickers = useCryptoStore((s) => s.tickers);
-  const [isClosing, setIsClosing] = useState(false);
-
   const cleanSym = symbol.endsWith("USDT") ? symbol.toUpperCase() : `${symbol.toUpperCase()}USDT`;
   const baseSym = cleanSym.replace("USDT", "");
-  const activeBot = bots.find((b) => b.symbol.toUpperCase() === cleanSym && b.active);
+  const activeBot = useCryptoStore((s) => s.bots.find((b) => b.symbol.toUpperCase() === cleanSym && b.active));
+  const tickerPrice = useCryptoStore((s) => s.tickers[cleanSym]?.price);
+  const [isClosing, setIsClosing] = useState(false);
   const isBotInPosition = activeBot && (activeBot.status === "in_position" || (!!activeBot.position && activeBot.position.quantity > 0));
 
   let floatingPnlPct = 0;
   let hasFloatingPnl = false;
   if (isBotInPosition && activeBot?.position) {
-    const curPrice = tickers[cleanSym]?.price ?? (activeBot.position.currentPrice || 0);
+    const curPrice = tickerPrice ?? (activeBot.position.currentPrice || 0);
     const entryPrice = activeBot.position.entryPrice || 0;
     if (curPrice > 0 && entryPrice > 0) {
       floatingPnlPct = ((curPrice - entryPrice) / entryPrice) * 100;

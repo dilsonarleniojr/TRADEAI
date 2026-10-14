@@ -45,12 +45,12 @@ function AnimatedValue({ value, prefix = "", suffix = "", decimals = 2 }: {
 }
 
 export function StatCards() {
-  const { portfolio, trades, botActive, bots, tickers, connectionStatus, setSelectedSymbol } = useCryptoStore(
+  const { portfolio, trades, botActive, activeBotsCount, tickers, connectionStatus, setSelectedSymbol } = useCryptoStore(
     useShallow((s) => ({
       portfolio: s.portfolio,
       trades: s.trades,
       botActive: s.botActive,
-      bots: s.bots,
+      activeBotsCount: s.bots ? s.bots.filter((b) => b.active).length : 0,
       tickers: s.tickers,
       connectionStatus: s.connectionStatus,
       setSelectedSymbol: s.setSelectedSymbol,
@@ -85,7 +85,7 @@ export function StatCards() {
   const todayTrades = trades.length;
   const profitableTrades = useMemo(() => trades.filter((t) => t.pnl > 0).length, [trades]);
   const winRate = todayTrades > 0 ? (profitableTrades / todayTrades) * 100 : 0;
-  const activeBotsCount = bots ? bots.filter((b) => b.active).length : (botActive ? 1 : 0);
+  const effectiveActiveBots = activeBotsCount > 0 ? activeBotsCount : (botActive ? 1 : 0);
   const currentPnl = portfolio.realizedPnl ?? portfolio.pnl ?? 0;
 
   const stats = [
@@ -143,17 +143,17 @@ export function StatCards() {
       id: "bots",
       title: "Robôs & Automações",
       tooltip: "Status operacional dos robôs quantitativos simultâneos",
-      value: activeBotsCount,
-      displayValue: `${activeBotsCount} ${activeBotsCount === 1 ? "Ativo" : "Ativos"}`,
-      subValue: activeBotsCount > 0 ? "Grid + Scalp + IA rodando" : "Nenhum robô ligado",
-      subPositive: activeBotsCount > 0,
+      value: effectiveActiveBots,
+      displayValue: `${effectiveActiveBots} ${effectiveActiveBots === 1 ? "Ativo" : "Ativos"}`,
+      subValue: effectiveActiveBots > 0 ? "Grid + Scalp + IA rodando" : "Nenhum robô ligado",
+      subPositive: effectiveActiveBots > 0,
       icon: Bot,
-      iconColor: activeBotsCount > 0 ? "text-crypto-green" : "text-muted-foreground",
-      iconBg: activeBotsCount > 0 ? "bg-crypto-green/15" : "bg-secondary/40",
-      accentBorder: activeBotsCount > 0 ? "border-l-2 border-l-crypto-green" : "border-l-2 border-l-muted",
-      hoverGlow: activeBotsCount > 0 ? "hover:border-crypto-green/40" : "",
+      iconColor: effectiveActiveBots > 0 ? "text-crypto-green" : "text-muted-foreground",
+      iconBg: effectiveActiveBots > 0 ? "bg-crypto-green/15" : "bg-secondary/40",
+      accentBorder: effectiveActiveBots > 0 ? "border-l-2 border-l-crypto-green" : "border-l-2 border-l-muted",
+      hoverGlow: effectiveActiveBots > 0 ? "hover:border-crypto-green/40" : "",
       animate: false,
-      trendDir: activeBotsCount > 0 ? "up" : "neutral" as const,
+      trendDir: effectiveActiveBots > 0 ? "up" : "neutral" as const,
     },
     {
       id: "best",

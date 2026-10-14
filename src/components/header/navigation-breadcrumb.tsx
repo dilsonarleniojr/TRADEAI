@@ -89,7 +89,7 @@ export function NavigationBreadcrumb() {
     selectedSymbol,
     tradeHubActiveTab,
     setIsCommandSearchOpen,
-    bots,
+    activeBotsCount,
   } = useCryptoStore(
     useShallow((s) => ({
       activeSection: s.activeSection,
@@ -97,14 +97,12 @@ export function NavigationBreadcrumb() {
       selectedSymbol: s.selectedSymbol,
       tradeHubActiveTab: s.tradeHubActiveTab,
       setIsCommandSearchOpen: s.setIsCommandSearchOpen,
-      bots: s.bots,
+      activeBotsCount: s.bots.filter((b) => b.active).length,
     }))
   );
 
   const meta = SECTION_METAS[activeSection] || SECTION_METAS.dashboard;
   const Icon = meta.icon;
-
-  const activeBotsCount = bots.filter((b) => b.active).length;
 
   return (
     <nav
