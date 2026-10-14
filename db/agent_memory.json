@@ -1,5 +1,25 @@
 [
   {
+    "category": "BUG_FIX",
+    "title": "Eliminação de Desligamentos Não Autorizados de Robôs e Ativos Órfãos na Carteira",
+    "summary": "Corrigidas as 4 causas-raiz que causavam o encerramento indevido de robôs ou abandono de posições em carteira: 1) recordBotTrade tratava vendas parciais (50%) como encerramento total anulando a posição restante do robô; 2) Ausência de persistência em localStorage fazia F5 reiniciar a frota para padrão desativado; 3) startAiExitBotForAsset e adoptOrphanPositionWithBot não recuperavam o robô fresco do Zustand após addBot, impedindo a vinculação da posição e status in_position; 4) syncCustodyPositionsWithBots agora audita periodicamente a carteira na Binance e alinha qualquer saldo (> $0.50 USDT) com seu respectivo robô ativo.",
+    "tags": [
+      "orphan-assets-fix",
+      "partial-sell-preservation",
+      "localstorage-fleet-persistence",
+      "custody-sync-guardian",
+      "bot-lifecycle-safety"
+    ],
+    "details": {
+      "recordBotTrade": "isPartial check preserva b.position e status in_position",
+      "localStorage": "loadBotsFromStorage / persistBots preservam a frota através de recargas",
+      "syncCustodyPositionsWithBots": "executado a cada tick da frota e após reconciliação com a Binance",
+      "isZeroBalanceSanitized": "removido matching frágil de strings em erros NOTIONAL/DUST"
+    },
+    "id": "mem-1791942600000-orphan-and-bot-shutdown-prevention",
+    "timestamp": "2026-10-14T02:10:00.000Z"
+  },
+  {
     "category": "ARCHITECTURE_DECISION",
     "title": "Garantia de Lucro Baseado no Preço de Compra do Banco de Dados & Análise de Mercado por IA (15m/5m)",
     "summary": "Implementado endpoint /api/trades/cost-basis que sincroniza o histórico de myTrades da Binance e consulta o banco SQLite para obter o preço médio ponderado real de compra. O robô de venda por IA agora opera em 15m e 5m, veta saídas precipitadas ou abaixo do preço de compra do DB, desativa time-stop e stop-loss acidentais, e só realiza a venda no ápice quando houver exaustão técnica comprovada com Trailing Stop de topo.",

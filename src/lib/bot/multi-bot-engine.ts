@@ -192,6 +192,71 @@ async function isBtcMarketHealthy(): Promise<{ healthy: boolean; detail: string 
  * tem operações/posições abertas), a operação em andamento é migrada imediatamente para um motor em funcionamento.
  * Isso garante que nenhuma operação fique desprotegida contra Stop Loss, Break-Even ou Trailing Stop (Pilar 2 dos Padrões Institucionais).
  */
+/**
+ * Guardião de Custódia e Anti-Órfãos (Pilar 2 dos Padrões Institucionais):
+ * Audita periodicamente a carteira Spot da Binance contra a frota de robôs.
+ * Se houver saldo real de ativos em carteira (> $0.50 USDT), garante que o robô
+ * correspondente permaneça ativo e com a quantidade exata sob custódia,
+ * impedindo que ativos fiquem órfãos ou sem gerenciamento algorítmico.
+ */
+export function syncCustodyPositionsWithBots() {
+  const store = useCryptoStore.getState();
+  const positions = store.portfolio.positions || [];
+  if (positions.length === 0) return;
+
+  for (const pos of positions) {
+    if (pos.quantity <= 0) continue;
+    const tickerPrice = store.tickers[pos.symbol]?.price || pos.marketPrice || pos.avgPrice || 0;
+    const notionalUsd = pos.marketValue > 0 ? pos.marketValue : pos.quantity * tickerPrice;
+
+    // Ignora pó insignificante de frações de centavos (< $0.50 USDT)
+    if (notionalUsd < 0.50) continue;
+
+    // Localiza se já existe um robô para este ativo (pelo símbolo fixo ou pela posição)
+    const associatedBot = store.bots.find(
+      (b) => (b.position && b.position.symbol === pos.symbol) || b.symbol === pos.symbol
+    );
+
+    if (associatedBot) {
+      // Se o robô estiver ativo, sincroniza a quantidade real com a carteira
+      if (associatedBot.active) {
+        const botQty = associatedBot.position?.quantity || 0;
+        // Se a quantidade no robô divergir do saldo real na Binance:
+        if (!associatedBot.position || Math.abs(botQty - pos.quantity) > 0.0001) {
+          const entryPrice = associatedBot.position?.entryPrice || (pos.avgPrice > 0 ? pos.avgPrice : tickerPrice);
+          const pnlPercent = entryPrice > 0 ? ((tickerPrice - entryPrice) / entryPrice) * 100 : 0;
+
+          store.updateBotPosition(associatedBot.id, {
+            symbol: pos.symbol,
+            side: "BUY",
+            quantity: pos.quantity,
+            entryPrice,
+            currentPrice: tickerPrice,
+            highestPrice: Math.max(entryPrice, tickerPrice),
+            totalCost: entryPrice * pos.quantity,
+            unrealizedPnl: (tickerPrice - entryPrice) * pos.quantity,
+            unrealizedPnlPercent: pnlPercent,
+            entryTime: associatedBot.position?.entryTime || new Date().toISOString(),
+            mode: store.tradingMode,
+            breakEvenPrice: entryPrice * 1.003,
+            isBreakEvenArmed: associatedBot.position?.isBreakEvenArmed ?? false,
+          });
+
+          store.updateBot(associatedBot.id, {
+            status: "in_position",
+          });
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Reconciliação e Failover Institucional de Operações:
+ * Apenas em caso de pane severa e confirmada (>= 10 falhas de execução consecutivas),
+ * a operação é salvaguardada em outro motor ativo. Robôs pausados manualmente pelo usuário
+ * NUNCA têm suas posições retiradas sem consentimento.
+ */
 export async function reconcileOrphanPositions(callbacks?: MultiBotEngineCallbacks) {
   const store = useCryptoStore.getState();
   const { bots } = store;
@@ -199,37 +264,28 @@ export async function reconcileOrphanPositions(callbacks?: MultiBotEngineCallbac
     (b) => b.active && b.status !== "stopped" && (!botErrorCooldown.get(b.id) || Date.now() >= (botErrorCooldown.get(b.id) || 0))
   );
 
-  // Robôs que falharam ou foram pausados mas ainda possuem uma operação/posição aberta sob custódia
-  const failedOrOrphanBots = bots.filter((b) => {
+  // Apenas robôs que sofreram falhas técnicas consecutivas severas (>= 10 tentativas sem resposta)
+  const failedBots = bots.filter((b) => {
     const hasPosition = Boolean(b.position && b.position.quantity > 0);
     if (!hasPosition) return false;
-    const isInactive = !b.active || b.status === "stopped";
-    const hasConsecutiveErrors = (botConsecutiveFailures.get(b.id) || 0) >= 2;
-    return isInactive || hasConsecutiveErrors;
+    const hasSevereErrors = (botConsecutiveFailures.get(b.id) || 0) >= 10;
+    return hasSevereErrors;
   });
 
-  if (failedOrOrphanBots.length === 0 || activeHealthyBots.length === 0) return;
+  if (failedBots.length === 0 || activeHealthyBots.length === 0) return;
 
-  for (const failedBot of failedOrOrphanBots) {
+  for (const failedBot of failedBots) {
     const pos = failedBot.position!;
     const posSymbol = pos.symbol || failedBot.symbol;
 
-    // Busca um motor em funcionamento adequado para assumir a operação:
-    // 1º Prioridade: Robô ativo que esteja sem posição aberta
-    // 2º Prioridade: Robô com capacidade de Auto-Screener (ex: Épsilon)
-    // 3º Prioridade: Qualquer robô ativo saudável diferente do que falhou
-    const targetEngine =
-      activeHealthyBots.find(
-        (h) => h.id !== failedBot.id && (!h.position || h.position.quantity === 0)
-      ) ||
-      activeHealthyBots.find(
-        (h) => h.id !== failedBot.id && (h.useAutoScreener || h.symbol === "AUTO")
-      ) ||
-      activeHealthyBots.find((h) => h.id !== failedBot.id);
+    // Busca um motor dedicado livre para assumir a operação
+    const targetEngine = activeHealthyBots.find(
+      (h) => h.id !== failedBot.id && (!h.position || h.position.quantity === 0) && h.symbol !== "AUTO"
+    );
 
     if (targetEngine) {
       console.warn(
-        `[Motor Failover] Motor "${failedBot.name}" falhou com operação aberta. Migrando ${posSymbol} para o motor em funcionamento "${targetEngine.name}"...`
+        `[Motor Failover] Motor "${failedBot.name}" sofreu 10 falhas consecutivas. Salvaguardando ${posSymbol} no motor "${targetEngine.name}"...`
       );
 
       // Transfere a custódia da operação para o motor em funcionamento
@@ -238,23 +294,24 @@ export async function reconcileOrphanPositions(callbacks?: MultiBotEngineCallbac
         symbol: posSymbol,
       });
 
+      // Atualiza o motor receptor para monitorar a posição imediatamente
+      store.updateBot(targetEngine.id, {
+        status: "in_position",
+        symbol: posSymbol,
+        stats: {
+          ...targetEngine.stats,
+          lastAction: `🛡️ Assumiu operação de ${posSymbol.replace("USDT", "")} após falha prolongada de [${failedBot.name}]`,
+          lastActionTime: new Date().toISOString(),
+        },
+      });
+
       // Zera a custódia do motor que falhou para evitar duplicidade
       store.updateBot(failedBot.id, {
         position: null,
         status: failedBot.active ? "scanning" : "stopped",
         stats: {
           ...failedBot.stats,
-          lastAction: `⚠️ Operação em ${posSymbol.replace("USDT", "")} migrada para [${targetEngine.name}] após falha`,
-          lastActionTime: new Date().toISOString(),
-        },
-      });
-
-      // Atualiza o motor receptor para monitorar a posição imediatamente
-      store.updateBot(targetEngine.id, {
-        status: "in_position",
-        stats: {
-          ...targetEngine.stats,
-          lastAction: `🛡️ Assumiu operação de ${posSymbol.replace("USDT", "")} após falha do motor [${failedBot.name}]`,
+          lastAction: `⚠️ Operação em ${posSymbol.replace("USDT", "")} transferida para [${targetEngine.name}] após falhas repetitivas`,
           lastActionTime: new Date().toISOString(),
         },
       });
@@ -262,7 +319,6 @@ export async function reconcileOrphanPositions(callbacks?: MultiBotEngineCallbac
       // Limpa contador de erros do motor falho após a migração segura
       botConsecutiveFailures.delete(failedBot.id);
 
-      // Emite log estruturado e notificação para auditoria
       store.addBotLog({
         message: `🔄 [Failover de Motor] Operação ${posSymbol.replace("USDT", "/USDT")} migrada com sucesso de [${failedBot.name}] para o motor em funcionamento [${targetEngine.name}]. Risco zero e stop ativos!`,
         type: "system",
@@ -288,6 +344,9 @@ export async function tickMultiBotFleet(callbacks?: MultiBotEngineCallbacks) {
   // Garante que operações de robôs que falharam ou foram pausados sejam assumidas por motores em funcionamento
   await reconcileOrphanPositions(callbacks);
 
+  // Sincroniza posições reais de custódia com robôs para garantir que nenhum ativo fique órfão
+  syncCustodyPositionsWithBots();
+
   // Filter only active bots
   const activeBots = bots.filter((b) => b.active);
   if (activeBots.length === 0) return;
@@ -301,6 +360,7 @@ export async function tickMultiBotFleet(callbacks?: MultiBotEngineCallbacks) {
         const accJson = await accRes.json();
         if (accJson.success && accJson.data) {
           store.setAccount(accJson.data);
+          syncCustodyPositionsWithBots();
           lastLiveAccountError = null;
         }
       } else {
@@ -1875,12 +1935,10 @@ async function executeBotPartialSell({
         const errMsg = result.error || "Ordem rejeitada";
         const errCode = result.code || "";
 
-        // 1. Caso Posição Órfã / Saldo Zerado na Binance (ex: $0.00 USDT ou NO_BALANCE)
+        // 1. Caso Posição Órfã / Saldo Zerado na Binance (apenas se confirmado NO_BALANCE ou saldo estritamente inexistente)
         const isZeroBalance =
           errCode === "NO_BALANCE" ||
-          errMsg.includes("não possui saldo") ||
-          errMsg.includes("$0.00 USDT") ||
-          result.residualUsdt === 0;
+          errMsg.includes("não possui saldo");
 
         if (isZeroBalance) {
           store.updateBotPosition(bot.id, null);
@@ -2709,9 +2767,10 @@ export function adoptOrphanPositionWithBot(symbol: string, callbacks?: MultiBotE
 
   const cleanSym = symbol.replace("USDT", "");
   let targetBot = store.bots.find((b) => b.symbol === symbol);
+  let targetId = targetBot?.id;
 
-  if (!targetBot) {
-    const newBotId = store.addBot({
+  if (!targetId) {
+    targetId = store.addBot({
       name: `Bot ${cleanSym} — Gestor de Saída`,
       symbol,
       strategy: "QUANT_ENSEMBLE",
@@ -2725,16 +2784,18 @@ export function adoptOrphanPositionWithBot(symbol: string, callbacks?: MultiBotE
       autoBreakEven: true,
       usePartialTp: true,
     });
-    targetBot = store.bots.find((b) => b.id === newBotId);
   } else {
-    store.updateBot(targetBot.id, { active: true, status: "in_position" });
+    store.updateBot(targetId, { active: true, status: "in_position" });
   }
 
-  if (targetBot) {
+  // Recupera o objeto atualizado do robô diretamente do Zustand
+  targetBot = useCryptoStore.getState().bots.find((b) => b.id === targetId);
+
+  if (targetBot && targetId) {
     const currentPrice = store.tickers[symbol]?.price || pos.marketPrice;
     const entryPrice = pos.avgPrice > 0 ? pos.avgPrice : currentPrice;
     const pnlPercent = entryPrice > 0 ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
-    store.updateBotPosition(targetBot.id, {
+    store.updateBotPosition(targetId, {
       symbol,
       side: "BUY",
       quantity: pos.quantity,
@@ -2750,6 +2811,11 @@ export function adoptOrphanPositionWithBot(symbol: string, callbacks?: MultiBotE
       isBreakEvenArmed: true,
     });
 
+    store.updateBot(targetId, {
+      active: true,
+      status: "in_position",
+    });
+
     store.addBotLog({
       message: `🛡️ [Gestão de Custódia] Robô "${targetBot.name}" assumiu a posição de ${pos.quantity} ${cleanSym}. Trailing Take Profit e Break-Even armados!`,
       type: "system",
@@ -2763,7 +2829,7 @@ export function adoptOrphanPositionWithBot(symbol: string, callbacks?: MultiBotE
       variant: "default",
     });
 
-    return targetBot.id;
+    return targetId;
   }
   return null;
 }
@@ -2786,6 +2852,7 @@ export async function startAiExitBotForAsset(symbol: string, callbacks?: MultiBo
 
   const cleanSym = symbol.replace("USDT", "");
   let targetBot = store.bots.find((b) => b.symbol === symbol);
+  let targetId = targetBot?.id;
 
   // 1. Obter base de custo exata registrada no banco de dados SQLite / myTrades da Binance
   const costBasis = await getCostBasisForSymbol(symbol, store.tradingMode);
@@ -2794,8 +2861,8 @@ export async function startAiExitBotForAsset(symbol: string, callbacks?: MultiBo
   const portfolioAvg = pos.avgPrice > 0 ? pos.avgPrice : 0;
   const entryPrice = dbEntryPrice > 0 ? dbEntryPrice : (portfolioAvg > 0 ? portfolioAvg : currentPrice);
 
-  if (!targetBot) {
-    const newBotId = store.addBot({
+  if (!targetId) {
+    targetId = store.addBot({
       name: `Bot ${cleanSym} — Venda Inteligente (IA)`,
       symbol,
       strategy: "AI",
@@ -2810,9 +2877,8 @@ export async function startAiExitBotForAsset(symbol: string, callbacks?: MultiBo
       usePartialTp: false, // Vender a posição de forma consolidada no pico, sem fatiamentos repetitivos
       timeStopMinutes: 0, // Desativar time-stop que força venda por tempo
     });
-    targetBot = store.bots.find((b) => b.id === newBotId);
   } else {
-    store.updateBot(targetBot.id, {
+    store.updateBot(targetId, {
       name: `Bot ${cleanSym} — Venda Inteligente (IA)`,
       strategy: "AI",
       active: true,
@@ -2828,10 +2894,13 @@ export async function startAiExitBotForAsset(symbol: string, callbacks?: MultiBo
     });
   }
 
-  if (targetBot) {
+  // Recupera o objeto atualizado do robô diretamente do Zustand
+  targetBot = useCryptoStore.getState().bots.find((b) => b.id === targetId);
+
+  if (targetBot && targetId) {
     const pnlPercent = entryPrice > 0 ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
 
-    store.updateBotPosition(targetBot.id, {
+    store.updateBotPosition(targetId, {
       symbol,
       side: "BUY",
       quantity: pos.quantity,
@@ -2845,6 +2914,11 @@ export async function startAiExitBotForAsset(symbol: string, callbacks?: MultiBo
       mode: store.tradingMode,
       breakEvenPrice: entryPrice * 1.003,
       isBreakEvenArmed: false,
+    });
+
+    store.updateBot(targetId, {
+      active: true,
+      status: "in_position",
     });
 
     const dbNotice = dbEntryPrice > 0
@@ -2864,7 +2938,7 @@ export async function startAiExitBotForAsset(symbol: string, callbacks?: MultiBo
       variant: "default",
     });
 
-    return targetBot.id;
+    return targetId;
   }
 
   return null;

@@ -43,6 +43,22 @@ export interface UISlice {
   // Dashboard widget visibility
   dashboardVisibility: Record<string, boolean>;
   toggleWidgetVisibility: (widgetId: string) => void;
+
+  // Global Command Search & Spotlight
+  isCommandSearchOpen: boolean;
+  setIsCommandSearchOpen: (open: boolean) => void;
+
+  // Sub-abas e Deep-Linking
+  tradeHubActiveTab: string;
+  setTradeHubActiveTab: (tab: string) => void;
+
+  // Gatilhos de modais globais
+  openBotCreateModal: boolean;
+  setOpenBotCreateModal: (open: boolean) => void;
+  openApiSettingsModal: boolean;
+  setOpenApiSettingsModal: (open: boolean) => void;
+  openAiSettingsModal: boolean;
+  setOpenAiSettingsModal: (open: boolean) => void;
 }
 
 // Default widget order
@@ -225,4 +241,20 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
     }
     set({ dashboardVisibility: updated });
   },
+
+  // Global Command Search & Spotlight
+  isCommandSearchOpen: false,
+  setIsCommandSearchOpen: (open) => set({ isCommandSearchOpen: open }),
+
+  // Sub-abas e Deep-Linking
+  tradeHubActiveTab: "ideas",
+  setTradeHubActiveTab: (tab) => set({ tradeHubActiveTab: tab }),
+
+  // Gatilhos de modais globais
+  openBotCreateModal: false,
+  setOpenBotCreateModal: (open) => set({ openBotCreateModal: open }),
+  openApiSettingsModal: false,
+  setOpenApiSettingsModal: (open) => set({ openApiSettingsModal: open }),
+  openAiSettingsModal: false,
+  setOpenAiSettingsModal: (open) => set({ openAiSettingsModal: open }),
 });

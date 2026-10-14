@@ -165,7 +165,7 @@ export function BotPortfolio() {
   const orphanPositions = useMemo(() => {
     const list = portfolio.positions ?? [];
     return list.filter((p) => {
-      return !bots.some((b) => b.active && b.position && b.position.symbol === p.symbol);
+      return !bots.some((b) => b.active && ((b.position && b.position.symbol === p.symbol) || b.symbol === p.symbol));
     });
   }, [portfolio.positions, bots]);
 
@@ -446,7 +446,7 @@ export function BotPortfolio() {
                   const symClean = pos.symbol.replace("USDT", "");
                   const pnl = pos.unrealizedPnl || 0;
                   const managingBot = bots.find(
-                    (b) => b.active && b.position && b.position.symbol === pos.symbol
+                    (b) => b.active && ((b.position && b.position.symbol === pos.symbol) || b.symbol === pos.symbol)
                   );
                   const isOrphan = !managingBot;
                   const isAiManaging = Boolean(

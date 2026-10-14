@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { useCryptoStore } from "@/lib/store";
+import { useShallow } from "zustand/react/shallow";
 import {
   Sparkles,
   LineChart,
@@ -22,7 +23,12 @@ import { JournalAnalyzerTab } from "./journal-analyzer-tab";
 import { DailyPlanTab } from "./daily-plan-tab";
 
 export function TradeHubSection() {
-  const [activeTab, setActiveTab] = useState<string>("ideas");
+  const { activeTab, setActiveTab } = useCryptoStore(
+    useShallow((s) => ({
+      activeTab: s.tradeHubActiveTab,
+      setActiveTab: s.setTradeHubActiveTab,
+    }))
+  );
 
   const tabItems = [
     { id: "ideas", label: "Ideias de Troca", icon: Sparkles, desc: "5 Setups de Alta Probabilidade" },

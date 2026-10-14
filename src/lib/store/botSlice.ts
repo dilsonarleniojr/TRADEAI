@@ -383,13 +383,39 @@ export const DEFAULT_BOTS: BotInstance[] = [
   },
 ];
 
+const BOTS_STORAGE_KEY = "tradeai_fleet_bots";
+
+function loadBotsFromStorage(): BotInstance[] {
+  if (typeof window === "undefined") return DEFAULT_BOTS;
+  try {
+    const raw = localStorage.getItem(BOTS_STORAGE_KEY);
+    if (!raw) return DEFAULT_BOTS;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed;
+    }
+  } catch (e) {
+    console.warn("[botSlice] Falha ao carregar frota de robôs do localStorage:", e);
+  }
+  return DEFAULT_BOTS;
+}
+
+function persistBots(bots: BotInstance[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(BOTS_STORAGE_KEY, JSON.stringify(bots));
+  } catch (e) {
+    console.warn("[botSlice] Falha ao salvar frota de robôs no localStorage:", e);
+  }
+}
+
 export const createBotSlice: StateCreator<
   BotSlice & { setBotActive: (active: boolean) => void },
   [],
   [],
   BotSlice
 > = (set, get) => ({
-  bots: DEFAULT_BOTS,
+  bots: loadBotsFromStorage(),
   selectedBotId: "bot-alpha-btc",
   activeExecutionReport: null,
 
@@ -397,6 +423,7 @@ export const createBotSlice: StateCreator<
   setActiveExecutionReport: (report) => set({ activeExecutionReport: report }),
 
   setBots: (bots) => {
+    persistBots(bots);
     set({ bots });
     // Keep global botActive in sync
     get().setBotActive(bots.some((b) => b.active));
@@ -419,6 +446,7 @@ export const createBotSlice: StateCreator<
         };
       });
 
+      persistBots(updated);
       // Synchronize global botActive
       get().setBotActive(updated.some((b) => b.active));
       return { bots: updated };
@@ -437,6 +465,7 @@ export const createBotSlice: StateCreator<
           lastActionTime: new Date().toISOString(),
         },
       }));
+      persistBots(updated);
       get().setBotActive(active && updated.length > 0);
       return { bots: updated };
     });
@@ -450,7 +479,7 @@ export const createBotSlice: StateCreator<
       symbol: botData.symbol.toUpperCase(),
       strategy: botData.strategy || "AI",
       active: botData.active ?? false,
-      status: (botData.active ? "scanning" : "stopped") as BotInstance["status"],
+      status: (botData.active ? (botData.position ? "in_position" : "scanning") : "stopped") as BotInstance["status"],
       takeProfit: botData.takeProfit ?? 2.2,
       stopLoss: botData.stopLoss ?? 1.0,
       trailingStop: botData.trailingStop ?? true,
@@ -488,8 +517,9 @@ export const createBotSlice: StateCreator<
       maxSpreadPercent: botData.maxSpreadPercent ?? 0.15,
       minBidAskRatio: botData.minBidAskRatio ?? 0.45,
       stopAfterProfit: botData.stopAfterProfit ?? false,
+      useAiExit: botData.useAiExit ?? (botData.strategy === "AI"),
       aiEngine: botData.aiEngine,
-      position: null,
+      position: botData.position || null,
       stats: {
         totalTrades: 0,
         buyTrades: 0,
@@ -498,7 +528,7 @@ export const createBotSlice: StateCreator<
         lossTrades: 0,
         winRate: 0,
         realizedPnl: 0,
-        lastAction: botData.active ? "Iniciado e analisando mercado" : "Criado (Desligado)",
+        lastAction: botData.active ? (botData.position ? `Gerenciando custódia de ${botData.position.quantity} ${botData.symbol.replace("USDT", "")}` : "Iniciado e analisando mercado") : "Criado (Desligado)",
         lastActionTime: new Date().toISOString(),
       },
       createdAt: new Date().toISOString(),
@@ -506,6 +536,7 @@ export const createBotSlice: StateCreator<
 
     set((state) => {
       const updated = [newBot, ...state.bots];
+      persistBots(updated);
       get().setBotActive(updated.some((b) => b.active));
       return { bots: updated, selectedBotId: id };
     });
@@ -519,6 +550,7 @@ export const createBotSlice: StateCreator<
         if (b.id !== botId) return b;
         return { ...b, ...partial };
       });
+      persistBots(updated);
       get().setBotActive(updated.some((b) => b.active));
       return { bots: updated };
     });
@@ -527,6 +559,7 @@ export const createBotSlice: StateCreator<
   removeBot: (botId) => {
     set((state) => {
       const updated = state.bots.filter((b) => b.id !== botId);
+      persistBots(updated);
       get().setBotActive(updated.some((b) => b.active));
       return {
         bots: updated,
@@ -536,6 +569,7 @@ export const createBotSlice: StateCreator<
   },
 
   removeAllBots: () => {
+    persistBots([]);
     get().setBotActive(false);
     set({
       bots: [],
@@ -544,8 +578,8 @@ export const createBotSlice: StateCreator<
   },
 
   resetBotStats: (botId) => {
-    set((state) => ({
-      bots: state.bots.map((b) =>
+    set((state) => {
+      const updated = state.bots.map((b) =>
         b.id === botId
           ? {
               ...b,
@@ -563,13 +597,15 @@ export const createBotSlice: StateCreator<
               },
             }
           : b
-      ),
-    }));
+      );
+      persistBots(updated);
+      return { bots: updated };
+    });
   },
 
   resetAllBotStats: () => {
-    set((state) => ({
-      bots: state.bots.map((b) => ({
+    set((state) => {
+      const updated = state.bots.map((b) => ({
         ...b,
         position: null,
         stats: {
@@ -583,19 +619,21 @@ export const createBotSlice: StateCreator<
           lastAction: "Métricas reiniciadas",
           lastActionTime: new Date().toISOString(),
         },
-      })),
-    }));
+      }));
+      persistBots(updated);
+      return { bots: updated };
+    });
   },
 
   clearSimulatedPositions: () => {
-    set((state) => ({
-      bots: state.bots.map((b) => {
+    set((state) => {
+      const updated = state.bots.map((b) => {
         // Se a posição aberta do bot é simulada (ou sem modo explícito = paper), fecha ela
         if (b.position && (b.position.mode === "paper" || !b.position.mode)) {
           return {
             ...b,
             position: null,
-            status: b.active ? "scanning" : "stopped",
+            status: (b.active ? "scanning" : "stopped") as BotInstance["status"],
             stats: {
               ...b.stats,
               lastAction: "Posição simulada limpa",
@@ -604,13 +642,15 @@ export const createBotSlice: StateCreator<
           };
         }
         return b;
-      }),
-    }));
+      });
+      persistBots(updated);
+      return { bots: updated };
+    });
   },
 
   updateBotPosition: (botId, position) => {
-    set((state) => ({
-      bots: state.bots.map((b) => {
+    set((state) => {
+      const updated = state.bots.map((b) => {
         if (b.id !== botId) return b;
         const newStatus = !b.active
           ? "stopped"
@@ -622,8 +662,10 @@ export const createBotSlice: StateCreator<
           position,
           status: newStatus as BotInstance["status"],
         };
-      }),
-    }));
+      });
+      persistBots(updated);
+      return { bots: updated };
+    });
   },
 
   updateBotPositionsRealtime: (tickers) => {
@@ -660,11 +702,18 @@ export const createBotSlice: StateCreator<
   },
 
   recordBotTrade: (botId, trade, pnl) => {
-    set((state) => ({
-      bots: state.bots.map((b) => {
+    set((state) => {
+      const isSell = trade.side === "SELL";
+      const isBuy = trade.side === "BUY";
+      // 🛡️ PILAR 2: Identifica se é realização parcial para NÃO anular a posição restante
+      const isPartial =
+        trade.sellAll === false ||
+        Boolean(trade.strategy?.includes("PARCIAL")) ||
+        Boolean(trade.id?.includes("partial")) ||
+        Boolean(trade.executionId?.includes("partial"));
+
+      const updated = state.bots.map((b) => {
         if (b.id !== botId) return b;
-        const isSell = trade.side === "SELL";
-        const isBuy = trade.side === "BUY";
         const newTotalTrades = b.stats.totalTrades + 1;
         const newBuyTrades = b.stats.buyTrades + (isBuy ? 1 : 0);
         const newSellTrades = b.stats.sellTrades + (isSell ? 1 : 0);
@@ -675,13 +724,20 @@ export const createBotSlice: StateCreator<
         const newRealizedPnl = parseFloat((b.stats.realizedPnl + pnl).toFixed(2));
 
         const actionText = isSell
-          ? (pnl >= 0 ? `🎯 Take Profit realizado (+${pnl.toFixed(2)} USDT)` : `🛑 Stop Loss acionado (${pnl.toFixed(2)} USDT)`)
+          ? isPartial
+            ? `🎯 Parcial realizada (+${pnl.toFixed(2)} USDT) · Restante correndo protegido no Break-Even`
+            : (pnl >= 0 ? `🎯 Take Profit realizado (+${pnl.toFixed(2)} USDT)` : `🛑 Stop Loss acionado (${pnl.toFixed(2)} USDT)`)
           : `🚀 Compra executada em ${trade.symbol} ($${trade.price})`;
 
         return {
           ...b,
-          position: isSell ? null : b.position,
-          status: (isSell ? (b.active ? "scanning" : "stopped") : "in_position") as BotInstance["status"],
+          // Preserva a posição aberta caso seja realização parcial de lucros!
+          position: isSell ? (isPartial ? b.position : null) : b.position,
+          status: (isSell
+            ? isPartial
+              ? "in_position"
+              : (b.active ? "scanning" : "stopped")
+            : "in_position") as BotInstance["status"],
           stats: {
             totalTrades: newTotalTrades,
             buyTrades: newBuyTrades,
@@ -694,7 +750,10 @@ export const createBotSlice: StateCreator<
             lastActionTime: new Date().toISOString(),
           },
         };
-      }),
-    }));
+      });
+
+      persistBots(updated);
+      return { bots: updated };
+    });
   },
 });

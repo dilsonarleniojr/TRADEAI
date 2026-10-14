@@ -97,6 +97,8 @@ export function BotSection() {
     resetAllBotStats: s.resetAllBotStats,
     activeExecutionReport: s.activeExecutionReport,
     setActiveExecutionReport: s.setActiveExecutionReport,
+    openBotCreateModal: s.openBotCreateModal,
+    setOpenBotCreateModal: s.setOpenBotCreateModal,
   }))
 );
 
@@ -111,6 +113,14 @@ export function BotSection() {
   const [isAiRecommendationsOpen, setIsAiRecommendationsOpen] = useState(false);
   const [botToEdit, setBotToEdit] = useState<BotInstance | null>(null);
   const [botFilter, setBotFilter] = useState<"all" | "active" | "in_position" | "stopped">("all");
+
+  useEffect(() => {
+    if (openBotCreateModal) {
+      setBotToEdit(null);
+      setIsDialogOpen(true);
+      setOpenBotCreateModal(false);
+    }
+  }, [openBotCreateModal, setOpenBotCreateModal]);
 
   const [tradeReport, setTradeReport] = useState<TradeReport | null>(null);
   const botStartTimeRef = useRef<Date | null>(null);
