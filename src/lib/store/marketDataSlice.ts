@@ -6,6 +6,7 @@ export interface MarketDataSlice {
   tickers: Record<string, TickerData>;
   setTickers: (tickers: Record<string, TickerData>) => void;
   updateTicker: (symbol: string, data: TickerData) => void;
+  updateTickersBatch: (batch: Record<string, TickerData>) => void;
 
   // Kline data
   klines: KlineData[];
@@ -31,10 +32,33 @@ export const createMarketDataSlice: StateCreator<MarketDataSlice, [], [], Market
   tickers: {},
   setTickers: (tickers) => set({ tickers, tickersCacheAt: Date.now(), lastMarketUpdate: Date.now() }),
   updateTicker: (symbol, data) =>
-    set((state) => ({
-      tickers: { ...state.tickers, [symbol]: data },
-      lastMarketUpdate: Date.now(),
-    })),
+    set((state) => {
+      const cur = state.tickers[symbol];
+      if (cur && cur.price === data.price && cur.priceChangePercent === data.priceChangePercent) {
+        return state;
+      }
+      return {
+        tickers: { ...state.tickers, [symbol]: data },
+        lastMarketUpdate: Date.now(),
+      };
+    }),
+  updateTickersBatch: (batch) =>
+    set((state) => {
+      let hasChanges = false;
+      for (const sym in batch) {
+        const cur = state.tickers[sym];
+        const next = batch[sym];
+        if (!cur || cur.price !== next.price || cur.priceChangePercent !== next.priceChangePercent) {
+          hasChanges = true;
+          break;
+        }
+      }
+      if (!hasChanges) return state;
+      return {
+        tickers: { ...state.tickers, ...batch },
+        lastMarketUpdate: Date.now(),
+      };
+    }),
 
   // Kline data
   klines: [],

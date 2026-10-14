@@ -73,16 +73,14 @@ function formatBookVolume(vol: number): string {
 }
 
 export function OrderBook() {
-  const { selectedSymbol, tickers } = useCryptoStore(
-  useShallow((s) => ({ selectedSymbol: s.selectedSymbol, tickers: s.tickers }))
-);
+  const selectedSymbol = useCryptoStore((s) => s.selectedSymbol);
+  const currentPrice = useCryptoStore((s) => s.tickers[s.selectedSymbol]?.price ?? 0);
   const [orderBook, setOrderBook] = useState<OrderBookData | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const currentPrice = tickers[selectedSymbol]?.price ?? 0;
   const levels = isCompact ? 8 : 15;
 
   const refreshOrderBook = useCallback(async () => {
@@ -231,39 +229,33 @@ export function OrderBook() {
 
         {/* Asks (sells) - displayed top-to-bottom, closest to center at bottom */}
         <div className="space-y-0.5 mb-1">
-          <AnimatePresence mode="popLayout">
-            {[...orderBook.asks].reverse().map((level, i) => {
-              const barWidth = maxCumulative > 0 ? (level.cumulative / maxCumulative) * 100 : 0;
-              return (
-                <motion.div
-                  key={`ask-${level.price}`}
-                  initial={{ opacity: 0, x: 10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  transition={{ duration: 0.2, delay: i * 0.015 }}
-                  className="relative grid grid-cols-3 gap-1 px-1 py-0.5 rounded-sm text-[11px] font-mono hover:bg-crypto-red/5 cursor-default card-shimmer"
-                >
-                  {/* Background bar */}
-                  <div
-                    className="absolute inset-y-0 right-0 rounded-sm transition-all duration-500"
-                    style={{
-                      width: `${barWidth}%`,
-                      background: "linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.08))",
-                    }}
-                  />
-                  <span className="relative text-crypto-red">
-                    {formatBookPrice(level.price)}
-                  </span>
-                  <span className="relative text-right text-muted-foreground">
-                    {formatBookVolume(level.volume)}
-                  </span>
-                  <span className="relative text-right text-muted-foreground">
-                    {formatBookVolume(level.cumulative)}
-                  </span>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
+          {[...orderBook.asks].reverse().map((level) => {
+            const barWidth = maxCumulative > 0 ? (level.cumulative / maxCumulative) * 100 : 0;
+            return (
+              <div
+                key={`ask-${level.price}`}
+                className="relative grid grid-cols-3 gap-1 px-1 py-0.5 rounded-sm text-[11px] font-mono hover:bg-crypto-red/5 cursor-default transition-colors duration-150"
+              >
+                {/* Background bar */}
+                <div
+                  className="absolute inset-y-0 right-0 rounded-sm transition-all duration-300 pointer-events-none"
+                  style={{
+                    width: `${barWidth}%`,
+                    background: "linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.08))",
+                  }}
+                />
+                <span className="relative text-crypto-red font-medium">
+                  {formatBookPrice(level.price)}
+                </span>
+                <span className="relative text-right text-muted-foreground">
+                  {formatBookVolume(level.volume)}
+                </span>
+                <span className="relative text-right text-muted-foreground">
+                  {formatBookVolume(level.cumulative)}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
         {/* Current Price Divider */}
@@ -282,39 +274,33 @@ export function OrderBook() {
 
         {/* Bids (buys) - closest to center at top */}
         <div className="space-y-0.5 mt-1">
-          <AnimatePresence mode="popLayout">
-            {orderBook.bids.map((level, i) => {
-              const barWidth = maxCumulative > 0 ? (level.cumulative / maxCumulative) * 100 : 0;
-              return (
-                <motion.div
-                  key={`bid-${level.price}`}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 10 }}
-                  transition={{ duration: 0.2, delay: i * 0.015 }}
-                  className="relative grid grid-cols-3 gap-1 px-1 py-0.5 rounded-sm text-[11px] font-mono hover:bg-crypto-green/5 cursor-default card-shimmer"
-                >
-                  {/* Background bar */}
-                  <div
-                    className="absolute inset-y-0 right-0 rounded-sm transition-all duration-500"
-                    style={{
-                      width: `${barWidth}%`,
-                      background: "linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.08))",
-                    }}
-                  />
-                  <span className="relative text-crypto-green">
-                    {formatBookPrice(level.price)}
-                  </span>
-                  <span className="relative text-right text-muted-foreground">
-                    {formatBookVolume(level.volume)}
-                  </span>
-                  <span className="relative text-right text-muted-foreground">
-                    {formatBookVolume(level.cumulative)}
-                  </span>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
+          {orderBook.bids.map((level) => {
+            const barWidth = maxCumulative > 0 ? (level.cumulative / maxCumulative) * 100 : 0;
+            return (
+              <div
+                key={`bid-${level.price}`}
+                className="relative grid grid-cols-3 gap-1 px-1 py-0.5 rounded-sm text-[11px] font-mono hover:bg-crypto-green/5 cursor-default transition-colors duration-150"
+              >
+                {/* Background bar */}
+                <div
+                  className="absolute inset-y-0 right-0 rounded-sm transition-all duration-300 pointer-events-none"
+                  style={{
+                    width: `${barWidth}%`,
+                    background: "linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.08))",
+                  }}
+                />
+                <span className="relative text-crypto-green font-medium">
+                  {formatBookPrice(level.price)}
+                </span>
+                <span className="relative text-right text-muted-foreground">
+                  {formatBookVolume(level.volume)}
+                </span>
+                <span className="relative text-right text-muted-foreground">
+                  {formatBookVolume(level.cumulative)}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
         {/* Depth Visual Bar */}

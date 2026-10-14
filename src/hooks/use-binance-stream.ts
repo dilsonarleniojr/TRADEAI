@@ -10,9 +10,11 @@ let globalNativeWs: WebSocket | null = null;
 let nativeWsReconnectTimer: any = null;
 let activeHookCount = 0;
 
-// Desacoplamento de streaming quando a aba está em segundo plano (document.hidden)
+// Desacoplamento de streaming: buffer de segundo plano (document.hidden) e buffer de taxa controlada (foreground)
 const backgroundTickerBuffer = new Map<string, TickerData>();
 let backgroundFlushTimer: any = null;
+const foregroundTickerBuffer = new Map<string, TickerData>();
+let foregroundFlushTimer: any = null;
 let isDocumentHidden = typeof document !== "undefined" ? document.hidden : false;
 
 function flushBackgroundTickers() {
@@ -22,13 +24,34 @@ function flushBackgroundTickers() {
   }
   if (backgroundTickerBuffer.size === 0) return;
 
-  const entries = Array.from(backgroundTickerBuffer.entries());
+  const batch: Record<string, TickerData> = {};
+  for (const [sym, ticker] of backgroundTickerBuffer.entries()) {
+    batch[sym] = ticker;
+  }
   backgroundTickerBuffer.clear();
 
   const store = useCryptoStore.getState();
-  for (const [sym, ticker] of entries) {
-    store.updateTicker(sym, ticker);
+  store.updateTickersBatch(batch);
+  const updatedStore = useCryptoStore.getState();
+  updatedStore.updateBotPnls(updatedStore.tickers);
+  updatedStore.updateBotPositionsRealtime(updatedStore.tickers);
+}
+
+function flushForegroundTickers() {
+  if (foregroundFlushTimer) {
+    clearTimeout(foregroundFlushTimer);
+    foregroundFlushTimer = null;
   }
+  if (foregroundTickerBuffer.size === 0) return;
+
+  const batch: Record<string, TickerData> = {};
+  for (const [sym, ticker] of foregroundTickerBuffer.entries()) {
+    batch[sym] = ticker;
+  }
+  foregroundTickerBuffer.clear();
+
+  const store = useCryptoStore.getState();
+  store.updateTickersBatch(batch);
   const updatedStore = useCryptoStore.getState();
   updatedStore.updateBotPnls(updatedStore.tickers);
   updatedStore.updateBotPositionsRealtime(updatedStore.tickers);
@@ -40,20 +63,17 @@ function handleIncomingTicker(sym: string, ticker: TickerData) {
   if (typeof document !== "undefined" && isDocumentHidden) {
     backgroundTickerBuffer.set(sym, ticker);
     if (!backgroundFlushTimer) {
-      backgroundFlushTimer = setTimeout(() => {
-        backgroundFlushTimer = null;
-        flushBackgroundTickers();
-      }, 2500);
+      backgroundFlushTimer = setTimeout(flushBackgroundTickers, 2500);
     }
     return;
   }
 
-  // Aba em primeiro plano: despacho em tempo real
-  const store = useCryptoStore.getState();
-  store.updateTicker(sym, ticker);
-  const updatedStore = useCryptoStore.getState();
-  updatedStore.updateBotPnls(updatedStore.tickers);
-  updatedStore.updateBotPositionsRealtime(updatedStore.tickers);
+  // Aba em primeiro plano: buffer com conflação O(1) e taxa controlada (50ms = 20 FPS)
+  // Evita saturação do Event Loop da Main Thread e engasgos de cliques e inputs na UI Desktop
+  foregroundTickerBuffer.set(sym, ticker);
+  if (!foregroundFlushTimer) {
+    foregroundFlushTimer = setTimeout(flushForegroundTickers, 50);
+  }
 }
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
@@ -62,6 +82,7 @@ if (typeof window !== "undefined" && typeof document !== "undefined") {
     if (!isDocumentHidden) {
       // Aba voltou a ficar em foco: descarrega imediatamente os tickers pendentes
       flushBackgroundTickers();
+      flushForegroundTickers();
     }
   });
 }
