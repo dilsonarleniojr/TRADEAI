@@ -172,6 +172,87 @@ export function BotSection() {
     setIsDialogOpen(true);
   };
 
+  const handleFocusTier1Fleet = () => {
+    const tier1Symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"];
+    const totalCash = portfolio.cashBalance || 0;
+    const totalPosValue = portfolio.totalValue || 0;
+    const totalEquity = Math.max(50, totalCash + totalPosValue);
+    // Aloca ~23% do patrimônio por robô (~$33 USDT cada em banca de $144)
+    const allocPerBot = Math.max(20, Number((totalEquity * 0.23).toFixed(2)));
+
+    const currentBots = [...bots];
+    const existingSymbols = new Set(currentBots.map((b) => b.symbol.toUpperCase()));
+
+    // 1. Atualiza e ativa robôs dos 4 pares líderes
+    let updated = currentBots.map((bot) => {
+      const sym = bot.symbol.toUpperCase();
+      if (tier1Symbols.includes(sym)) {
+        return {
+          ...bot,
+          active: true,
+          status: bot.position ? ("in_position" as const) : ("scanning" as const),
+          allocationAmount: allocPerBot,
+          takeProfit: Math.max(2.4, bot.takeProfit || 2.5),
+          stopLoss: Math.min(1.8, Math.max(1.2, bot.stopLoss || 1.5)),
+          trailingStop: true,
+          trailingStopDistance: 0.45,
+          autoBreakEven: true,
+          breakEvenTrigger: 1.30,
+          breakEvenBuffer: 0.40,
+          usePartialTp: true,
+          partialTpTrigger: 1.80,
+          partialTpPercent: 50,
+          stats: {
+            ...bot.stats,
+            lastAction: `⭐ Frota Otimizada: Foco institucional em ${sym.replace("USDT", "")} (Alocação $${allocPerBot})`,
+            lastActionTime: new Date().toISOString(),
+          },
+        };
+      }
+      // Se não for um dos 4 líderes: se NÃO tiver posição aberta, pausa para concentrar a banca
+      if (!bot.position || bot.position.quantity <= 0) {
+        return {
+          ...bot,
+          active: false,
+          status: "stopped" as const,
+          stats: {
+            ...bot.stats,
+            lastAction: "Pausado para concentrar capital na frota Tier-1 (BTC, ETH, SOL, BNB)",
+            lastActionTime: new Date().toISOString(),
+          },
+        };
+      }
+      // Se já tiver posição aberta, mantém ativo até fechar com lucro ou break-even
+      return bot;
+    });
+
+    // 2. Se algum dos líderes ainda não estiver na frota, instancia do template
+    for (const sym of tier1Symbols) {
+      if (!existingSymbols.has(sym)) {
+        const template = DEFAULT_BOTS.find((d) => d.symbol.toUpperCase() === sym);
+        if (template) {
+          updated.push({
+            ...template,
+            active: true,
+            status: "scanning" as const,
+            allocationAmount: allocPerBot,
+          });
+        }
+      }
+    }
+
+    useCryptoStore.getState().setBots(updated);
+    addBotLog({
+      type: "system",
+      message: `⭐ [Otimização Institucional] Frota configurada para focar nos 4 pares líderes (BTC, ETH, SOL, BNB). Alocação concentrada de ~$${allocPerBot} USDT por robô. Teto de 4 posições simultâneas ativado.`,
+    });
+
+    toast({
+      title: "⭐ Frota Focada nos Líderes Tier-1!",
+      description: `BTC, ETH, SOL e BNB ativados com alocação concentrada (~$${allocPerBot} USDT cada). Robôs secundários sem posição foram pausados para não pulverizar a banca.`,
+    });
+  };
+
   // Filtered bots list
   const filteredBots = useMemo(() => {
     switch (botFilter) {
@@ -328,6 +409,17 @@ export function BotSection() {
             >
               <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
               Reconciliar com Portfólio
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFocusTier1Fleet}
+              className="h-9 px-3 border-amber-500/40 text-amber-300 hover:bg-amber-500/15 text-xs font-semibold cursor-pointer bg-amber-500/10 shadow-sm"
+              title="Focar frota nos 4 pares líderes institucionais (BTC, ETH, SOL, BNB) com alocação concentrada e teto de 4 robôs"
+            >
+              <Zap className="w-3.5 h-3.5 mr-1.5 text-amber-400 fill-amber-400" />
+              Focar Líderes Tier-1 (BTC/ETH/SOL/BNB)
             </Button>
 
             {tradingMode === "paper" && (
