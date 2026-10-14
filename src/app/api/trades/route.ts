@@ -348,10 +348,57 @@ async function executeBinanceOrder(
   return await response.json();
 }
 
-// GET /api/trades - Get all trades (com suporte a filtro por modo e símbolo)
+// GET /api/trades - Get all trades (com suporte a filtro por modo e símbolo ou consulta de status de ordem)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const action = searchParams.get('action');
+
+    // Consulta de status de ordem pontual na Binance Spot
+    if (action === 'orderStatus') {
+      const orderSymbol = searchParams.get('symbol');
+      const binanceOrderId = searchParams.get('orderId');
+      if (!orderSymbol || !binanceOrderId) {
+        return NextResponse.json(
+          { success: false, error: 'Parâmetros "symbol" e "orderId" são obrigatórios para consulta de status.' },
+          { status: 400 }
+        );
+      }
+      const { apiKey, apiSecret, testnet } = getBinanceCredentials(request);
+      if (!apiKey || !apiSecret) {
+        return NextResponse.json(
+          { success: false, error: 'Credenciais da Binance não configuradas para consulta de ordem.' },
+          { status: 401 }
+        );
+      }
+      const baseUrl = testnet ? 'https://testnet.binance.vision' : 'https://api.binance.com';
+      const timestamp = await getSynchronizedTimestamp(baseUrl);
+      const query = `symbol=${orderSymbol}&orderId=${binanceOrderId}&timestamp=${timestamp}&recvWindow=60000`;
+      const signature = crypto.createHmac('sha256', apiSecret).update(query).digest('hex');
+
+      const res = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/order?${query}&signature=${signature}`, {
+        headers: { 'X-MBX-APIKEY': apiKey },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return NextResponse.json(
+          { success: false, error: data.msg || 'Erro ao consultar status da ordem' },
+          { status: 400 }
+        );
+      }
+      return NextResponse.json({
+        success: true,
+        data: {
+          orderId: data.orderId,
+          symbol: data.symbol,
+          status: data.status,
+          executedQty: parseFloat(data.executedQty || '0'),
+          origQty: parseFloat(data.origQty || '0'),
+          price: parseFloat(data.price || '0'),
+        },
+      });
+    }
+
     const limit = parseInt(searchParams.get('limit') || '50');
     const symbol = searchParams.get('symbol');
     const mode = searchParams.get('mode'); // 'paper' | 'live'

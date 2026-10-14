@@ -56,51 +56,224 @@ export interface RestingLimitMakerOrder {
   price: number;
   quantity: number;
   createdAt: number;
+  hasRepriced?: boolean;
+  repricedAt?: number;
+  originalPrice?: number;
+  tickSize?: number;
 }
 
 const restingMakerOrders = new Map<string, RestingLimitMakerOrder>();
 
 export function registerRestingMakerOrder(order: RestingLimitMakerOrder) {
-  restingMakerOrders.set(`${order.botId}_${order.symbol}`, order);
+  restingMakerOrders.set(`${order.botId}_${order.symbol}`, {
+    ...order,
+    hasRepriced: order.hasRepriced ?? false,
+    originalPrice: order.originalPrice ?? order.price,
+    tickSize: order.tickSize ?? 0.01,
+  });
 }
 
 export function clearRestingMakerOrder(botId: string, symbol: string) {
   restingMakerOrders.delete(`${botId}_${symbol}`);
 }
 
+export function getRestingMakerOrders(): RestingLimitMakerOrder[] {
+  return Array.from(restingMakerOrders.values());
+}
+
+export function clearAllRestingMakerOrdersForTests() {
+  restingMakerOrders.clear();
+}
+
 /**
- * Trava para Ordens LIMIT_MAKER:
- * Cancela preventivamente ordens descansando no book por mais de 60s sem execução,
- * evitando derrapagem, faca caindo e obstrução de capital (se ativado pelo usuário).
+ * Trava & Telemetria para Ordens LIMIT_MAKER:
+ * 1. Monitora o status das ordens resting e computa a taxa de preenchimento (Fill-Rate).
+ * 2. Caso o preenchimento caia abaixo de 40% (volatilidade extrema no book), aplica Repricing Dinâmico de 1 tick aos 30s.
+ * 3. Efetua o cancelamento definitivo aos 60s se a ordem não for executada (se restingOrderTimeout ativo).
  */
-async function checkRestingMakerOrdersTimeout() {
+export async function checkRestingMakerOrdersTimeout() {
   const protectionSettings = riskManager.getProtectionSettings();
-  if (!protectionSettings.restingOrderTimeout) {
+  if (!protectionSettings.restingOrderTimeout && !protectionSettings.dynamicMakerRepricing) {
     return;
   }
 
   const now = Date.now();
   const timeoutMs = (protectionSettings.restingOrderTimeoutSeconds || 60) * 1000;
+  const repricingTimeoutMs = (protectionSettings.repricingTimeoutSeconds || 30) * 1000;
   const store = useCryptoStore.getState();
+  const fillTelemetry = riskManager.getFillRateTelemetry();
+  const minFillThreshold = protectionSettings.minFillRateThreshold ?? 40;
 
   for (const [key, order] of restingMakerOrders.entries()) {
-    if (now - order.createdAt >= timeoutMs) {
-      restingMakerOrders.delete(key);
+    const elapsed = now - order.createdAt;
+
+    // 1. Em modo LIVE, consulta a Binance para reconciliar se a ordem foi executada ou cancelada
+    if (store.tradingMode === "live") {
       try {
-        const res = await fetch(`/api/trades?action=cancelOrder&symbol=${order.symbol}&orderId=${order.orderId}`, {
-          method: "DELETE",
-        });
-        const resData = await res.json().catch(() => ({}));
-        if (res.ok && resData.success) {
-          store.addBotLog({
-            message: `⏱️ [${order.botName}] Ordem Post-Only (LIMIT_MAKER) em ${order.symbol} descansando há mais de ${Math.round(timeoutMs / 1000)}s cancelada preventivamente para desobstruir capital e evitar slippage adverso.`,
-            type: "warning",
-            botId: order.botId,
-            botName: order.botName,
-          });
+        const statusRes = await fetch(`/api/trades?action=orderStatus&symbol=${order.symbol}&orderId=${order.orderId}`);
+        if (statusRes.ok) {
+          const statusJson = await statusRes.json();
+          if (statusJson.success && statusJson.data) {
+            const binanceStatus = statusJson.data.status;
+            if (binanceStatus === "FILLED") {
+              restingMakerOrders.delete(key);
+              riskManager.recordMakerFill(order.symbol);
+              store.addBotLog({
+                message: `✅ [${order.botName}] Ordem LIMIT_MAKER em ${order.symbol} ($${order.price.toFixed(4)}) totalmente PREENCHIDA no bestBid. Fill-rate global: ${riskManager.getFillRateTelemetry().fillRatePct.toFixed(1)}%.`,
+                type: "success",
+                botId: order.botId,
+                botName: order.botName,
+              });
+              continue;
+            } else if (binanceStatus === "CANCELED" || binanceStatus === "REJECTED" || binanceStatus === "EXPIRED") {
+              restingMakerOrders.delete(key);
+              riskManager.recordMakerCancel(order.symbol);
+              continue;
+            }
+          }
         }
       } catch (err: any) {
-        console.warn(`[MultiBotEngine] Falha ao cancelar ordem expirada ${order.orderId}:`, err.message);
+        console.warn(`[MultiBotEngine] Falha ao consultar status da ordem ${order.orderId}:`, err.message);
+      }
+    } else {
+      // 1.1 Em modo PAPER, simula preenchimento se o preço de mercado cruzar ou tocar a ordem passiva
+      const tickerPrice = store.tickers[order.symbol]?.price || store.tickers[`${order.symbol}USDT`]?.price || 0;
+      if (tickerPrice > 0 && tickerPrice <= order.price) {
+        restingMakerOrders.delete(key);
+        riskManager.recordMakerFill(order.symbol);
+        store.addBotLog({
+          message: `✅ [${order.botName}] Ordem simulada LIMIT_MAKER em ${order.symbol} ($${order.price.toFixed(4)}) PREENCHIDA no book passivo. Fill-rate: ${riskManager.getFillRateTelemetry().fillRatePct.toFixed(1)}%.`,
+          type: "success",
+          botId: order.botId,
+          botName: order.botName,
+        });
+        continue;
+      }
+    }
+
+    // 2. FASE 1: REPRICING DINÂMICO DE 1 TICK APÓS 30 SEGUNDOS (se fill-rate < 40% ou volatilidade extrema)
+    const isLowFillRateOrExtremeVol =
+      fillTelemetry.fillRatePct < minFillThreshold ||
+      fillTelemetry.recentFillRatePct < minFillThreshold ||
+      fillTelemetry.isExtremeVolatility;
+
+    const shouldReprice =
+      protectionSettings.dynamicMakerRepricing &&
+      !order.hasRepriced &&
+      elapsed >= repricingTimeoutMs &&
+      elapsed < timeoutMs &&
+      isLowFillRateOrExtremeVol;
+
+    if (shouldReprice) {
+      order.hasRepriced = true;
+      order.repricedAt = now;
+
+      const tickSize = order.tickSize || 0.01;
+      let currentBestBid = order.price;
+      let currentBestAsk = order.price * 1.002;
+
+      try {
+        const depthRes = await fetch(`/api/market/depth?symbol=${order.symbol}&limit=5`);
+        if (depthRes.ok) {
+          const depthData = await depthRes.json();
+          if (depthData.bids && depthData.bids.length > 0) {
+            currentBestBid = parseFloat(depthData.bids[0][0]) || currentBestBid;
+          }
+          if (depthData.asks && depthData.asks.length > 0) {
+            currentBestAsk = parseFloat(depthData.asks[0][0]) || currentBestAsk;
+          }
+        }
+      } catch {}
+
+      // Calcula novo preço adicionando 1 tick (ou alinhando ao novo bestBid sem cruzar o spread)
+      // Garantia estrita de Post-Only: o preço DEVE ser estritamente menor que bestAsk (<= bestAsk - tickSize)
+      const proposedPrice = Math.max(order.price + tickSize, currentBestBid);
+      const maxPassivePrice = currentBestAsk - tickSize;
+      const repricedPrice = Math.min(proposedPrice, maxPassivePrice);
+
+      const priceDecimals = Math.max(0, Math.round(-Math.log10(tickSize)));
+      const cleanRepricePrice = parseFloat(repricedPrice.toFixed(priceDecimals));
+
+      if (cleanRepricePrice > order.price && cleanRepricePrice < currentBestAsk) {
+        store.addBotLog({
+          message: `⚡ [${order.botName}] Fill-rate no bestBid baixo (${fillTelemetry.recentFillRatePct.toFixed(1)}% < ${minFillThreshold}%): Repricing dinâmico de +1 tick aplicado após 30s. Preço ajustado de $${order.price.toFixed(priceDecimals)} para $${cleanRepricePrice.toFixed(priceDecimals)} em ${order.symbol}.`,
+          type: "warning",
+          botId: order.botId,
+          botName: order.botName,
+        });
+
+        if (store.tradingMode === "live") {
+          // Cancela ordem anterior na Binance
+          try {
+            await fetch(`/api/trades?action=cancelOrder&symbol=${order.symbol}&orderId=${order.orderId}`, {
+              method: "DELETE",
+            });
+          } catch {}
+
+          // Envia nova ordem LIMIT_MAKER com o preço ajustado de 1 tick
+          try {
+            const repriceRes = await fetch("/api/trades", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                symbol: order.symbol,
+                side: "BUY",
+                price: cleanRepricePrice,
+                quantity: order.quantity,
+                total: cleanRepricePrice * order.quantity,
+                strategy: "DYNAMIC_REPRICED_MAKER",
+                mode: "live",
+                orderType: "LIMIT_MAKER",
+              }),
+            });
+            const repriceData = await repriceRes.json();
+            if (repriceRes.ok && repriceData.success && repriceData.binanceOrder?.orderId) {
+              order.orderId = repriceData.binanceOrder.orderId;
+              order.price = cleanRepricePrice;
+              riskManager.recordMakerReprice(order.symbol);
+              continue;
+            }
+          } catch (err: any) {
+            console.warn(`[MultiBotEngine] Falha ao despachar ordem repriced:`, err.message);
+          }
+        } else {
+          // Paper trading: atualiza o preço da resting order simulada
+          order.price = cleanRepricePrice;
+          riskManager.recordMakerReprice(order.symbol);
+          continue;
+        }
+      }
+    }
+
+    // 3. FASE 2: CANCELAMENTO DEFINITIVO AOS 60 SEGUNDOS (se restingOrderTimeout ativo)
+    if (protectionSettings.restingOrderTimeout && elapsed >= timeoutMs) {
+      restingMakerOrders.delete(key);
+      riskManager.recordMakerCancel(order.symbol);
+
+      if (store.tradingMode === "live") {
+        try {
+          const res = await fetch(`/api/trades?action=cancelOrder&symbol=${order.symbol}&orderId=${order.orderId}`, {
+            method: "DELETE",
+          });
+          const resData = await res.json().catch(() => ({}));
+          if (res.ok && resData.success) {
+            store.addBotLog({
+              message: `⏱️ [${order.botName}] Ordem Post-Only (LIMIT_MAKER) em ${order.symbol} descansando há mais de ${Math.round(timeoutMs / 1000)}s cancelada definitivamente após repricing. Fill-rate atual: ${riskManager.getFillRateTelemetry().fillRatePct.toFixed(1)}%.`,
+              type: "warning",
+              botId: order.botId,
+              botName: order.botName,
+            });
+          }
+        } catch (err: any) {
+          console.warn(`[MultiBotEngine] Falha ao cancelar ordem expirada ${order.orderId}:`, err.message);
+        }
+      } else {
+        store.addBotLog({
+          message: `⏱️ [${order.botName}] Ordem simulada (LIMIT_MAKER) em ${order.symbol} cancelada definitivamente aos ${Math.round(timeoutMs / 1000)}s após repricing. Fill-rate: ${riskManager.getFillRateTelemetry().fillRatePct.toFixed(1)}%.`,
+          type: "info",
+          botId: order.botId,
+          botName: order.botName,
+        });
       }
     }
   }
@@ -1901,17 +2074,24 @@ async function executeBotBuy({
         store.setAccount(result.account);
       }
 
-      // Se a ordem for LIMIT_MAKER e restingOrderTimeout estiver ativo, registra para auto-cancelamento
-      if (isPostOnly && protectionSettings.restingOrderTimeout && result.binanceOrder?.orderId && result.binanceOrder?.status === "NEW") {
-        registerRestingMakerOrder({
-          orderId: result.binanceOrder.orderId,
-          symbol: execSymbol,
-          botId: bot.id,
-          botName: bot.name,
-          price: makerLimitPrice,
-          quantity: trade.quantity,
-          createdAt: Date.now(),
-        });
+      // Se a ordem for LIMIT_MAKER, registra telemetria de preenchimento e ordem descansando no livro
+      if (isPostOnly) {
+        riskManager.recordMakerOrder(execSymbol);
+        if (result.binanceOrder?.status === "FILLED") {
+          riskManager.recordMakerFill(execSymbol);
+        } else if ((protectionSettings.restingOrderTimeout || protectionSettings.dynamicMakerRepricing) && result.binanceOrder?.orderId && result.binanceOrder?.status === "NEW") {
+          const approxTickSize = buyPrice >= 1000 ? 0.01 : buyPrice >= 1 ? 0.001 : buyPrice >= 0.01 ? 0.0001 : 0.000001;
+          registerRestingMakerOrder({
+            orderId: result.binanceOrder.orderId,
+            symbol: execSymbol,
+            botId: bot.id,
+            botName: bot.name,
+            price: makerLimitPrice,
+            quantity: trade.quantity,
+            createdAt: Date.now(),
+            tickSize: approxTickSize,
+          });
+        }
       }
     } catch (e: any) {
       store.addBotLog({
@@ -1924,6 +2104,24 @@ async function executeBotBuy({
     }
   } else {
     // Paper mode: sincroniza atômico com SQLite e store
+    if (isPostOnly) {
+      riskManager.recordMakerOrder(execSymbol);
+      if (protectionSettings.restingOrderTimeout || protectionSettings.dynamicMakerRepricing) {
+        const approxTickSize = buyPrice >= 1000 ? 0.01 : buyPrice >= 1 ? 0.001 : buyPrice >= 0.01 ? 0.0001 : 0.000001;
+        registerRestingMakerOrder({
+          orderId: `paper-${Date.now()}-${bot.id}`,
+          symbol: execSymbol,
+          botId: bot.id,
+          botName: bot.name,
+          price: makerLimitPrice,
+          quantity: trade.quantity,
+          createdAt: Date.now(),
+          tickSize: approxTickSize,
+        });
+      } else {
+        riskManager.recordMakerFill(execSymbol);
+      }
+    }
     try {
       fetch("/api/trades", {
         method: "POST",
