@@ -10,9 +10,10 @@ import {
 // Estado da conexão para o cliente restaurar a UI após recarregar: nunca devolve as chaves.
 export async function GET(request: Request) {
   const session = readBinanceSession(request);
+  const hasEnvCredentials = !!(process.env.BINANCE_API_KEY?.trim() && process.env.BINANCE_API_SECRET?.trim());
   return NextResponse.json({
     success: true,
-    connected: !!session,
+    connected: !!session || hasEnvCredentials,
     testnet: session?.testnet ?? (process.env.APP_ENV !== 'production'),
   });
 }

@@ -65,8 +65,8 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
   const [useMultiTimeframe, setUseMultiTimeframe] = useState(true);
   const [useAutoScreener, setUseAutoScreener] = useState(false);
   const [autoBreakEven, setAutoBreakEven] = useState(true);
-  const [breakEvenTrigger, setBreakEvenTrigger] = useState(0.85);
-  const [breakEvenBuffer, setBreakEvenBuffer] = useState(0.30);
+  const [breakEvenTrigger, setBreakEvenTrigger] = useState(1.30);
+  const [breakEvenBuffer, setBreakEvenBuffer] = useState(0.40);
   const [trailingTakeProfit, setTrailingTakeProfit] = useState(true);
   const [trailingTakeProfitDistance, setTrailingTakeProfitDistance] = useState(0.5);
   const [usePartialTp, setUsePartialTp] = useState(true);
