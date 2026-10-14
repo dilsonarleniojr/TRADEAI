@@ -592,6 +592,100 @@ export class RiskManager {
     };
   }
 
+  private loadInitialFillTelemetry() {
+    if (typeof window !== "undefined" && window.localStorage) {
+      try {
+        const saved = window.localStorage.getItem("tradeai_fill_rate_telemetry");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          this.makerOrdersCount = parsed.totalMakerOrders || 0;
+          this.makerFilledCount = parsed.filledMakerOrders || 0;
+          this.makerCancelledCount = parsed.cancelledMakerOrders || 0;
+          this.makerRepricedCount = parsed.repricedMakerOrders || 0;
+          this.recentMakerEvents = parsed.recentHistory || [];
+        }
+      } catch {}
+    }
+  }
+
+  private persistFillTelemetry() {
+    if (typeof window !== "undefined" && window.localStorage) {
+      try {
+        const payload = {
+          totalMakerOrders: this.makerOrdersCount,
+          filledMakerOrders: this.makerFilledCount,
+          cancelledMakerOrders: this.makerCancelledCount,
+          repricedMakerOrders: this.makerRepricedCount,
+          recentHistory: this.recentMakerEvents.slice(-30),
+        };
+        window.localStorage.setItem("tradeai_fill_rate_telemetry", JSON.stringify(payload));
+        window.dispatchEvent(new CustomEvent("tradeai_fill_telemetry_updated", { detail: this.getFillRateTelemetry() }));
+      } catch {}
+    }
+  }
+
+  public recordMakerOrder(symbol: string = "UNKNOWN") {
+    this.makerOrdersCount++;
+    this.persistFillTelemetry();
+  }
+
+  public recordMakerFill(symbol: string = "UNKNOWN") {
+    this.makerFilledCount++;
+    this.recentMakerEvents.push({ timestamp: Date.now(), symbol, status: "FILLED" });
+    if (this.recentMakerEvents.length > 50) this.recentMakerEvents.shift();
+    this.persistFillTelemetry();
+  }
+
+  public recordMakerCancel(symbol: string = "UNKNOWN") {
+    this.makerCancelledCount++;
+    this.recentMakerEvents.push({ timestamp: Date.now(), symbol, status: "CANCELLED" });
+    if (this.recentMakerEvents.length > 50) this.recentMakerEvents.shift();
+    this.persistFillTelemetry();
+  }
+
+  public recordMakerReprice(symbol: string = "UNKNOWN") {
+    this.makerRepricedCount++;
+    this.recentMakerEvents.push({ timestamp: Date.now(), symbol, status: "REPRICED" });
+    if (this.recentMakerEvents.length > 50) this.recentMakerEvents.shift();
+    this.persistFillTelemetry();
+  }
+
+  public getFillRateTelemetry(): FillRateTelemetry {
+    const total = this.makerOrdersCount;
+    const filled = this.makerFilledCount;
+    const fillRatePct = total > 0 ? parseFloat(((filled / total) * 100).toFixed(1)) : 100;
+
+    // Calcula fill-rate da janela recente (últimos eventos de FILLED vs CANCELLED)
+    const recentTerminalEvents = this.recentMakerEvents.filter((e) => e.status === "FILLED" || e.status === "CANCELLED");
+    let recentFillRatePct = fillRatePct;
+    if (recentTerminalEvents.length >= 3) {
+      const recentFilled = recentTerminalEvents.filter((e) => e.status === "FILLED").length;
+      recentFillRatePct = parseFloat(((recentFilled / recentTerminalEvents.length) * 100).toFixed(1));
+    }
+
+    const minThreshold = this.settings.minFillRateThreshold ?? 40;
+    const isExtremeVolatility = recentTerminalEvents.length >= 3 && recentFillRatePct < minThreshold;
+
+    return {
+      totalMakerOrders: this.makerOrdersCount,
+      filledMakerOrders: this.makerFilledCount,
+      cancelledMakerOrders: this.makerCancelledCount,
+      repricedMakerOrders: this.makerRepricedCount,
+      fillRatePct,
+      recentFillRatePct,
+      isExtremeVolatility,
+      recentHistory: [...this.recentMakerEvents],
+    };
+  }
+
+  public resetFillRateTelemetryForTests() {
+    this.makerOrdersCount = 0;
+    this.makerFilledCount = 0;
+    this.makerCancelledCount = 0;
+    this.makerRepricedCount = 0;
+    this.recentMakerEvents = [];
+  }
+
   /**
    * Status e telemetria atual do gerenciador de risco
    */
@@ -608,6 +702,7 @@ export class RiskManager {
       dailyHaltRemainingMs: Math.max(0, this.dailyHaltedUntil - Date.now()),
       isConsecutiveLossCooldown: this.settings.consecutiveLossProtection && this.consecutiveLossCooldownUntil > Date.now(),
       consecutiveCooldownRemainingMs: Math.max(0, this.consecutiveLossCooldownUntil - Date.now()),
+      fillRateTelemetry: this.getFillRateTelemetry(),
       activeProtections: {
         dailyDrawdownProtection: this.settings.dailyDrawdownProtection,
         consecutiveLossProtection: this.settings.consecutiveLossProtection,
@@ -618,6 +713,7 @@ export class RiskManager {
         restingOrderTimeout: this.settings.restingOrderTimeout,
         btcMacroFilter: this.settings.btcMacroFilter,
         crossCorrelationFilter: this.settings.crossCorrelationFilter,
+        dynamicMakerRepricing: this.settings.dynamicMakerRepricing,
       },
     };
   }
@@ -632,6 +728,7 @@ export class RiskManager {
     this.dailyLossUsdt = 0;
     this.lastResetDay = new Date().getUTCDate();
     this.settings = { ...DEFAULT_PROTECTION_SETTINGS };
+    this.resetFillRateTelemetryForTests();
   }
 }
 
