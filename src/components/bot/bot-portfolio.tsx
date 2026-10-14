@@ -186,16 +186,16 @@ export function BotPortfolio() {
     });
   };
 
-  const handleStartAiExit = (symbol: string) => {
-    startAiExitBotForAsset(symbol, {
+  const handleStartAiExit = async (symbol: string) => {
+    await startAiExitBotForAsset(symbol, {
       onToast: (t) => toast(t),
     });
   };
 
-  const handleStartAllAiExit = () => {
+  const handleStartAllAiExit = async () => {
     if (orphanPositions.length === 0) return;
     for (const pos of orphanPositions) {
-      startAiExitBotForAsset(pos.symbol, {
+      await startAiExitBotForAsset(pos.symbol, {
         onToast: (t) => toast(t),
       });
     }

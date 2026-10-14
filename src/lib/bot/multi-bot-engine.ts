@@ -672,11 +672,16 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       }
     }
 
+    const symClean = pos.symbol.replace("USDT", "");
+    const actionDesc = isAiExitBot
+      ? `🤖 IA Analisando Mercado [15m/5m] · Preço Compra DB: $${pos.entryPrice.toFixed(4)} · Atual: $${currentPrice!.toFixed(5)} (${sign}${gainPercent.toFixed(2)}%) · Alvo Mínimo: $${targetProfitPrice}${atrNotice}${statusNotice} · Monitorando estrutura sem pressa`
+      : `Monitorando ${symClean} · Cotação: $${currentPrice!.toFixed(5)} (${sign}${gainPercent.toFixed(2)}%) · Alvo: $${targetProfitPrice}${atrNotice}${statusNotice}${dcaNotice}${timeNotice}`;
+
     store.updateBot(bot.id, {
       status: "in_position",
       stats: {
         ...bot.stats,
-        lastAction: `Monitorando ${pos.symbol.replace("USDT", "")} · Cotação: $${currentPrice!.toFixed(5)} (${sign}${gainPercent.toFixed(2)}%) · Alvo: $${targetProfitPrice}${atrNotice}${statusNotice}${dcaNotice}${timeNotice}`,
+        lastAction: actionDesc,
         lastActionTime: new Date().toISOString(),
       },
     });
@@ -687,7 +692,8 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // Embolsa 50% da posição assim que atinge o primeiro alvo (+1.0% padrão),
     // garantindo lucro líquido no bolso e travando o restante no Break-Even com risco ZERO.
     // Requer apenas que a fatia vendida e a remanescente atendam ao minNotional da Binance (>= 5.20 USDT).
-    const partialTpTrigger = Math.max(0.85, Math.min(1.6, bot.partialTpTrigger ?? 1.0));
+    // Para robôs de Venda Inteligente por IA (useAiExit), parciais só ocorrem se explicitamente habilitadas e com cooldown rigoroso.
+    const partialTpTrigger = Math.max(1.2, bot.partialTpTrigger ?? 1.2);
     const now = Date.now();
     const isPartialCooldown = now < (partialRetryCooldown.get(bot.id) || 0);
 
@@ -709,38 +715,61 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     let aiExitReason = "";
 
     if (bot.useAiExit || bot.strategy === "AI") {
-      // 1. Sinal preditivo explícito da base/rede neural
-      const latestAiSignal = aiSignals?.find(
-        (s) => s.symbol === pos.symbol && (s.action === "SELL" || s.signal === "SELL")
-      );
-      const isProfitableOrCoveringFees = gainPercent >= 0.35; // Garante lucro cobrindo taxas operacionais
+      // REGRA FUNDAMENTAL INSTITUCIONAL: GARANTIA DE LUCRO REAL BASEADA NO PREÇO DE COMPRA DO DB
+      // A IA NUNCA vende com prejuízo nem prematuramente.
+      // O ganho percentual deve cobrir taxas e garantir lucro sólido (mínimo de +1.2% ou o Take Profit configurado).
+      const minRequiredProfit = Math.max(1.2, bot.takeProfit || 1.8);
 
-      if (
-        latestAiSignal &&
-        isProfitableOrCoveringFees &&
-        (latestAiSignal.confidence >= 0.55 || (latestAiSignal.confidence_score ?? 0) >= 0.55)
-      ) {
-        const confPct = Math.round((latestAiSignal.confidence || latestAiSignal.confidence_score || 0.6) * 100);
-        isAiExitTriggered = true;
-        aiExitReason = `🤖 SAÍDA INTELIGENTE (IA): Venda recomendada no melhor momento (+${gainPercent.toFixed(2)}%) · Sinal preditivo de topo (${confPct}% de confiança)`;
-      }
+      if (gainPercent >= minRequiredProfit) {
+        // Lucro atingido! Analisar a estrutura do mercado em 15m e 5m para encontrar o ápice do movimento
+        try {
+          const [klines15m, klines5m] = await Promise.all([
+            getSymbolKlines(pos.symbol, "15m"),
+            getSymbolKlines(pos.symbol, "5m"),
+          ]);
 
-      // 2. Análise quantitativa de esgotamento e pico de momentum
-      if (!isAiExitTriggered && gainPercent >= 0.65) {
-        const klines1m = await getSymbolKlines(pos.symbol, "1m");
-        if (klines1m.length >= 14) {
-          const closes = klines1m.map((k) => k.close);
-          const currentRsi = calculateRSI(closes, 14);
-          const lastCandle = klines1m[klines1m.length - 1];
-          const candleRange = lastCandle.high - lastCandle.low;
-          const upperWick = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
-          const isTopRejection = candleRange > 0 && (upperWick / candleRange) >= 0.38;
+          if (klines15m.length >= 14 && klines5m.length >= 14) {
+            const closes15m = klines15m.map((k) => k.close);
+            const closes5m = klines5m.map((k) => k.close);
+            const rsi15m = calculateRSI(closes15m, 14);
+            const rsi5m = calculateRSI(closes5m, 14);
 
-          // Esgotamento: RSI sobrecomprado (> 68) ou forte rejeição de topo com pavio superior
-          if (currentRsi >= 68 || (gainPercent >= 1.0 && isTopRejection)) {
-            isAiExitTriggered = true;
-            aiExitReason = `🎯 PICO DE MOMENTUM (IA): Venda no melhor momento executada (+${gainPercent.toFixed(2)}%) · RSI em sobrecompra (${currentRsi.toFixed(1)}) e topo rejeitado`;
+            // Análise de rejeição de topo no 5m e 15m
+            const lastCandle5m = klines5m[klines5m.length - 1];
+            const range5m = lastCandle5m.high - lastCandle5m.low;
+            const upperWick5m = lastCandle5m.high - Math.max(lastCandle5m.open, lastCandle5m.close);
+            const is5mTopRejection = range5m > 0 && (upperWick5m / range5m) >= 0.40;
+
+            // Recuo confirmado a partir da máxima histórica do rali
+            const isPullbackConfirmed = pullbackFromTpPeak >= (bot.trailingTakeProfitDistance || 0.45);
+
+            // Condição 1: Exaustão severa em 15m (RSI >= 70) ou 5m (RSI >= 74) COM rejeição de topo ou início de recuo
+            const isExhaustionSell = (rsi15m >= 70 || rsi5m >= 74) && (is5mTopRejection || isPullbackConfirmed);
+
+            // Condição 2: Trailing de topo acionado (já subiu forte e agora recuou confirmando o fim do rali)
+            const isTrailingTopConfirmed = isTakeProfitNowArmed && isPullbackConfirmed && gainPercent >= minRequiredProfit;
+
+            // Condição 3: Sinal preditivo explícito da rede neural com alta confiança (>= 75%)
+            const latestAiSignal = aiSignals?.find(
+              (s) => s.symbol === pos.symbol && (s.action === "SELL" || s.signal === "SELL")
+            );
+            const isHighConfidenceAiSignal = latestAiSignal &&
+              ((latestAiSignal.confidence || latestAiSignal.confidence_score || 0) >= 0.75) &&
+              gainPercent >= minRequiredProfit;
+
+            if (isExhaustionSell) {
+              isAiExitTriggered = true;
+              aiExitReason = `🎯 VENDA NO TOPO (IA): Lucro garantido (+${gainPercent.toFixed(2)}%) sobre preço de compra do DB · Exaustão em 15m (RSI ${rsi15m.toFixed(0)}) e resistência confirmada`;
+            } else if (isTrailingTopConfirmed) {
+              isAiExitTriggered = true;
+              aiExitReason = `🚀 TOPO DO RALI SURFADO (IA): Venda no melhor momento (+${gainPercent.toFixed(2)}%) · Pico em +${peakGainFromTp.toFixed(2)}% (Recuo de ${pullbackFromTpPeak.toFixed(2)}%)`;
+            } else if (isHighConfidenceAiSignal) {
+              isAiExitTriggered = true;
+              aiExitReason = `🤖 MODELO PREDITIVO (IA): Venda no ápice recomendada (+${gainPercent.toFixed(2)}%) · Confiança: ${Math.round((latestAiSignal.confidence || latestAiSignal.confidence_score || 0.75) * 100)}%`;
+            }
           }
+        } catch (err: any) {
+          console.warn(`[MultiBotEngine] Erro ao analisar mercado para saída IA de ${pos.symbol}:`, err.message);
         }
       }
     }
@@ -776,7 +805,10 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       gainPercent >= 0.30;
 
     // 1.3 STOP LOSS DISCIPLINADO (Respeita o risco adaptativo configurado por ATR)
-    const isHardStopLoss = gainPercent <= -effectiveStopLoss;
+    // Para robôs de Saída Inteligente por IA (useAiExit), não aciona stop loss curto acidental
+    const isHardStopLoss = isAiExitBot && (bot.stopLoss ?? 99) >= 50
+      ? false
+      : gainPercent <= -effectiveStopLoss;
     const isStopLoss = isHardStopLoss;
 
     // 1.4 ONE-SHOT QUICK PROFIT (Venda com lucro real conquistado)
@@ -2740,7 +2772,7 @@ export function adoptOrphanPositionWithBot(symbol: string, callbacks?: MultiBotE
  * Inicia ou vincula um robô de Inteligência Artificial para gerenciar a saída ideal de um ativo em carteira.
  * O robô monitora fluxo, indicadores e sinais preditivos para vender no melhor momento com lucro máximo.
  */
-export function startAiExitBotForAsset(symbol: string, callbacks?: MultiBotEngineCallbacks): string | null {
+export async function startAiExitBotForAsset(symbol: string, callbacks?: MultiBotEngineCallbacks): Promise<string | null> {
   const store = useCryptoStore.getState();
   const pos = store.portfolio.positions?.find((p) => p.symbol === symbol);
   if (!pos || pos.quantity <= 0) {
@@ -2755,6 +2787,13 @@ export function startAiExitBotForAsset(symbol: string, callbacks?: MultiBotEngin
   const cleanSym = symbol.replace("USDT", "");
   let targetBot = store.bots.find((b) => b.symbol === symbol);
 
+  // 1. Obter base de custo exata registrada no banco de dados SQLite / myTrades da Binance
+  const costBasis = await getCostBasisForSymbol(symbol, store.tradingMode);
+  const currentPrice = store.tickers[symbol]?.price || pos.marketPrice;
+  const dbEntryPrice = (costBasis && costBasis.avgBuyPrice > 0) ? costBasis.avgBuyPrice : 0;
+  const portfolioAvg = pos.avgPrice > 0 ? pos.avgPrice : 0;
+  const entryPrice = dbEntryPrice > 0 ? dbEntryPrice : (portfolioAvg > 0 ? portfolioAvg : currentPrice);
+
   if (!targetBot) {
     const newBotId = store.addBot({
       name: `Bot ${cleanSym} — Venda Inteligente (IA)`,
@@ -2762,16 +2801,14 @@ export function startAiExitBotForAsset(symbol: string, callbacks?: MultiBotEngin
       strategy: "AI",
       active: true,
       useAiExit: true,
-      takeProfit: 1.8,
-      stopLoss: 2.0,
-      trailingStop: true,
-      trailingStopDistance: 0.40,
-      trailingTakeProfit: true,
-      trailingTakeProfitDistance: 0.35,
-      autoBreakEven: true,
-      breakEvenTrigger: 0.60,
-      breakEvenBuffer: 0.20,
-      usePartialTp: true,
+      takeProfit: 2.2, // Meta de lucro sólida para não vender prematuro
+      stopLoss: 99.0, // Não realizar prejuízo em recuos normais
+      trailingStop: false,
+      trailingTakeProfit: true, // Deixar o lucro correr em ralis de alta
+      trailingTakeProfitDistance: 0.50, // Tolera até 0.50% de recuo do pico antes de liquidar no topo
+      autoBreakEven: false, // Não queimar o trade no 0 a 0 no primeiro espasmo
+      usePartialTp: false, // Vender a posição de forma consolidada no pico, sem fatiamentos repetitivos
+      timeStopMinutes: 0, // Desativar time-stop que força venda por tempo
     });
     targetBot = store.bots.find((b) => b.id === newBotId);
   } else {
@@ -2781,14 +2818,17 @@ export function startAiExitBotForAsset(symbol: string, callbacks?: MultiBotEngin
       active: true,
       status: "in_position",
       useAiExit: true,
+      takeProfit: 2.2,
+      stopLoss: 99.0,
       trailingTakeProfit: true,
-      autoBreakEven: true,
+      trailingTakeProfitDistance: 0.50,
+      autoBreakEven: false,
+      usePartialTp: false,
+      timeStopMinutes: 0,
     });
   }
 
   if (targetBot) {
-    const currentPrice = store.tickers[symbol]?.price || pos.marketPrice;
-    const entryPrice = pos.avgPrice > 0 ? pos.avgPrice : currentPrice;
     const pnlPercent = entryPrice > 0 ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
 
     store.updateBotPosition(targetBot.id, {
@@ -2798,17 +2838,21 @@ export function startAiExitBotForAsset(symbol: string, callbacks?: MultiBotEngin
       entryPrice,
       currentPrice,
       highestPrice: Math.max(entryPrice, currentPrice),
-      totalCost: pos.avgPrice > 0 ? pos.avgPrice * pos.quantity : pos.marketValue,
-      unrealizedPnl: pos.unrealizedPnl || 0,
+      totalCost: entryPrice * pos.quantity,
+      unrealizedPnl: (currentPrice - entryPrice) * pos.quantity,
       unrealizedPnlPercent: pnlPercent,
-      entryTime: new Date().toISOString(),
+      entryTime: costBasis?.lastBuyTime || new Date().toISOString(),
       mode: store.tradingMode,
-      breakEvenPrice: entryPrice * 1.002,
-      isBreakEvenArmed: true,
+      breakEvenPrice: entryPrice * 1.003,
+      isBreakEvenArmed: false,
     });
 
+    const dbNotice = dbEntryPrice > 0
+      ? `Preço de compra apurado no Banco de Dados: $${dbEntryPrice.toFixed(4)} (${costBasis?.tradesCount} trades no histórico).`
+      : `Preço médio de entrada: $${entryPrice.toFixed(4)}.`;
+
     store.addBotLog({
-      message: `🤖 [Saída Inteligente IA] Robô "${targetBot.name}" assumiu a custódia de ${pos.quantity} ${cleanSym}. A IA está monitorando em tempo real para vender no melhor momento!`,
+      message: `🤖 [Saída Inteligente IA] Robô "${targetBot.name}" assumiu a custódia de ${pos.quantity} ${cleanSym}. ${dbNotice} A IA analisará o mercado em 15m/5m e venderá no melhor momento com lucro garantido!`,
       type: "system",
       botId: targetBot.id,
       botName: targetBot.name,
@@ -2816,7 +2860,7 @@ export function startAiExitBotForAsset(symbol: string, callbacks?: MultiBotEngin
 
     callbacks?.onToast?.({
       title: `🤖 Venda por IA Iniciada (${cleanSym})`,
-      description: `O [${targetBot.name}] está rastreando o melhor momento para vender no lucro máximo.`,
+      description: `Preço base: $${entryPrice.toFixed(4)}. A IA está monitorando o mercado para vender com lucro real sem pressa.`,
       variant: "default",
     });
 

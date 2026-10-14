@@ -1,23 +1,43 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
-    "title": "Início de Robô a partir do Portfólio com Venda no Melhor Momento (IA)",
-    "summary": "Permite iniciar um robô de Inteligência Artificial diretamente a partir de qualquer ativo do portfólio. O bot opera com `useAiExit: true`, monitorando em tempo real fluxo, rejeição de topo (pavio superior/RSI sobrecomprado) e sinais preditivos da IA para executar a venda no momento ótimo de maior lucro.",
+    "title": "Garantia de Lucro Baseado no Preço de Compra do Banco de Dados & Análise de Mercado por IA (15m/5m)",
+    "summary": "Implementado endpoint /api/trades/cost-basis que sincroniza o histórico de myTrades da Binance e consulta o banco SQLite para obter o preço médio ponderado real de compra. O robô de venda por IA agora opera em 15m e 5m, veta saídas precipitadas ou abaixo do preço de compra do DB, desativa time-stop e stop-loss acidentais, e só realiza a venda no ápice quando houver exaustão técnica comprovada com Trailing Stop de topo.",
     "tags": [
-      "ai-smart-exit",
-      "portfolio-bot",
-      "best-exit-timing",
-      "momentum-peak",
-      "predictive-exit",
-      "binance"
+      "cost-basis-db",
+      "ai-market-analysis",
+      "profit-guarantee",
+      "multi-timeframe",
+      "no-premature-sell",
+      "sqlite-trades"
     ],
     "details": {
-      "strategy": "AI",
-      "useAiExit": true,
-      "exitCriteria": "Sinal preditivo de SELL (conf >= 55%) OU pico de momentum (RSI >= 68 / rejeição de topo) com ganho líquido positivo cobrindo taxas"
+      "endpoint": "/api/trades/cost-basis",
+      "minProfitMargin": ">= 1.2% a 1.5% líquido de taxas",
+      "timeframesAnalyzed": ["15m", "5m"],
+      "trailingTpDistance": 0.50,
+      "timeStopDisabled": true,
+      "stopLossAccidentalDisabled": true
     },
-    "id": "mem-1791941000000-ai-exit-bot",
-    "timestamp": "2026-10-14T01:15:00.000Z"
+    "id": "mem-1791942000000-db-cost-basis-ai-exit",
+    "timestamp": "2026-10-14T01:40:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Modal de Confirmação ao Desligar Robô com Posição Aberta (Prevenção de Órfãos)",
+    "summary": "Adicionada a modal PauseBotDialog que intercepta o desligamento de robôs ativos com saldo em custódia. O usuário escolhe expressamente entre manter o ativo na carteira ou liquidar a mercado imediatamente.",
+    "tags": [
+      "pause-bot-dialog",
+      "orphan-prevention",
+      "portfolio-safety",
+      "user-confirmation"
+    ],
+    "details": {
+      "component": "PauseBotDialog",
+      "actions": ["Manter Ativo em Carteira", "Liquidar a Mercado Imediatamente", "Cancelar"]
+    },
+    "id": "mem-1791941500000-pause-bot-dialog",
+    "timestamp": "2026-10-14T01:30:00.000Z"
   },
   {
     "category": "ARCHITECTURE_DECISION",
