@@ -91,6 +91,7 @@ export function startBotPersistence(): () => void {
 
       return {
         ...b,
+        stopAfterProfit: false, // Força modo contínuo: robôs operam sem interrupção buscando lucro
         strategy,
         useMarketRegime,
         takeProfit,

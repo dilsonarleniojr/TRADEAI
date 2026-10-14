@@ -425,7 +425,7 @@ export function evaluateEntry(
     const isExhausted = change24h > 18.0;
     const isSubPenny = currentPrice > 0 && currentPrice < 0.005;
     const isMomentumValid = change24h >= 0.5 && !isExhausted;
-    const isVolumeValid = vol >= 8_000_000;
+    const isVolumeValid = vol >= 5_000_000;
     const isHotCandidate = isMomentumValid && isVolumeValid && !isSubPenny;
     checks.push({
       label: "Auto-Screener Alta",
@@ -436,7 +436,7 @@ export function evaluateEntry(
           ? `Cotação sub-penny ($${currentPrice.toFixed(4)} < $0.005) — bloqueado contra spread tóxico`
           : isHotCandidate
             ? `Líder em momentum saudável (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M)`
-            : `Ativo sem liquidez/momentum suficiente (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M — precisa entre +0.5% e +18.0% e Vol ≥ $8M)`,
+            : `Ativo sem liquidez/momentum suficiente (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M — precisa entre +0.5% e +18.0% e Vol ≥ $5M)`,
     });
   } else if (bot.overrideSymbol && bot.overrideSymbol !== "AUTO") {
     checks.push({
@@ -653,15 +653,15 @@ export function evaluateEntry(
   const netGainPotential = parseFloat((suggestedTp - totalFriction).toFixed(2));
 
   // 🛡️ Filtro de Amplitude Mínima ATR (Regra 6 dos Guardrails - Anti-Overtrading em Micro-Movimentos):
-  // Proibido abrir operações em ativos cujo potencial de ganho até o alvo ATR seja inferior a 1.60% líquido de taxas.
-  const isAmplitudeSufficient = netGainPotential >= 1.60;
+  // Proibido abrir operações em ativos cujo potencial de ganho até o alvo ATR seja inferior a 1.50% líquido de taxas.
+  const isAmplitudeSufficient = netGainPotential >= 1.50;
 
   checks.push({
     label: "Amplitude Mínima ATR",
     ok: isAmplitudeSufficient,
     detail: isAmplitudeSufficient
-      ? `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) acima do piso institucional de 1.6% (Alvo: +${suggestedTp}%)`
-      : `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) insuficiente para cobrir custos e taxas (precisa ≥ 1.60% líquido)`,
+      ? `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) acima do piso institucional de 1.5% (Alvo: +${suggestedTp}%)`
+      : `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) insuficiente para cobrir custos e taxas (precisa ≥ 1.50% líquido)`,
   });
 
   // 🛡️ Etapa 3: Filtro de Viabilidade Operacional (RiskManager - R:R Líquido ≥ 1:1.5)

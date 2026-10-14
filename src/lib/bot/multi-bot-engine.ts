@@ -32,7 +32,7 @@ let circuitBreakerState: CircuitBreakerState = {
 };
 
 /** Teto institucional de posições simultâneas para concentrar liquidez nos líderes e evitar fragmentação */
-export const MAX_SIMULTANEOUS_BOT_POSITIONS = 4;
+export const MAX_SIMULTANEOUS_BOT_POSITIONS = 5;
 
 export function getCircuitBreakerStatus(): CircuitBreakerState {
   return { ...circuitBreakerState };
@@ -1467,7 +1467,8 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       const fixedSym = bot.overrideSymbol!.toUpperCase().trim();
       const cooldownUntil = botSymbolLossCooldown.get(fixedSym);
       if (cooldownUntil && Date.now() < cooldownUntil) {
-        const remainingMin = Math.ceil((cooldownUntil - Date.now()) / 60000);
+        const remainingSec = Math.max(1, Math.ceil((cooldownUntil - Date.now()) / 1000));
+        const remainingTimeText = remainingSec > 60 ? `${Math.ceil(remainingSec / 60)}m` : `${remainingSec}s`;
         store.updateBot(bot.id, {
           status: "scanning",
           stats: {
@@ -1477,9 +1478,9 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
             approvalsCount: 0,
             totalChecksCount: 4,
             triggerProximityPercent: 0,
-            lastVetoReason: `Cooldown pós-trade ativo (${remainingMin}m restantes)`,
+            lastVetoReason: `Cooldown pós-trade ativo (${remainingTimeText} restantes)`,
             lastVetoIndicator: "Cooldown Pós-Trade",
-            lastAction: `🛡️ Cooldown pós-trade ativo em ${fixedSym.replace("USDT", "")} (${remainingMin}m restantes para proteção)`,
+            lastAction: `🛡️ Cooldown pós-trade ativo em ${fixedSym.replace("USDT", "")} (${remainingTimeText} restantes para proteção)`,
             lastActionTime: new Date().toISOString(),
           },
         });
@@ -1556,7 +1557,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         return;
       }
 
-      candidatesToEvaluate = availableCandidates.slice(0, 4);
+      candidatesToEvaluate = availableCandidates.slice(0, 6);
     }
 
     let bestApprovals = 0;
@@ -1759,7 +1760,8 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   // 🛡️ Proteção Anti-Cascata e Anti-Recompra Pós-Trade (evita entrar em facas caindo ou topos repetidos)
   const lossCooldownUntil = botSymbolLossCooldown.get(symbol);
   if (lossCooldownUntil && Date.now() < lossCooldownUntil) {
-    const remainingMin = Math.ceil((lossCooldownUntil - Date.now()) / 60000);
+    const remainingSec = Math.max(1, Math.ceil((lossCooldownUntil - Date.now()) / 1000));
+    const remainingTimeText = remainingSec > 60 ? `${Math.ceil(remainingSec / 60)}m` : `${remainingSec}s`;
     const prevHistory = Array.isArray(bot.stats.proximityHistory) ? bot.stats.proximityHistory : [];
     store.updateBot(bot.id, {
       status: "scanning",
@@ -1771,9 +1773,9 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         totalChecksCount: 4,
         triggerProximityPercent: 0,
         proximityHistory: [...prevHistory.slice(-9), 0],
-        lastVetoReason: `Cooldown pós-trade ativo (${remainingMin}m restantes)`,
+        lastVetoReason: `Cooldown pós-trade ativo (${remainingTimeText} restantes)`,
         lastVetoIndicator: "Cooldown Pós-Trade",
-        lastAction: `🛡️ Cooldown pós-trade ativo em ${symbol.replace("USDT", "")} (${remainingMin}m restantes para novo ciclo seguro)`,
+        lastAction: `🛡️ Cooldown pós-trade ativo em ${symbol.replace("USDT", "")} (${remainingTimeText} restantes para novo ciclo seguro)`,
         lastActionTime: new Date().toISOString(),
       },
     });
@@ -2622,8 +2624,7 @@ async function executeBotPartialSell({
     variant: "default",
   });
 
-  // 🛡️ Protege contra novas entradas ou recompras da frota no mesmo ativo durante a fase de realização
-  botSymbolLossCooldown.set(position.symbol, Date.now() + 15 * 60 * 1000);
+  // 🛡️ Parcial concluída: posição residual continua aberta e protegida no Break-Even (sem travas artificiais de cooldown)
 
     return true;
   } finally {
@@ -2883,7 +2884,8 @@ async function executeBotSell({
     reason.includes("Lucro") ||
     reason.includes("Take-Profit") ||
     reason.includes("Break-Even");
-  const shouldStopFleetBot = (bot.stopAfterProfit && isProfitableSell) || callbacks?.stopBotAfterClose;
+  // Apenas encerra o robô se solicitado explicitamente via UI (callbacks?.stopBotAfterClose) ou configuração pontual
+  const shouldStopFleetBot = Boolean(callbacks?.stopBotAfterClose) || Boolean(bot.stopAfterProfit && isProfitableSell);
 
   if (shouldStopFleetBot) {
     store.updateBot(bot.id, {
@@ -2892,7 +2894,7 @@ async function executeBotSell({
       lastReport: executionReport,
       stats: {
         ...bot.stats,
-        lastAction: `🎯 Operação finalizada com lucro (+${gainPercent.toFixed(2)}%)! Robô desativado automaticamente (Operação Única).`,
+        lastAction: `🎯 Operação finalizada com lucro (+${gainPercent.toFixed(2)}%)! Robô desativado automaticamente (Operação Única solicitada).`,
         lastActionTime: new Date().toISOString(),
       },
     });
@@ -2901,13 +2903,20 @@ async function executeBotSell({
     const hasOtherActive = useCryptoStore.getState().bots.some((b) => b.id !== bot.id && b.active);
     store.setBotActive(hasOtherActive);
   } else {
-    // Salva o relatório no robô para consulta a qualquer momento
+    // 🚀 MODO CONTÍNUO: Robô permanece ATIVO e em SCANNING, buscando incessantemente novas oportunidades de lucro!
     store.updateBot(bot.id, {
+      active: true,
+      status: "scanning",
       lastReport: executionReport,
+      stats: {
+        ...bot.stats,
+        lastAction: `🎯 Lucro consolidado (+${gainPercent.toFixed(2)}%)! Buscando próxima oportunidade lucrativa...`,
+        lastActionTime: new Date().toISOString(),
+      },
     });
   }
 
-  // 🎯 Auto-Reset do Override Manual após encerramento de Single Trade (Apenas 1 trade):
+  // 🎯 Auto-Reset do Override Manual após encerramento de Single Trade (Apenas se configurado como single_trade):
   if (bot.overrideSymbol && bot.overrideMode === "single_trade") {
     const closedSym = bot.overrideSymbol;
     store.updateBot(bot.id, {
@@ -2928,19 +2937,21 @@ async function executeBotSell({
     });
   }
 
-  // Abre o relatório detalhado automaticamente para o usuário
-  store.setActiveExecutionReport(executionReport);
+  // Abre o relatório detalhado automaticamente apenas se a parada foi explicitamente solicitada pelo usuário
+  if (callbacks?.stopBotAfterClose) {
+    store.setActiveExecutionReport(executionReport);
+  }
 
-  // 🛡️ COOLDOWN UNIVERSAL PÓS-TRADE INSTITUCIONAL:
-  // 🛡️ PILAR 2: GESTÃO DE RISCO AUTOMATIZADA, QUARENTENA & CONSECUTIVE LOSS BRAKE
+  // 🛡️ COOLDOWN UNIVERSAL PÓS-TRADE INSTITUCIONAL (Otimizado para performance contínua):
   const isLoss = logType === "loss" || pnl < 0 || gainPercent < 0;
 
-  // 1. Quarentena por Par (Lockout de 4 horas se sofrer >= 2 perdas nas últimas 6h)
+  // 1. Quarentena por Par
   const now = Date.now();
   const sixHoursAgo = now - 6 * 3600 * 1000;
   let recentSymbolLosses = (symbolLossTimestamps.get(execSymbol) || []).filter((t) => t >= sixHoursAgo);
   
-  let cooldownDuration = 10 * 60 * 1000; // 10 minutos padrão pós-lucro para consolidação
+  // Após lucro: apenas 20 segundos de buffer para absorção de ordens no book, permitindo reentrada rápida
+  let cooldownDuration = 20 * 1000;
   let isQuarantine = false;
 
   if (isLoss) {
@@ -2948,17 +2959,17 @@ async function executeBotSell({
     symbolLossTimestamps.set(execSymbol, recentSymbolLosses);
 
     if (recentSymbolLosses.length >= 2) {
-      // 🚨 QUARENTENA ATIVADA: 2 ou mais perdas recentes no par -> 4 HORAS de bloqueio total
-      cooldownDuration = 4 * 3600 * 1000;
+      // 🚨 QUARENTENA PREVENTIVA: 2 ou mais perdas recentes -> 5 minutos de resfriamento
+      cooldownDuration = 5 * 60 * 1000;
       isQuarantine = true;
       store.addBotLog({
-        message: `🚨 [QUARENTENA ATIVADA] Par ${execSymbol.replace("USDT", "")} atingiu ${recentSymbolLosses.length} perdas em 6h. Bloqueado por 4h para toda a frota (Pilar 2 dos Padrões Institucionais)!`,
+        message: `🚨 [QUARENTENA PREVENTIVA] Par ${execSymbol.replace("USDT", "")} registrou ${recentSymbolLosses.length} perdas em 6h. Resfriando por 5m para proteção de capital.`,
         type: "warning",
         botId: bot.id,
         botName: bot.name,
       });
     } else {
-      cooldownDuration = 30 * 60 * 1000; // 30 minutos após primeira perda isolada
+      cooldownDuration = 90 * 1000; // 90 segundos após perda isolada (em vez de 30 minutos)
     }
   }
   botSymbolLossCooldown.set(execSymbol, now + cooldownDuration);
