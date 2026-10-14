@@ -341,20 +341,6 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
             />
           )}
 
-          {/* Botão API Binance */}
-          {mounted && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setApiDialogOpen(true)}
-              className="hidden lg:flex h-7.5 gap-1.5 px-2 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20 text-amber-300 transition-colors text-xs font-medium shrink-0 cursor-pointer"
-              title="Configurar Chaves da API Binance"
-            >
-              <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-[10px] font-bold">API Binance</span>
-            </Button>
-          )}
-
           {/* Sincronizar Button */}
           {mounted && (
             <Button
