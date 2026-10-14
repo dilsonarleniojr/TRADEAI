@@ -615,10 +615,11 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     store.updateBotPnls(store.tickers);
 
     // 1.0 CÁLCULO DE TEMPO EM OPERAÇÃO (Para Time-Stop e Saída por Estagnação de Capital)
-    // 1.0 CÁLCULO DE TEMPO EM OPERAÇÃO (Time-Stop Disciplinado para Scalping)
-    // Scalp de 1m: tempo base de 45 minutos (máximo 60).
-    // Tolerância estrita de 5 minutos: se não progredir, encerra a mercado para estancar risco.
-    const timeStopMinutes = Math.min(60, bot.timeStopMinutes ?? 45);
+    // Para robôs de Venda Inteligente por IA (useAiExit), o time-stop é estritamente DESATIVADO
+    // para não vender a posição antes do rali e aguardar pacientemente a meta de lucro no topo.
+    const isAiExitBot = Boolean(bot.useAiExit || bot.strategy === "AI");
+    const configuredTimeStop = bot.timeStopMinutes ?? 45;
+    const timeStopMinutes = isAiExitBot ? 0 : Math.min(60, configuredTimeStop);
     const timeStopGraceMinutes = 5; // Tolerância disciplinada máxima de 5 minutos
     const maxTimeStopDeadline = timeStopMinutes + timeStopGraceMinutes;
     let isTimeStop = false;
@@ -626,11 +627,11 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     let isHardDeadlineTimeStop = false;
     let minutesOpen = 0;
 
-    if (pos.entryTime) {
+    if (pos.entryTime && timeStopMinutes > 0) {
       const entryMs = new Date(pos.entryTime).getTime();
       if (!isNaN(entryMs)) {
         minutesOpen = Math.max(0, (Date.now() - entryMs) / 60000);
-        if (timeStopMinutes > 0 && minutesOpen >= timeStopMinutes) {
+        if (minutesOpen >= timeStopMinutes) {
           // Checagem se o prejuízo é zero (ou lucro): gainPercent >= 0 ou PnL >= 0
           const isZeroLossOrProfitable = gainPercent >= -0.05 || unrealizedPnlUsdt >= -0.05;
           if (isZeroLossOrProfitable) {
