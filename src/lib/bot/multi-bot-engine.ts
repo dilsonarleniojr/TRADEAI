@@ -1352,15 +1352,14 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
           }
         } catch {}
 
-        // Sizing Compounding Dinâmico (Half-Kelly):
-        // Conforme a banca cresce (> $90), escala as posições proporcionalmente (~42-45% do saldo)
-        // para ativar os juros compostos automáticos e maximizar os lucros acumulados.
         const maxSafeCash = Math.max(0, cash * 0.95);
         const configuredAlloc = bot.allocationAmount || 40.0;
         const compoundingSlot = cash > 90.0
           ? Math.max(minRequiredCash, cash * 0.45)
           : Math.max(minRequiredCash, Math.min(maxSafeCash, cash * 0.85));
-        const dynamicAlloc = Math.max(minRequiredCash, Math.min(maxSafeCash, Math.max(configuredAlloc, compoundingSlot)));
+        const dynamicAlloc = (bot.allocationAmount && bot.allocationAmount > 0)
+          ? Math.max(minRequiredCash, Math.min(maxSafeCash, bot.allocationAmount))
+          : Math.max(minRequiredCash, Math.min(maxSafeCash, compoundingSlot));
         // Gestão Dinâmica por Volatilidade (ATR Volatility Targeting) para Altcoins
         const currentAtr = decision.relATR || 0.010;
         const baseAtr = 0.010;
@@ -1552,13 +1551,13 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       return;
     }
 
-    // Gestão de Risco por Ordem: Tamanho de posição calculado por regra explícita (% do capital livre)
-    // com limites máximos absolutos e compatibilidade com filtros de lote da exchange
+    // Gestão de Risco por Ordem: Tamanho de posição calculado respeitando allocationAmount configurado
     const riskPercent = (bot.riskPerTradePercent || (cash > 90.0 ? 45.0 : 40.0)) / 100;
     const maxSafeCash = Math.max(0, cash * 0.95);
-    const configuredAlloc = bot.allocationAmount || 40.0;
     const calculatedAlloc = Math.min(maxSafeCash, cash * riskPercent);
-    const dynamicAlloc = Math.max(minRequiredCash, Math.min(maxSafeCash, Math.max(configuredAlloc, calculatedAlloc)));
+    const dynamicAlloc = (bot.allocationAmount && bot.allocationAmount > 0)
+      ? Math.max(minRequiredCash, Math.min(maxSafeCash, bot.allocationAmount))
+      : Math.max(minRequiredCash, Math.min(maxSafeCash, calculatedAlloc));
 
     // Gestão Dinâmica por Volatilidade (ATR Volatility Targeting):
     const currentAtr = decision.relATR || 0.008;
