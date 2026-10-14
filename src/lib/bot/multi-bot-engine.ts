@@ -247,16 +247,20 @@ export function syncCustodyPositionsWithBots(force: boolean = false) {
   // 1. Sincroniza posições reais de custódia com robôs existentes
   for (const pos of positions) {
     if (pos.quantity <= 0) continue;
-    const tickerPrice = store.tickers[pos.symbol]?.price || pos.marketPrice || pos.avgPrice || 0;
+    const posClean = pos.symbol.trim().toUpperCase().replace("USDT", "");
+    const posFull = `${posClean}USDT`;
+    const tickerPrice = store.tickers[posFull]?.price || store.tickers[pos.symbol]?.price || pos.marketPrice || pos.avgPrice || 0;
     const notionalUsd = pos.marketValue > 0 ? pos.marketValue : pos.quantity * tickerPrice;
 
     // Ignora pó insignificante de frações de centavos (< $0.50 USDT)
     if (notionalUsd < 0.50) continue;
 
-    // Localiza se já existe um robô para este ativo (pelo símbolo fixo ou pela posição)
-    const associatedBot = store.bots.find(
-      (b) => (b.position && b.position.symbol === pos.symbol) || b.symbol === pos.symbol
-    );
+    // Localiza se já existe um robô para este ativo (pelo símbolo fixo ou pela posição, normalizado)
+    const associatedBot = store.bots.find((b) => {
+      const bClean = b.symbol.trim().toUpperCase().replace("USDT", "");
+      const bPosClean = b.position?.symbol?.trim().toUpperCase().replace("USDT", "");
+      return bClean === posClean || bPosClean === posClean || b.symbol === posFull;
+    });
 
     if (associatedBot) {
       // Se o robô estiver ativo, sincroniza a quantidade real com a carteira
@@ -268,7 +272,7 @@ export function syncCustodyPositionsWithBots(force: boolean = false) {
           const pnlPercent = entryPrice > 0 ? ((tickerPrice - entryPrice) / entryPrice) * 100 : 0;
 
           store.updateBotPosition(associatedBot.id, {
-            symbol: pos.symbol,
+            symbol: posFull,
             side: "BUY",
             quantity: pos.quantity,
             entryPrice,
@@ -294,13 +298,26 @@ export function syncCustodyPositionsWithBots(force: boolean = false) {
   // 2. AUDITORIA CRUZADA INSTITUCIONAL (Reconciliação Reversa / Purga de Posições Fantasmas):
   // Se um robô alega estar em posição aberta, mas o ativo NÃO existe no portfólio,
   // a posição deve ser imediatamente encerrada para evitar monitoramento e ordens de ativos inexistentes.
-  const validSymbols = new Set(
-    positions.filter((p) => p.quantity > 0.00001).map((p) => p.symbol)
-  );
+  const validSymbols = new Set<string>();
+  for (const p of positions) {
+    if (p.quantity > 0.00001) {
+      const c = p.symbol.trim().toUpperCase().replace("USDT", "");
+      validSymbols.add(p.symbol.trim().toUpperCase());
+      validSymbols.add(c);
+      validSymbols.add(`${c}USDT`);
+    }
+  }
 
-  const ghostBots = store.bots.filter(
-    (b) => b.position && b.position.quantity > 0 && !validSymbols.has(b.position.symbol)
-  );
+  const ghostBots = store.bots.filter((b) => {
+    if (!b.position || b.position.quantity <= 0) return false;
+    const botPosClean = b.position.symbol.trim().toUpperCase().replace("USDT", "");
+    const botSymClean = b.symbol.trim().toUpperCase().replace("USDT", "");
+    return (
+      !validSymbols.has(b.position.symbol.trim().toUpperCase()) &&
+      !validSymbols.has(botPosClean) &&
+      !validSymbols.has(botSymClean)
+    );
+  });
 
   if (ghostBots.length > 0) {
     for (const b of ghostBots) {
@@ -2903,17 +2920,47 @@ export async function liquidateWalletPosition(
  */
 export function adoptOrphanPositionWithBot(symbol: string, callbacks?: MultiBotEngineCallbacks): string | null {
   const store = useCryptoStore.getState();
-  const pos = store.portfolio.positions?.find((p) => p.symbol === symbol);
+  const rawSymbol = symbol.trim().toUpperCase();
+  const cleanSym = rawSymbol.replace("USDT", "");
+  const fullPair = `${cleanSym}USDT`;
+
+  const pos = store.portfolio.positions?.find((p) => {
+    const pClean = p.symbol.trim().toUpperCase().replace("USDT", "");
+    return pClean === cleanSym;
+  });
   if (!pos || pos.quantity <= 0) return null;
 
-  const cleanSym = symbol.replace("USDT", "");
-  let targetBot = store.bots.find((b) => b.symbol === symbol);
+  let targetBot = store.bots.find((b) => {
+    const bClean = b.symbol.trim().toUpperCase().replace("USDT", "");
+    const bPosClean = b.position?.symbol?.trim().toUpperCase().replace("USDT", "");
+    return bClean === cleanSym || bPosClean === cleanSym;
+  });
   let targetId = targetBot?.id;
+
+  const currentPrice = store.tickers[fullPair]?.price || store.tickers[rawSymbol]?.price || pos.marketPrice || pos.avgPrice || 0;
+  const entryPrice = pos.avgPrice > 0 ? pos.avgPrice : currentPrice;
+  const pnlPercent = entryPrice > 0 ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
+
+  const initialPosition = {
+    symbol: fullPair,
+    side: "BUY" as const,
+    quantity: pos.quantity,
+    entryPrice,
+    currentPrice,
+    highestPrice: Math.max(entryPrice, currentPrice),
+    totalCost: entryPrice * pos.quantity,
+    unrealizedPnl: (currentPrice - entryPrice) * pos.quantity,
+    unrealizedPnlPercent: pnlPercent,
+    entryTime: new Date().toISOString(),
+    mode: store.tradingMode,
+    breakEvenPrice: entryPrice * 1.003,
+    isBreakEvenArmed: true,
+  };
 
   if (!targetId) {
     targetId = store.addBot({
       name: `Bot ${cleanSym} — Gestor de Saída`,
-      symbol,
+      symbol: fullPair,
       strategy: "QUANT_ENSEMBLE",
       active: true,
       takeProfit: 2.0,
@@ -2924,34 +2971,22 @@ export function adoptOrphanPositionWithBot(symbol: string, callbacks?: MultiBotE
       trailingTakeProfitDistance: 0.40,
       autoBreakEven: true,
       usePartialTp: true,
+      position: initialPosition,
     });
   } else {
-    store.updateBot(targetId, { active: true, status: "in_position" });
+    store.updateBotPosition(targetId, initialPosition);
+    store.updateBot(targetId, {
+      active: true,
+      status: "in_position",
+      symbol: fullPair,
+    });
   }
 
   // Recupera o objeto atualizado do robô diretamente do Zustand
   targetBot = useCryptoStore.getState().bots.find((b) => b.id === targetId);
 
   if (targetBot && targetId) {
-    const currentPrice = store.tickers[symbol]?.price || pos.marketPrice;
-    const entryPrice = pos.avgPrice > 0 ? pos.avgPrice : currentPrice;
-    const pnlPercent = entryPrice > 0 ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
-    store.updateBotPosition(targetId, {
-      symbol,
-      side: "BUY",
-      quantity: pos.quantity,
-      entryPrice,
-      currentPrice,
-      highestPrice: Math.max(entryPrice, currentPrice),
-      totalCost: pos.avgPrice > 0 ? pos.avgPrice * pos.quantity : pos.marketValue,
-      unrealizedPnl: pos.unrealizedPnl || 0,
-      unrealizedPnlPercent: pnlPercent,
-      entryTime: new Date().toISOString(),
-      mode: store.tradingMode,
-      breakEvenPrice: entryPrice * 1.003,
-      isBreakEvenArmed: true,
-    });
-
+    store.updateBotPosition(targetId, initialPosition);
     store.updateBot(targetId, {
       active: true,
       status: "in_position",
@@ -2981,31 +3016,69 @@ export function adoptOrphanPositionWithBot(symbol: string, callbacks?: MultiBotE
  */
 export async function startAiExitBotForAsset(symbol: string, callbacks?: MultiBotEngineCallbacks): Promise<string | null> {
   const store = useCryptoStore.getState();
-  const pos = store.portfolio.positions?.find((p) => p.symbol === symbol);
+  const rawSymbol = symbol.trim().toUpperCase();
+  const cleanSym = rawSymbol.replace("USDT", "");
+  const fullPair = `${cleanSym}USDT`;
+
+  const pos = store.portfolio.positions?.find((p) => {
+    const pClean = p.symbol.trim().toUpperCase().replace("USDT", "");
+    return pClean === cleanSym;
+  });
+
   if (!pos || pos.quantity <= 0) {
     callbacks?.onToast?.({
       title: "Posição não encontrada",
-      description: `Não há saldo disponível de ${symbol.replace("USDT", "")} no portfólio.`,
+      description: `Não há saldo disponível de ${cleanSym} no portfólio.`,
       variant: "destructive",
     });
     return null;
   }
 
-  const cleanSym = symbol.replace("USDT", "");
-  let targetBot = store.bots.find((b) => b.symbol === symbol);
+  let targetBot = store.bots.find((b) => {
+    const bClean = b.symbol.trim().toUpperCase().replace("USDT", "");
+    const bPosClean = b.position?.symbol?.trim().toUpperCase().replace("USDT", "");
+    return bClean === cleanSym || bPosClean === cleanSym;
+  });
   let targetId = targetBot?.id;
 
-  // 1. Obter base de custo exata registrada no banco de dados SQLite / myTrades da Binance
-  const costBasis = await getCostBasisForSymbol(symbol, store.tradingMode);
-  const currentPrice = store.tickers[symbol]?.price || pos.marketPrice;
+  // 1. Obter base de custo exata com proteção de timeout para não travar a UI
+  let costBasis: any = null;
+  try {
+    const costPromise = getCostBasisForSymbol(fullPair, store.tradingMode);
+    costBasis = await Promise.race([
+      costPromise,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+    ]);
+  } catch (err) {
+    console.warn(`[startAiExitBotForAsset] Erro ao buscar costBasis para ${fullPair}:`, err);
+  }
+
+  const currentPrice = store.tickers[fullPair]?.price || store.tickers[rawSymbol]?.price || pos.marketPrice || pos.avgPrice || 0;
   const dbEntryPrice = (costBasis && costBasis.avgBuyPrice > 0) ? costBasis.avgBuyPrice : 0;
   const portfolioAvg = pos.avgPrice > 0 ? pos.avgPrice : 0;
   const entryPrice = dbEntryPrice > 0 ? dbEntryPrice : (portfolioAvg > 0 ? portfolioAvg : currentPrice);
+  const pnlPercent = entryPrice > 0 ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
+
+  const initialPosition = {
+    symbol: fullPair,
+    side: "BUY" as const,
+    quantity: pos.quantity,
+    entryPrice,
+    currentPrice,
+    highestPrice: Math.max(entryPrice, currentPrice),
+    totalCost: entryPrice * pos.quantity,
+    unrealizedPnl: (currentPrice - entryPrice) * pos.quantity,
+    unrealizedPnlPercent: pnlPercent,
+    entryTime: costBasis?.lastBuyTime || new Date().toISOString(),
+    mode: store.tradingMode,
+    breakEvenPrice: entryPrice * 1.003,
+    isBreakEvenArmed: false,
+  };
 
   if (!targetId) {
     targetId = store.addBot({
       name: `Bot ${cleanSym} — Venda Inteligente (IA)`,
-      symbol,
+      symbol: fullPair,
       strategy: "AI",
       active: true,
       useAiExit: true,
@@ -3017,10 +3090,13 @@ export async function startAiExitBotForAsset(symbol: string, callbacks?: MultiBo
       autoBreakEven: false, // Não queimar o trade no 0 a 0 no primeiro espasmo
       usePartialTp: false, // Vender a posição de forma consolidada no pico, sem fatiamentos repetitivos
       timeStopMinutes: 0, // Desativar time-stop que força venda por tempo
+      position: initialPosition,
     });
   } else {
+    store.updateBotPosition(targetId, initialPosition);
     store.updateBot(targetId, {
       name: `Bot ${cleanSym} — Venda Inteligente (IA)`,
+      symbol: fullPair,
       strategy: "AI",
       active: true,
       status: "in_position",
@@ -3039,24 +3115,7 @@ export async function startAiExitBotForAsset(symbol: string, callbacks?: MultiBo
   targetBot = useCryptoStore.getState().bots.find((b) => b.id === targetId);
 
   if (targetBot && targetId) {
-    const pnlPercent = entryPrice > 0 ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
-
-    store.updateBotPosition(targetId, {
-      symbol,
-      side: "BUY",
-      quantity: pos.quantity,
-      entryPrice,
-      currentPrice,
-      highestPrice: Math.max(entryPrice, currentPrice),
-      totalCost: entryPrice * pos.quantity,
-      unrealizedPnl: (currentPrice - entryPrice) * pos.quantity,
-      unrealizedPnlPercent: pnlPercent,
-      entryTime: costBasis?.lastBuyTime || new Date().toISOString(),
-      mode: store.tradingMode,
-      breakEvenPrice: entryPrice * 1.003,
-      isBreakEvenArmed: false,
-    });
-
+    store.updateBotPosition(targetId, initialPosition);
     store.updateBot(targetId, {
       active: true,
       status: "in_position",

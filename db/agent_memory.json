@@ -1,5 +1,25 @@
 [
   {
+    "category": "BUG_FIX",
+    "title": "Correção Atômica do Robô de Saída por IA para Posições em Custódia e Otimizações Zero-Allocation",
+    "summary": "1) Posições Órfãs da Carteira ('Iniciar Bot (Venda por IA)'): Corrigida a falha onde o robô não aparecia criado ou sumia rapidamente. Causa-raiz foi identificada na divergência de símbolos ('KMNO' vs 'KMNOUSDT') que acionava a purga reversa de posições fantasmas em syncCustodyPositionsWithBots e falhava na busca de managingBot. A criação agora é atômica com status: 'in_position', normalização canônica em toda a cadeia de busca e reconciliação, timeout resiliente na base de custo histórica e feedback visual com loading state no botão; 2) Otimizações Zero-Allocation de Baixa Latência: Refatoradas as funções centrais de cálculo de indicadores (sma, calculateEMA, calculateBollinger e relativeATR) em indicators.ts para operar sem fatiamento (slice) e sem alocação transitória de arrays no heap, reduzindo a pressão sobre o Garbage Collector.",
+    "tags": [
+      "orphan-bot-adoption-fix",
+      "atomic-bot-creation",
+      "canonical-symbol-normalization",
+      "ghost-bot-purge-hardening",
+      "zero-allocation-indicators",
+      "low-latency-optimizations"
+    ],
+    "details": {
+      "symbolNormalization": "Comparação robusta via cleanSym e fullPair em multi-bot-engine e bot-portfolio",
+      "atomicPositionAttachment": "addBot agora recebe initialPosition diretamente no payload",
+      "zeroAllocationIndicators": "Eliminados .slice(-period) e emaSeries intermediários no hot path de indicadores"
+    },
+    "id": "mem-1791956500000-orphan-bot-atomic-creation-and-zero-alloc",
+    "timestamp": "2026-10-14T05:50:00.000Z"
+  },
+  {
     "category": "ARCHITECTURE_DECISION",
     "title": "Implementação do Teto Institucional de 4 Posições e Concentração de Capital nos Líderes Tier-1",
     "summary": "Implementada a diretriz estratégica de concentração de capital: 1) Trava de Concorrência de Frota (MAX_SIMULTANEOUS_BOT_POSITIONS = 4): Se houver >= 4 robôs em posição aberta, novas compras são bloqueadas, concentrando liquidez e impedindo a fragmentação da banca em micro-operações; 2) Priorização Institucional Tier-1 no Auto-Screener (quant-engine): ETH, SOL e BNB receberam bonificação de score (+14 pts) e proteção contra penalidades espúrias de correlação, garantindo preferência natural sobre altcoins ilíquidas; 3) Dimensionamento Concentrado de Capital: Posições redimensionadas para alocar entre 20% e 25% da banca por robô (~$33 USDT para banca de $144), garantindo parciais confortáveis e lucro relevante; 4) Ação Rápida 'Focar Líderes Tier-1 (BTC/ETH/SOL/BNB)' na UI da frota: Ativa os 4 líderes institucionais com alocação balanceada e pausa robôs secundários sem posições abertas; 5) Teto em Lote no painel de Entradas de IA: Criação em lote limitada aos 4 melhores setups por score.",

@@ -4,9 +4,14 @@
 import type { KlineData } from "@/lib/store";
 
 export function sma(values: number[], period: number): number {
-  if (values.length === 0) return 0;
-  const slice = values.slice(-period);
-  return slice.reduce((s, v) => s + v, 0) / slice.length;
+  const len = values.length;
+  if (len === 0) return 0;
+  const n = Math.min(len, period);
+  let sum = 0;
+  for (let i = len - n; i < len; i++) {
+    sum += values[i];
+  }
+  return sum / n;
 }
 
 /** Série completa de EMA (mesmo comprimento da entrada). */
@@ -20,11 +25,23 @@ export function emaSeries(values: number[], period: number): number[] {
   return out;
 }
 
+/** Cálculo de EMA sem alocação transitória de array O(1) heap. */
 export function calculateEMA(closes: number[], period: number): number {
-  if (closes.length === 0) return 0;
-  if (closes.length < period) return closes[closes.length - 1];
-  const series = emaSeries(closes, period);
-  return series[series.length - 1];
+  const len = closes.length;
+  if (len === 0) return 0;
+  if (len < period) return closes[len - 1];
+  const k = 2 / (period + 1);
+  let ema = closes[0];
+  for (let i = 1; i < len; i++) {
+    ema = closes[i] * k + ema * (1 - k);
+  }
+  return ema;
+}
+
+/** Atualização incremental O(1) de EMA para o hot path de ticks. */
+export function calculateIncrementalEMA(currentPrice: number, previousEma: number, period: number): number {
+  const k = 2 / (period + 1);
+  return currentPrice * k + previousEma * (1 - k);
 }
 
 /** RSI de Wilder. Retorna 50 (neutro) quando não há candles suficientes. */
@@ -79,30 +96,41 @@ export interface BollingerResult {
 }
 
 export function calculateBollinger(closes: number[], period = 20, mult = 2): BollingerResult | null {
-  if (closes.length < period) return null;
-  const slice = closes.slice(-period);
-  const middle = slice.reduce((s, v) => s + v, 0) / period;
-  const variance = slice.reduce((s, v) => s + (v - middle) ** 2, 0) / period;
-  const std = Math.sqrt(variance);
+  const len = closes.length;
+  if (len < period) return null;
+  const start = len - period;
+  let sum = 0;
+  for (let i = start; i < len; i++) {
+    sum += closes[i];
+  }
+  const middle = sum / period;
+  let varianceSum = 0;
+  for (let i = start; i < len; i++) {
+    const diff = closes[i] - middle;
+    varianceSum += diff * diff;
+  }
+  const std = Math.sqrt(varianceSum / period);
   const upper = middle + mult * std;
   const lower = middle - mult * std;
-  const last = closes[closes.length - 1];
+  const last = closes[len - 1];
   const width = upper - lower;
   return { upper, middle, lower, percentB: width > 0 ? (last - lower) / width : 0.5 };
 }
 
-/** ATR médio relativo ao último fechamento (ex.: 0.02 = 2%). */
+/** ATR médio relativo ao último fechamento (ex.: 0.02 = 2%). Zero-allocation. */
 export function relativeATR(klines: KlineData[], period = 14): number {
-  if (klines.length < 2) return 0;
-  const slice = klines.slice(-(period + 1));
+  const len = klines.length;
+  if (len < 2) return 0;
+  const windowCount = Math.min(len - 1, period);
+  const start = len - windowCount;
   let trSum = 0;
-  for (let i = 1; i < slice.length; i++) {
-    const k = slice[i];
-    const prev = slice[i - 1];
+  for (let i = start; i < len; i++) {
+    const k = klines[i];
+    const prev = klines[i - 1];
     trSum += Math.max(k.high - k.low, Math.abs(k.high - prev.close), Math.abs(k.low - prev.close));
   }
-  const atr = trSum / (slice.length - 1);
-  return atr / (slice[slice.length - 1].close || 1);
+  const atr = trSum / windowCount;
+  return atr / (klines[len - 1].close || 1);
 }
 
 /** ADX de Wilder (suavizado). Retorna null sem candles suficientes. */

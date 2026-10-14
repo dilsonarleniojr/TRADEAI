@@ -62,6 +62,7 @@ export function BotPortfolio() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [liquidatingSymbol, setLiquidatingSymbol] = useState<string | null>(null);
   const [isLiquidatingAll, setIsLiquidatingAll] = useState(false);
+  const [startingAiBotSymbol, setStartingAiBotSymbol] = useState<string | null>(null);
   const { toast } = useToast();
 
   const dailyChange = useMemo(() => {
@@ -168,7 +169,14 @@ export function BotPortfolio() {
   const orphanPositions = useMemo(() => {
     const list = portfolio.positions ?? [];
     return list.filter((p) => {
-      return !bots.some((b) => b.active && ((b.position && b.position.symbol === p.symbol) || b.symbol === p.symbol));
+      const pClean = p.symbol.trim().toUpperCase().replace("USDT", "");
+      const pFull = `${pClean}USDT`;
+      return !bots.some((b) => {
+        if (!b.active) return false;
+        const bClean = b.symbol.trim().toUpperCase().replace("USDT", "");
+        const bPosClean = b.position?.symbol?.trim().toUpperCase().replace("USDT", "");
+        return bClean === pClean || bPosClean === pClean || b.symbol === pFull;
+      });
     });
   }, [portfolio.positions, bots]);
 
@@ -187,20 +195,33 @@ export function BotPortfolio() {
     adoptOrphanPositionWithBot(symbol, {
       onToast: (t) => toast(t),
     });
+    syncCustodyPositionsWithBots(true);
   };
 
   const handleStartAiExit = async (symbol: string) => {
-    await startAiExitBotForAsset(symbol, {
-      onToast: (t) => toast(t),
-    });
+    setStartingAiBotSymbol(symbol);
+    try {
+      const botId = await startAiExitBotForAsset(symbol, {
+        onToast: (t) => toast(t),
+      });
+      if (botId) {
+        syncCustodyPositionsWithBots(true);
+      }
+    } catch (err: any) {
+      toast({
+        title: "Erro ao iniciar robô",
+        description: err?.message || "Falha inesperada ao configurar o robô de saída por IA.",
+        variant: "destructive",
+      });
+    } finally {
+      setStartingAiBotSymbol(null);
+    }
   };
 
   const handleStartAllAiExit = async () => {
     if (orphanPositions.length === 0) return;
     for (const pos of orphanPositions) {
-      await startAiExitBotForAsset(pos.symbol, {
-        onToast: (t) => toast(t),
-      });
+      await handleStartAiExit(pos.symbol);
     }
   };
 
@@ -446,16 +467,21 @@ export function BotPortfolio() {
             {portfolio.positions && portfolio.positions.length > 0 ? (
               <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                 {portfolio.positions.map((pos) => {
-                  const symClean = pos.symbol.replace("USDT", "");
+                  const symClean = pos.symbol.trim().toUpperCase().replace("USDT", "");
+                  const symFull = `${symClean}USDT`;
                   const pnl = pos.unrealizedPnl || 0;
-                  const managingBot = bots.find(
-                    (b) => b.active && ((b.position && b.position.symbol === pos.symbol) || b.symbol === pos.symbol)
-                  );
+                  const managingBot = bots.find((b) => {
+                    if (!b.active) return false;
+                    const bClean = b.symbol.trim().toUpperCase().replace("USDT", "");
+                    const bPosClean = b.position?.symbol?.trim().toUpperCase().replace("USDT", "");
+                    return bClean === symClean || bPosClean === symClean || b.symbol === symFull;
+                  });
                   const isOrphan = !managingBot;
                   const isAiManaging = Boolean(
                     managingBot?.active && (managingBot?.useAiExit || managingBot?.strategy === "AI")
                   );
                   const isThisLiquidating = liquidatingSymbol === pos.symbol;
+                  const isStartingThisBot = startingAiBotSymbol === pos.symbol;
 
                   return (
                     <div
@@ -539,12 +565,21 @@ export function BotPortfolio() {
                             <Button
                               size="sm"
                               onClick={() => handleStartAiExit(pos.symbol)}
-                              disabled={isThisLiquidating || isLiquidatingAll}
+                              disabled={isThisLiquidating || isLiquidatingAll || isStartingThisBot}
                               className="h-6.5 flex-1 text-[10px] font-semibold bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white shadow-sm cursor-pointer border-0 flex items-center justify-center gap-1"
                               title="Inicia robô com Inteligência Artificial para vender este ativo no melhor momento"
                             >
-                              <Sparkles className="w-3 h-3 text-amber-300" />
-                              Iniciar Bot (Venda por IA)
+                              {isStartingThisBot ? (
+                                <>
+                                  <RefreshCw className="w-3 h-3 animate-spin text-white" />
+                                  Configurando Robô...
+                                </>
+                              ) : (
+                                <>
+                                  <Sparkles className="w-3 h-3 text-amber-300" />
+                                  Iniciar Bot (Venda por IA)
+                                </>
+                              )}
                             </Button>
                             <Button
                               size="sm"
