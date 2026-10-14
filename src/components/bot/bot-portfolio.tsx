@@ -16,10 +16,14 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   RefreshCw,
+  Zap,
+  ShieldAlert,
+  Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import { liquidateWalletPosition, adoptOrphanPositionWithBot } from "@/lib/bot/multi-bot-engine";
 import {
   LineChart,
   Line,
@@ -37,7 +41,7 @@ interface PortfolioHistoryPoint {
 }
 
 export function BotPortfolio() {
-  const { portfolio, botConfig, trades, botActive, tickers, tradingMode } = useCryptoStore(
+  const { portfolio, botConfig, trades, botActive, tickers, tradingMode, bots } = useCryptoStore(
     useShallow((s) => ({
       portfolio: s.portfolio,
       botConfig: s.botConfig,
@@ -45,10 +49,13 @@ export function BotPortfolio() {
       botActive: s.botActive,
       tickers: s.tickers,
       tradingMode: s.tradingMode,
+      bots: s.bots,
     }))
   );
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioHistoryPoint[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [liquidatingSymbol, setLiquidatingSymbol] = useState<string | null>(null);
+  const [isLiquidatingAll, setIsLiquidatingAll] = useState(false);
   const { toast } = useToast();
 
   const dailyChange = useMemo(() => {
@@ -149,6 +156,44 @@ export function BotPortfolio() {
       clearInterval(interval);
     };
   }, [tradingMode]);
+
+  const orphanPositions = useMemo(() => {
+    const list = portfolio.positions ?? [];
+    return list.filter((p) => {
+      return !bots.some((b) => b.active && b.position && b.position.symbol === p.symbol);
+    });
+  }, [portfolio.positions, bots]);
+
+  const handleLiquidateSingle = async (symbol: string) => {
+    setLiquidatingSymbol(symbol);
+    try {
+      await liquidateWalletPosition(symbol, {
+        onToast: (t) => toast(t),
+      });
+    } finally {
+      setLiquidatingSymbol(null);
+    }
+  };
+
+  const handleAdoptSingle = (symbol: string) => {
+    adoptOrphanPositionWithBot(symbol, {
+      onToast: (t) => toast(t),
+    });
+  };
+
+  const handleLiquidateAllOrphans = async () => {
+    if (orphanPositions.length === 0) return;
+    setIsLiquidatingAll(true);
+    try {
+      for (const pos of orphanPositions) {
+        await liquidateWalletPosition(pos.symbol, {
+          onToast: (t) => toast(t),
+        });
+      }
+    } finally {
+      setIsLiquidatingAll(false);
+    }
+  };
 
   return (
     <Card className="bg-card/60 backdrop-blur-md gradient-border relative overflow-hidden">
@@ -344,27 +389,108 @@ export function BotPortfolio() {
 
         {/* Multi-Asset Holdings Across All Simultaneous Bots */}
         {((portfolio.positions && portfolio.positions.length > 0) || portfolio.assetQuantity > 0) && (
-          <div className="bg-secondary/30 rounded-lg p-3 space-y-2">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider block font-semibold">
-              Posições em Carteira ({portfolio.positions?.length || (portfolio.assetQuantity > 0 ? 1 : 0)})
-            </span>
+          <div className="bg-secondary/30 rounded-lg p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider block font-semibold">
+                Posições em Carteira ({portfolio.positions?.length || (portfolio.assetQuantity > 0 ? 1 : 0)})
+              </span>
+              {orphanPositions.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleLiquidateAllOrphans}
+                  disabled={isLiquidatingAll || liquidatingSymbol !== null}
+                  className="h-5 px-2 text-[10px] font-semibold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer shadow-sm"
+                  title="Vender a mercado todos os ativos de robôs finalizados/pausados"
+                >
+                  <Zap className="w-2.5 h-2.5 mr-1" />
+                  {isLiquidatingAll ? "Liquidando..." : `Liquidar Órfãos (${orphanPositions.length})`}
+                </Button>
+              )}
+            </div>
+
             {portfolio.positions && portfolio.positions.length > 0 ? (
-              <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
                 {portfolio.positions.map((pos) => {
                   const symClean = pos.symbol.replace("USDT", "");
                   const pnl = pos.unrealizedPnl || 0;
+                  const managingBot = bots.find(
+                    (b) => b.active && b.position && b.position.symbol === pos.symbol
+                  );
+                  const isOrphan = !managingBot;
+                  const isThisLiquidating = liquidatingSymbol === pos.symbol;
+
                   return (
-                    <div key={pos.symbol} className="flex items-center justify-between text-xs bg-secondary/40 p-2 rounded-md border border-border/20">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-foreground">{symClean}</span>
-                        <span className="text-[10px] text-muted-foreground">({pos.quantity.toFixed(4)})</span>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-semibold">${formatPrice(pos.marketValue)}</div>
-                        <div className={`text-[10px] ${pnl >= 0 ? "text-crypto-green" : "text-crypto-red"}`}>
-                          {pnl >= 0 ? "+" : ""}${formatPrice(Math.abs(pnl))}
+                    <div
+                      key={pos.symbol}
+                      className={cn(
+                        "text-xs p-2.5 rounded-md border transition-all space-y-1.5",
+                        isOrphan
+                          ? "bg-amber-500/10 border-amber-500/30"
+                          : "bg-secondary/40 border-border/20"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-foreground">{symClean}</span>
+                          <span className="text-[10px] text-muted-foreground font-mono">
+                            ({pos.quantity.toFixed(4)})
+                          </span>
+                          {isOrphan ? (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] px-1 py-0 border-amber-500/40 text-amber-400 bg-amber-500/10 flex items-center gap-0.5"
+                            >
+                              <ShieldAlert className="w-2.5 h-2.5" />
+                              Sem Robô
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] px-1 py-0 border-emerald-500/40 text-emerald-400 bg-emerald-500/10 flex items-center gap-0.5"
+                            >
+                              <Bot className="w-2.5 h-2.5" />
+                              {managingBot.name.replace(/Bot\s*/i, "").slice(0, 12)}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold font-mono">${formatPrice(pos.marketValue)}</div>
+                          <div
+                            className={`text-[10px] font-mono ${
+                              pnl >= 0 ? "text-crypto-green" : "text-crypto-red"
+                            }`}
+                          >
+                            {pnl >= 0 ? "+" : ""}${formatPrice(Math.abs(pnl))}
+                          </div>
                         </div>
                       </div>
+
+                      {/* Ações para ativos da carteira */}
+                      {isOrphan && (
+                        <div className="flex items-center gap-1.5 pt-1 border-t border-border/30">
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleLiquidateSingle(pos.symbol)}
+                            disabled={isThisLiquidating || isLiquidatingAll}
+                            className="h-6 flex-1 text-[10px] font-semibold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer"
+                          >
+                            <Zap className="w-2.5 h-2.5 mr-1" />
+                            {isThisLiquidating ? "Vendendo..." : "Vender a Mercado"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleAdoptSingle(pos.symbol)}
+                            disabled={isThisLiquidating || isLiquidatingAll}
+                            className="h-6 flex-1 text-[10px] font-semibold border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10 cursor-pointer"
+                          >
+                            <Bot className="w-2.5 h-2.5 mr-1" />
+                            Gerenciar com Robô
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

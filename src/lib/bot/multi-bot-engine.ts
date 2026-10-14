@@ -2536,3 +2536,155 @@ export async function manualOpenBotPosition(botId: string, callbacks?: MultiBotE
     callbacks,
   });
 }
+
+/**
+ * Liquida a mercado imediatamente uma posição que está sob custódia na carteira (Binance Spot),
+ * ideal para ativos de robôs que foram finalizados ou pausados.
+ */
+export async function liquidateWalletPosition(
+  symbol: string,
+  callbacks?: MultiBotEngineCallbacks
+): Promise<boolean> {
+  const store = useCryptoStore.getState();
+  const { tradingMode, portfolio, tickers } = store;
+  const pos = portfolio.positions?.find((p) => p.symbol === symbol);
+  if (!pos || pos.quantity <= 0) {
+    callbacks?.onToast?.({
+      title: "Posição não encontrada",
+      description: `Não há saldo de ${symbol.replace("USDT", "")} para liquidar.`,
+      variant: "destructive",
+    });
+    return false;
+  }
+
+  const currentPrice = tickers[symbol]?.price || pos.marketPrice || 0;
+  const total = parseFloat((pos.quantity * currentPrice).toFixed(2));
+
+  try {
+    const res = await fetch("/api/trades", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        symbol,
+        side: "SELL",
+        price: currentPrice,
+        quantity: pos.quantity,
+        total,
+        strategy: "Liquidação Manual de Ativo em Carteira",
+        mode: tradingMode,
+        sellAll: true,
+      }),
+    });
+    const result = await res.json();
+    if (result.success) {
+      if (result.account) {
+        store.setAccount(result.account);
+      }
+      // Se houver algum bot com essa posição vinculada, limpa a posição dele
+      const associatedBot = store.bots.find((b) => b.position && b.position.symbol === symbol);
+      if (associatedBot) {
+        store.updateBotPosition(associatedBot.id, null);
+      }
+
+      store.addBotLog({
+        message: `⚡ [Liquidação de Carteira] ${pos.quantity} ${symbol.replace("USDT", "")} vendido a mercado na Binance por ~$${total.toFixed(2)} USDT.`,
+        type: "profit",
+      });
+
+      callbacks?.onToast?.({
+        title: `⚡ Ativo Liquidado (${symbol.replace("USDT", "")})`,
+        description: `${pos.quantity} ${symbol.replace("USDT", "")} vendido a mercado com sucesso na Binance Spot!`,
+        variant: "default",
+      });
+      return true;
+    } else {
+      store.addBotLog({
+        message: `🔴 [Liquidação de Carteira] Falha ao vender ${symbol.replace("USDT", "")} na Binance: ${result.error}`,
+        type: "error",
+      });
+      callbacks?.onToast?.({
+        title: "Falha na Venda",
+        description: result.error || "Erro ao liquidar posição na Binance",
+        variant: "destructive",
+      });
+      return false;
+    }
+  } catch (err: any) {
+    callbacks?.onToast?.({
+      title: "Erro de Rede",
+      description: err.message,
+      variant: "destructive",
+    });
+    return false;
+  }
+}
+
+/**
+ * Adota uma posição órfã da carteira vinculando-a a um robô para monitorar a saída automática
+ * com Break-Even e Trailing Take Profit no lucro.
+ */
+export function adoptOrphanPositionWithBot(symbol: string, callbacks?: MultiBotEngineCallbacks): string | null {
+  const store = useCryptoStore.getState();
+  const pos = store.portfolio.positions?.find((p) => p.symbol === symbol);
+  if (!pos || pos.quantity <= 0) return null;
+
+  const cleanSym = symbol.replace("USDT", "");
+  let targetBot = store.bots.find((b) => b.symbol === symbol);
+
+  if (!targetBot) {
+    const newBotId = store.addBot({
+      name: `Bot ${cleanSym} — Gestor de Saída`,
+      symbol,
+      strategy: "QUANT_ENSEMBLE",
+      active: true,
+      takeProfit: 2.0,
+      stopLoss: 1.5,
+      trailingStop: true,
+      trailingStopDistance: 0.45,
+      trailingTakeProfit: true,
+      trailingTakeProfitDistance: 0.40,
+      autoBreakEven: true,
+      usePartialTp: true,
+    });
+    targetBot = store.bots.find((b) => b.id === newBotId);
+  } else {
+    store.updateBot(targetBot.id, { active: true, status: "in_position" });
+  }
+
+  if (targetBot) {
+    const currentPrice = store.tickers[symbol]?.price || pos.marketPrice;
+    const entryPrice = pos.avgPrice > 0 ? pos.avgPrice : currentPrice;
+    const pnlPercent = entryPrice > 0 ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
+    store.updateBotPosition(targetBot.id, {
+      symbol,
+      side: "BUY",
+      quantity: pos.quantity,
+      entryPrice,
+      currentPrice,
+      highestPrice: Math.max(entryPrice, currentPrice),
+      totalCost: pos.avgPrice > 0 ? pos.avgPrice * pos.quantity : pos.marketValue,
+      unrealizedPnl: pos.unrealizedPnl || 0,
+      unrealizedPnlPercent: pnlPercent,
+      entryTime: new Date().toISOString(),
+      mode: store.tradingMode,
+      breakEvenPrice: entryPrice * 1.003,
+      isBreakEvenArmed: true,
+    });
+
+    store.addBotLog({
+      message: `🛡️ [Gestão de Custódia] Robô "${targetBot.name}" assumiu a posição de ${pos.quantity} ${cleanSym}. Trailing Take Profit e Break-Even armados!`,
+      type: "system",
+      botId: targetBot.id,
+      botName: targetBot.name,
+    });
+
+    callbacks?.onToast?.({
+      title: `🛡️ Robô Vinculado (${cleanSym})`,
+      description: `O [${targetBot.name}] agora gerencia a saída dessa posição com Take Profit e Risco Zero.`,
+      variant: "default",
+    });
+
+    return targetBot.id;
+  }
+  return null;
+}
