@@ -301,9 +301,9 @@ export function evaluateStrategySignal(
 
     case "BREAKOUT": {
       // Rompimento Institucional Rigoroso:
-      // 1. Rompimento de pivô/resistência recente (últimos 8 a 10 candles), OU
-      // 2. Rompimento de continuação de alta com volume institucional comprovado
-      const prevPivot = klines.slice(-11, -1);
+      // 1. Rompimento de pivô/resistência recente (últimos 15 candles), OU
+      // 2. Rompimento de continuação de alta com volume institucional comprovado (≥ 1.6x)
+      const prevPivot = klines.slice(-16, -1);
       const resistance = prevPivot.length > 0 ? Math.max(...prevPivot.map((k) => k.high)) : last.close;
       const avgVol = averageVolume(klines, 20, 1);
       const volMult = avgVol > 0 ? last.volume / avgVol : 0;
@@ -316,30 +316,30 @@ export function evaluateStrategySignal(
       const slowNow = slowEma[slowEma.length - 1];
       const prevCandle = klines.length >= 2 ? klines[klines.length - 2] : last;
 
-      const isPivotBreak = last.close >= resistance * 0.999 && effectiveVol >= 1.2;
-      const isTrendContinuation = fastNow > slowNow && last.close > prevCandle.high && last.close >= last.open && effectiveVol >= 1.2;
+      // Exige rompimento limpo acima da resistência com volume institucional (≥ 1.6x)
+      const isPivotBreak = last.close > resistance && effectiveVol >= 1.6;
+      const isTrendContinuation = fastNow > slowNow && last.close > prevCandle.high && last.close >= last.open && effectiveVol >= 1.6;
 
-      // Rompimento verificado: APENAS pivô ou continuação com volume real (eliminado falso rompimento de média EMA9)
       const broke = isPivotBreak || isTrendContinuation;
-      const strong = effectiveVol >= 1.0;
+      const strong = effectiveVol >= 1.5;
 
       const candleRange = last.high - last.low;
       const upperWick = last.high - Math.max(last.open, last.close);
-      const isWickTrap = candleRange > 0 && (upperWick / candleRange) >= 0.40;
-      const rsiOk = analysis.rsi <= 68;
+      const isWickTrap = candleRange > 0 && (upperWick / candleRange) >= 0.35;
+      const rsiOk = analysis.rsi >= 45 && analysis.rsi <= 68;
 
       const ok = broke && strong && !isWickTrap && rsiOk;
       return {
         ok,
         detail: !broke
-          ? `aguardando rompimento de pivô ($${last.close.toFixed(4)} < $${resistance.toFixed(4)}) ou continuação com volume`
+          ? `aguardando rompimento real ($${last.close.toFixed(4)} ≤ $${resistance.toFixed(4)}) com volume institucional`
           : !strong
-            ? `volume insuficiente (${effectiveVol.toFixed(1)}× — precisa ≥ 1.0×)`
+            ? `volume insuficiente (${effectiveVol.toFixed(1)}× — precisa ≥ 1.5× para evitar bull trap)`
             : isWickTrap
-              ? `rejeição de topo com pavio no candle de rompimento (perigo de falso rompimento)`
+              ? `rejeição de topo com pavio superior longo (${((upperWick / candleRange) * 100).toFixed(0)}%) — perigo de falso rompimento`
               : !rsiOk
-                ? `RSI esticado (${analysis.rsi.toFixed(0)} > 68) no rompimento`
-                : `rompimento confirmado (${isPivotBreak ? "pivô recente" : "continuação de alta"}) com volume ${effectiveVol.toFixed(1)}×`,
+                ? `RSI fora da zona ideal (${analysis.rsi.toFixed(0)} — precisa entre 45 e 68)`
+                : `rompimento institucional confirmado (${isPivotBreak ? "pivô 15p" : "continuação"}) com volume ${effectiveVol.toFixed(1)}×`,
       };
     }
 
@@ -536,20 +536,34 @@ export function evaluateEntry(
         : `Preço em suporte saudável (distância da EMA9: ${distFromEma9Pct.toFixed(1)}%)`,
   });
 
+  // 🛡️ Filtro de Regime Macro do Bitcoin (BTCUSDT Guardrail):
+  // Se o ativo for uma altcoin, veta compra se o BTC estiver em forte queda no dia (≤ -2.5%)
+  if (evalSymbol !== "BTCUSDT" && btcTicker) {
+    const btcChange = btcTicker.priceChangePercent ?? 0;
+    const isBtcSevereDrop = btcChange <= -2.5;
+    checks.push({
+      label: "Regime Macro BTC",
+      ok: !isBtcSevereDrop,
+      detail: isBtcSevereDrop
+        ? `Bitcoin em forte queda (${btcChange.toFixed(1)}% 24h) — altcoins bloqueadas para proteção contra despejo em cascata`
+        : `Bitcoin estável (${btcChange >= 0 ? "+" : ""}${btcChange.toFixed(1)}% 24h) — ambiente macro favorável`,
+    });
+  }
+
   if (bot.useMarketRegime) {
     const style = getStrategy(bot.strategy)?.style ?? "HYBRID";
     const adx = analysis.adx;
     const adxText = adx === null ? "ADX indisponível" : `ADX ${adx.toFixed(0)}`;
     let ok = true;
-    if (adx !== null && style === "TREND") ok = adx >= 18;
-    if (adx !== null && style === "REVERSION") ok = adx <= 28;
+    if (adx !== null && style === "TREND") ok = adx >= 22;
+    if (adx !== null && style === "REVERSION") ok = adx <= 24;
     checks.push({
       label: "Regime",
       ok,
       detail:
         style === "HYBRID"
           ? `${adxText} (estratégia funciona em qualquer regime)`
-          : `${adxText} — estratégia de ${style === "TREND" ? `tendência precisa de ADX ≥ 18` : `reversão precisa de ADX ≤ 28`}`,
+          : `${adxText} — estratégia de ${style === "TREND" ? `tendência precisa de ADX ≥ 22` : `reversão precisa de ADX ≤ 24`}`,
     });
   }
 
@@ -611,35 +625,39 @@ export function evaluateEntry(
       : `Volume murcho (${volRatio.toFixed(2)}x da média) — risco de falso rompimento`,
   });
 
-  // Alvos Dinâmicos Adaptativos por ATR ancorados em Scalping Institucional
+  // Alvos Dinâmicos Adaptativos por ATR com Risco:Retorno Assimétrico Positivo (R:R ≥ 1.8x)
   const relATRPercent = (analysis.relATR || 0) * 100;
-  let suggestedSl = bot.stopLoss || 1.6;
-  let suggestedTp = bot.takeProfit || 2.2;
+  let suggestedSl = bot.stopLoss || 1.3;
+  let suggestedTp = bot.takeProfit || 2.4;
   const estimatedRoundtripFees = 0.20; // 0.10% entrada + 0.10% saída Binance Spot
+  const estimatedSlippage = 0.10; // margem conservadora de derrapagem
+  const totalFriction = estimatedRoundtripFees + estimatedSlippage; // ~0.30%
 
   if (relATRPercent > 0) {
-    // Stop adaptativo: calibrado pela volatilidade, entre 1.2% e 2.0% (respeitando o teto de 2.0% dos guardrails)
-    suggestedSl = Math.min(2.0, Math.max(1.2, parseFloat((relATRPercent * 2.0).toFixed(1))));
-    // Alvo adaptativo institucional: entre 2.2% e 4.0% para garantir assimetria R:R positiva (>= 1.5x)
+    // Stop adaptativo curto e disciplinado (entre 1.0% e 1.6%)
+    suggestedSl = Math.min(1.6, Math.max(1.0, parseFloat((relATRPercent * 1.5).toFixed(1))));
+    // Alvo adaptativo institucional garantindo Payoff bruto >= 1.85x (entre 2.4% e 4.5%)
+    const targetWithPayoff = parseFloat((suggestedSl * 1.85).toFixed(1));
     const dynamicAtrTp = parseFloat((relATRPercent * 2.8).toFixed(1));
-    suggestedTp = Math.max(2.2, Math.min(4.0, dynamicAtrTp || (bot.takeProfit || 2.4)));
+    suggestedTp = Math.max(2.4, Math.min(4.5, Math.max(targetWithPayoff, dynamicAtrTp)));
   } else {
-    suggestedTp = Math.max(2.2, Math.min(3.5, bot.takeProfit || 2.4));
+    suggestedSl = Math.min(1.6, bot.stopLoss || 1.3);
+    suggestedTp = Math.max(2.4, bot.takeProfit || 2.5);
   }
 
-  // Potencial de ganho líquido do trade (Take Profit alvo deduzido das taxas operacionais)
-  const netGainPotential = parseFloat((suggestedTp - estimatedRoundtripFees).toFixed(2));
+  // Potencial de ganho líquido do trade (Take Profit alvo deduzido das taxas operacionais e slippage)
+  const netGainPotential = parseFloat((suggestedTp - totalFriction).toFixed(2));
 
   // 🛡️ Filtro de Amplitude Mínima ATR (Regra 6 dos Guardrails - Anti-Overtrading em Micro-Movimentos):
-  // Proibido abrir operações em ativos cujo potencial de ganho até o alvo ATR seja inferior a 1.5% líquido de taxas.
-  const isAmplitudeSufficient = netGainPotential >= 1.50;
+  // Proibido abrir operações em ativos cujo potencial de ganho até o alvo ATR seja inferior a 1.60% líquido de taxas.
+  const isAmplitudeSufficient = netGainPotential >= 1.60;
 
   checks.push({
     label: "Amplitude Mínima ATR",
     ok: isAmplitudeSufficient,
     detail: isAmplitudeSufficient
-      ? `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) acima do piso institucional de 1.5% (Alvo: +${suggestedTp}%)`
-      : `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) insuficiente para cobrir custos e taxas (precisa ≥ 1.50% líquido)`,
+      ? `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) acima do piso institucional de 1.6% (Alvo: +${suggestedTp}%)`
+      : `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) insuficiente para cobrir custos e taxas (precisa ≥ 1.60% líquido)`,
   });
 
   const blocker = checks.find((c) => !c.ok);

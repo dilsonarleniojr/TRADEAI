@@ -705,8 +705,8 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // Para ser elegível a parcial, a metade vendida e a metade remanescente precisam respeitar minNotional da Binance (>= $5.20).
     const isAutoBreakEvenEnabled = bot.autoBreakEven ?? true;
     const isUsePartialTp = bot.usePartialTp ?? true;
-    const beTrigger = Math.max(1.20, Math.min(2.20, bot.breakEvenTrigger ?? 1.30));
-    const beBuffer = Math.max(0.35, Math.min(0.60, bot.breakEvenBuffer ?? 0.40));
+    const beTrigger = Math.max(1.30, Math.min(2.20, bot.breakEvenTrigger ?? 1.40));
+    const beBuffer = Math.max(0.40, Math.min(0.60, bot.breakEvenBuffer ?? 0.45));
     const breakEvenPrice = pos.entryPrice * (1 + beBuffer / 100);
     const positionNotional = pos.quantity * currentPrice!;
     const partialRatio = (bot.partialTpPercent ?? 50) / 100;
@@ -730,12 +730,12 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       gainPercent <= beBuffer;
 
     // 🎯 ALVOS DINÂMICOS ADAPTATIVOS & PARABÓLICOS
-    // Stop Loss disciplinado: calibrado entre 1.2% e 2.0% (respeitando teto estrito de 2.0% dos guardrails)
-    const configuredStopLoss = pos.dynamicStopLoss || bot.stopLoss || 1.6;
-    const effectiveStopLoss = Math.min(2.0, Math.max(1.2, configuredStopLoss));
-    // Take Profit institucional para scalping: alvo atingível entre 2.2% e 4.5%, garantindo payoff favorável
-    const rawTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 2.4;
-    const effectiveTakeProfit = Math.max(2.2, Math.min(4.5, rawTakeProfit));
+    // Stop Loss disciplinado: calibrado entre 1.0% e 1.6% (corte rápido de perdas)
+    const configuredStopLoss = pos.dynamicStopLoss || bot.stopLoss || 1.3;
+    const effectiveStopLoss = Math.min(1.6, Math.max(1.0, configuredStopLoss));
+    // Take Profit institucional: alvo mínimo de 2.4% para garantir assimetria R:R positiva (>= 1.8x Payoff)
+    const rawTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 2.5;
+    const effectiveTakeProfit = Math.max(2.4, Math.min(4.5, rawTakeProfit));
 
     // 🚀 TRAILING TAKE-PROFIT DINÂMICO PARABÓLICO (Deixar o Lucro Correr em Altas Fortes)
     // Ao bater a meta de Take Profit (ex: +3.0% ou alvo ATR), o robô não vende na hora;

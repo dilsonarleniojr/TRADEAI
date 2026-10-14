@@ -1,0 +1,57 @@
+# TradeAI - Production Systemd Service Unit
+# Especificação técnica em conformidade com systemd-supervision-for-trading-bots (v2.0)
+#
+# Instalação:
+#   sudo cp scripts/trading-bot.service /etc/systemd/system/tradeai-bot.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now tradeai-bot.service
+#
+# Verificação de status e logs:
+#   systemctl status tradeai-bot.service
+#   journalctl -u tradeai-bot.service -f
+
+[Unit]
+Description=TradeAI Headless Quant Fleet Engine
+After=network-online.target
+Wants=network-online.target
+
+# Crash-loop brake: Mandatoriamente configurado na seção [Unit]
+# 5 tentativas a cada 10s = 40s total < 600s janela (aritmética 100% alcançável)
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=notify
+WatchdogSec=30
+NotifyAccess=main
+
+# Diretório e Usuário de Execução
+WorkingDirectory=/media/DCORREA/TradeAi/TRADEAI
+User=dcorrea
+Group=dcorrea
+
+# Variáveis de Ambiente
+Environment=NODE_ENV=production
+Environment=DATABASE_URL="file:/media/DCORREA/TradeAi/TRADEAI/db/custom.db"
+
+# Execução do Daemon Headless em TypeScript via Bun
+ExecStartPre=/media/DCORREA/TradeAi/TRADEAI/scripts/pre_market_healthcheck.sh
+ExecStart=/home/dcorrea/.bun/bin/bun run scripts/run_headless_bot.ts
+
+# Política de Reinicialização
+# on-failure evita que paradas voluntárias (como kill-switch ou pausa de mercado) reativem o robô
+Restart=on-failure
+RestartSec=10
+
+# Limites de Recursos cgroup v2
+MemoryHigh=768M
+MemoryMax=1G
+CPUQuota=150%
+
+# Gerenciamento de Sinal e Encerramento Gracioso
+# Garante 30 segundos para cancelamento de ordens abertas na exchange antes do SIGKILL
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
