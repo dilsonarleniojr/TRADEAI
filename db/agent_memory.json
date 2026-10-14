@@ -1,6 +1,31 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Telemetria de Taxa de Preenchimento (Fill-Rate Telemetry) e Repricing Dinâmico de 1 Tick para LIMIT_MAKER",
+    "summary": "1) Telemetria de Preenchimento (src/lib/bot/risk-manager.ts): Rastreamento em tempo real de ordens LIMIT_MAKER totais, preenchidas, canceladas e repriced, com cálculo da taxa global e da taxa recente em janela móvel de eventos terminais (recentFillRatePct). Detecção instantânea de choques de volatilidade extrema no book quando fill-rate cai abaixo de 40% (isExtremeVolatility = true); 2) Repricing Dinâmico de 1 Tick aos 30s (src/lib/bot/multi-bot-engine.ts): Se uma ordem resting LIMIT_MAKER permanecer aberta por >= 30s e a taxa de preenchimento recente estiver abaixo de 40% (ou volatilidade extrema detectada), o motor cancela atomicamente a ordem original e a recoloca a +1 tick (em direção ao touch), garantindo que ela permaneça estritamente passiva (cleanPrice < bestAsk, respeitando tickSize) para manter 100% dos descontos de taxa Maker da Binance; 3) Cancelamento Definitivo aos 60s: Se a ordem permanecer não executada após 60s, o cancelamento definitivo é acionado e contabilizado na telemetria; 4) Reconciliação em Tempo Real na Binance (/api/trades): Adicionada ação 'orderStatus' autenticada via HMAC SHA256 contra GET /api/v3/order para reconciliar o status exato (FILLED, CANCELED, NEW) de ordens em repouso no mercado real; 5) Cockpit Visual & Controles de Usuário (protection-settings-dialog.tsx): Adicionado Card de Telemetria de Fill-Rate em tempo real e controle liga/desliga 3.3 para 'Repricing Dinâmico de 1 Tick (30s se Fill-Rate < 40%)'; 6) Cobertura de Testes: Adicionada Seção 8 ao scripts/test_risk_manager.ts validando telemetria saudável, choque de volatilidade, preservação de passividade e controle do usuário com 100% de sucesso.",
+    "tags": [
+      "fill-rate-telemetry",
+      "limit-maker-repricing",
+      "one-tick-dynamic-reprice",
+      "extreme-volatility-detector",
+      "post-only-preservation",
+      "binance-order-status-reconciliation",
+      "resting-order-lifecycle"
+    ],
+    "details": {
+      "repricingTimeoutSec": 30,
+      "restingOrderTimeoutSec": 60,
+      "minFillRateThreshold": 40,
+      "repricingIncrementTicks": 1,
+      "strictPassiveConstraint": "cleanPrice < bestAsk",
+      "binanceReconciliation": "GET /api/v3/order via /api/trades?action=orderStatus",
+      "testCoverage": "scripts/test_risk_manager.ts Section 8 (100% green)"
+    },
+    "id": "mem-1791966300000-fill-rate-telemetry-dynamic-repricing",
+    "timestamp": "2026-10-14T08:26:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Controles de Proteção Granulares pelo Usuário: Modal Institucional, Sincronização Reativa e Suporte a Presets",
     "summary": "1) Configuração Granular de Proteções (src/lib/bot/risk-manager.ts): Todos os 9 modos de proteção quantitativa agora podem ser ativados ou desativados individualmente pelo usuário (Kill Switch Diário, Freio de Perdas Consecutivas, Filtro de Viabilidade R:R >= 1.50, Sizing Fracionário <= 1%, Break-Even Dinâmico 1R, LIMIT_MAKER Post-Only, Timeout de Ordens Órfãs 60s, BTC Macro Gatekeeper e Filtro de Descorrelação); 2) Sincronização Reativa & Persistência: Estados gerenciados no Zustand (botSlice, uiSlice) e persistidos via localStorage com broadcasting dinâmico de eventos; 3) Modal Institucional & Toolbar (protection-settings-dialog.tsx & bot-section.tsx): Painel visual dividido em 4 pilares arquiteturais com switches individuais, badges informativos em tempo real e presets rápidos ('Institucional Recomendado' e 'Agressivo / Scalper'); 4) Resiliência Operacional: Quando um modo é desativado, os motores (RiskManager, entry-engine, multi-bot-engine) degradam de forma graciosa para modo permissivo sem falhas de execução. Testes unitários atualizados em scripts/test_risk_manager.ts com 100% de aprovação.",
     "tags": [

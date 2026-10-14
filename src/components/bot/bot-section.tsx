@@ -439,7 +439,7 @@ export function BotSection() {
               <ShieldCheck className="w-3.5 h-3.5 mr-1.5 text-emerald-400" />
               Modos de Proteção
               <Badge variant="outline" className="ml-1.5 px-1.5 py-0 text-[10px] border-emerald-500/30 text-emerald-300 bg-emerald-500/15">
-                {Object.values(protectionSettings || {}).filter((v) => v === true).length}/9
+                {Object.values(protectionSettings || {}).filter((v) => v === true).length}/10
               </Badge>
             </Button>
 

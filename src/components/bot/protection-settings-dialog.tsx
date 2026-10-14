@@ -30,8 +30,9 @@ import {
   CheckCircle2,
   Activity,
   Percent,
+  Gauge,
 } from "lucide-react";
-import type { ProtectionSettings } from "@/lib/bot/risk-manager";
+import { riskManager, type ProtectionSettings, type FillRateTelemetry } from "@/lib/bot/risk-manager";
 
 interface ProtectionSettingsDialogProps {
   open: boolean;
@@ -47,12 +48,27 @@ export function ProtectionSettingsDialog({
   const updateProtectionSettings = useCryptoStore((s) => s.updateProtectionSettings);
   const resetProtectionSettings = useCryptoStore((s) => s.resetProtectionSettings);
 
+  const [fillTelemetry, setFillTelemetry] = useState<FillRateTelemetry>(() => riskManager.getFillRateTelemetry());
+
+  React.useEffect(() => {
+    const handleUpdate = () => {
+      setFillTelemetry(riskManager.getFillRateTelemetry());
+    };
+    if (open) {
+      handleUpdate();
+    }
+    if (typeof window !== "undefined") {
+      window.addEventListener("tradeai_fill_telemetry_updated", handleUpdate);
+      return () => window.removeEventListener("tradeai_fill_telemetry_updated", handleUpdate);
+    }
+  }, [open]);
+
   const activeCount = Object.entries(protectionSettings || {}).filter(
     ([key, value]) => typeof value === "boolean" && value === true
   ).length;
 
-  const totalBooleanProtections = 9;
-  const isFullyProtected = activeCount === totalBooleanProtections;
+  const totalBooleanProtections = 10;
+  const isFullyProtected = activeCount >= totalBooleanProtections;
 
   const handleToggle = (key: keyof ProtectionSettings, currentVal: boolean) => {
     updateProtectionSettings({ [key]: !currentVal });
@@ -80,10 +96,13 @@ export function ProtectionSettingsDialog({
       restingOrderTimeoutSeconds: 60,
       btcMacroFilter: true,
       crossCorrelationFilter: true,
+      dynamicMakerRepricing: true,
+      repricingTimeoutSeconds: 30,
+      minFillRateThreshold: 40,
     });
     toast({
       title: "🛡️ Preset Institucional Aplicado",
-      description: "Todos os 9 modos de proteção de capital foram ativados com parâmetros estritos.",
+      description: "Todos os 10 modos de proteção de capital foram ativados com parâmetros estritos.",
     });
   };
 
@@ -100,6 +119,7 @@ export function ProtectionSettingsDialog({
       restingOrderTimeout: false,
       btcMacroFilter: false, // Ignora quedas do Bitcoin
       crossCorrelationFilter: false,
+      dynamicMakerRepricing: false,
     });
     toast({
       title: "⚡ Preset Agressivo / Scalper Aplicado",
@@ -386,7 +406,80 @@ export function ProtectionSettingsDialog({
               />
             </div>
 
-            {/* 3.2 Resting Order Timeout */}
+            {/* 3.2 Telemetria de Preenchimento (Fill-Rate Telemetry) Card */}
+            <div className="p-3 rounded-lg bg-background/70 border border-crypto-cyan/20 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Gauge className="w-3.5 h-3.5 text-crypto-cyan" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Telemetria de Preenchimento (Fill-Rate LIMIT_MAKER)
+                  </span>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] font-mono ${
+                    fillTelemetry.isExtremeVolatility
+                      ? "text-red-400 border-red-500/30 bg-red-500/10 animate-pulse"
+                      : fillTelemetry.fillRatePct >= 70
+                      ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+                      : "text-amber-400 border-amber-500/30 bg-amber-500/10"
+                  }`}
+                >
+                  {fillTelemetry.isExtremeVolatility
+                    ? `⚠️ Volatilidade Extrema (${fillTelemetry.recentFillRatePct}%)`
+                    : `Fill-Rate: ${fillTelemetry.fillRatePct}%`}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-4 gap-2 text-center text-[10px] pt-1">
+                <div className="p-1.5 rounded bg-muted/30">
+                  <div className="text-muted-foreground">Total Ordens</div>
+                  <div className="font-bold font-mono text-foreground">{fillTelemetry.totalMakerOrders}</div>
+                </div>
+                <div className="p-1.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                  <div className="text-emerald-400">Preenchidas</div>
+                  <div className="font-bold font-mono text-emerald-400">{fillTelemetry.filledMakerOrders}</div>
+                </div>
+                <div className="p-1.5 rounded bg-amber-500/10 border border-amber-500/20">
+                  <div className="text-amber-400">Repriced (+1 tick)</div>
+                  <div className="font-bold font-mono text-amber-400">{fillTelemetry.repricedMakerOrders}</div>
+                </div>
+                <div className="p-1.5 rounded bg-red-500/10 border border-red-500/20">
+                  <div className="text-red-400">Canceladas (60s)</div>
+                  <div className="font-bold font-mono text-red-400">{fillTelemetry.cancelledMakerOrders}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* 3.3 Dynamic 1-Tick Repricing aos 30s */}
+            <div className="flex items-start justify-between gap-4 p-2.5 rounded-lg bg-background/50 border border-border/40">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-foreground">
+                    Repricing Dinâmico de 1 Tick (30s se Fill-Rate &lt; 40%)
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] ${
+                      protectionSettings.dynamicMakerRepricing
+                        ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+                        : "text-muted-foreground border-border/40"
+                    }`}
+                  >
+                    {protectionSettings.dynamicMakerRepricing ? "Ativo (30s / Fill < 40%)" : "Desativado"}
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Caso o mercado apresente momentos de volatilidade extrema onde o preenchimento no *bestBid* caia abaixo de 40%, ajusta a ordem em +1 tick após 30 segundos mantendo status passivo Maker, antes de efetuar o cancelamento definitivo aos 60 segundos.
+                </p>
+              </div>
+              <Switch
+                checked={protectionSettings.dynamicMakerRepricing}
+                onCheckedChange={() => handleToggle("dynamicMakerRepricing", protectionSettings.dynamicMakerRepricing)}
+                className="mt-1"
+              />
+            </div>
+
+            {/* 3.4 Resting Order Timeout */}
             <div className="flex items-start justify-between gap-4 p-2.5 rounded-lg bg-background/50 border border-border/40">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">

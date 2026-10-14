@@ -162,5 +162,74 @@ riskManager.resetProtectionSettings();
 riskManager.resetStateForTests();
 assert(riskManager.getProtectionSettings().consecutiveLossProtection === true, "Reset deve restaurar proteção para true");
 
-console.log("\n🎉 TODOS OS TESTES PASSARAM COM SUCESSO ABSOLUTO (INCLUINDO CONTROLES DO USUÁRIO)!");
+// 8. Teste de Telemetria de Preenchimento (Fill-Rate) e Repricing Dinâmico de 1 Tick
+console.log("\n--- 8. TESTE DE TELEMETRIA DE FILL-RATE E REPRICING DINÂMICO ---");
+riskManager.resetStateForTests();
+
+// 8.1 Telemetria inicial limpa
+const initialTel = riskManager.getFillRateTelemetry();
+assert(initialTel.totalMakerOrders === 0, "Total de ordens inicial deve ser 0");
+assert(initialTel.fillRatePct === 100, "Fill-rate default sem ordens deve ser 100%");
+assert(initialTel.isExtremeVolatility === false, "Inicialmente não deve acusar volatilidade extrema");
+
+// 8.2 Simula preenchimento saudável (8 preenchidas de 10 ordens = 80%)
+console.log("-> Simulando execução saudável no book (8 fills, 2 cancels)...");
+for (let i = 0; i < 8; i++) {
+  riskManager.recordMakerOrder("BTCUSDT");
+  riskManager.recordMakerFill("BTCUSDT");
+}
+for (let i = 0; i < 2; i++) {
+  riskManager.recordMakerOrder("BTCUSDT");
+  riskManager.recordMakerCancel("BTCUSDT");
+}
+const healthyTel = riskManager.getFillRateTelemetry();
+console.log("Telemetria saudável:", healthyTel);
+assert(healthyTel.totalMakerOrders === 10, "Total deve ser 10 ordens");
+assert(healthyTel.filledMakerOrders === 8, "8 ordens devem estar preenchidas");
+assert(healthyTel.cancelledMakerOrders === 2, "2 ordens canceladas");
+assert(healthyTel.fillRatePct === 80, "Taxa global de preenchimento deve ser 80%");
+assert(healthyTel.isExtremeVolatility === false, "Com 80% de preenchimento não deve acusar volatilidade extrema");
+
+// 8.3 Simula choque de volatilidade extrema com queda de fill-rate para < 40%
+console.log("-> Simulando choque de volatilidade com cancelamentos em série...");
+for (let i = 0; i < 15; i++) {
+  riskManager.recordMakerOrder("ETHUSDT");
+  riskManager.recordMakerCancel("ETHUSDT");
+}
+const stressTel = riskManager.getFillRateTelemetry();
+console.log("Telemetria sob volatilidade extrema:", stressTel);
+assert(stressTel.recentFillRatePct < 40, `Fill-rate recente (${stressTel.recentFillRatePct}%) deve estar abaixo de 40%`);
+assert(stressTel.isExtremeVolatility === true, "isExtremeVolatility DEVE ser acionado quando preenchimento cai abaixo de 40%");
+
+// 8.4 Validação matemática do Repricing Dinâmico de 1 Tick
+console.log("-> Testando cálculo de Repricing Dinâmico de 1 Tick estritamente passivo...");
+const orderPrice = 2500.0;
+const tickSize = 0.01;
+const bestBid = 2500.0;
+const bestAsk = 2500.05;
+
+const proposedPrice = Math.max(orderPrice + tickSize, bestBid);
+const maxPassivePrice = bestAsk - tickSize;
+const finalRepricePrice = Math.min(proposedPrice, maxPassivePrice);
+console.log(`Preço Original: $${orderPrice} | +1 Tick: $${proposedPrice} | Max Passivo (Ask-Tick): $${maxPassivePrice} | Repriced: $${finalRepricePrice}`);
+assert(finalRepricePrice === 2500.01, "Preço deve ser reajustado em exatamente 1 tick ($2500.01)");
+assert(finalRepricePrice < bestAsk, "Preço ajustado NÃO pode cruzar o bestAsk (deve manter status Maker)");
+
+riskManager.recordMakerReprice("ETHUSDT");
+const postRepriceTel = riskManager.getFillRateTelemetry();
+assert(postRepriceTel.repricedMakerOrders === 1, "Contador de ordens repriced deve ser incrementado");
+
+// 8.5 Teste de alternância do modo de Repricing pelo usuário
+console.log("-> Testando chave dynamicMakerRepricing do usuário...");
+riskManager.setProtectionSettings({ dynamicMakerRepricing: false });
+assert(riskManager.getProtectionSettings().dynamicMakerRepricing === false, "Chave dynamicMakerRepricing deve poder ser desativada");
+riskManager.setProtectionSettings({ dynamicMakerRepricing: true });
+assert(riskManager.getProtectionSettings().dynamicMakerRepricing === true, "Chave dynamicMakerRepricing deve poder ser reativada");
+
+// Limpa estado final
+riskManager.resetStateForTests();
+riskManager.resetProtectionSettings();
+
+console.log("\n🎉 TODOS OS TESTES PASSARAM COM SUCESSO ABSOLUTO (INCLUINDO FILL-RATE E 1-TICK REPRICING)!");
+
 
