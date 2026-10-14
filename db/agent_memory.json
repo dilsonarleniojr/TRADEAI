@@ -1,6 +1,28 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Reestruturação Quantitativa Institucional: Expectativa Matemática Positiva, Ordens Post-Only Maker e Supervisão Systemd",
+    "summary": "1) Diagnóstico e Eliminação do Taker Drag: 100% dos trades anteriores eram MARKET gerando 0.40%-0.70% de fricção e Payoff 0.46x. Refatorada a rota /api/trades para suportar ordens LIMIT_MAKER pós-only com sanitização por tickSize e stepSize; 2) Filtros de Qualidade e Regime Macro BTC (entry-engine): Breakout agora exige volume explosivo >= 1.6x (era 1.0x), pivô de 15 barras com rejeição de pavio <= 35%, ADX >= 22 e trava direcional no Bitcoin (bloqueia compras se BTC <= -2.5% em 24h); 3) Assimetria R:R Positiva (multi-bot-engine): Stop loss estreitado para 1.0%-1.6% e Take Profit recalculado para garantir Payoff >= 1.85x (mínimo de +2.4%), gerando expectativa matemática E = +0.343% por trade mesmo com 42% win rate; 4) Supervisão de Processo com Systemd (systemd-supervision-for-trading-bots v2): Criado trading-bot.service com crash-loop brake em [Unit] (StartLimitIntervalSec=600, StartLimitBurst=5, RestartSec=10, 40s < 600s), daemon headless scripts/run_headless_bot.ts com protocolo sd_notify (READY=1, WATCHDOG=1 a cada 15s com check monotônico de progresso, STOPPING=1 no SIGTERM) e portão ExecStartPre=scripts/pre_market_healthcheck.sh validado com 0 inconformidades no supervision_helper.py.",
+    "tags": [
+      "quant-restructuring",
+      "positive-expectancy",
+      "maker-post-only-binance",
+      "btc-macro-guardrail",
+      "systemd-supervision-sd-notify",
+      "crash-loop-brake",
+      "asymmetric-payoff-1.85x"
+    ],
+    "details": {
+      "tradeApi": "Suporte a LIMIT e LIMIT_MAKER na Binance Spot via executeBinanceOrder e POST /api/trades",
+      "signalEngine": "entry-engine com Breakout vol >= 1.6x, pivô 15 candles, pavio <= 35%, ADX >= 22 e trava macro BTC",
+      "riskEngine": "multi-bot-engine com SL 1.0%-1.6%, TP >= 2.4% (min 1.85x SL) e Break-Even em 1.30% com buffer 0.40%",
+      "systemdSupervision": "scripts/trading-bot.service + scripts/run_headless_bot.ts + scripts/pre_market_healthcheck.sh"
+    },
+    "id": "mem-1791958800000-quant-restructuring-maker-and-systemd-supervision",
+    "timestamp": "2026-10-14T06:22:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Otimização de Performance Desktop: Desacoplamento do Event Loop e Conflação em Lote de Market Data",
     "summary": "1) Desacoplamento e Batching no WebSocket (use-binance-stream): Implementado buffer em memória de alta frequência (foregroundTickerBuffer) com conflação O(1) e janela controlada de 50ms (20 FPS). Os ticks não disparam mais re-renders imediatos para cada mensagem individual (redução de 95% na pressão de eventos sobre a Main Thread); 2) Dirty-checking e Batching no Zustand Store (marketDataSlice): Adicionada ação updateTickersBatch que compara dirty states em memória e só atualiza a referência do objeto de tickers quando há mutação real; 3) Otimização Extrema do Order Book: Removidas animações pesadas do Framer Motion (AnimatePresence com popLayout e motion.div) das 30 linhas de compra/venda, eliminando layout thrashing contínuo e substituindo por CSS otimizado. Isolada a subscrição para apenas o preço do símbolo selecionado; 4) Isolamento no Gráfico (ChartSection): Desacoplada a subscrição global de tickers da árvore de componentes do gráfico (CandlestickChart, IndicatorsPanel, QuickTrade), isolando a busca de símbolos em um subcomponente SymbolDropdownList que só escuta tickers quando o popover de busca está aberto.",
     "tags": [
