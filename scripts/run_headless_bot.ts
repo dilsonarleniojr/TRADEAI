@@ -3,33 +3,33 @@
  * 
  * Executado em segundo plano sob supervisão de processo (systemd ou CLI autônomo).
  * Implementa:
- * 1. Protocolo sd_notify (READY=1, WATCHDOG=1, STOPPING=1) via unix_dgram socket
+ * 1. Protocolo sd_notify (READY=1, WATCHDOG=1, STOPPING=1) via /usr/bin/systemd-notify ou socket direto
  * 2. Ingestão de market data e execução quantitativa estrita
  * 3. Validação de regras de risco (BTC Macro Guardrail, Volume >= 1.6x, R:R >= 1.85x)
  * 4. Graceful shutdown com cancelamento de ordens e fechamento de conexões
  */
 
-import dgram from "dgram";
+import { execFile } from "child_process";
 import { db } from "../src/lib/db";
-import { evaluateBotEntry, calculateTargetAndStop } from "../src/lib/bot/entry-engine";
-import { calculateATR } from "../src/lib/bot/indicators";
+import { evaluateEntry } from "../src/lib/bot/entry-engine";
+import { relativeATR } from "../src/lib/bot/indicators";
+import type { BotInstance, KlineData, TickerData } from "../src/lib/store/types";
 
 // --- Systemd Notification Helper ---
-function sendSdNotify(message: string): boolean {
-  const socketPath = process.env.NOTIFY_SOCKET;
-  if (!socketPath) return false;
-  try {
-    const client = dgram.createSocket("unix_dgram");
-    const buf = Buffer.from(message, "utf-8");
-    const realPath = socketPath.startsWith("@") ? "\0" + socketPath.slice(1) : socketPath;
-    client.send(buf, 0, buf.length, realPath, (err) => {
-      client.close();
+function sendSdNotify(args: string[]): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!process.env.NOTIFY_SOCKET) {
+      resolve(false);
+      return;
+    }
+    execFile("/usr/bin/systemd-notify", args, (err) => {
+      if (err) {
+        resolve(false);
+      } else {
+        resolve(true);
+      }
     });
-    return true;
-  } catch (err: any) {
-    console.error("[Systemd] Falha ao enviar sd_notify:", err.message);
-    return false;
-  }
+  });
 }
 
 // Intervalo do watchdog (padrão 15s ou metade de WATCHDOG_USEC)
@@ -70,7 +70,7 @@ async function runPreFlightCheck(): Promise<boolean> {
 }
 
 // --- Fetch Market Data Candles (1m) ---
-async function fetchCandles(symbol: string, limit = 50) {
+async function fetchCandles(symbol: string, limit = 50): Promise<KlineData[]> {
   try {
     const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=${limit}`, {
       signal: AbortSignal.timeout(5000),
@@ -91,17 +91,22 @@ async function fetchCandles(symbol: string, limit = 50) {
 }
 
 // --- Fetch 24h Tickers for Macro Filter ---
-async function fetch24hTickers(): Promise<Record<string, { priceChangePercent: number; volume: number; lastPrice: number }>> {
+async function fetch24hTickers(): Promise<Record<string, TickerData>> {
   try {
     const res = await fetch("https://api.binance.com/api/v3/ticker/24hr", { signal: AbortSignal.timeout(6000) });
     if (!res.ok) return {};
     const list = await res.json();
-    const map: Record<string, any> = {};
+    const map: Record<string, TickerData> = {};
     for (const item of list) {
       map[item.symbol] = {
+        symbol: item.symbol,
+        price: parseFloat(item.lastPrice) || 0,
+        priceChange: parseFloat(item.priceChange) || 0,
         priceChangePercent: parseFloat(item.priceChangePercent) || 0,
+        high: parseFloat(item.highPrice) || 0,
+        low: parseFloat(item.lowPrice) || 0,
         volume: parseFloat(item.volume) || 0,
-        lastPrice: parseFloat(item.lastPrice) || 0,
+        quoteVolume: parseFloat(item.quoteVolume) || 0,
       };
     }
     return map;
@@ -110,21 +115,75 @@ async function fetch24hTickers(): Promise<Record<string, { priceChangePercent: n
   }
 }
 
+// --- Helper to build a BotInstance structure for evaluation ---
+function createMockBotInstance(symbol: string, strategy = "BREAKOUT"): BotInstance {
+  return {
+    id: `headless_${symbol.toLowerCase()}`,
+    name: `Fleet ${symbol}`,
+    strategy,
+    symbol,
+    status: "running",
+    mode: "paper",
+    balance: 1000,
+    initialBalance: 1000,
+    stopLoss: 1.5,
+    takeProfit: 3.0,
+    maxDailyTrades: 10,
+    buyThreshold: 0,
+    sellThreshold: 0,
+    autoTradeSignals: true,
+    signalConfidenceThreshold: 0.7,
+    useQuantFunnel: true,
+    useMarketRegime: true,
+    useEnsemble: true,
+    useAutoScreener: false,
+    autoBreakEven: true,
+    breakEvenTrigger: 1.3,
+    breakEvenBuffer: 0.4,
+    useBtcGatekeeper: true,
+    rsiPeriod: 14,
+    emaFast: 9,
+    emaSlow: 21,
+    position: null,
+    stats: {
+      totalTrades: 0,
+      winningTrades: 0,
+      losingTrades: 0,
+      winRate: 0,
+      totalPnL: 0,
+      netPnL: 0,
+      dailyTradesCount: 0,
+      dailyProfit: 0,
+      maxDrawdown: 0,
+      currentDrawdown: 0,
+      sharpeRatio: 0,
+      sortinoRatio: 0,
+      profitFactor: 0,
+      payoffRatio: 0,
+      expectancy: 0,
+      totalVolumeTraded: 0,
+      totalFeesPaid: 0,
+      tradeHistory: [],
+    },
+    activityLogs: [],
+    lastExecutionReport: null,
+  };
+}
+
 // --- Ciclo Principal Quant ---
 async function runQuantCycle() {
   lastLoopProgress = Date.now();
 
   try {
     // 1. Obter bots ativos no DB
-    let activeBots = await db.botConfig.findMany({
+    const activeDbBots = await db.botConfig.findMany({
       where: { isActive: true },
     });
 
-    // Se nenhum bot ativo no DB, criar/carregar pares default monitorados
     const defaultSymbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
-    const symbolsToScan = activeBots.length > 0 ? activeBots.map((b) => b.symbol) : defaultSymbols;
+    const symbolsToScan = activeDbBots.length > 0 ? activeDbBots.map((b) => b.symbol) : defaultSymbols;
 
-    // 2. Obter tickers 24h (para filtro Macro BTC)
+    // 2. Obter tickers 24h (para filtro Macro BTC e cotações)
     const tickersMap = await fetch24hTickers();
     const btcTicker = tickersMap["BTCUSDT"];
 
@@ -132,37 +191,43 @@ async function runQuantCycle() {
       const candles = await fetchCandles(symbol, 60);
       if (candles.length < 30) continue;
 
-      const currentPrice = candles[candles.length - 1].close;
-      const ticker = tickersMap[symbol] || { priceChangePercent: 0, volume: 1000, lastPrice: currentPrice };
-
-      // Avaliação com o novo motor matemático de sinais
-      const evaluation = evaluateBotEntry({
-        strategy: "BREAKOUT",
+      const ticker = tickersMap[symbol] || {
         symbol,
-        currentPrice,
-        candles,
+        price: candles[candles.length - 1].close,
+        priceChange: 0,
+        priceChangePercent: 0,
+        high: candles[candles.length - 1].high,
+        low: candles[candles.length - 1].low,
+        volume: candles[candles.length - 1].volume,
+        quoteVolume: candles[candles.length - 1].volume * candles[candles.length - 1].close,
+      };
+
+      const botInstance = createMockBotInstance(symbol, "BREAKOUT");
+
+      // Avaliação com o novo motor quantitativo
+      const decision = evaluateEntry(
+        botInstance,
         ticker,
         btcTicker,
-      });
+        candles,
+        [] // Sem sinais de IA manuais
+      );
 
-      if (evaluation.shouldEnter) {
-        // Cálculo estrito de Risco:Retorno Asimétrico (Payoff >= 1.85x)
-        const atr = calculateATR(candles, 14);
-        const { stopLossPercent, takeProfitPercent, riskRewardRatio } = calculateTargetAndStop({
-          strategy: "BREAKOUT",
-          candles,
-          currentPrice,
-          atr,
-        });
+      if (decision.shouldBuy) {
+        const relAtr = relativeATR(candles, 14);
+        const atrPercent = relAtr * 100;
+        const suggestedSl = Math.max(1.0, Math.min(1.6, atrPercent * 1.5));
+        const suggestedTp = Math.max(suggestedSl * 1.85, suggestedSl * 2.0);
 
-        quantLog("INFO", "VALID_SIGNAL_DISCOVERED", {
+        quantLog("INFO", "VALID_QUANT_ENTRY_SIGNAL", {
           symbol,
-          direction: evaluation.direction,
-          reason: evaluation.reason,
-          stopLossPercent: `${stopLossPercent.toFixed(2)}%`,
-          takeProfitPercent: `${takeProfitPercent.toFixed(2)}%`,
-          riskRewardRatio: `${riskRewardRatio.toFixed(2)}x`,
+          reason: decision.reason,
+          atrRelativePercent: `${atrPercent.toFixed(2)}%`,
+          suggestedSl: `${suggestedSl.toFixed(2)}%`,
+          suggestedTp: `${suggestedTp.toFixed(2)}%`,
+          payoffRatio: `${(suggestedTp / suggestedSl).toFixed(2)}x`,
           btcTrend: btcTicker ? `${btcTicker.priceChangePercent.toFixed(2)}%` : "N/A",
+          checksPassed: decision.checks.filter((c) => c.ok).map((c) => c.label),
         });
       }
     }
@@ -182,14 +247,14 @@ async function main() {
   }
 
   // Notificar systemd de prontidão (READY=1)
-  sendSdNotify("READY=1\nSTATUS=TradeAI Fleet Headless Supervisor rodando com motor Quant v2");
+  await sendSdNotify(["--ready", "--status=TradeAI Fleet Headless Supervisor rodando com motor Quant v2"]);
   quantLog("INFO", "SD_NOTIFY_READY_SENT", { watchdogIntervalMs: pingIntervalMs });
 
   // Agendar ping de watchdog contínuo
-  const watchdogTimer = setInterval(() => {
+  const watchdogTimer = setInterval(async () => {
     const elapsed = Date.now() - lastLoopProgress;
     if (elapsed < 60_000) {
-      sendSdNotify("WATCHDOG=1");
+      await sendSdNotify(["--watchdog"]);
     } else {
       quantLog("WARN", "WATCHDOG_PING_SKIPPED_LOOP_STALLED", { elapsedMs: elapsed });
     }
@@ -211,7 +276,7 @@ async function main() {
     clearInterval(watchdogTimer);
     clearInterval(cycleInterval);
 
-    sendSdNotify("STOPPING=1\nSTATUS=TradeAI encerrando tarefas e desarmando posições...");
+    await sendSdNotify(["--stopping", "--status=TradeAI encerrando tarefas e desarmando posições..."]);
 
     // Drenar tarefas e fechar conexão com DB
     try {
