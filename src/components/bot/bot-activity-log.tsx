@@ -3,13 +3,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Activity, TrendingUp, TrendingDown, DollarSign, Zap, AlertTriangle, Trash2 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 import type { BotLogEntry } from "@/lib/store/types";
 import { useShallow } from "zustand/react/shallow";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 const INITIAL_LOG_ENTRIES: BotLogEntry[] = [];
 
@@ -89,7 +88,7 @@ export function BotActivityLog() {
     useShallow((s) => ({ botActive: s.botActive, trades: s.trades, botLogs: s.botLogs }))
   );
   const clearBotLogs = useCryptoStore((s) => s.clearBotLogs);
-  const lastTradeIdRef = useRef<string>("");
+  const parentRef = useRef<HTMLDivElement>(null);
 
   // Convert recent trades to log entries via useMemo
   const tradeLogs: BotLogEntry[] = useMemo(() => {
@@ -121,7 +120,7 @@ export function BotActivityLog() {
       });
   }, [trades, botActive]);
 
-  // Merge all logs
+  // Merge all logs (suporta até 1.000 entradas sem lentidão no DOM)
   const allLogs = useMemo(() => {
     const merged = new Map<string, BotLogEntry>();
     for (const log of INITIAL_LOG_ENTRIES) {
@@ -135,8 +134,16 @@ export function BotActivityLog() {
     }
     return Array.from(merged.values())
       .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 100);
+      .slice(0, 1000);
   }, [tradeLogs, botLogs]);
+
+  // Virtualizador de alta performance
+  const rowVirtualizer = useVirtualizer({
+    count: allLogs.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 38,
+    overscan: 8,
+  });
 
   return (
     <Card className="bg-card/60 backdrop-blur-md gradient-border relative overflow-hidden">
@@ -167,37 +174,70 @@ export function BotActivityLog() {
         </div>
       </CardHeader>
       <CardContent className="p-0 relative">
-        <ScrollArea className="h-[400px]">
-          <div className="px-4 pb-4 space-y-1">
-            <AnimatePresence initial={false}>
-              {allLogs.map((log, index) => (
-                <motion.div
-                  key={log.id}
-                  initial={index === 0 ? { opacity: 0, y: -10, height: 0 } : false}
-                  animate={{ opacity: 1, y: 0, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className={`flex items-start gap-2 py-1.5 px-2 rounded-md border-l-2 ${getBorderColor(log.type)} hover:bg-secondary/30 transition-colors`}
-                  style={{ position: 'relative' }}
-                >
-                  <div className="absolute left-[-5px] top-2 w-1.5 h-1.5 rounded-full bg-card border border-current" style={{ color: log.type === 'buy' || log.type === 'profit' ? '#22c55e' : log.type === 'sell' || log.type === 'loss' ? '#ef4444' : log.type === 'system' ? '#06b6d4' : log.type === 'warning' ? '#f59e0b' : '#94a3b8' }} />
-                  {getLogIcon(log.type)}
-                  <div className="flex-1 min-w-0">
-                    <span className={`text-xs ${getLogColor(log.type)}`}>
-                      {log.message}
+        <div
+          ref={parentRef}
+          className="h-[400px] overflow-y-auto px-4 pb-4 space-y-1"
+        >
+          {allLogs.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+              Nenhuma atividade registrada ainda.
+            </div>
+          ) : (
+            <div
+              style={{
+                height: `${rowVirtualizer.getTotalSize()}px`,
+                width: "100%",
+                position: "relative",
+              }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const log = allLogs[virtualRow.index];
+                if (!log) return null;
+                return (
+                  <div
+                    key={log.id}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                    className={`flex items-start gap-2 py-1.5 px-2 rounded-md border-l-2 ${getBorderColor(log.type)} hover:bg-secondary/30 transition-colors`}
+                  >
+                    <div
+                      className="absolute left-[-5px] top-2 w-1.5 h-1.5 rounded-full bg-card border border-current"
+                      style={{
+                        color:
+                          log.type === "buy" || log.type === "profit" || log.type === "success"
+                            ? "#22c55e"
+                            : log.type === "sell" || log.type === "loss" || log.type === "error"
+                            ? "#ef4444"
+                            : log.type === "system"
+                            ? "#06b6d4"
+                            : log.type === "warning"
+                            ? "#f59e0b"
+                            : "#94a3b8",
+                      }}
+                    />
+                    {getLogIcon(log.type)}
+                    <div className="flex-1 min-w-0">
+                      <span className={`text-xs ${getLogColor(log.type)}`}>
+                        {log.message}
+                      </span>
+                    </div>
+                    <span
+                      className="text-[10px] text-muted-foreground whitespace-nowrap font-mono shrink-0"
+                      title={new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false })}
+                    >
+                      {getRelativeTime(log.timestamp)}
                     </span>
                   </div>
-                  <span
-                    className="text-[10px] text-muted-foreground whitespace-nowrap font-mono shrink-0"
-                    title={new Date(log.timestamp).toLocaleTimeString("en-US", { hour12: false })}
-                  >
-                    {getRelativeTime(log.timestamp)}
-                  </span>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        </ScrollArea>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
