@@ -27,7 +27,8 @@ interface CachedDepth {
 }
 
 const depthCache = new Map<string, CachedDepth>();
-const CACHE_TTL_MS = 3000;
+const inflightDepth = new Map<string, Promise<OrderBookAnalysis>>();
+const CACHE_TTL_MS = 4000;
 
 function parseEntry(entry: any): { price: number; volume: number } | null {
   if (!entry) return null;
@@ -56,8 +57,12 @@ export async function getOrderBookAnalysis(
     return cached.analysis;
   }
 
-  let rawBids: any[] = [];
-  let rawAsks: any[] = [];
+  const pending = inflightDepth.get(symbol);
+  if (pending) return pending;
+
+  const fetchPromise = (async () => {
+    let rawBids: any[] = [];
+    let rawAsks: any[] = [];
 
   // 1. Tentar endpoint local ou relative se estiver no browser
   const isBrowser = typeof window !== "undefined";
@@ -176,14 +181,22 @@ export async function getOrderBookAnalysis(
     detail,
   };
 
-  depthCache.set(symbol, {
-    timestamp: now,
-    analysis,
-    bids: parsedBids,
-    asks: parsedAsks,
-  });
+    depthCache.set(symbol, {
+      timestamp: now,
+      analysis,
+      bids: parsedBids,
+      asks: parsedAsks,
+    });
 
-  return analysis;
+    return analysis;
+  })();
+
+  inflightDepth.set(symbol, fetchPromise);
+  try {
+    return await fetchPromise;
+  } finally {
+    inflightDepth.delete(symbol);
+  }
 }
 
 /**

@@ -43,7 +43,7 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
     tradingMode,
     setTradingMode,
     botActive,
-    bots,
+    activeBotsCount,
     connectionStatus,
     clearMockData,
     clearSimulatedData,
@@ -61,7 +61,7 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
     tradingMode: s.tradingMode,
     setTradingMode: s.setTradingMode,
     botActive: s.botActive,
-    bots: s.bots,
+    activeBotsCount: s.bots.filter((b) => b.active).length,
     connectionStatus: s.connectionStatus,
     clearMockData: s.clearMockData,
     clearSimulatedData: s.clearSimulatedData,
@@ -486,7 +486,7 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
 
           {/* Bot active badge */}
           {mounted && (() => {
-            const count = bots ? bots.filter((b) => b.active).length : (botActive ? 1 : 0);
+            const count = activeBotsCount > 0 ? activeBotsCount : (botActive ? 1 : 0);
             if (count === 0) return null;
             return (
               <Badge

@@ -7,8 +7,8 @@ import { useBackgroundSettings, hydrateBackgroundSettings } from "@/lib/bot/back
 import { useToast } from "@/hooks/use-toast";
 import { useBotTrailingWatcher } from "@/hooks/use-bot-trailing-watcher";
 
-const IDLE_TICK_MS = 2500;
-const ACTIVE_POSITION_TICK_MS = 1000; // Monitoramento em tempo real (1s) para posições abertas
+const IDLE_TICK_MS = 3000;
+const ACTIVE_POSITION_TICK_MS = 1500; // Monitoramento ágil (1.5s) para posições abertas sem saturação de CPU
 
 // Worker timers are not throttled when the tab is in background (unlike main-thread timers).
 function createTickWorker(intervalMs: number): Worker | null {

@@ -284,13 +284,18 @@ function loadBotsFromStorage(): BotInstance[] {
   return DEFAULT_BOTS;
 }
 
+let persistBotsTimer: ReturnType<typeof setTimeout> | null = null;
+
 function persistBots(bots: BotInstance[]) {
   if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(BOTS_STORAGE_KEY, JSON.stringify(bots));
-  } catch (e) {
-    console.warn("[botSlice] Falha ao salvar frota de robôs no localStorage:", e);
-  }
+  if (persistBotsTimer) clearTimeout(persistBotsTimer);
+  persistBotsTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(BOTS_STORAGE_KEY, JSON.stringify(bots));
+    } catch (e) {
+      console.warn("[botSlice] Falha ao salvar frota de robôs no localStorage:", e);
+    }
+  }, 1000);
 }
 
 export const createBotSlice: StateCreator<

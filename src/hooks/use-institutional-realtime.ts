@@ -16,8 +16,6 @@ import { useCryptoStore } from "@/lib/store";
 
 export function useInstitutionalRealtime() {
   const tradingMode = useCryptoStore((s) => s.tradingMode);
-  const botsInStore = useCryptoStore((s) => s.bots);
-  const tradesInStore = useCryptoStore((s) => s.trades);
 
   const updateGlobalPnL = usePnLStore((s) => s.updateGlobalPnL);
   const setSeries = usePnLStore((s) => s.setSeries);
@@ -32,12 +30,20 @@ export function useInstitutionalRealtime() {
 
   const syncMetrics = useCallback(async () => {
     if (isPollingRef.current) return;
+
+    const store = useCryptoStore.getState();
+    // Se a aba estiver em segundo plano e não houver posições abertas, economiza CPU e rede
+    if (typeof document !== "undefined" && document.hidden) {
+      const hasOpen = store.bots.some((b) => b.active && !!b.position && b.position.quantity > 0);
+      if (!hasOpen) return;
+    }
+
     isPollingRef.current = true;
 
     try {
-      const modeParam = tradingMode === "live" ? "live" : "paper";
-      const activeBotsCount = botsInStore.filter((b) => b.active).length;
-      const totalBotsCount = botsInStore.length;
+      const modeParam = store.tradingMode === "live" ? "live" : "paper";
+      const activeBotsCount = store.bots.filter((b) => b.active).length;
+      const totalBotsCount = store.bots.length;
 
       const res = await fetch(
         `/api/bot/realtime-metrics?mode=${modeParam}&activeBots=${activeBotsCount}&totalBots=${totalBotsCount}`,
@@ -311,19 +317,27 @@ export function useInstitutionalRealtime() {
       isPollingRef.current = false;
       lastSyncTimestampRef.current = Date.now();
     }
-  }, [tradingMode, botsInStore, tradesInStore]);
+  }, [
+    updateGlobalPnL,
+    setSeries,
+    setStrategies,
+    setAlerts,
+    setAllMicrostructures,
+    updateExecutionMetrics,
+    updateHealthMetrics,
+  ]);
 
   useEffect(() => {
-    // Sincronização inicial imediata
+    // Sincronização inicial imediata ao montar ou mudar modo
     void syncMetrics();
 
-    // Loop de sincronização com debounce nativo para 2.5s (alta reatividade sem jitter de render)
+    // Loop de telemetria estável a cada 4s (precisão institucional sem sobrecarregar a UI)
     const interval = setInterval(() => {
       void syncMetrics();
-    }, 2500);
+    }, 4000);
 
     return () => clearInterval(interval);
-  }, [syncMetrics]);
+  }, [tradingMode, syncMetrics]);
 
   return { syncMetrics };
 }

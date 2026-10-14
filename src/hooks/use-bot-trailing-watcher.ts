@@ -134,112 +134,121 @@ interface BotTrackingState {
  */
 export function useBotTrailingWatcher() {
   const { toast } = useToast();
-  const bots = useCryptoStore((s) => s.bots);
   const stateMapRef = useRef<Map<string, BotTrackingState>>(new Map());
   const isInitializedRef = useRef(false);
 
   useEffect(() => {
     const stateMap = stateMapRef.current;
 
-    // Na primeira montagem, sincroniza o estado atual para evitar disparos falsos de posições já abertas
-    if (!isInitializedRef.current) {
-      bots.forEach((b) => {
-        const hasPos = Boolean(b.position && b.position.quantity > 0);
-        stateMap.set(b.id, {
-          hasPosition: hasPos,
-          isBreakEvenArmed: Boolean(b.position?.isBreakEvenArmed),
-          partialTpExecuted: Boolean(b.position?.partialTpExecuted),
-          isTakeProfitArmed: Boolean(b.position?.isTakeProfitArmed),
+    const evaluate = (bots: BotInstance[]) => {
+      // Na primeira montagem, sincroniza o estado atual para evitar disparos falsos de posições já abertas
+      if (!isInitializedRef.current) {
+        bots.forEach((b) => {
+          const hasPos = Boolean(b.position && b.position.quantity > 0);
+          stateMap.set(b.id, {
+            hasPosition: hasPos,
+            isBreakEvenArmed: Boolean(b.position?.isBreakEvenArmed),
+            partialTpExecuted: Boolean(b.position?.partialTpExecuted),
+            isTakeProfitArmed: Boolean(b.position?.isTakeProfitArmed),
+          });
         });
-      });
-      isInitializedRef.current = true;
-      return;
-    }
+        isInitializedRef.current = true;
+        return;
+      }
 
-    bots.forEach((b) => {
-      const pos = b.position;
-      const hasPos = Boolean(pos && pos.quantity > 0);
-      const prev = stateMap.get(b.id) || {
-        hasPosition: false,
-        isBreakEvenArmed: false,
-        partialTpExecuted: false,
-        isTakeProfitArmed: false,
-      };
+      bots.forEach((b) => {
+        const pos = b.position;
+        const hasPos = Boolean(pos && pos.quantity > 0);
+        const prev = stateMap.get(b.id) || {
+          hasPosition: false,
+          isBreakEvenArmed: false,
+          partialTpExecuted: false,
+          isTakeProfitArmed: false,
+        };
 
-      if (hasPos && pos) {
-        const symbolDisplay = (pos.symbol || b.symbol).replace("USDT", "/USDT");
-        const isBeArmed = Boolean(pos.isBreakEvenArmed);
-        const isPartialDone = Boolean(pos.partialTpExecuted);
-        const isTpArmed = Boolean(pos.isTakeProfitArmed);
+        if (hasPos && pos) {
+          const symbolDisplay = (pos.symbol || b.symbol).replace("USDT", "/USDT");
+          const isBeArmed = Boolean(pos.isBreakEvenArmed);
+          const isPartialDone = Boolean(pos.partialTpExecuted);
+          const isTpArmed = Boolean(pos.isTakeProfitArmed);
 
-        // Se acabou de abrir posição neste tick, inicializa estado limpo
-        if (!prev.hasPosition) {
+          // Se acabou de abrir posição neste tick, inicializa estado limpo
+          if (!prev.hasPosition) {
+            stateMap.set(b.id, {
+              hasPosition: true,
+              isBreakEvenArmed: isBeArmed,
+              partialTpExecuted: isPartialDone,
+              isTakeProfitArmed: isTpArmed,
+            });
+            return;
+          }
+
+          // 1. 🛡️ DETECÇÃO DE ATIVAÇÃO DE BREAK-EVEN (RISCO ZERO)
+          if (!prev.isBreakEvenArmed && isBeArmed) {
+            const bePrice = pos.breakEvenPrice || pos.entryPrice * 1.006;
+            const title = `🛡️ Risco Zero Ativado · ${b.name}`;
+            const description = `Stop Loss ajustado para o Break-Even ($${formatPrice(bePrice)}) em ${symbolDisplay}. O trade agora está com risco zero!`;
+
+            playChime("break_even");
+            toast({
+              title,
+              description,
+              variant: "default",
+            });
+            sendNativeNotification(title, description);
+          }
+
+          // 2. 🎯 DETECÇÃO DE REALIZAÇÃO PARCIAL (TP1)
+          if (!prev.partialTpExecuted && isPartialDone) {
+            const title = `🎯 Realização Parcial (TP1) · ${b.name}`;
+            const description = `50% da posição liquidada com lucro garantido em ${symbolDisplay}! O restante continua operando travado no Break-Even com risco ZERO.`;
+
+            playChime("take_profit_partial");
+            toast({
+              title,
+              description,
+              variant: "default",
+            });
+            sendNativeNotification(title, description);
+          }
+
+          // 3. 🚀 DETECÇÃO DE TRAILING TAKE-PROFIT ARMADO
+          if (!prev.isTakeProfitArmed && isTpArmed) {
+            const peak = pos.tpPeakPrice || pos.currentPrice || pos.entryPrice;
+            const title = `🚀 Trailing Take-Profit Armado · ${b.name}`;
+            const description = `Surfando pump em ${symbolDisplay}! Stop dinâmico subindo (Pico: $${formatPrice(peak)}) para maximizar os lucros.`;
+
+            playChime("trailing_armed");
+            toast({
+              title,
+              description,
+              variant: "default",
+            });
+            sendNativeNotification(title, description);
+          }
+
+          // Atualiza estado rastreado do robô
           stateMap.set(b.id, {
             hasPosition: true,
             isBreakEvenArmed: isBeArmed,
             partialTpExecuted: isPartialDone,
             isTakeProfitArmed: isTpArmed,
           });
-          return;
+        } else {
+          // Robô não está em posição. Se estava antes, reseta para armar novamente no próximo trade
+          if (prev.hasPosition) {
+            stateMap.delete(b.id);
+          }
         }
+      });
+    };
 
-        // 1. 🛡️ DETECÇÃO DE ATIVAÇÃO DE BREAK-EVEN (RISCO ZERO)
-        if (!prev.isBreakEvenArmed && isBeArmed) {
-          const bePrice = pos.breakEvenPrice || pos.entryPrice * 1.006;
-          const title = `🛡️ Risco Zero Ativado · ${b.name}`;
-          const description = `Stop Loss ajustado para o Break-Even ($${formatPrice(bePrice)}) em ${symbolDisplay}. O trade agora está com risco zero!`;
-
-          playChime("break_even");
-          toast({
-            title,
-            description,
-            variant: "default",
-          });
-          sendNativeNotification(title, description);
-        }
-
-        // 2. 🎯 DETECÇÃO DE REALIZAÇÃO PARCIAL (TP1)
-        if (!prev.partialTpExecuted && isPartialDone) {
-          const title = `🎯 Realização Parcial (TP1) · ${b.name}`;
-          const description = `50% da posição liquidada com lucro garantido em ${symbolDisplay}! O restante continua operando travado no Break-Even com risco ZERO.`;
-
-          playChime("take_profit_partial");
-          toast({
-            title,
-            description,
-            variant: "default",
-          });
-          sendNativeNotification(title, description);
-        }
-
-        // 3. 🚀 DETECÇÃO DE TRAILING TAKE-PROFIT ARMADO
-        if (!prev.isTakeProfitArmed && isTpArmed) {
-          const peak = pos.tpPeakPrice || pos.currentPrice || pos.entryPrice;
-          const title = `🚀 Trailing Take-Profit Armado · ${b.name}`;
-          const description = `Surfando pump em ${symbolDisplay}! Stop dinâmico subindo (Pico: $${formatPrice(peak)}) para maximizar os lucros.`;
-
-          playChime("trailing_armed");
-          toast({
-            title,
-            description,
-            variant: "default",
-          });
-          sendNativeNotification(title, description);
-        }
-
-        // Atualiza estado rastreado do robô
-        stateMap.set(b.id, {
-          hasPosition: true,
-          isBreakEvenArmed: isBeArmed,
-          partialTpExecuted: isPartialDone,
-          isTakeProfitArmed: isTpArmed,
-        });
-      } else {
-        // Robô não está em posição. Se estava antes, reseta para armar novamente no próximo trade
-        if (prev.hasPosition) {
-          stateMap.delete(b.id);
-        }
-      }
+    evaluate(useCryptoStore.getState().bots);
+    const unsub = useCryptoStore.subscribe((state, prevState) => {
+      if (state.bots === prevState.bots) return;
+      evaluate(state.bots);
     });
-  }, [bots, toast]);
+
+    return () => unsub();
+  }, [toast]);
 }

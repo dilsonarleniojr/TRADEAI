@@ -96,6 +96,26 @@ const inFlightBuys = new Set<string>();
 const inFlightSells = new Set<string>();
 const partialRetryCooldown = new Map<string, number>();
 const partialRetryCount = new Map<string, number>();
+const lastPriceFetchBySymbol = new Map<string, number>();
+const botLastStatsUpdate = new Map<string, { time: number; action: string; proximity: number }>();
+
+function shouldThrottleBotStats(botId: string, action: string, proximity: number = 0): boolean {
+  const last = botLastStatsUpdate.get(botId);
+  const now = Date.now();
+  if (!last) {
+    botLastStatsUpdate.set(botId, { time: now, action, proximity });
+    return false;
+  }
+  if (last.action !== action || Math.abs(last.proximity - proximity) >= 5) {
+    botLastStatsUpdate.set(botId, { time: now, action, proximity });
+    return false;
+  }
+  if (now - last.time >= 3000) {
+    botLastStatsUpdate.set(botId, { time: now, action, proximity });
+    return false;
+  }
+  return true;
+}
 
 // Telemetria de Frequência de Disparo em tempo real (Entry Frequency Telemetry)
 const botScanTimestamps = new Map<string, number[]>();
@@ -165,25 +185,36 @@ export function getExecutionTelemetry(): ExecutionTelemetry {
  * BTC Market Gatekeeper: Avalia se o Bitcoin está em correção acelerada intradiária (5m/15m)
  * para impedir compras em altcoins contra o fluxo institucional.
  */
+let lastBtcCheck: { result: { healthy: boolean; detail: string }; at: number } | null = null;
+
 async function isBtcMarketHealthy(): Promise<{ healthy: boolean; detail: string }> {
+  if (lastBtcCheck && Date.now() - lastBtcCheck.at < 10_000) {
+    return lastBtcCheck.result;
+  }
   try {
     const klines5m = await getSymbolKlines("BTCUSDT", "5m");
     if (!klines5m || klines5m.length < 15) {
-      return { healthy: true, detail: "Dados intradiários de BTC em sincronização" };
+      const res = { healthy: true, detail: "Dados intradiários de BTC em sincronização" };
+      lastBtcCheck = { result: res, at: Date.now() };
+      return res;
     }
     const last3 = klines5m.slice(-3);
     const currentBtc = last3[last3.length - 1].close;
     const btc15mChange = ((currentBtc - last3[0].open) / last3[0].open) * 100;
     const ema20 = calculateEMA(klines5m.map((k) => k.close), 20);
 
+    let res: { healthy: boolean; detail: string };
     // Se o BTC caiu mais de -1.5% nos últimos 15 min E está negociando significativamente abaixo da EMA20:
     if (btc15mChange <= -1.5 && currentBtc < ema20 * 0.995) {
-      return {
+      res = {
         healthy: false,
         detail: `BTC em correção severa (${btc15mChange.toFixed(2)}% nos 15m · $${currentBtc.toFixed(0)} < EMA20 $${ema20.toFixed(0)})`,
       };
+    } else {
+      res = { healthy: true, detail: `BTC saudável ($${currentBtc.toFixed(0)} · 15m: ${btc15mChange >= 0 ? "+" : ""}${btc15mChange.toFixed(2)}%)` };
     }
-    return { healthy: true, detail: `BTC saudável ($${currentBtc.toFixed(0)} · 15m: ${btc15mChange >= 0 ? "+" : ""}${btc15mChange.toFixed(2)}%)` };
+    lastBtcCheck = { result: res, at: Date.now() };
+    return res;
   } catch {
     return { healthy: true, detail: "Consulta de BTC em andamento" };
   }
@@ -202,9 +233,16 @@ async function isBtcMarketHealthy(): Promise<{ healthy: boolean; detail: string 
  * correspondente permaneça ativo e com a quantidade exata sob custódia,
  * impedindo que ativos fiquem órfãos ou sem gerenciamento algorítmico.
  */
-export function syncCustodyPositionsWithBots() {
+let lastCustodySync = 0;
+
+export function syncCustodyPositionsWithBots(force: boolean = false) {
   const store = useCryptoStore.getState();
+  if (store.tradingMode !== "live") return;
+  if (!force && Date.now() - lastCustodySync < 5000) return;
+  lastCustodySync = Date.now();
+
   const positions = store.portfolio.positions || [];
+  if (positions.length === 0) return;
 
   // 1. Sincroniza posições reais de custódia com robôs existentes
   for (const pos of positions) {
@@ -311,6 +349,7 @@ export function syncCustodyPositionsWithBots() {
  * NUNCA têm suas posições retiradas sem consentimento.
  */
 export async function reconcileOrphanPositions(callbacks?: MultiBotEngineCallbacks) {
+  if (botConsecutiveFailures.size === 0) return;
   const store = useCryptoStore.getState();
   const { bots } = store;
   const activeHealthyBots = bots.filter(
@@ -539,34 +578,38 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       }
     }
 
-    try {
-      const res = await fetch(`/api/market/price?symbol=${symbol}`, {
-        cache: "no-store",
-        signal: AbortSignal.timeout(1500),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const freshPrice = parseFloat(json?.data?.price || json?.price);
-        if (freshPrice && !isNaN(freshPrice) && freshPrice > 0) {
-          currentPrice = freshPrice;
-          const updatedTicker = ticker
-            ? { ...ticker, price: freshPrice }
-            : {
-                symbol,
-                price: freshPrice,
-                priceChange: 0,
-                priceChangePercent: 0,
-                high: freshPrice,
-                low: freshPrice,
-                volume: 0,
-                quoteVolume: 0,
-              };
-          ticker = updatedTicker;
-          store.updateTicker(symbol, updatedTicker);
+    const shouldFetchHttp = !currentPrice || (Date.now() - (lastPriceFetchBySymbol.get(symbol) || 0) > 3000);
+    if (shouldFetchHttp) {
+      lastPriceFetchBySymbol.set(symbol, Date.now());
+      try {
+        const res = await fetch(`/api/market/price?symbol=${symbol}`, {
+          cache: "no-store",
+          signal: AbortSignal.timeout(1500),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          const freshPrice = parseFloat(json?.data?.price || json?.price);
+          if (freshPrice && !isNaN(freshPrice) && freshPrice > 0) {
+            currentPrice = freshPrice;
+            const updatedTicker = ticker
+              ? { ...ticker, price: freshPrice }
+              : {
+                  symbol,
+                  price: freshPrice,
+                  priceChange: 0,
+                  priceChangePercent: 0,
+                  high: freshPrice,
+                  low: freshPrice,
+                  volume: 0,
+                  quoteVolume: 0,
+                };
+            ticker = updatedTicker;
+            store.updateTicker(symbol, updatedTicker);
+          }
         }
+      } catch {
+        // Ignora erro de rede temporário e continua com a cotação disponível
       }
-    } catch {
-      // Ignora erro de rede temporário e continua com a cotação disponível
     }
 
     if (!ticker || !currentPrice) {
@@ -723,9 +766,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       isTakeProfitArmed: isTakeProfitNowArmed,
       tpPeakPrice,
     };
-    store.updateBotPosition(bot.id, updatedPosition);
-    store.updateBotPositionsRealtime(store.tickers);
-    store.updateBotPnls(store.tickers);
+
 
     // 1.0 CÁLCULO DE TEMPO EM OPERAÇÃO (Para Time-Stop e Saída por Estagnação de Capital)
     // Para robôs de Venda Inteligente por IA (useAiExit), o time-stop é estritamente DESATIVADO
@@ -791,6 +832,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       : `Monitorando ${symClean} · Cotação: $${currentPrice!.toFixed(5)} (${sign}${gainPercent.toFixed(2)}%) · Alvo: $${targetProfitPrice}${atrNotice}${statusNotice}${dcaNotice}${timeNotice}`;
 
     store.updateBot(bot.id, {
+      position: updatedPosition,
       status: "in_position",
       stats: {
         ...bot.stats,
@@ -1233,7 +1275,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         return;
       }
 
-      candidatesToEvaluate = availableCandidates.slice(0, 12);
+      candidatesToEvaluate = availableCandidates.slice(0, 4);
     }
 
     let bestApprovals = 0;
@@ -1343,23 +1385,26 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     const proximityHistory = [...prevHistory.slice(-9), triggerProximityPercent];
 
     if (hasManualOverride) {
-      store.updateBot(bot.id, {
-        status: "scanning",
-        stats: {
-          ...bot.stats,
-          scansPerMinute,
-          evaluatedPairsCount: 1,
-          approvalsCount: bestApprovals,
-          totalChecksCount: bestTotalChecks,
-          triggerProximityPercent,
-          proximityHistory,
-          lastVetoReason: bestVetoReason,
-          lastVetoIndicator: bestVetoIndicator,
-          entryChecks: bestChecks,
-          lastAction: `📌 Override Manual: Rastreando ${bot.overrideSymbol!.replace("USDT", "")}/USDT · Aguardando gatilho quantitativo 1m/15m`,
-          lastActionTime: new Date().toISOString(),
-        },
-      });
+      const overrideAction = `📌 Override Manual: Rastreando ${bot.overrideSymbol!.replace("USDT", "")}/USDT · Aguardando gatilho quantitativo 1m/15m`;
+      if (!shouldThrottleBotStats(bot.id, overrideAction, triggerProximityPercent)) {
+        store.updateBot(bot.id, {
+          status: "scanning",
+          stats: {
+            ...bot.stats,
+            scansPerMinute,
+            evaluatedPairsCount: 1,
+            approvalsCount: bestApprovals,
+            totalChecksCount: bestTotalChecks,
+            triggerProximityPercent,
+            proximityHistory,
+            lastVetoReason: bestVetoReason,
+            lastVetoIndicator: bestVetoIndicator,
+            entryChecks: bestChecks,
+            lastAction: overrideAction,
+            lastActionTime: new Date().toISOString(),
+          },
+        });
+      }
       return;
     }
 
@@ -1369,23 +1414,26 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       .map((c) => `${c.symbol.replace("USDT", "")} (+${c.priceChangePercent.toFixed(1)}%)`)
       .join(", ");
 
-    store.updateBot(bot.id, {
-      status: "scanning",
-      stats: {
-        ...bot.stats,
-        scansPerMinute,
-        evaluatedPairsCount: candidatesToEvaluate.length,
-        approvalsCount: bestApprovals,
-        totalChecksCount: bestTotalChecks,
-        triggerProximityPercent,
-        proximityHistory,
-        lastVetoReason: bestVetoReason ? `[${bestCandidateSymbol.replace("USDT", "")}] ${bestVetoReason}` : undefined,
-        lastVetoIndicator: bestVetoIndicator,
-        entryChecks: bestChecks,
-        lastAction: `🔥 Auto-Screener: Monitorando líderes (${topSummary}) · Aguardando gatilho 1m/15m`,
-        lastActionTime: new Date().toISOString(),
-      },
-    });
+    const screenerAction = `🔥 Auto-Screener: Monitorando líderes (${topSummary}) · Aguardando gatilho 1m/15m`;
+    if (!shouldThrottleBotStats(bot.id, screenerAction, triggerProximityPercent)) {
+      store.updateBot(bot.id, {
+        status: "scanning",
+        stats: {
+          ...bot.stats,
+          scansPerMinute,
+          evaluatedPairsCount: candidatesToEvaluate.length,
+          approvalsCount: bestApprovals,
+          totalChecksCount: bestTotalChecks,
+          triggerProximityPercent,
+          proximityHistory,
+          lastVetoReason: bestVetoReason ? `[${bestCandidateSymbol.replace("USDT", "")}] ${bestVetoReason}` : undefined,
+          lastVetoIndicator: bestVetoIndicator,
+          entryChecks: bestChecks,
+          lastAction: screenerAction,
+          lastActionTime: new Date().toISOString(),
+        },
+      });
+    }
     return;
   }
 
@@ -1521,23 +1569,26 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     }
   } else {
     // Update live feedback so the user sees real-time scanning analysis
-    store.updateBot(bot.id, {
-      status: "scanning",
-      stats: {
-        ...bot.stats,
-        scansPerMinute,
-        evaluatedPairsCount: 1,
-        approvalsCount: approvedChecksCount,
-        totalChecksCount: totalCandidateChecks,
-        triggerProximityPercent: singleBotProximityPercent,
-        proximityHistory: singleProximityHistory,
-        lastVetoReason: singleVetoReason,
-        lastVetoIndicator: singleVetoIndicator,
-        lastAction: `Aguardando · ${entryReason}`,
-        lastActionTime: new Date().toISOString(),
-        entryChecks: checks,
-      },
-    });
+    const singleAction = `Aguardando · ${entryReason}`;
+    if (!shouldThrottleBotStats(bot.id, singleAction, singleBotProximityPercent)) {
+      store.updateBot(bot.id, {
+        status: "scanning",
+        stats: {
+          ...bot.stats,
+          scansPerMinute,
+          evaluatedPairsCount: 1,
+          approvalsCount: approvedChecksCount,
+          totalChecksCount: totalCandidateChecks,
+          triggerProximityPercent: singleBotProximityPercent,
+          proximityHistory: singleProximityHistory,
+          lastVetoReason: singleVetoReason,
+          lastVetoIndicator: singleVetoIndicator,
+          lastAction: singleAction,
+          lastActionTime: new Date().toISOString(),
+          entryChecks: checks,
+        },
+      });
+    }
   }
 }
 
