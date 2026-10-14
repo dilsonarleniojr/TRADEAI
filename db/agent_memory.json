@@ -1,6 +1,27 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Ativação de Teste de Operação Real na Binance: Modo Canário com Alocação Rígida de $12 USDT e Payoff >= 1.85x",
+    "summary": "1) Calibração e Hard-Ceiling de Alocação: Corrigida a lógica de dimensionamento em multi-bot-engine.ts onde Math.max(configuredAlloc, compoundingSlot) forçava 45% do caixa ($40.95 USDT) mesmo com allocationAmount definido. Agora respeita estritamente o teto configurado de $12.00 USDT (atendendo o minNotional da Binance e respeitando a trava de 5% de risco da banca); 2) Parâmetros Operacionais Canário: Stop Loss calculado e ativo a -1.40% (perda máxima projetada: ~$0.16 USDT), Take Profit em +2.60% (Payoff 1.85x, ganho esperado: +$0.31 USDT), Break-Even automático armado em +1.30% com buffer de segurança de +0.40% (garantindo resultado líquido positivo pós-taxas de 0.15% roundtrip); 3) Trava de Perda Diária (Kill Switch): Configurada em $4.20 USDT (<= 3.0% do NAV total de $140.42 USDT); 4) Conexão com Binance Spot Verificada: Saldo livre de $91.01 USDT reconhecido automaticamente via ambiente com testnet: false.",
+    "tags": [
+      "live-trading-canary",
+      "binance-spot-real",
+      "hard-ceiling-allocation-12usd",
+      "break-even-buffer",
+      "daily-loss-killswitch",
+      "asymmetric-payoff-1.85x"
+    ],
+    "details": {
+      "nav": "$140.42 USDT total, $91.01 USDT livre",
+      "canaryAllocation": "$12.00 USDT",
+      "targets": "SL -1.40%, TP +2.60%, BE +1.30% com buffer +0.40%",
+      "guardrails": "Max 1 posição simultânea no teste canário, Kill-switch diário $4.20 USDT"
+    },
+    "id": "mem-1791960200000-live-trading-canary-activation",
+    "timestamp": "2026-10-14T06:44:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Reestruturação Quantitativa Institucional: Expectativa Matemática Positiva, Ordens Post-Only Maker e Supervisão Systemd",
     "summary": "1) Diagnóstico e Eliminação do Taker Drag: 100% dos trades anteriores eram MARKET gerando 0.40%-0.70% de fricção e Payoff 0.46x. Refatorada a rota /api/trades para suportar ordens LIMIT_MAKER pós-only com sanitização por tickSize e stepSize; 2) Filtros de Qualidade e Regime Macro BTC (entry-engine): Breakout agora exige volume explosivo >= 1.6x (era 1.0x), pivô de 15 barras com rejeição de pavio <= 35%, ADX >= 22 e trava direcional no Bitcoin (bloqueia compras se BTC <= -2.5% em 24h); 3) Assimetria R:R Positiva (multi-bot-engine): Stop loss estreitado para 1.0%-1.6% e Take Profit recalculado para garantir Payoff >= 1.85x (mínimo de +2.4%), gerando expectativa matemática E = +0.343% por trade mesmo com 42% win rate; 4) Supervisão de Processo com Systemd (systemd-supervision-for-trading-bots v2): Criado trading-bot.service com crash-loop brake em [Unit] (StartLimitIntervalSec=600, StartLimitBurst=5, RestartSec=10, 40s < 600s), daemon headless scripts/run_headless_bot.ts com protocolo sd_notify (READY=1, WATCHDOG=1 a cada 15s com check monotônico de progresso, STOPPING=1 no SIGTERM) e portão ExecStartPre=scripts/pre_market_healthcheck.sh validado com 0 inconformidades no supervision_helper.py.",
     "tags": [
