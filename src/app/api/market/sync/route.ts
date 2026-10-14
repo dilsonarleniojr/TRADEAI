@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-
-const BINANCE_SERVICE = 'http://localhost:3001';
+import { fetchFromBinanceService } from '@/lib/binance-service';
 
 export async function POST() {
   return handleSync();
@@ -11,25 +10,21 @@ export async function GET() {
 }
 
 async function handleSync() {
-  try {
-    const response = await fetch(`${BINANCE_SERVICE}/api/market/sync`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
+  const localRes = await fetchFromBinanceService('/api/market/sync', 500);
+  if (localRes) {
+    try {
+      const data = await localRes.json();
       return NextResponse.json(data);
+    } catch {
+      // ignore
     }
-  } catch (error: any) {
-    console.warn('[API Proxy] Binance service sync failed, attempting direct sync:', error.message);
   }
 
   // Fallback direct to Binance
   try {
     const [infoRes, tickerRes] = await Promise.all([
-      fetch('https://api.binance.com/api/v3/exchangeInfo', { signal: AbortSignal.timeout(12000) }),
-      fetch('https://api.binance.com/api/v3/ticker/24hr', { signal: AbortSignal.timeout(10000) }),
+      fetch('https://api.binance.com/api/v3/exchangeInfo', { signal: AbortSignal.timeout(12000), cache: 'no-store' }),
+      fetch('https://api.binance.com/api/v3/ticker/24hr', { signal: AbortSignal.timeout(10000), cache: 'no-store' }),
     ]);
 
     if (infoRes.ok && tickerRes.ok) {

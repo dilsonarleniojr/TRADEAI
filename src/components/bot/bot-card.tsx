@@ -87,7 +87,6 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
     removeBot,
     resetBotStats,
     updateBot,
-    tickers,
     ticker,
     tradingMode,
     setActiveExecutionReport,
@@ -101,7 +100,6 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
       removeBot: s.removeBot,
       resetBotStats: s.resetBotStats,
       updateBot: s.updateBot,
-      tickers: s.tickers,
       ticker: s.tickers[activeSymbol] || s.tickers[cleanActiveSymbol],
       tradingMode: s.tradingMode,
       setActiveExecutionReport: s.setActiveExecutionReport,
@@ -511,7 +509,7 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
                           !customSearch || p.symbol.includes(customSearch) || p.name.toUpperCase().includes(customSearch)
                         ).map((item) => {
                           const isSelected = currentOverride === item.symbol;
-                          const itemTicker = tickers[item.symbol];
+                          const itemTicker = useCryptoStore.getState().tickers[item.symbol];
                           const change24h = itemTicker?.priceChangePercent;
 
                           return (

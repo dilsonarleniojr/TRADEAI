@@ -1,25 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { fetchFromBinanceService } from '@/lib/binance-service';
 
-const BINANCE_SERVICE = 'http://localhost:3001';
+interface CachedPrice {
+  price: string;
+  timestamp: number;
+}
+
+const priceCache = new Map<string, CachedPrice>();
+const PRICE_CACHE_TTL_MS = 2000;
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const rawSymbol = searchParams.get('symbol') || 'BTCUSDT';
   const symbol = rawSymbol.toUpperCase();
+  const now = Date.now();
 
-  // 1. Try local microservice
-  try {
-    const response = await fetch(
-      `${BINANCE_SERVICE}/api/market/price?symbol=${symbol}`,
-      { signal: AbortSignal.timeout(1500), cache: 'no-store' }
-    );
+  const cached = priceCache.get(symbol);
+  if (cached && now - cached.timestamp < PRICE_CACHE_TTL_MS) {
+    return NextResponse.json({
+      data: { symbol, price: cached.price },
+      timestamp: cached.timestamp,
+      cached: true,
+    });
+  }
 
-    if (response.ok) {
-      const data = await response.json();
-      return NextResponse.json(data);
+  // 1. Try local microservice with circuit breaker
+  const localRes = await fetchFromBinanceService(`/api/market/price?symbol=${symbol}`, 300);
+  if (localRes) {
+    try {
+      const data = await localRes.json();
+      if (data?.data?.price) {
+        priceCache.set(symbol, { price: data.data.price, timestamp: now });
+        return NextResponse.json(data);
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // Service down or timed out, fallback to Binance directly
   }
 
   // 2. Direct fallback to Binance public endpoints
@@ -34,14 +50,23 @@ export async function GET(request: NextRequest) {
       const resp = await fetch(url, { signal: AbortSignal.timeout(3000), cache: 'no-store' });
       if (resp.ok) {
         const json = await resp.json();
+        priceCache.set(symbol, { price: json.price, timestamp: now });
         return NextResponse.json({
           data: { symbol: json.symbol, price: json.price },
-          timestamp: Date.now(),
+          timestamp: now,
         });
       }
     } catch {
       continue;
     }
+  }
+
+  if (cached) {
+    return NextResponse.json({
+      data: { symbol, price: cached.price },
+      timestamp: cached.timestamp,
+      stale: true,
+    });
   }
 
   return NextResponse.json(

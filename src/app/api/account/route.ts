@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { getBinanceCredentials } from '@/lib/binance-session';
 import crypto from 'crypto';
 
-const BINANCE_SERVICE = 'http://localhost:3001';
+import { fetchFromBinanceService } from '@/lib/binance-service';
 
 interface PositionCalc {
   symbol: string;
@@ -61,19 +61,19 @@ async function fetchBinanceAccount(apiKey: string, apiSecret: string, testnet: b
   return await response.json();
 }
 
-/** Preço de todos os pares: microserviço local; se falhar, direto da Binance. */
+/** Preço de todos os pares: microserviço local com circuit breaker; se falhar, direto da Binance. */
 async function fetchAllPrices(testnet: boolean): Promise<Record<string, number>> {
   const prices: Record<string, number> = {};
   try {
-    const res = await fetch(`${BINANCE_SERVICE}/api/market/ticker`, { signal: AbortSignal.timeout(2000) });
-    if (res.ok) {
+    const res = await fetchFromBinanceService('/api/market/ticker', 300);
+    if (res && res.ok) {
       const result = await res.json();
       if (Array.isArray(result.data)) {
-        for (const item of result.data) prices[item.symbol] = parseFloat(item.lastPrice);
+        for (const item of result.data) prices[item.symbol] = parseFloat(item.lastPrice || item.price);
       }
     }
   } catch (err: any) {
-    console.warn('[Account API] Ticker do microserviço falhou:', err.message);
+    // circuit breaker já absorve
   }
   if (Object.keys(prices).length === 0) {
     try {

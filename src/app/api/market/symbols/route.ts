@@ -1,24 +1,45 @@
 import { NextResponse } from 'next/server';
+import { fetchFromBinanceService } from '@/lib/binance-service';
 
-const BINANCE_SERVICE = 'http://localhost:3001';
+interface CachedSymbols {
+  data: any[];
+  timestamp: number;
+}
+
+let cachedSymbols: CachedSymbols | null = null;
+const CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutos
 
 export async function GET() {
-  try {
-    const response = await fetch(`${BINANCE_SERVICE}/api/market/symbols`, {
-      next: { revalidate: 60 },
+  const now = Date.now();
+  if (cachedSymbols && now - cachedSymbols.timestamp < CACHE_TTL_MS) {
+    return NextResponse.json({
+      data: cachedSymbols.data,
+      count: cachedSymbols.data.length,
+      timestamp: cachedSymbols.timestamp,
+      cached: true,
     });
-
-    if (response.ok) {
-      const data = await response.json();
-      return NextResponse.json(data);
-    }
-  } catch (error: any) {
-    console.warn('[API Proxy] symbols fallback due to error:', error.message);
   }
 
-  // Fallback direct to Binance exchangeInfo
+  // 1. Try microservice with circuit breaker
+  const localRes = await fetchFromBinanceService('/api/market/symbols', 300);
+  if (localRes) {
+    try {
+      const data = await localRes.json();
+      if (data?.data && Array.isArray(data.data)) {
+        cachedSymbols = { data: data.data, timestamp: now };
+        return NextResponse.json(data);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 2. Fallback direct to Binance exchangeInfo
   try {
-    const resp = await fetch('https://api.binance.com/api/v3/exchangeInfo');
+    const resp = await fetch('https://api.binance.com/api/v3/exchangeInfo', {
+      signal: AbortSignal.timeout(8000),
+      cache: 'no-store',
+    });
     if (resp.ok) {
       const info = await resp.json();
       const spotUsdt = (info.symbols || [])
@@ -32,10 +53,20 @@ export async function GET() {
           quoteAsset: 'USDT',
           isSpotTradingAllowed: true,
         }));
-      return NextResponse.json({ data: spotUsdt, count: spotUsdt.length, timestamp: Date.now() });
+      cachedSymbols = { data: spotUsdt, timestamp: now };
+      return NextResponse.json({ data: spotUsdt, count: spotUsdt.length, timestamp: now });
     }
   } catch (err: any) {
     console.error('[API Proxy] Direct Binance exchangeInfo error:', err.message);
+  }
+
+  if (cachedSymbols) {
+    return NextResponse.json({
+      data: cachedSymbols.data,
+      count: cachedSymbols.data.length,
+      timestamp: cachedSymbols.timestamp,
+      stale: true,
+    });
   }
 
   return NextResponse.json({ error: 'Failed to fetch symbols' }, { status: 500 });

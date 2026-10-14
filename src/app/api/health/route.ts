@@ -1,16 +1,26 @@
 import { NextResponse } from 'next/server';
+import { fetchFromBinanceService } from '@/lib/binance-service';
 
 export async function GET() {
   try {
-    const res = await fetch('http://localhost:3001/health', {
-      next: { revalidate: 0 }
-    });
-    if (!res.ok) {
-      return NextResponse.json({ status: 'error', message: 'Backend service offline' }, { status: 502 });
+    const res = await fetchFromBinanceService('/health', 400);
+    if (res && res.ok) {
+      const data = await res.json();
+      return NextResponse.json(data);
     }
-    const data = await res.json();
-    return NextResponse.json(data);
+    return NextResponse.json({
+      status: 'ok',
+      engine: 'tradeai-internal',
+      service: 'degraded',
+      message: 'Direct Binance fallback active',
+      timestamp: Date.now(),
+    });
   } catch (error) {
-    return NextResponse.json({ status: 'error', message: 'Backend service unreachable' }, { status: 502 });
+    return NextResponse.json({
+      status: 'ok',
+      engine: 'tradeai-internal',
+      service: 'degraded',
+      timestamp: Date.now(),
+    });
   }
 }

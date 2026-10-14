@@ -1,21 +1,36 @@
 import { NextResponse } from 'next/server';
+import { fetchFromBinanceService } from '@/lib/binance-service';
 
-const BINANCE_SERVICE = 'http://localhost:3001';
+interface CachedHighlights {
+  data: any;
+  timestamp: number;
+}
+
+let cachedHighlights: CachedHighlights | null = null;
+const CACHE_TTL_MS = 10000; // 10 segundos
 
 export async function GET() {
-  // 1. Try local microservice
-  try {
-    const response = await fetch(`${BINANCE_SERVICE}/api/market/highlights`, {
-      signal: AbortSignal.timeout(2000),
-      cache: 'no-store',
+  const now = Date.now();
+  if (cachedHighlights && now - cachedHighlights.timestamp < CACHE_TTL_MS) {
+    return NextResponse.json({
+      data: cachedHighlights.data,
+      timestamp: cachedHighlights.timestamp,
+      cached: true,
     });
+  }
 
-    if (response.ok) {
-      const data = await response.json();
-      return NextResponse.json(data);
+  // 1. Try local microservice with circuit breaker
+  const localRes = await fetchFromBinanceService('/api/market/highlights', 300);
+  if (localRes) {
+    try {
+      const data = await localRes.json();
+      if (data?.data) {
+        cachedHighlights = { data: data.data, timestamp: now };
+        return NextResponse.json(data);
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // Local service down
   }
 
   // 2. Fallback direct to Binance
@@ -38,17 +53,28 @@ export async function GET() {
       );
       const mostActive = byVolume.slice(0, 5);
 
+      const highlightsData = { topGainers, topLosers, mostActive };
+      cachedHighlights = { data: highlightsData, timestamp: now };
+
       return NextResponse.json({
-        data: { topGainers, topLosers, mostActive },
-        timestamp: Date.now(),
+        data: highlightsData,
+        timestamp: now,
       });
     }
   } catch (err: any) {
     console.error('[API Proxy] Highlights fallback error:', err.message);
   }
 
+  if (cachedHighlights) {
+    return NextResponse.json({
+      data: cachedHighlights.data,
+      timestamp: cachedHighlights.timestamp,
+      stale: true,
+    });
+  }
+
   return NextResponse.json(
-    { error: 'Binance service unavailable' },
+    { error: 'Binance service unavailable', details: 'Failed to fetch highlights' },
     { status: 503 }
   );
 }

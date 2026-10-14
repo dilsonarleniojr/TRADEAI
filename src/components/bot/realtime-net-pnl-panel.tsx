@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useCryptoStore } from "@/lib/store";
+import { useShallow } from "zustand/react/shallow";
 import { formatPrice } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -224,8 +225,21 @@ export function RealtimeNetPnlPanel() {
   const [appliedAlertIds, setAppliedAlertIds] = useState<Set<string>>(new Set());
 
   const { toast } = useToast();
-  const tradesInStore = useCryptoStore((s) => s.trades);
-  const botsInStore = useCryptoStore((s) => s.bots);
+  const tradesCount = useCryptoStore((s) => s.trades.length);
+  const activeBotsCount = useCryptoStore((s) => s.bots.filter((b) => b.active).length);
+  const totalBotsCount = useCryptoStore((s) => s.bots.length);
+  const activePositions = useCryptoStore(
+    useShallow((s) =>
+      s.bots
+        .filter((b) => b.active && b.position && b.position.quantity > 0)
+        .map((b) => ({
+          symbol: b.symbol.toUpperCase(),
+          currentPrice: b.position?.currentPrice || 0,
+          entryPrice: b.position?.entryPrice || 0,
+          unrealizedPnlPercent: b.position?.unrealizedPnlPercent || 0,
+        }))
+    )
+  );
   const addBot = useCryptoStore((s) => s.addBot);
   const updateBot = useCryptoStore((s) => s.updateBot);
   const toggleAllBots = useCryptoStore((s) => s.toggleAllBots);
@@ -233,16 +247,19 @@ export function RealtimeNetPnlPanel() {
   const setSelectedSymbol = useCryptoStore((s) => s.setSelectedSymbol);
   const setActiveSection = useCryptoStore((s) => s.setActiveSection);
   const addBotLog = useCryptoStore((s) => s.addBotLog);
-  const tickers = useCryptoStore((s) => s.tickers);
 
   // Executa a ação sugerida ou gera e ativa o robô autônomo diretamente pelo card
   const handleExecuteAlertAction = async (alert: PredictiveAlert) => {
+    const storeState = useCryptoStore.getState();
+    const currentBots = storeState.bots;
+    const currentTickers = storeState.tickers;
+
     const rawSym = alert.symbol || (alert.metrics?.symbol as string) || "";
     const cleanSym = rawSym
       ? (rawSym.toUpperCase().endsWith("USDT") ? rawSym.toUpperCase() : `${rawSym.toUpperCase()}USDT`)
       : "";
     const baseSym = cleanSym ? cleanSym.replace(/USDT$|BUSD$|USDC$/, "") : "GLOBAL";
-    const curPrice = (cleanSym && tickers[cleanSym]?.price) || tickers["BTCUSDT"]?.price || 65000;
+    const curPrice = (cleanSym && currentTickers[cleanSym]?.price) || currentTickers["BTCUSDT"]?.price || 65000;
 
     // Registra feedback visual imediato de aplicação do alerta
     setAppliedAlertIds((prev) => new Set([...prev, alert.id]));
@@ -252,8 +269,8 @@ export function RealtimeNetPnlPanel() {
     // Recomendação: Elevar threshold de confluência para 65% e ativar regime defensivo
     // -------------------------------------------------------------------------
     if (alert.id === "pred-pnl-drop" || (alert.category === "lucratividade" && alert.type === "risco")) {
-      const activeBots = botsInStore.filter((b) => b.active);
-      const targetBots = activeBots.length > 0 ? activeBots : botsInStore;
+      const activeBots = currentBots.filter((b) => b.active);
+      const targetBots = activeBots.length > 0 ? activeBots : currentBots;
 
       targetBots.forEach((bot) => {
         updateBot(bot.id, {
@@ -292,8 +309,8 @@ export function RealtimeNetPnlPanel() {
       alert.recommendedAction.toLowerCase().includes("half-kelly") ||
       alert.recommendedAction.toLowerCase().includes("reduzir tamanho")
     ) {
-      const activeBots = botsInStore.filter((b) => b.active);
-      const targetBots = activeBots.length > 0 ? activeBots : botsInStore;
+      const activeBots = currentBots.filter((b) => b.active);
+      const targetBots = activeBots.length > 0 ? activeBots : currentBots;
 
       targetBots.forEach((bot) => {
         const newAlloc = Math.max(10, Math.round(bot.allocationAmount * 0.5));
@@ -331,7 +348,7 @@ export function RealtimeNetPnlPanel() {
       alert.id === "pred-circuit-breaker-warning" ||
       alert.recommendedAction.toLowerCase().includes("pausar preventivamente")
     ) {
-      const activeBots = botsInStore.filter((b) => b.active);
+      const activeBots = currentBots.filter((b) => b.active);
       if (activeBots.length > 0) {
         activeBots.forEach((bot) => {
           updateBot(bot.id, {
@@ -369,7 +386,7 @@ export function RealtimeNetPnlPanel() {
     // -------------------------------------------------------------------------
     if (alert.category === "slippage" && alert.type === "risco") {
       const symToProtect = cleanSym || "BTCUSDT";
-      const existingBot = botsInStore.find((b) => b.symbol === symToProtect);
+      const existingBot = currentBots.find((b) => b.symbol === symToProtect);
 
       if (existingBot) {
         updateBot(existingBot.id, {
@@ -433,7 +450,7 @@ export function RealtimeNetPnlPanel() {
     // -------------------------------------------------------------------------
     if (alert.category === "microestrutura" && alert.type === "risco") {
       const symToProtect = cleanSym || "BTCUSDT";
-      const existingBot = botsInStore.find((b) => b.symbol === symToProtect);
+      const existingBot = currentBots.find((b) => b.symbol === symToProtect);
 
       if (existingBot) {
         const hasPos = !!existingBot.position && existingBot.position.quantity > 0;
@@ -520,7 +537,7 @@ export function RealtimeNetPnlPanel() {
       const beTrigger = 1.5;
       const timeStopMins = 240; // 4 horas
 
-      const existingBot = botsInStore.find((b) => b.symbol === cleanSym);
+      const existingBot = currentBots.find((b) => b.symbol === cleanSym);
       let targetBotId = "";
 
       const botConfigData = {
@@ -599,7 +616,7 @@ export function RealtimeNetPnlPanel() {
     // CASO 8: Fallback Seguro para Qualquer Outro Alerta de Risco
     // -------------------------------------------------------------------------
     if (alert.type === "risco") {
-      const activeBots = botsInStore.filter((b) => b.active);
+      const activeBots = currentBots.filter((b) => b.active);
       activeBots.forEach((bot) => {
         updateBot(bot.id, {
           signalConfidenceThreshold: 75,
@@ -629,8 +646,8 @@ export function RealtimeNetPnlPanel() {
   const fetchMetrics = useCallback(async () => {
     try {
       setIsRefreshing(true);
-      const activeCount = botsInStore.filter((b) => b.active).length;
-      const totalCount = botsInStore.length;
+      const activeCount = useCryptoStore.getState().bots.filter((b) => b.active).length;
+      const totalCount = useCryptoStore.getState().bots.length;
       const res = await fetch(
         `/api/bot/realtime-metrics?mode=${filterMode}&activeBots=${activeCount}&totalBots=${totalCount}`,
         { cache: "no-store" }
@@ -652,14 +669,14 @@ export function RealtimeNetPnlPanel() {
 
   useEffect(() => {
     fetchMetrics();
-    const interval = setInterval(fetchMetrics, 3000); // Polling em tempo real a cada 3s
+    const interval = setInterval(fetchMetrics, 5000); // Polling institucional a cada 5s
     return () => clearInterval(interval);
   }, [fetchMetrics]);
 
-  // Re-busca imediatamente se um novo trade for registrado no store
+  // Re-busca imediatamente se contagem de trades ou bots mudar
   useEffect(() => {
     fetchMetrics();
-  }, [tradesInStore.length, botsInStore.length, fetchMetrics]);
+  }, [tradesCount, activeBotsCount, totalBotsCount, fetchMetrics]);
 
   if (loading && !data) {
     return (
@@ -1214,20 +1231,20 @@ export function RealtimeNetPnlPanel() {
 
                   const targetSymbol = (alert.symbol || (alert.metrics?.symbol as string) || "BTCUSDT").toUpperCase();
                   const cleanSym = targetSymbol.endsWith("USDT") ? targetSymbol : `${targetSymbol}USDT`;
-                  const activeBot = botsInStore.find((b) => b.symbol === cleanSym && b.active);
-                  const isBotInPosition = activeBot && (activeBot.status === "in_position" || (!!activeBot.position && activeBot.position.quantity > 0));
+                  const pos = activePositions.find((p) => p.symbol === cleanSym);
+                  const isBotInPosition = !!pos;
 
                   // Cálculo de PnL Flutuante (Unrealized PnL) em tempo real
                   let floatingPnlPct = 0;
                   let hasFloatingPnl = false;
-                  if (isBotInPosition && activeBot.position) {
-                    const curPrice = tickers[cleanSym]?.price ?? (activeBot.position.currentPrice || 0);
-                    const entryPrice = activeBot.position.entryPrice || 0;
+                  if (pos) {
+                    const curPrice = pos.currentPrice || (useCryptoStore.getState().tickers[cleanSym]?.price ?? 0);
+                    const entryPrice = pos.entryPrice;
                     if (curPrice > 0 && entryPrice > 0) {
                       floatingPnlPct = ((curPrice - entryPrice) / entryPrice) * 100;
                       hasFloatingPnl = true;
-                    } else if (typeof activeBot.position.unrealizedPnlPercent === "number") {
-                      floatingPnlPct = activeBot.position.unrealizedPnlPercent;
+                    } else if (typeof pos.unrealizedPnlPercent === "number") {
+                      floatingPnlPct = pos.unrealizedPnlPercent;
                       hasFloatingPnl = true;
                     }
                   }

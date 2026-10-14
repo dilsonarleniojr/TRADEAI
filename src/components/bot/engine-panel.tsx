@@ -75,7 +75,14 @@ export function EnginePanel() {
   );
 
   const btc = tickers["BTCUSDT"];
-  const leaders = useMemo(() => runMarketScanner(tickers), [tickers]);
+  const [leaders, setLeaders] = useState<string[]>(() => runMarketScanner(tickers));
+  useEffect(() => {
+    const update = () => {
+      setLeaders(runMarketScanner(useCryptoStore.getState().tickers));
+    };
+    const interval = setInterval(update, 5000);
+    return () => clearInterval(interval);
+  }, []);
   const defaultLeader = leaders[0] || "SOLUSDT";
 
   // Mapeia símbolos reais de mercado para buscar cotações, klines e orderbook
