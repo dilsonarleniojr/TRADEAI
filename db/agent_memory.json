@@ -1,5 +1,24 @@
 [
   {
+    "category": "BUG_FIX",
+    "title": "Correção de Travamento Infinito no Modal de IA e Desduplicação do Botão API Binance",
+    "summary": "1) Modal de IA ('Motor de Inteligência Artificial'): Eliminado o estado de carregamento infinito ('Carregando configurações de IA...'). O componente ai-settings-dialog.tsx agora inicializa com fallback resiliente baseado em AI_PROVIDERS, evitando tela bloqueada e corrida de montagem/desmontagem em React 18, com carregamento assíncrono não-bloqueante, cache no-store e botão de atualização manual; 2) Botão 'API Binance': Removido o botão duplicado redundante em header.tsx, mantendo apenas o trigger oficial de ApiSettingsDialog que exibe status contextual ('Configurar' ou 'Ativa').",
+    "tags": [
+      "ai-settings-modal-fix",
+      "non-blocking-loading",
+      "duplicate-binance-button-fix",
+      "header-cleanup",
+      "react18-race-condition-fix"
+    ],
+    "details": {
+      "aiSettingsFallback": "DEFAULT_SETTINGS garante renderização instantânea com modelos oficiais",
+      "resilientFetch": "loadSettings implementado com no-store e captura de erro sem congelar a UI",
+      "duplicateHeaderButton": "Removido Button redundante na linha 344 de header.tsx"
+    },
+    "id": "mem-1791945000000-ai-modal-and-binance-button-fix",
+    "timestamp": "2026-10-14T03:57:00.000Z"
+  },
+  {
     "category": "ARCHITECTURE_DECISION",
     "title": "Otimização Quantitativa de Resultados e Reestruturação de Assimetria de Risco/Retorno",
     "summary": "Resolvida a causa-raiz dos prejuízos operacionais na frota de robôs: 1) Correção da Assimetria de Payoff (Risco:Retorno): Take Profit elevado para >= 2.2% a 4.0%, Parciais (50%) reconfiguradas para >= 1.6% e Break-Even recalibrado para armar em 1.30% com buffer de 0.40% (garantindo lucro líquido real de taxas); 2) Eliminação de Overtrading no RSI: remoção de falso gatilho de suporte em velas neutras, exigindo confirmação estrita de fundo e rompimento de máxima anterior; 3) Elevação do Piso de Liquidez para $8M USDT diários no Auto-Screener e filtros de entrada, eliminando derrapagem e spreads tóxicos de micro-altcoins; 4) Prevenção de Encerramento Precoce por Time-Stop: desativada liquidação forçada no minuto 50 para posições em consolidação saudável sem violação estrutural de stop-loss; 5) Trava de Quarentena e Cooldown pós-perda reforçada para ativos com override manual.",

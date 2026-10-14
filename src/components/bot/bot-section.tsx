@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useCryptoStore, type TradeData, type KlineData, type BotInstance } from "@/lib/store";
+import { DEFAULT_BOTS } from "@/lib/store/botSlice";
 import { formatPrice } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

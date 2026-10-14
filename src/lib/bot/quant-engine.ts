@@ -96,6 +96,14 @@ const EXCLUDED_SYMBOLS = new Set([
   "USDPUSDT",
 ]);
 
+/** Pares líderes de alta liquidez e menor spread para concentração estratégica de capital */
+export const TIER_1_INSTITUTIONAL_MAJORS = new Set([
+  "BTCUSDT",
+  "ETHUSDT",
+  "SOLUSDT",
+  "BNBUSDT",
+]);
+
 /**
  * Auto-Screener institucional da Binance:
  * Filtra moedas em USDT com liquidez robusta (> $5M), momentum positivo em 24h,
@@ -197,13 +205,11 @@ export function scanHotCoins(
     let correlationAdjustment = 0;
     let corrLabel = "Correlação Moderada";
     if (estimatedCorr <= 0.60) {
-      corrLabel = "Descorrelacionado (Desacoplamento)";
-      correlationAdjustment = +8.0; // Bonificação por diversificação de risco
-    } else if (estimatedCorr > 0.85) {
-      corrLabel = "Alta Correlação Beta (r > 0.85)";
-      if (holdsMajors) {
-        correlationAdjustment = -12.0; // Penalização por risco concentrado
-      }
+    // Prioridade Institucional Tier-1: Ativos líderes (ETH, SOL, BNB) têm menor spread, slippage zero e máxima liquidez
+    const isTier1Major = TIER_1_INSTITUTIONAL_MAJORS.has(s);
+    if (isTier1Major) {
+      correlationAdjustment = Math.max(correlationAdjustment, +12.0); // Bônus de liquidez institucional
+      corrLabel = "Líder Institucional Tier-1 (Baixo Spread)";
     }
 
     // Pontuação quantitativa multicritério calibrada:
@@ -212,7 +218,7 @@ export function scanHotCoins(
     // - Força relativa vs BTC (relStrength * 0.8)
     // - Z-Score de Volume (volumeZScore * 2.5)
     // - Proximidade do topo do dia (rangePos * 4.0)
-    // - Bônus / Penalidade de Correlação Cross-Asset
+    // - Bônus de Liquidez Institucional / Correlação Cross-Asset
     const isSweetSpot = change >= 2.0 && change <= 14.0;
     const boundedChangeScore = Math.min(change, 14.0) * 1.0;
     const score =
