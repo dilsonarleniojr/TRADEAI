@@ -78,6 +78,11 @@ export interface ProtectionSettings {
 
   // 9. Filtro de Correlação Cruzada (Beta r > 0.85)
   crossCorrelationFilter: boolean;
+
+  // 10. Repricing Dinâmico de 1 Tick para LIMIT_MAKER (aos 30s se Fill-Rate < 40%)
+  dynamicMakerRepricing: boolean;
+  repricingTimeoutSeconds: number; // e.g. 30
+  minFillRateThreshold: number; // e.g. 40 (40%)
 }
 
 export const DEFAULT_PROTECTION_SETTINGS: ProtectionSettings = {
@@ -97,7 +102,27 @@ export const DEFAULT_PROTECTION_SETTINGS: ProtectionSettings = {
   restingOrderTimeoutSeconds: 60,
   btcMacroFilter: true,
   crossCorrelationFilter: true,
+  dynamicMakerRepricing: true,
+  repricingTimeoutSeconds: 30,
+  minFillRateThreshold: 40,
 };
+
+export interface FillRateEvent {
+  timestamp: number;
+  symbol: string;
+  status: "FILLED" | "CANCELLED" | "REPRICED";
+}
+
+export interface FillRateTelemetry {
+  totalMakerOrders: number;
+  filledMakerOrders: number;
+  cancelledMakerOrders: number;
+  repricedMakerOrders: number;
+  fillRatePct: number;
+  recentFillRatePct: number;
+  isExtremeVolatility: boolean;
+  recentHistory: FillRateEvent[];
+}
 
 export class RiskManager {
   private static instance: RiskManager;
@@ -112,6 +137,13 @@ export class RiskManager {
   private dailyLossUsdt: number = 0;
   private lastResetDay: number = new Date().getUTCDate();
 
+  // Telemetria de Taxa de Preenchimento (Fill-Rate Telemetry)
+  private makerOrdersCount: number = 0;
+  private makerFilledCount: number = 0;
+  private makerCancelledCount: number = 0;
+  private makerRepricedCount: number = 0;
+  private recentMakerEvents: FillRateEvent[] = [];
+
   // Limites institucionais configuráveis
   public static readonly DEFAULT_RISK_PER_TRADE_PCT = 0.01; // 1.0% do saldo em risco por trade
   public static readonly MAX_DAILY_DRAWDOWN_PCT = 0.03;      // 3.0% perda diária máxima
@@ -124,6 +156,7 @@ export class RiskManager {
 
   private constructor() {
     this.settings = this.loadInitialSettings();
+    this.loadInitialFillTelemetry();
   }
 
   private loadInitialSettings(): ProtectionSettings {
