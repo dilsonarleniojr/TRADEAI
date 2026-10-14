@@ -221,13 +221,14 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
             <Wallet className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
             <div className="flex flex-col text-left leading-tight">
               <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">Saldo</span>
-              <span className="text-xs font-bold font-mono text-slate-100 tabular-nums">
+              <span className="text-xs font-bold font-mono text-slate-100 tabular-nums" suppressHydrationWarning>
                 ${portfolio?.totalValue !== undefined ? formatPrice(portfolio.totalValue) : "0.00"}
               </span>
             </div>
             {portfolio?.pnlPercent !== undefined && (
               <Badge
                 variant="outline"
+                suppressHydrationWarning
                 className={cn(
                   "text-[9px] font-mono px-1 py-0 h-4 border-none rounded",
                   portfolio.pnlPercent >= 0 ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400"
@@ -498,7 +499,7 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
           )}
 
           {/* Bot active badge */}
-          {(() => {
+          {mounted && (() => {
             const count = bots ? bots.filter((b) => b.active).length : (botActive ? 1 : 0);
             if (count === 0) return null;
             return (

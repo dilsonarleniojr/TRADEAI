@@ -14,7 +14,8 @@
       "defaultBotsCleaned": "DEFAULT_BOTS agora contém apenas motores legítimos sem posições mockadas",
       "storageSanitized": "loadBotsFromStorage filtra robôs de teste legados",
       "syncCustodyPositionsWithBots": "Auditoria reversa purga b.position caso o ativo não conste em portfolio.positions",
-      "uiReconciliation": "Botão Reconciliar com Portfólio e gatilho em tempo real após fetch de saldo"
+      "uiReconciliation": "Botão Reconciliar com Portfólio e gatilho em tempo real após fetch de saldo",
+      "badgeHydrationFix": "Bot active badge agora usa mounted && para evitar discrepância span/button no SSR"
     },
     "id": "mem-1791943000000-ghost-positions-purge-reconciliation",
     "timestamp": "2026-10-14T03:05:00.000Z"
