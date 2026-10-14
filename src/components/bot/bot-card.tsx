@@ -5,6 +5,7 @@ import { type BotInstance } from "@/lib/store";
 import { useCryptoStore } from "@/lib/store";
 import { formatPrice } from "@/lib/format";
 import { manualCloseBotPosition, manualOpenBotPosition } from "@/lib/bot/multi-bot-engine";
+import { PauseBotDialog } from "./pause-bot-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -113,6 +114,7 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
   const { toast } = useToast();
   const [isClosing, setIsClosing] = useState(false);
   const [isOpening, setIsOpening] = useState(false);
+  const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
   const [customSearch, setCustomSearch] = useState("");
   const [overrideTtl, setOverrideTtl] = useState<"indefinite" | "single_trade" | "1h" | "4h">(
     bot.overrideMode || "1h"
@@ -661,7 +663,13 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
                   ? "border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
                   : "bg-crypto-green hover:bg-crypto-green/90 text-white"
               }`}
-              onClick={() => toggleBotActive(bot.id)}
+              onClick={() => {
+                if (bot.active && hasPosition) {
+                  setPauseDialogOpen(true);
+                } else {
+                  toggleBotActive(bot.id);
+                }
+              }}
               title={bot.active ? "Pausar este bot" : "Iniciar este bot"}
             >
               {bot.active ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
@@ -700,7 +708,11 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
               variant="ghost"
               className="h-8 w-8 text-muted-foreground hover:text-crypto-red hover:bg-crypto-red/10 cursor-pointer"
               onClick={() => {
-                if (confirm(`Deseja remover o ${bot.name}?`)) {
+                if (hasPosition) {
+                  if (confirm(`⚠️ ATENÇÃO: O robô ${bot.name} possui posição aberta de ${bot.position?.symbol.replace("USDT", "")}/USDT em carteira!\n\nDeseja remover o robô mantendo o ativo na carteira? (Caso queira liquidar antes, feche a posição pelo botão 'Fechar Posição' ou pause o robô para liquidar a mercado).`)) {
+                    removeBot(bot.id);
+                  }
+                } else if (confirm(`Deseja remover o ${bot.name}?`)) {
                   removeBot(bot.id);
                 }
               }}
@@ -1155,6 +1167,26 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
             </Badge>
           </div>
         </div>
+
+        {/* Modal de confirmação ao desligar robô com posição aberta */}
+        <PauseBotDialog
+          open={pauseDialogOpen}
+          onOpenChange={setPauseDialogOpen}
+          bot={bot}
+          onConfirmKeep={() => {
+            toggleBotActive(bot.id, false);
+            toast({
+              title: `${bot.name} Pausado`,
+              description: `Robô desligado. A posição de ${(bot.position?.symbol || bot.symbol).replace("USDT", "")} foi mantida intacta em sua carteira.`,
+            });
+          }}
+          onConfirmLiquidate={async () => {
+            await manualCloseBotPosition(bot.id, {
+              stopBotAfterClose: true,
+              onToast: (t) => toast(t),
+            });
+          }}
+        />
       </CardContent>
     </Card>
   );

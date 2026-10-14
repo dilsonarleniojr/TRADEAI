@@ -240,10 +240,22 @@ export function BotSection() {
               variant="outline"
               size="sm"
               onClick={() => {
+                const inPos = inPositionBots.length;
+                if (inPos > 0) {
+                  if (
+                    !window.confirm(
+                      `⚠️ ATENÇÃO: Existem ${inPos} robô(s) com posições abertas em custódia!\n\nAo pausar a frota, os ativos serão MANTIDOS em sua carteira sem serem vendidos a mercado.\n\nDeseja pausar todos os robôs mesmo assim? (Caso deseje liquidar antes, pause cada robô individualmente ou use o fechamento manual)`
+                    )
+                  ) {
+                    return;
+                  }
+                }
                 toggleAllBots(false);
                 toast({
                   title: "Frota Pausada",
-                  description: "Todos os robôs foram pausados.",
+                  description: inPos > 0
+                    ? `Todos os robôs foram pausados. As ${inPos} posições ativas continuam mantidas em carteira.`
+                    : "Todos os robôs foram pausados.",
                 });
               }}
               disabled={bots.length === 0 || activeBots.length === 0}
