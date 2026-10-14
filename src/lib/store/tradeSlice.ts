@@ -356,7 +356,7 @@ export const createTradeSlice: StateCreator<TradeSlice, [], [], TradeSlice> = (s
         id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         timestamp: Date.now(),
       };
-      return { botLogs: [newLog, ...state.botLogs].slice(0, 100) };
+      return { botLogs: [newLog, ...state.botLogs].slice(0, 1500) };
     }),
   clearBotLogs: () => set({ botLogs: [] }),
 
