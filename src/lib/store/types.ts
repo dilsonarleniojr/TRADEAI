@@ -59,8 +59,8 @@ export interface BotConfigData {
   useBtcGatekeeper?: boolean;
   rsiPeriod: number;
   emaFast: number;
-  emaSlow: number;
   stopAfterProfit?: boolean;
+  useAiExit?: boolean; // Venda no Melhor Momento sugerida por Inteligência Artificial
   // Strategy specific params
   gridLower?: number;
   gridUpper?: number;
@@ -197,6 +197,9 @@ export interface BotInstance {
 
   // Encerramento automático após lucro (Operação Única)
   stopAfterProfit?: boolean;
+
+  // Saída Inteligente por IA (Venda no Melhor Momento)
+  useAiExit?: boolean; // Vende no melhor momento sugerido pela IA baseado em esgotamento e momentum
 
   // Scalping de Curto Prazo
   usePartialTp?: boolean; // Realização Parcial de 50% no primeiro alvo

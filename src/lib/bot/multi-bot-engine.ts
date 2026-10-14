@@ -702,6 +702,47 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       }
     }
 
+    // 1.04 SAÍDA INTELIGENTE POR IA (Venda no Melhor Momento sugerido pela Inteligência Artificial)
+    let isAiExitTriggered = false;
+    let aiExitReason = "";
+
+    if (bot.useAiExit || bot.strategy === "AI") {
+      // 1. Sinal preditivo explícito da base/rede neural
+      const latestAiSignal = aiSignals?.find(
+        (s) => s.symbol === pos.symbol && (s.action === "SELL" || s.signal === "SELL")
+      );
+      const isProfitableOrCoveringFees = gainPercent >= 0.35; // Garante lucro cobrindo taxas operacionais
+
+      if (
+        latestAiSignal &&
+        isProfitableOrCoveringFees &&
+        (latestAiSignal.confidence >= 0.55 || (latestAiSignal.confidence_score ?? 0) >= 0.55)
+      ) {
+        const confPct = Math.round((latestAiSignal.confidence || latestAiSignal.confidence_score || 0.6) * 100);
+        isAiExitTriggered = true;
+        aiExitReason = `🤖 SAÍDA INTELIGENTE (IA): Venda recomendada no melhor momento (+${gainPercent.toFixed(2)}%) · Sinal preditivo de topo (${confPct}% de confiança)`;
+      }
+
+      // 2. Análise quantitativa de esgotamento e pico de momentum
+      if (!isAiExitTriggered && gainPercent >= 0.65) {
+        const klines1m = await getSymbolKlines(pos.symbol, "1m");
+        if (klines1m.length >= 14) {
+          const closes = klines1m.map((k) => k.close);
+          const currentRsi = calculateRSI(closes, 14);
+          const lastCandle = klines1m[klines1m.length - 1];
+          const candleRange = lastCandle.high - lastCandle.low;
+          const upperWick = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
+          const isTopRejection = candleRange > 0 && (upperWick / candleRange) >= 0.38;
+
+          // Esgotamento: RSI sobrecomprado (> 68) ou forte rejeição de topo com pavio superior
+          if (currentRsi >= 68 || (gainPercent >= 1.0 && isTopRejection)) {
+            isAiExitTriggered = true;
+            aiExitReason = `🎯 PICO DE MOMENTUM (IA): Venda no melhor momento executada (+${gainPercent.toFixed(2)}%) · RSI em sobrecompra (${currentRsi.toFixed(1)}) e topo rejeitado`;
+          }
+        }
+      }
+    }
+
     // 1.1 TAKE PROFIT TRIGGER
     let isTakeProfit = false;
     let takeProfitReason = "";
@@ -743,7 +784,11 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     let sellReason = "";
     let logType: "profit" | "loss" | "warning" = "profit";
 
-    if (isTakeProfit) {
+    if (isAiExitTriggered) {
+      shouldSell = true;
+      sellReason = aiExitReason;
+      logType = "profit";
+    } else if (isTakeProfit) {
       shouldSell = true;
       sellReason = takeProfitReason;
       logType = "profit";
@@ -2688,3 +2733,94 @@ export function adoptOrphanPositionWithBot(symbol: string, callbacks?: MultiBotE
   }
   return null;
 }
+
+/**
+ * Inicia ou vincula um robô de Inteligência Artificial para gerenciar a saída ideal de um ativo em carteira.
+ * O robô monitora fluxo, indicadores e sinais preditivos para vender no melhor momento com lucro máximo.
+ */
+export function startAiExitBotForAsset(symbol: string, callbacks?: MultiBotEngineCallbacks): string | null {
+  const store = useCryptoStore.getState();
+  const pos = store.portfolio.positions?.find((p) => p.symbol === symbol);
+  if (!pos || pos.quantity <= 0) {
+    callbacks?.onToast?.({
+      title: "Posição não encontrada",
+      description: `Não há saldo disponível de ${symbol.replace("USDT", "")} no portfólio.`,
+      variant: "destructive",
+    });
+    return null;
+  }
+
+  const cleanSym = symbol.replace("USDT", "");
+  let targetBot = store.bots.find((b) => b.symbol === symbol);
+
+  if (!targetBot) {
+    const newBotId = store.addBot({
+      name: `Bot ${cleanSym} — Venda Inteligente (IA)`,
+      symbol,
+      strategy: "AI",
+      active: true,
+      useAiExit: true,
+      takeProfit: 1.8,
+      stopLoss: 2.0,
+      trailingStop: true,
+      trailingStopDistance: 0.40,
+      trailingTakeProfit: true,
+      trailingTakeProfitDistance: 0.35,
+      autoBreakEven: true,
+      breakEvenTrigger: 0.60,
+      breakEvenBuffer: 0.20,
+      usePartialTp: true,
+    });
+    targetBot = store.bots.find((b) => b.id === newBotId);
+  } else {
+    store.updateBot(targetBot.id, {
+      name: `Bot ${cleanSym} — Venda Inteligente (IA)`,
+      strategy: "AI",
+      active: true,
+      status: "in_position",
+      useAiExit: true,
+      trailingTakeProfit: true,
+      autoBreakEven: true,
+    });
+  }
+
+  if (targetBot) {
+    const currentPrice = store.tickers[symbol]?.price || pos.marketPrice;
+    const entryPrice = pos.avgPrice > 0 ? pos.avgPrice : currentPrice;
+    const pnlPercent = entryPrice > 0 ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
+
+    store.updateBotPosition(targetBot.id, {
+      symbol,
+      side: "BUY",
+      quantity: pos.quantity,
+      entryPrice,
+      currentPrice,
+      highestPrice: Math.max(entryPrice, currentPrice),
+      totalCost: pos.avgPrice > 0 ? pos.avgPrice * pos.quantity : pos.marketValue,
+      unrealizedPnl: pos.unrealizedPnl || 0,
+      unrealizedPnlPercent: pnlPercent,
+      entryTime: new Date().toISOString(),
+      mode: store.tradingMode,
+      breakEvenPrice: entryPrice * 1.002,
+      isBreakEvenArmed: true,
+    });
+
+    store.addBotLog({
+      message: `🤖 [Saída Inteligente IA] Robô "${targetBot.name}" assumiu a custódia de ${pos.quantity} ${cleanSym}. A IA está monitorando em tempo real para vender no melhor momento!`,
+      type: "system",
+      botId: targetBot.id,
+      botName: targetBot.name,
+    });
+
+    callbacks?.onToast?.({
+      title: `🤖 Venda por IA Iniciada (${cleanSym})`,
+      description: `O [${targetBot.name}] está rastreando o melhor momento para vender no lucro máximo.`,
+      variant: "default",
+    });
+
+    return targetBot.id;
+  }
+
+  return null;
+}
+

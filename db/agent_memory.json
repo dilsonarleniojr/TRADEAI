@@ -1,6 +1,48 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Início de Robô a partir do Portfólio com Venda no Melhor Momento (IA)",
+    "summary": "Permite iniciar um robô de Inteligência Artificial diretamente a partir de qualquer ativo do portfólio. O bot opera com `useAiExit: true`, monitorando em tempo real fluxo, rejeição de topo (pavio superior/RSI sobrecomprado) e sinais preditivos da IA para executar a venda no momento ótimo de maior lucro.",
+    "tags": [
+      "ai-smart-exit",
+      "portfolio-bot",
+      "best-exit-timing",
+      "momentum-peak",
+      "predictive-exit",
+      "binance"
+    ],
+    "details": {
+      "strategy": "AI",
+      "useAiExit": true,
+      "exitCriteria": "Sinal preditivo de SELL (conf >= 55%) OU pico de momentum (RSI >= 68 / rejeição de topo) com ganho líquido positivo cobrindo taxas"
+    },
+    "id": "mem-1791941000000-ai-exit-bot",
+    "timestamp": "2026-10-14T01:15:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Adoção e Monitoramento Protetivo de Ativos Órfãos em Custódia Real (BAT e AMP)",
+    "summary": "Implementados robôs gestores dedicados (bot-guardian-bat e bot-guardian-amp) com Trailing Take-Profit (1.5%), Trailing Stop e Break-Even armados para monitorar e liquidar no lucro ativos mantidos na Binance Spot que ficaram desacompanhados após finalização de robôs anteriores.",
+    "tags": [
+      "orphan-assets",
+      "guardian-bots",
+      "trailing-take-profit",
+      "break-even",
+      "binance-spot",
+      "custody-protection"
+    ],
+    "details": {
+      "symbolsAdopted": ["BATUSDT", "AMPUSDT"],
+      "batQuantity": 573.426,
+      "ampQuantity": 43275.681,
+      "trailingTpDistance": 0.40,
+      "autoBreakEven": true
+    },
+    "id": "mem-1791940000000-guardian-bots",
+    "timestamp": "2026-10-14T01:05:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Auto-Cura de Posições Órfãs e Mitigação de Rate Limit em Parciais",
     "summary": "Implementado encerramento automático de posições órfãs com saldo $0 na Binance, desarme de parciais com notional < $5 USDT, cooldown/backoff exponencial e expansão do rate limit para 120 req/min para prevenir travamento da frota de robôs.",
     "tags": [

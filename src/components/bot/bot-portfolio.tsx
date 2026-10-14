@@ -19,11 +19,16 @@ import {
   Zap,
   ShieldAlert,
   Bot,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { liquidateWalletPosition, adoptOrphanPositionWithBot } from "@/lib/bot/multi-bot-engine";
+import {
+  liquidateWalletPosition,
+  adoptOrphanPositionWithBot,
+  startAiExitBotForAsset,
+} from "@/lib/bot/multi-bot-engine";
 import {
   LineChart,
   Line,
@@ -179,6 +184,21 @@ export function BotPortfolio() {
     adoptOrphanPositionWithBot(symbol, {
       onToast: (t) => toast(t),
     });
+  };
+
+  const handleStartAiExit = (symbol: string) => {
+    startAiExitBotForAsset(symbol, {
+      onToast: (t) => toast(t),
+    });
+  };
+
+  const handleStartAllAiExit = () => {
+    if (orphanPositions.length === 0) return;
+    for (const pos of orphanPositions) {
+      startAiExitBotForAsset(pos.symbol, {
+        onToast: (t) => toast(t),
+      });
+    }
   };
 
   const handleLiquidateAllOrphans = async () => {
@@ -390,27 +410,38 @@ export function BotPortfolio() {
         {/* Multi-Asset Holdings Across All Simultaneous Bots */}
         {((portfolio.positions && portfolio.positions.length > 0) || portfolio.assetQuantity > 0) && (
           <div className="bg-secondary/30 rounded-lg p-3 space-y-2.5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-1 flex-wrap">
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider block font-semibold">
                 Posições em Carteira ({portfolio.positions?.length || (portfolio.assetQuantity > 0 ? 1 : 0)})
               </span>
               {orphanPositions.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={handleLiquidateAllOrphans}
-                  disabled={isLiquidatingAll || liquidatingSymbol !== null}
-                  className="h-5 px-2 text-[10px] font-semibold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer shadow-sm"
-                  title="Vender a mercado todos os ativos de robôs finalizados/pausados"
-                >
-                  <Zap className="w-2.5 h-2.5 mr-1" />
-                  {isLiquidatingAll ? "Liquidando..." : `Liquidar Órfãos (${orphanPositions.length})`}
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    onClick={handleStartAllAiExit}
+                    className="h-5 px-2 text-[10px] font-semibold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white cursor-pointer shadow-sm border-0 flex items-center gap-1"
+                    title="Iniciar robôs com IA para vender todos os ativos órfãos no melhor momento"
+                  >
+                    <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                    Saída por IA ({orphanPositions.length})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={handleLiquidateAllOrphans}
+                    disabled={isLiquidatingAll || liquidatingSymbol !== null}
+                    className="h-5 px-1.5 text-[10px] font-semibold bg-rose-600/80 hover:bg-rose-700 text-white cursor-pointer shadow-sm"
+                    title="Vender a mercado todos os ativos órfãos imediatamente"
+                  >
+                    <Zap className="w-2.5 h-2.5 mr-0.5" />
+                    {isLiquidatingAll ? "..." : `Liquidar`}
+                  </Button>
+                </div>
               )}
             </div>
 
             {portfolio.positions && portfolio.positions.length > 0 ? (
-              <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                 {portfolio.positions.map((pos) => {
                   const symClean = pos.symbol.replace("USDT", "");
                   const pnl = pos.unrealizedPnl || 0;
@@ -418,14 +449,19 @@ export function BotPortfolio() {
                     (b) => b.active && b.position && b.position.symbol === pos.symbol
                   );
                   const isOrphan = !managingBot;
+                  const isAiManaging = Boolean(
+                    managingBot?.active && (managingBot?.useAiExit || managingBot?.strategy === "AI")
+                  );
                   const isThisLiquidating = liquidatingSymbol === pos.symbol;
 
                   return (
                     <div
                       key={pos.symbol}
                       className={cn(
-                        "text-xs p-2.5 rounded-md border transition-all space-y-1.5",
-                        isOrphan
+                        "text-xs p-2.5 rounded-md border transition-all space-y-2",
+                        isAiManaging
+                          ? "bg-purple-950/20 border-purple-500/30 shadow-[0_0_12px_rgba(168,85,247,0.1)]"
+                          : isOrphan
                           ? "bg-amber-500/10 border-amber-500/30"
                           : "bg-secondary/40 border-border/20"
                       )}
@@ -436,7 +472,16 @@ export function BotPortfolio() {
                           <span className="text-[10px] text-muted-foreground font-mono">
                             ({pos.quantity.toFixed(4)})
                           </span>
-                          {isOrphan ? (
+                          {isAiManaging ? (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] px-1.5 py-0 border-purple-500/50 text-purple-300 bg-purple-500/20 flex items-center gap-1 animate-pulse"
+                              title="A IA está analisando fluxo e indicadores para vender este ativo no pico de lucro"
+                            >
+                              <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                              Saída por IA Ativa
+                            </Badge>
+                          ) : isOrphan ? (
                             <Badge
                               variant="outline"
                               className="text-[9px] px-1 py-0 border-amber-500/40 text-amber-400 bg-amber-500/10 flex items-center gap-0.5"
@@ -450,7 +495,7 @@ export function BotPortfolio() {
                               className="text-[9px] px-1 py-0 border-emerald-500/40 text-emerald-400 bg-emerald-500/10 flex items-center gap-0.5"
                             >
                               <Bot className="w-2.5 h-2.5" />
-                              {managingBot.name.replace(/Bot\s*/i, "").slice(0, 12)}
+                              {managingBot.name.replace(/Bot\s*/i, "").slice(0, 14)}
                             </Badge>
                           )}
                         </div>
@@ -466,31 +511,52 @@ export function BotPortfolio() {
                         </div>
                       </div>
 
-                      {/* Ações para ativos da carteira */}
-                      {isOrphan && (
-                        <div className="flex items-center gap-1.5 pt-1 border-t border-border/30">
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => handleLiquidateSingle(pos.symbol)}
-                            disabled={isThisLiquidating || isLiquidatingAll}
-                            className="h-6 flex-1 text-[10px] font-semibold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer"
-                          >
-                            <Zap className="w-2.5 h-2.5 mr-1" />
-                            {isThisLiquidating ? "Vendendo..." : "Vender a Mercado"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleAdoptSingle(pos.symbol)}
-                            disabled={isThisLiquidating || isLiquidatingAll}
-                            className="h-6 flex-1 text-[10px] font-semibold border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10 cursor-pointer"
-                          >
-                            <Bot className="w-2.5 h-2.5 mr-1" />
-                            Gerenciar com Robô
-                          </Button>
-                        </div>
-                      )}
+                      {/* Ações Inteligentes para a Posição */}
+                      <div className="flex items-center gap-1.5 pt-1 border-t border-border/30">
+                        {isAiManaging ? (
+                          <>
+                            <div className="flex-1 text-[10px] text-purple-300 flex items-center gap-1 font-medium">
+                              <Sparkles className="w-3 h-3 text-amber-300 shrink-0" />
+                              <span className="truncate">IA rastreando pico para vender no lucro</span>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleLiquidateSingle(pos.symbol)}
+                              disabled={isThisLiquidating || isLiquidatingAll}
+                              className="h-6 px-2 text-[10px] font-semibold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer shrink-0"
+                              title="Encerrar agora a mercado na Binance sem esperar a IA"
+                            >
+                              <Zap className="w-2.5 h-2.5 mr-1" />
+                              {isThisLiquidating ? "..." : "Vender Agora"}
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => handleStartAiExit(pos.symbol)}
+                              disabled={isThisLiquidating || isLiquidatingAll}
+                              className="h-6.5 flex-1 text-[10px] font-semibold bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white shadow-sm cursor-pointer border-0 flex items-center justify-center gap-1"
+                              title="Inicia robô com Inteligência Artificial para vender este ativo no melhor momento"
+                            >
+                              <Sparkles className="w-3 h-3 text-amber-300" />
+                              Iniciar Bot (Venda por IA)
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleLiquidateSingle(pos.symbol)}
+                              disabled={isThisLiquidating || isLiquidatingAll}
+                              className="h-6.5 px-2 text-[10px] font-medium border-rose-500/40 text-rose-400 hover:bg-rose-500/10 cursor-pointer shrink-0"
+                              title="Vender a mercado imediatamente na Binance"
+                            >
+                              <Zap className="w-2.5 h-2.5 mr-0.5" />
+                              {isThisLiquidating ? "..." : "Vender"}
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
