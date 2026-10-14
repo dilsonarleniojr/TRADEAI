@@ -1,6 +1,26 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Controles de Proteção Granulares pelo Usuário: Modal Institucional, Sincronização Reativa e Suporte a Presets",
+    "summary": "1) Configuração Granular de Proteções (src/lib/bot/risk-manager.ts): Todos os 9 modos de proteção quantitativa agora podem ser ativados ou desativados individualmente pelo usuário (Kill Switch Diário, Freio de Perdas Consecutivas, Filtro de Viabilidade R:R >= 1.50, Sizing Fracionário <= 1%, Break-Even Dinâmico 1R, LIMIT_MAKER Post-Only, Timeout de Ordens Órfãs 60s, BTC Macro Gatekeeper e Filtro de Descorrelação); 2) Sincronização Reativa & Persistência: Estados gerenciados no Zustand (botSlice, uiSlice) e persistidos via localStorage com broadcasting dinâmico de eventos; 3) Modal Institucional & Toolbar (protection-settings-dialog.tsx & bot-section.tsx): Painel visual dividido em 4 pilares arquiteturais com switches individuais, badges informativos em tempo real e presets rápidos ('Institucional Recomendado' e 'Agressivo / Scalper'); 4) Resiliência Operacional: Quando um modo é desativado, os motores (RiskManager, entry-engine, multi-bot-engine) degradam de forma graciosa para modo permissivo sem falhas de execução. Testes unitários atualizados em scripts/test_risk_manager.ts com 100% de aprovação.",
+    "tags": [
+      "user-protection-toggles",
+      "protection-settings-modal",
+      "risk-manager-config",
+      "permissive-mode-fallback",
+      "institutional-presets"
+    ],
+    "details": {
+      "totalModes": 9,
+      "storageKey": "tradeai_protection_settings",
+      "presets": ["Institucional (100% ativo)", "Agressivo (permissivo)"],
+      "testCoverage": "scripts/test_risk_manager.ts (100% green)"
+    },
+    "id": "mem-1791965000000-user-protection-settings-toggles",
+    "timestamp": "2026-10-14T08:14:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Reestruturação Quantitativa de Risco e Execução: RiskManager Singleton, Sizing Fracionário (<= 1.0%), Post-Only LIMIT_MAKER e Timeout de 60s",
     "summary": "1) RiskManager Centralizado (src/lib/bot/risk-manager.ts): Sizing fracionário por volatilidade/distância de stop ($PositionSize = Equity * RiskPct / |Entry - SL| com risco estritamente <= 1.0%), Trava de Perda Diária (Drawdown <= 3.0% do NAV com hibernação de 24h), Consecutive Loss Brake (>= 3 perdas consecutivas acionam cooldown forçado de 60 minutos), Portão de Viabilidade Operacional pré-ordem (Payoff líquido >= 1.50x deduzindo taxas e slippage) e Break-Even dinâmico em 1R com buffer de +0.35%; 2) Pipeline Modular de 3 Estágios (entry-engine.ts): Integração do Estágio 3 de Viabilidade Operacional no motor analítico; 3) Execução LIMIT_MAKER (Post-Only) & Timeout de 60s (multi-bot-engine.ts e /api/trades): Eliminação de 100% dos custos de Taker e derrapagem agressiva ao despachar ordens limitadas ao bestBid no livro. Monitoramento ativo de restingMakerOrders com cancelamento automático de ordens órfãs não executadas após 60 segundos via endpoint DELETE /api/trades; 4) Sincronização Monotônica de Relógio (/api/trades): Offset dinâmico contra /api/v3/time eliminando definitivamente o erro -1021 recvWindow da Binance; 5) Cobertura de Testes: 100% de aprovação nos testes unitários em scripts/test_risk_manager.ts e compilação limpa no TypeScript.",
     "tags": [
