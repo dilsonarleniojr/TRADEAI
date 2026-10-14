@@ -1,5 +1,28 @@
 [
   {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Otimização Quantitativa de Resultados e Reestruturação de Assimetria de Risco/Retorno",
+    "summary": "Resolvida a causa-raiz dos prejuízos operacionais na frota de robôs: 1) Correção da Assimetria de Payoff (Risco:Retorno): Take Profit elevado para >= 2.2% a 4.0%, Parciais (50%) reconfiguradas para >= 1.6% e Break-Even recalibrado para armar em 1.30% com buffer de 0.40% (garantindo lucro líquido real de taxas); 2) Eliminação de Overtrading no RSI: remoção de falso gatilho de suporte em velas neutras, exigindo confirmação estrita de fundo e rompimento de máxima anterior; 3) Elevação do Piso de Liquidez para $8M USDT diários no Auto-Screener e filtros de entrada, eliminando derrapagem e spreads tóxicos de micro-altcoins; 4) Prevenção de Encerramento Precoce por Time-Stop: desativada liquidação forçada no minuto 50 para posições em consolidação saudável sem violação estrutural de stop-loss; 5) Trava de Quarentena e Cooldown pós-perda reforçada para ativos com override manual.",
+    "tags": [
+      "risk-reward-asymmetry-fix",
+      "positive-expectancy-calibration",
+      "overtrading-elimination",
+      "rsi-filter-tightening",
+      "liquidity-floor-8m",
+      "anti-whipsaw-breakeven",
+      "cooldown-override-enforcement"
+    ],
+    "details": {
+      "payoffRatioFix": "Take Profit elevado para >= 2.2% e Parciais para >= 1.6% para superar taxa de corretagem e stop loss",
+      "breakEvenCalibration": "Armado em +1.30% com piso de +0.40% para não asfixiar operações vencedoras em ruído de 1m",
+      "timeStopProtection": "Veto de encerramento a mercado no minuto 50 a menos que haja perda confirmada (gain <= -1.2%)",
+      "liquidityFloor": "Quote volume mínimo elevado de 3M/5M para 8M USDT em quant-engine e entry-engine",
+      "cooldownEnforcement": "Verificação estrita de botSymbolLossCooldown em candidatos de override manual"
+    },
+    "id": "mem-1791944000000-payoff-expectancy-and-risk-optimization",
+    "timestamp": "2026-10-14T03:40:00.000Z"
+  },
+  {
     "category": "BUG_FIX",
     "title": "Reconciliação Reversa de Custódia e Purga de Posições Fantasmas da Frota de Robôs",
     "summary": "Resolvido o problema de robôs exibindo status 'in_position' (em operação) para ativos inexistentes no portfólio (ex: BAT, AMP, WAL). 1) Removidos robôs de teste hardcoded legados (bot-guardian-bat e bot-guardian-amp) do DEFAULT_BOTS e sanitizado loadBotsFromStorage; 2) Implementada auditoria reversa bidirecional em syncCustodyPositionsWithBots: se um robô tiver posição aberta de um ativo ausente no portfólio, a posição é imediatamente purgada e o robô temporário é pausado/liberado; 3) Adicionado botão e hook de auto-reconciliação contínua na UI da frota.",

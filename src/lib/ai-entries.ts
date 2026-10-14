@@ -282,6 +282,18 @@ export function planEntry(m: MarketSnapshot): TradeEntry {
     }
   }
 
+  if (side === "BUY") {
+    // Garantir alvos mínimos institucionais para cobrir taxas e garantir assimetria de retorno R:R >= 1.5
+    const minTp = round(entry * 1.022, currentPrice);
+    if (takeProfit < minTp) {
+      takeProfit = minTp;
+    }
+    const maxSl = round(entry * 0.982, currentPrice); // no máximo -1.8% per platform guardrails
+    if (stopLoss < maxSl) {
+      stopLoss = maxSl;
+    }
+  }
+
   const riskPerShare = Math.max(0.000001, entry - stopLoss);
   const reward1 = Math.max(0, takeProfit - entry);
   const riskReward = Number((reward1 / riskPerShare).toFixed(2));

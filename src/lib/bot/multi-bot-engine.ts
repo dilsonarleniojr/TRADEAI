@@ -904,15 +904,15 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     }
 
     // 1.2 TRAILING STOP / BREAKEVEN PROFIT LOCK
-    // Arma assim que superar ganho saudável (>= 1.1% ou 65% do alvo de TP)
+    // Arma assim que superar ganho saudável (>= 1.5% ou 65% do alvo de TP)
     const pullbackFromPeak = peakGain - gainPercent;
-    const trailingArmThreshold = Math.max(1.1, effectiveTakeProfit * 0.65);
+    const trailingArmThreshold = Math.max(1.5, effectiveTakeProfit * 0.65);
     const isTrailingStop =
       bot.trailingStop &&
       !isTakeProfitNowArmed &&
       peakGain >= trailingArmThreshold &&
       pullbackFromPeak >= (bot.trailingStopDistance || 0.45) &&
-      gainPercent >= 0.30;
+      gainPercent >= 0.50;
 
     // 1.3 STOP LOSS DISCIPLINADO (Respeita o risco adaptativo configurado por ATR)
     // Para robôs de Saída Inteligente por IA (useAiExit), não aciona stop loss curto acidental
@@ -1122,6 +1122,26 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
 
     if (hasManualOverride) {
       const fixedSym = bot.overrideSymbol!.toUpperCase().trim();
+      const cooldownUntil = botSymbolLossCooldown.get(fixedSym);
+      if (cooldownUntil && Date.now() < cooldownUntil) {
+        const remainingMin = Math.ceil((cooldownUntil - Date.now()) / 60000);
+        store.updateBot(bot.id, {
+          status: "scanning",
+          stats: {
+            ...bot.stats,
+            scansPerMinute,
+            evaluatedPairsCount: 1,
+            approvalsCount: 0,
+            totalChecksCount: 4,
+            triggerProximityPercent: 0,
+            lastVetoReason: `Cooldown pós-trade ativo (${remainingMin}m restantes)`,
+            lastVetoIndicator: "Cooldown Pós-Trade",
+            lastAction: `🛡️ Cooldown pós-trade ativo em ${fixedSym.replace("USDT", "")} (${remainingMin}m restantes para proteção)`,
+            lastActionTime: new Date().toISOString(),
+          },
+        });
+        return;
+      }
       const fixedTicker = tickers[fixedSym] || tickers[`${fixedSym}USDT`];
       let p = fixedTicker?.price || 0;
       if (!p || p <= 0) {

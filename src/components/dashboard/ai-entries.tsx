@@ -348,9 +348,11 @@ export function AIEntries() {
     const cleanSym = e.symbol.toUpperCase();
     const baseSym = cleanSym.replace("USDT", "");
 
-    // 1. Alvos e métricas calculados com precisão a partir da análise da IA
-    const tpPct = Number(Math.max(0.5, ((e.takeProfit - e.entry) / e.entry) * 100).toFixed(2));
-    const slPct = Number(Math.max(0.3, (Math.abs(e.entry - e.stopLoss) / e.entry) * 100).toFixed(2));
+    // 1. Alvos e métricas calculados com precisão a partir da análise da IA ancorados em padrões institucionais
+    const rawTp = ((e.takeProfit - e.entry) / e.entry) * 100;
+    const rawSl = (Math.abs(e.entry - e.stopLoss) / e.entry) * 100;
+    const tpPct = Number(Math.max(2.2, isNaN(rawTp) ? 2.4 : rawTp).toFixed(2));
+    const slPct = Number(Math.min(2.0, Math.max(1.2, isNaN(rawSl) ? 1.5 : rawSl)).toFixed(2));
     const trailPct = e.trailingDistance > 0 && e.entry > 0
       ? Number(((e.trailingDistance / e.entry) * 100).toFixed(2))
       : 0.5;
@@ -358,7 +360,7 @@ export function AIEntries() {
     // 2. Alocação sugerida (risco de 1%, teto de 25% do patrimônio)
     const suggestedSize = sizing(e);
     const allocationAmount = suggestedSize?.notional && suggestedSize.notional > 0
-      ? Math.max(10, Number(suggestedSize.notional.toFixed(2)))
+      ? Math.max(15, Number(suggestedSize.notional.toFixed(2)))
       : 25;
 
     const existingBot = bots.find((b) => b.symbol.toUpperCase() === cleanSym);
@@ -376,14 +378,14 @@ export function AIEntries() {
       trailingStopDistance: trailPct,
       allocationAmount,
       autoBreakEven: true,
-      breakEvenTrigger: Number((tpPct * 0.5).toFixed(2)),
-      breakEvenBuffer: 0.25,
+      breakEvenTrigger: Number(Math.max(1.30, tpPct * 0.6).toFixed(2)),
+      breakEvenBuffer: 0.40,
       usePartialTp: true,
-      partialTpTrigger: tpPct,
+      partialTpTrigger: Number(Math.max(1.65, tpPct * 0.75).toFixed(2)),
       partialTpPercent: 50,
       trailingTakeProfit: true,
       trailingTakeProfitDistance: trailPct,
-      signalConfidenceThreshold: Math.min(95, Math.max(50, Math.round(e.confidence))),
+      signalConfidenceThreshold: Math.min(95, Math.max(70, Math.round(e.confidence))),
       aiEngine: e.aiProvider || e.aiProviderName || (e.source === "regras" ? "Regras Técnicas" : (activeAiProvider || "Claude")),
       algorithmVersion: "v2.5.0-ai-linked",
       autoTradeSignals: true,
