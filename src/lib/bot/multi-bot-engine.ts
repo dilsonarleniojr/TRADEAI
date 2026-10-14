@@ -5,6 +5,7 @@ import { evaluateEntry } from "./entry-engine";
 import { getSymbolKlines } from "./kline-cache";
 import { scanHotCoins, type HotCoinCandidate } from "./quant-engine";
 import { getOrderBookAnalysis, estimateDepthSlippage } from "@/lib/bot/order-book-cache";
+import { getCostBasisForSymbol } from "./cost-basis";
 
 export interface MultiBotEngineCallbacks {
   onToast?: (toast: { title: string; description: string; variant?: "default" | "destructive" }) => void;
