@@ -329,6 +329,10 @@ export interface TradeData {
   marketSnapshot?: MarketSnapshot;
   riskParams?: RiskParams;
   slippagePercent?: number;
+
+  // Microestrutura e Execução Institucional (Maker vs Taker)
+  orderType?: 'MARKET' | 'LIMIT' | 'LIMIT_MAKER';
+  limitPrice?: number;
 }
 
 export interface AISignalData {

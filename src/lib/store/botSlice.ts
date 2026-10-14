@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { BotInstance, BotPosition, BotStrategy, TickerData, TradeData, BotExecutionReport } from "./types";
+import { riskManager, type ProtectionSettings, DEFAULT_PROTECTION_SETTINGS } from "../bot/risk-manager";
 
 export interface BotSlice {
   // Fleet of simultaneous bots
@@ -7,6 +8,11 @@ export interface BotSlice {
   selectedBotId: string | null;
   setSelectedBotId: (id: string | null) => void;
   setBots: (bots: BotInstance[]) => void;
+
+  // Modos de proteção e governança de risco configuráveis pelo usuário
+  protectionSettings: ProtectionSettings;
+  updateProtectionSettings: (settings: Partial<ProtectionSettings>) => void;
+  resetProtectionSettings: () => void;
 
   // Active execution report modal
   activeExecutionReport: BotExecutionReport | null;
@@ -307,9 +313,20 @@ export const createBotSlice: StateCreator<
   bots: loadBotsFromStorage(),
   selectedBotId: "bot-alpha-btc",
   activeExecutionReport: null,
+  protectionSettings: riskManager.getProtectionSettings(),
 
   setSelectedBotId: (id) => set({ selectedBotId: id }),
   setActiveExecutionReport: (report) => set({ activeExecutionReport: report }),
+
+  updateProtectionSettings: (partial) => {
+    const updated = riskManager.setProtectionSettings(partial);
+    set({ protectionSettings: updated });
+  },
+
+  resetProtectionSettings: () => {
+    const reset = riskManager.resetProtectionSettings();
+    set({ protectionSettings: reset });
+  },
 
   setBots: (bots) => {
     persistBots(bots);

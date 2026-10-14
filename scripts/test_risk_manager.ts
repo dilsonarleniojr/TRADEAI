@@ -1,0 +1,107 @@
+import { riskManager, RiskManager } from "../src/lib/bot/risk-manager";
+
+function assert(condition: boolean, msg: string) {
+  if (!condition) {
+    console.error(`❌ FALHA: ${msg}`);
+    process.exit(1);
+  }
+  console.log(`✅ SUCESSO: ${msg}`);
+}
+
+console.log("\n=======================================================");
+console.log("🧪 TESTES DE VALIDAÇÃO INSTITUCIONAL: RISK MANAGER");
+console.log("=======================================================\n");
+
+// 1. Teste de Dimensionamento Fracionário (Risk Per Trade <= 1%)
+console.log("--- 1. TESTE DE CÁLCULO DE POSIÇÃO BASEADA EM RISCO ---");
+const nav = 100.0; // 100 USDT de saldo
+const entryPrice = 50000.0;
+const stopLossPrice = 49250.0; // Stop de 1.5% (distância de $750)
+const sizing = riskManager.calculatePositionSize({
+  accountBalance: nav,
+  entryPrice,
+  stopLossPrice,
+  minNotional: 5.5,
+  riskPercentage: 0.01, // 1% em risco = $1.00 máx de perda
+  maxCapitalAllocationCap: 80.0,
+});
+
+console.log("Resultado do Dimensionamento:", sizing);
+assert(sizing.isViable === true, "A posição deve ser viável");
+assert(sizing.maxLossUsdt <= 1.05, `A perda máxima projetada (${sizing.maxLossUsdt} USDT) deve respeitar o teto de 1% ($1.00 USDT)`);
+assert(sizing.notionalTotal >= 5.5, "O total nocional deve atender ao lote mínimo");
+assert(sizing.notionalTotal <= 80.0, "O total nocional não deve exceder o teto alocado");
+
+// 2. Teste de Viabilidade Operacional (R:R Líquido >= 1:1.50)
+console.log("\n--- 2. TESTE DE VIABILIDADE OPERACIONAL (R:R LÍQUIDO) ---");
+const goodSetup = riskManager.evaluateOperationalViability({
+  entryPrice: 100.0,
+  stopLossPrice: 98.7, // Stop de 1.3%
+  takeProfitPrice: 102.8, // Alvo de 2.8%
+  isMaker: true,
+});
+console.log("Setup com Assimetria Positiva (TP +2.8% / SL -1.3%):", goodSetup);
+assert(goodSetup.viable === true, "Setup 2.8% / 1.3% deve ser viável");
+assert(goodSetup.netRewardRiskRatio >= 1.50, `R:R Líquido (${goodSetup.netRewardRiskRatio.toFixed(2)}x) deve ser >= 1.50x`);
+
+const badSetup = riskManager.evaluateOperationalViability({
+  entryPrice: 100.0,
+  stopLossPrice: 98.5, // Stop de 1.5%
+  takeProfitPrice: 101.5, // Alvo de 1.5% (R:R bruto 1:1, líquido < 1:1 após taxas)
+  isMaker: false,
+});
+console.log("Setup Ruim (TP +1.5% / SL -1.5% Taker):", badSetup);
+assert(badSetup.viable === false, "Setup 1:1 com taxas Taker deve ser sumariamente REJEITADO");
+
+// 3. Teste de Perda Diária Máxima (Drawdown >= 3%)
+console.log("\n--- 3. TESTE DE TRAVA DE PERDA DIÁRIA (CIRCUIT BREAKER) ---");
+const initialStatus = riskManager.checkCircuitBreakers(100.0);
+assert(initialStatus.blocked === false, "Inicialmente o bot não deve estar bloqueado");
+
+// Registra perda de $3.50 (3.5% do NAV de $100)
+riskManager.recordTradeResult(-3.50, 100.0);
+const cbStatus = riskManager.checkCircuitBreakers(100.0);
+console.log("Status após perda diária de 3.5%:", cbStatus);
+assert(cbStatus.blocked === true, "Deve bloquear novas entradas ao atingir 3% de perda diária");
+assert(cbStatus.circuitBreakerType === "DAILY_DRAWDOWN", "O tipo do circuit breaker deve ser DAILY_DRAWDOWN");
+
+// 4. Teste de Freio por Perdas Consecutivas (>= 3 perdas seguidas)
+console.log("\n--- 4. TESTE DE FREIO POR PERDAS CONSECUTIVAS ---");
+riskManager.resetStateForTests();
+const statusAfterReset = riskManager.checkCircuitBreakers(100.0);
+assert(statusAfterReset.blocked === false, "Após reset, bot deve estar liberado");
+
+riskManager.recordTradeResult(-0.50, 100.0); // Perda 1
+assert(riskManager.checkCircuitBreakers(100.0).blocked === false, "1 perda não deve travar");
+
+riskManager.recordTradeResult(-0.50, 100.0); // Perda 2
+assert(riskManager.checkCircuitBreakers(100.0).blocked === false, "2 perdas não devem travar");
+
+riskManager.recordTradeResult(-0.50, 100.0); // Perda 3
+const consecutiveStatus = riskManager.checkCircuitBreakers(100.0);
+console.log("Status após 3 perdas consecutivas:", consecutiveStatus);
+assert(consecutiveStatus.blocked === true, "3 perdas consecutivas DEVEM acionar o freio de cooldown");
+assert(consecutiveStatus.circuitBreakerType === "CONSECUTIVE_LOSS", "Tipo deve ser CONSECUTIVE_LOSS");
+
+// 5. Teste de Reset de Perdas Consecutivas com Vitória
+console.log("\n--- 5. TESTE DE RECUPERAÇÃO APÓS VITÓRIA ---");
+riskManager.resetStateForTests();
+riskManager.recordTradeResult(-0.50, 100.0); // Perda 1
+riskManager.recordTradeResult(-0.50, 100.0); // Perda 2
+riskManager.recordTradeResult(+2.00, 100.0); // Vitória (+2%)
+riskManager.recordTradeResult(-0.50, 100.0); // Perda nova após vitória (deve ser Perda 1 novamente)
+assert(riskManager.checkCircuitBreakers(100.0).blocked === false, "Vitória intermediária deve zerar o contador de perdas consecutivas");
+
+// 6. Teste de Preço de Break-Even em 1R com Buffer
+console.log("\n--- 6. TESTE DE BREAK-EVEN EM 1R ---");
+const be = riskManager.calculateDynamicBreakEven({
+  entryPrice: 100.0,
+  currentPrice: 101.5, // 1R atingido (+1.50)
+  initialStopLossPrice: 98.5, // 1R = $1.50
+  feeBufferPercent: 0.35, // +0.35% cobrindo taxas
+});
+console.log("Nível de Break-Even:", be);
+assert(be.shouldArmBreakEven === true, "Ao atingir 1R ($101.50), Break-Even DEVE ser armado");
+assert(be.newStopLossPrice >= 100.35, "Novo Stop Loss deve ficar em +0.35% ($100.35) garantindo lucro livre de taxas");
+
+console.log("\n🎉 TODOS OS TESTES PASSARAM COM SUCESSO ABSOLUTO!");

@@ -59,6 +59,8 @@ export interface UISlice {
   setOpenApiSettingsModal: (open: boolean) => void;
   openAiSettingsModal: boolean;
   setOpenAiSettingsModal: (open: boolean) => void;
+  openProtectionModal: boolean;
+  setOpenProtectionModal: (open: boolean) => void;
 }
 
 // Default widget order
@@ -257,4 +259,6 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   setOpenApiSettingsModal: (open) => set({ openApiSettingsModal: open }),
   openAiSettingsModal: false,
   setOpenAiSettingsModal: (open) => set({ openAiSettingsModal: open }),
+  openProtectionModal: false,
+  setOpenProtectionModal: (open) => set({ openProtectionModal: open }),
 });

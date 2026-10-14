@@ -6,6 +6,7 @@ import { getSymbolKlines } from "./kline-cache";
 import { scanHotCoins, type HotCoinCandidate } from "./quant-engine";
 import { getOrderBookAnalysis, estimateDepthSlippage } from "@/lib/bot/order-book-cache";
 import { getCostBasisForSymbol } from "./cost-basis";
+import { riskManager, RiskManager } from "./risk-manager";
 
 export interface MultiBotEngineCallbacks {
   onToast?: (toast: { title: string; description: string; variant?: "default" | "destructive" }) => void;
@@ -47,11 +48,86 @@ export function resetCircuitBreaker(): void {
   };
 }
 
+export interface RestingLimitMakerOrder {
+  orderId: string | number;
+  symbol: string;
+  botId: string;
+  botName: string;
+  price: number;
+  quantity: number;
+  createdAt: number;
+}
+
+const restingMakerOrders = new Map<string, RestingLimitMakerOrder>();
+
+export function registerRestingMakerOrder(order: RestingLimitMakerOrder) {
+  restingMakerOrders.set(`${order.botId}_${order.symbol}`, order);
+}
+
+export function clearRestingMakerOrder(botId: string, symbol: string) {
+  restingMakerOrders.delete(`${botId}_${symbol}`);
+}
+
 /**
- * Avalia se o limite diário de perda foi violado pelos trades executados hoje
+ * Trava para Ordens LIMIT_MAKER:
+ * Cancela preventivamente ordens descansando no book por mais de 60s sem execução,
+ * evitando derrapagem, faca caindo e obstrução de capital (se ativado pelo usuário).
+ */
+async function checkRestingMakerOrdersTimeout() {
+  const protectionSettings = riskManager.getProtectionSettings();
+  if (!protectionSettings.restingOrderTimeout) {
+    return;
+  }
+
+  const now = Date.now();
+  const timeoutMs = (protectionSettings.restingOrderTimeoutSeconds || 60) * 1000;
+  const store = useCryptoStore.getState();
+
+  for (const [key, order] of restingMakerOrders.entries()) {
+    if (now - order.createdAt >= timeoutMs) {
+      restingMakerOrders.delete(key);
+      try {
+        const res = await fetch(`/api/trades?action=cancelOrder&symbol=${order.symbol}&orderId=${order.orderId}`, {
+          method: "DELETE",
+        });
+        const resData = await res.json().catch(() => ({}));
+        if (res.ok && resData.success) {
+          store.addBotLog({
+            message: `⏱️ [${order.botName}] Ordem Post-Only (LIMIT_MAKER) em ${order.symbol} descansando há mais de ${Math.round(timeoutMs / 1000)}s cancelada preventivamente para desobstruir capital e evitar slippage adverso.`,
+            type: "warning",
+            botId: order.botId,
+            botName: order.botName,
+          });
+        }
+      } catch (err: any) {
+        console.warn(`[MultiBotEngine] Falha ao cancelar ordem expirada ${order.orderId}:`, err.message);
+      }
+    }
+  }
+}
+
+/**
+ * Avalia se o limite diário de perda foi violado pelos trades executados hoje ou pelo RiskManager
  */
 export function checkCircuitBreaker(): boolean {
   const store = useCryptoStore.getState();
+  const totalValue = store.portfolio?.totalValue || store.portfolio?.cashBalance || 90.0;
+
+  // 1. Verificação centralizada via RiskManager (Daily Drawdown e Consecutive Losses)
+  const rmStatus = riskManager.checkCircuitBreakers(totalValue);
+  if (rmStatus.blocked) {
+    if (!circuitBreakerState.tripped) {
+      circuitBreakerState.tripped = true;
+      circuitBreakerState.trippedAt = Date.now();
+      circuitBreakerState.reason = rmStatus.reason || "Trava de risco acionada pelo RiskManager";
+      store.addBotLog({
+        message: `🚨 [RiskManager] ${circuitBreakerState.reason}. Novas entradas bloqueadas para proteção de capital.`,
+        type: "error",
+      });
+    }
+    return true;
+  }
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayTimestamp = today.getTime();
@@ -65,7 +141,6 @@ export function checkCircuitBreaker(): boolean {
   }
 
   circuitBreakerState.accumulatedDailyLossUsd = dailyLoss;
-  const totalValue = store.portfolio?.totalValue || 90.0;
   const maxPercentLossUsd = (totalValue * circuitBreakerState.dailyLossLimitPercent) / 100;
   const effectiveLimitUsd = Math.min(circuitBreakerState.dailyLossLimitUsd, maxPercentLossUsd);
 
@@ -449,6 +524,9 @@ export async function reconcileOrphanPositions(callbacks?: MultiBotEngineCallbac
 export async function tickMultiBotFleet(callbacks?: MultiBotEngineCallbacks) {
   const store = useCryptoStore.getState();
   const { bots, tradingMode } = store;
+
+  // 1. Auditoria e auto-cancelamento de ordens LIMIT_MAKER descansando no book por > 60s
+  await checkRestingMakerOrdersTimeout();
 
   // Garante que operações de robôs que falharam ou foram pausados sejam assumidas por motores em funcionamento
   await reconcileOrphanPositions(callbacks);
@@ -1138,6 +1216,19 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     cash = 10000;
   }
 
+  // 🛡️ CIRCUIT BREAKER GATE: Bloqueia qualquer nova compra se houver trava diária ou de perdas consecutivas
+  if (checkCircuitBreaker()) {
+    store.updateBot(bot.id, {
+      status: "scanning",
+      stats: {
+        ...bot.stats,
+        lastAction: `🚨 Circuit Breaker Ativo: ${circuitBreakerState.reason || "Perda limite atingida"}`,
+        lastActionTime: new Date().toISOString(),
+      },
+    });
+    return;
+  }
+
   // Check minimum execution balance (mínimo Binance de $5.50 USDT ou lote do robô)
   const minRequiredCash = Math.max(5.50, Math.min(bot.allocationAmount || 15.0, 15.0));
   if (cash < minRequiredCash) {
@@ -1177,7 +1268,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   // ==========================================================
   // BTC MARKET GATEKEEPER: Protege contra quedas aceleradas do BTC
   // ==========================================================
-  if (bot.symbol !== "BTCUSDT" && !isAutoScreener && bot.useBtcGatekeeper !== false) {
+  if (bot.symbol !== "BTCUSDT" && !isAutoScreener && bot.useBtcGatekeeper !== false && riskManager.getProtectionSettings().btcMacroFilter) {
     const btcCheck = await isBtcMarketHealthy();
     if (!btcCheck.healthy) {
       store.updateBot(bot.id, {
@@ -1353,20 +1444,29 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         } catch {}
 
         const maxSafeCash = Math.max(0, cash * 0.95);
-        const configuredAlloc = bot.allocationAmount || 40.0;
-        const compoundingSlot = cash > 90.0
-          ? Math.max(minRequiredCash, cash * 0.45)
-          : Math.max(minRequiredCash, Math.min(maxSafeCash, cash * 0.85));
-        const dynamicAlloc = (bot.allocationAmount && bot.allocationAmount > 0)
-          ? Math.max(minRequiredCash, Math.min(maxSafeCash, bot.allocationAmount))
-          : Math.max(minRequiredCash, Math.min(maxSafeCash, compoundingSlot));
-        // Gestão Dinâmica por Volatilidade (ATR Volatility Targeting) para Altcoins
-        const currentAtr = decision.relATR || 0.010;
-        const baseAtr = 0.010;
-        const volScale = Math.min(1.25, Math.max(0.50, baseAtr / Math.max(0.002, currentAtr)));
-        const targetSpend = Math.max(minRequiredCash, Math.min(maxSafeCash, dynamicAlloc * volScale));
-        const quantity = parseFloat((targetSpend / freshCandPrice).toFixed(6));
-        const total = parseFloat((quantity * freshCandPrice).toFixed(2));
+        const maxCap = (bot.allocationAmount && bot.allocationAmount > 0)
+          ? Math.min(maxSafeCash, bot.allocationAmount)
+          : Math.min(maxSafeCash, cash > 90.0 ? cash * 0.45 : cash * 0.85);
+
+        // Stop Loss projetado para dimensionamento fracionário de risco (≤ 1.0% do saldo)
+        const slPct = (decision.suggestedSl || bot.stopLoss || 1.3) / 100;
+        const stopLossPrice = freshCandPrice * (1 - slPct);
+
+        const posSizing = riskManager.calculatePositionSize({
+          accountBalance: cash,
+          entryPrice: freshCandPrice,
+          stopLossPrice,
+          minNotional: minRequiredCash,
+          riskPercentage: (bot.riskPerTradePercent ? bot.riskPerTradePercent / 100 : RiskManager.DEFAULT_RISK_PER_TRADE_PCT),
+          maxCapitalAllocationCap: Math.min(150.0, maxCap),
+        });
+
+        if (!posSizing.isViable) {
+          continue; // Posição descartada por restrição de risco ou capital
+        }
+
+        const quantity = posSizing.quantity;
+        const total = posSizing.notionalTotal;
 
         // Consulta de microestrutura L2 em tempo real para a candidata
         const candOrderBook = await getOrderBookAnalysis(cand.symbol);
@@ -1551,22 +1651,40 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       return;
     }
 
-    // Gestão de Risco por Ordem: Tamanho de posição calculado respeitando allocationAmount configurado
-    const riskPercent = (bot.riskPerTradePercent || (cash > 90.0 ? 45.0 : 40.0)) / 100;
+    // Gestão de Risco por Ordem: Tamanho de posição calculado por Risco Fracionário (≤ 1.0% do saldo)
     const maxSafeCash = Math.max(0, cash * 0.95);
-    const calculatedAlloc = Math.min(maxSafeCash, cash * riskPercent);
-    const dynamicAlloc = (bot.allocationAmount && bot.allocationAmount > 0)
-      ? Math.max(minRequiredCash, Math.min(maxSafeCash, bot.allocationAmount))
-      : Math.max(minRequiredCash, Math.min(maxSafeCash, calculatedAlloc));
+    const maxCap = (bot.allocationAmount && bot.allocationAmount > 0)
+      ? Math.min(maxSafeCash, bot.allocationAmount)
+      : Math.min(maxSafeCash, cash > 90.0 ? cash * 0.45 : cash * 0.85);
 
-    // Gestão Dinâmica por Volatilidade (ATR Volatility Targeting):
-    const currentAtr = decision.relATR || 0.008;
-    const baseAtr = 0.008; // 0.8% base de referência para majors
-    const volScale = Math.min(1.25, Math.max(0.50, baseAtr / Math.max(0.002, currentAtr)));
-    const targetSpend = Math.min(150.0, Math.max(minRequiredCash, Math.min(maxSafeCash, dynamicAlloc * volScale)));
+    const slPct = (decision.suggestedSl || bot.stopLoss || 1.3) / 100;
+    const stopLossPrice = currentPrice * (1 - slPct);
 
-    const quantity = parseFloat((targetSpend / currentPrice).toFixed(6));
-    const total = parseFloat((quantity * currentPrice).toFixed(2));
+    const posSizing = riskManager.calculatePositionSize({
+      accountBalance: cash,
+      entryPrice: currentPrice,
+      stopLossPrice,
+      minNotional: minRequiredCash,
+      riskPercentage: (bot.riskPerTradePercent ? bot.riskPerTradePercent / 100 : RiskManager.DEFAULT_RISK_PER_TRADE_PCT),
+      maxCapitalAllocationCap: Math.min(150.0, maxCap),
+    });
+
+    if (!posSizing.isViable) {
+      store.updateBot(bot.id, {
+        status: "scanning",
+        stats: {
+          ...bot.stats,
+          lastVetoReason: `Risco Inviável: ${posSizing.rejectionReason || "Saldo insuficiente"}`,
+          lastVetoIndicator: "Risk Manager",
+          lastAction: `⚠️ Entrada cancelada pelo Risk Manager · ${posSizing.rejectionReason}`,
+          lastActionTime: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    const quantity = posSizing.quantity;
+    const total = posSizing.notionalTotal;
 
     if (total >= minRequiredCash * 0.95 && total <= cash) {
       await executeBotBuy({
@@ -1704,13 +1822,24 @@ async function executeBotBuy({
       timestamp: Date.now(),
     };
 
+    // Preço limite e tipo de ordem:
+    // Se postOnlyMakerOrders estiver ativo, usa LIMIT_MAKER apregoado no bestBid (taxa zero maker e zero slippage).
+    // Caso contrário, opera com ordem a mercado MARKET (taker imediato).
+    const protectionSettings = riskManager.getProtectionSettings();
+    const isPostOnly = protectionSettings.postOnlyMakerOrders;
+    const makerLimitPrice = isPostOnly
+      ? ((orderBook?.bestBid && orderBook.bestBid > 0 && orderBook.bestBid <= buyPrice)
+          ? orderBook.bestBid
+          : parseFloat((buyPrice * 0.9998).toFixed(6)))
+      : buyPrice;
+
     const trade: TradeData = {
       id: `trade-${bot.id}-${Date.now()}`,
       executionId,
       algorithmVersion: bot.algorithmVersion || "v2.5.0-institutional",
       symbol: execSymbol,
       side: "BUY",
-      price: buyPrice,
+      price: makerLimitPrice,
       quantity,
       total,
       strategy: customReason || bot.strategy,
@@ -1722,6 +1851,8 @@ async function executeBotBuy({
       riskParams,
       marketSnapshot,
       slippagePercent: estimatedSlippage,
+      orderType: isPostOnly ? "LIMIT_MAKER" : "MARKET",
+      limitPrice: isPostOnly ? makerLimitPrice : undefined,
     };
 
     let executedTrade: TradeData = trade;
@@ -1768,6 +1899,19 @@ async function executeBotBuy({
 
       if (result.account) {
         store.setAccount(result.account);
+      }
+
+      // Se a ordem for LIMIT_MAKER e restingOrderTimeout estiver ativo, registra para auto-cancelamento
+      if (isPostOnly && protectionSettings.restingOrderTimeout && result.binanceOrder?.orderId && result.binanceOrder?.status === "NEW") {
+        registerRestingMakerOrder({
+          orderId: result.binanceOrder.orderId,
+          symbol: execSymbol,
+          botId: bot.id,
+          botName: bot.name,
+          price: makerLimitPrice,
+          quantity: trade.quantity,
+          createdAt: Date.now(),
+        });
       }
     } catch (e: any) {
       store.addBotLog({
@@ -2460,13 +2604,14 @@ async function executeBotSell({
   }
 
   // Clear bot position and record performance (Net PnL real após taxas da exchange)
+  clearRestingMakerOrder(bot.id, execSymbol);
   store.updateBotPosition(bot.id, null);
   store.recordBotTrade(bot.id, trade, netPnl);
 
-  // Governança de Risco: Avalia se perda acumulada acionou o Circuit Breaker Global
-  if (netPnl < 0) {
-    checkCircuitBreaker();
-  }
+  // Governança de Risco: Registra resultado no RiskManager e avalia Circuit Breakers
+  const totalNav = store.portfolio?.totalValue || store.portfolio?.cashBalance || 90.0;
+  riskManager.recordTradeResult(netPnl, totalNav);
+  checkCircuitBreaker();
 
   // Duração da operação
   const entryDate = position.entryTime ? new Date(position.entryTime).getTime() : Date.now();

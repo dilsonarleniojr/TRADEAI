@@ -28,6 +28,7 @@ import {
 } from "./quant-engine";
 import { getStrategy, VOLATILITY_VETO_LIMIT } from "./strategy-catalog";
 import type { OrderBookAnalysis } from "@/lib/bot/order-book-cache";
+import { riskManager } from "./risk-manager";
 
 export const MIN_CANDLES = 25;
 
@@ -537,14 +538,17 @@ export function evaluateEntry(
   });
 
   // 🛡️ Filtro de Regime Macro do Bitcoin (BTCUSDT Guardrail):
-  // Se o ativo for uma altcoin, veta compra se o BTC estiver em forte queda no dia (≤ -2.5%)
+  // Se o ativo for uma altcoin, veta compra se o BTC estiver em forte queda no dia (≤ -2.5%) (se ativo pelo usuário)
   if (evalSymbol !== "BTCUSDT" && btcTicker) {
+    const isFilterActive = riskManager.getProtectionSettings().btcMacroFilter;
     const btcChange = btcTicker.priceChangePercent ?? 0;
     const isBtcSevereDrop = btcChange <= -2.5;
     checks.push({
       label: "Regime Macro BTC",
-      ok: !isBtcSevereDrop,
-      detail: isBtcSevereDrop
+      ok: !isFilterActive || !isBtcSevereDrop,
+      detail: !isFilterActive
+        ? `Filtro macro BTC desativado pelo usuário (${btcChange >= 0 ? "+" : ""}${btcChange.toFixed(1)}% 24h)`
+        : isBtcSevereDrop
         ? `Bitcoin em forte queda (${btcChange.toFixed(1)}% 24h) — altcoins bloqueadas para proteção contra despejo em cascata`
         : `Bitcoin estável (${btcChange >= 0 ? "+" : ""}${btcChange.toFixed(1)}% 24h) — ambiente macro favorável`,
     });
@@ -658,6 +662,26 @@ export function evaluateEntry(
     detail: isAmplitudeSufficient
       ? `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) acima do piso institucional de 1.6% (Alvo: +${suggestedTp}%)`
       : `Potencial de ganho líquido (+${netGainPotential.toFixed(2)}%) insuficiente para cobrir custos e taxas (precisa ≥ 1.60% líquido)`,
+  });
+
+  // 🛡️ Etapa 3: Filtro de Viabilidade Operacional (RiskManager - R:R Líquido ≥ 1:1.5)
+  // Calcula preços projetados absolutos e valida a assimetria positiva deduzindo taxas de corretagem
+  const projectedSlPrice = currentEvalPrice > 0 ? currentEvalPrice * (1 - suggestedSl / 100) : 0;
+  const projectedTpPrice = currentEvalPrice > 0 ? currentEvalPrice * (1 + suggestedTp / 100) : 0;
+
+  const viability = (currentEvalPrice > 0 && projectedSlPrice > 0 && projectedTpPrice > 0)
+    ? riskManager.evaluateOperationalViability({
+        entryPrice: currentEvalPrice,
+        stopLossPrice: projectedSlPrice,
+        takeProfitPrice: projectedTpPrice,
+        isMaker: true, // Prioridade Post-Only Maker
+      })
+    : { viable: true, reason: "Preços de referência em cálculo inicial" };
+
+  checks.push({
+    label: "Viabilidade Operacional R:R",
+    ok: viability.viable,
+    detail: viability.reason,
   });
 
   const blocker = checks.find((c) => !c.ok);

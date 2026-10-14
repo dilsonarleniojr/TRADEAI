@@ -12,6 +12,7 @@ import { BotCard } from "./bot-card";
 import { BotDialog } from "./bot-dialog";
 import { AIBotRecommendationsDialog } from "./ai-bot-recommendations-dialog";
 import { BotExecutionReportDialog } from "./bot-execution-report-dialog";
+import { ProtectionSettingsDialog } from "./protection-settings-dialog";
 import { BinanceConnection } from "./binance-connection";
 import { EnginePanel } from "./engine-panel";
 import { BotReadinessBar } from "./bot-readiness";
@@ -103,6 +104,9 @@ export function BotSection() {
     setActiveExecutionReport: s.setActiveExecutionReport,
     openBotCreateModal: s.openBotCreateModal,
     setOpenBotCreateModal: s.setOpenBotCreateModal,
+    openProtectionModal: s.openProtectionModal,
+    setOpenProtectionModal: s.setOpenProtectionModal,
+    protectionSettings: s.protectionSettings,
   }))
 );
 
@@ -420,6 +424,20 @@ export function BotSection() {
             >
               <Zap className="w-3.5 h-3.5 mr-1.5 text-amber-400 fill-amber-400" />
               Focar Líderes Tier-1 (BTC/ETH/SOL/BNB)
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setOpenProtectionModal(true)}
+              className="h-9 px-3.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 text-xs font-semibold cursor-pointer bg-emerald-500/5 shadow-sm"
+              title="Configurar modos de proteção de capital e circuit breakers"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 mr-1.5 text-emerald-400" />
+              Modos de Proteção
+              <Badge variant="outline" className="ml-1.5 px-1.5 py-0 text-[10px] border-emerald-500/30 text-emerald-300 bg-emerald-500/15">
+                {Object.values(protectionSettings || {}).filter((v) => v === true).length}/9
+              </Badge>
             </Button>
 
             {tradingMode === "paper" && (
@@ -814,6 +832,12 @@ export function BotSection() {
           setBotToEdit(bot);
           setIsDialogOpen(true);
         }}
+      />
+
+      {/* Dialog for Protection Modes and Capital Governance */}
+      <ProtectionSettingsDialog
+        open={openProtectionModal}
+        onOpenChange={setOpenProtectionModal}
       />
 
     </motion.div>
