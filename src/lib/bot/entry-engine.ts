@@ -212,25 +212,28 @@ export function evaluateStrategySignal(
       const rsi = calculateRSI(closes, period);
       const limit = bot.buyThreshold || 35;
       const isOversold = rsi <= limit;
-      // Repique de sobrevenda: RSI próximo do piso com candle verde ou candle anterior de reversão
-      const isReversalCandle = last.close >= last.open || (prevCandle.close >= prevCandle.open);
-      const isRebound = rsi <= limit + 12 && isReversalCandle;
-      // Suporte em tendência: RSI em pullback saudável entre 30 e 72 sustentando sobre suporte
+      // Repique de sobrevenda: RSI próximo do piso com candle verde rompendo máxima anterior (confirmação de fundo)
+      const isReversalCandle = last.close > last.open && (prevCandle ? last.close > prevCandle.high : true);
+      const isRebound = rsi <= limit + 8 && isReversalCandle;
+      // Suporte em tendência: exige tendência altista (fast > slow) e candle de alta sustentando acima da média rápida
       const fastP = bot.emaFast ?? DEFAULT_FAST;
       const slowP = bot.emaSlow ?? DEFAULT_SLOW;
+      const fast = emaSeries(closes, fastP);
       const slow = emaSeries(closes, slowP);
+      const fastNow = fast[fast.length - 1];
       const slowNow = slow[slow.length - 1];
-      const isPullbackSupport = rsi >= 30 && rsi <= 72 && (last.close >= last.open || last.close >= slowNow * 0.997);
+      const isTrendBullish = fastNow > slowNow;
+      const isPullbackSupport = isTrendBullish && rsi >= 38 && rsi <= 62 && last.close > fastNow && last.close >= last.open;
       const ok = isOversold || isRebound || isPullbackSupport;
       return {
         ok,
         detail: isOversold
           ? `RSI(${period}) ${rsi.toFixed(1)} em sobrevenda (≤ ${limit})`
           : isRebound
-            ? `RSI(${period}) ${rsi.toFixed(1)} com repique altista (≤ ${limit + 12})`
+            ? `RSI(${period}) ${rsi.toFixed(1)} com repique altista confirmado`
             : isPullbackSupport
-              ? `RSI(${period}) ${rsi.toFixed(1)} em suporte/pullback saudável`
-              : `RSI(${period}) ${rsi.toFixed(1)} — aguarda sobrevenda (≤ ${limit}) ou suporte`,
+              ? `RSI(${period}) ${rsi.toFixed(1)} em suporte com EMA${fastP} > EMA${slowP}`
+              : `RSI(${period}) ${rsi.toFixed(1)} — aguarda sobrevenda (≤ ${limit}) ou repique em suporte`,
       };
     }
 
@@ -421,7 +424,7 @@ export function evaluateEntry(
     const isExhausted = change24h > 18.0;
     const isSubPenny = currentPrice > 0 && currentPrice < 0.005;
     const isMomentumValid = change24h >= 0.5 && !isExhausted;
-    const isVolumeValid = vol >= 3_000_000;
+    const isVolumeValid = vol >= 8_000_000;
     const isHotCandidate = isMomentumValid && isVolumeValid && !isSubPenny;
     checks.push({
       label: "Auto-Screener Alta",
@@ -432,7 +435,7 @@ export function evaluateEntry(
           ? `Cotação sub-penny ($${currentPrice.toFixed(4)} < $0.005) — bloqueado contra spread tóxico`
           : isHotCandidate
             ? `Líder em momentum saudável (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M)`
-            : `Ativo sem momentum suficiente (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M — precisa entre +0.5% e +18.0% e ≥ $3M)`,
+            : `Ativo sem liquidez/momentum suficiente (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M — precisa entre +0.5% e +18.0% e Vol ≥ $8M)`,
     });
   } else if (bot.overrideSymbol && bot.overrideSymbol !== "AUTO") {
     checks.push({
@@ -617,11 +620,11 @@ export function evaluateEntry(
   if (relATRPercent > 0) {
     // Stop adaptativo: calibrado pela volatilidade, entre 1.2% e 2.0% (respeitando o teto de 2.0% dos guardrails)
     suggestedSl = Math.min(2.0, Math.max(1.2, parseFloat((relATRPercent * 2.0).toFixed(1))));
-    // Alvo adaptativo para scalping de 1m/5m: entre 1.8% e 3.0% (alcançável antes de exaustão de tempo)
-    const dynamicAtrTp = parseFloat((relATRPercent * 2.4).toFixed(1));
-    suggestedTp = Math.max(1.8, Math.min(3.2, dynamicAtrTp || (bot.takeProfit || 2.2)));
+    // Alvo adaptativo institucional: entre 2.2% e 4.0% para garantir assimetria R:R positiva (>= 1.5x)
+    const dynamicAtrTp = parseFloat((relATRPercent * 2.8).toFixed(1));
+    suggestedTp = Math.max(2.2, Math.min(4.0, dynamicAtrTp || (bot.takeProfit || 2.4)));
   } else {
-    suggestedTp = Math.max(1.8, Math.min(3.0, bot.takeProfit || 2.2));
+    suggestedTp = Math.max(2.2, Math.min(3.5, bot.takeProfit || 2.4));
   }
 
   // Potencial de ganho líquido do trade (Take Profit alvo deduzido das taxas operacionais)

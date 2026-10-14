@@ -642,8 +642,8 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // Para ser elegível a parcial, a metade vendida e a metade remanescente precisam respeitar minNotional da Binance (>= $5.20).
     const isAutoBreakEvenEnabled = bot.autoBreakEven ?? true;
     const isUsePartialTp = bot.usePartialTp ?? true;
-    const beTrigger = Math.max(0.70, Math.min(1.50, bot.breakEvenTrigger ?? 0.85));
-    const beBuffer = Math.max(0.25, Math.min(0.40, bot.breakEvenBuffer ?? 0.30));
+    const beTrigger = Math.max(1.20, Math.min(2.20, bot.breakEvenTrigger ?? 1.30));
+    const beBuffer = Math.max(0.35, Math.min(0.60, bot.breakEvenBuffer ?? 0.40));
     const breakEvenPrice = pos.entryPrice * (1 + beBuffer / 100);
     const positionNotional = pos.quantity * currentPrice!;
     const partialRatio = (bot.partialTpPercent ?? 50) / 100;
@@ -651,7 +651,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     const estimatedRemainingNotional = positionNotional * (1 - partialRatio);
     const canUsePartialTp = isUsePartialTp && (estimatedSellNotional >= 5.20) && (estimatedRemainingNotional >= 5.20);
 
-    // Sobe o stop para Break-Even assim que o ativo atingir valorização ágil (+0.85% padrão)
+    // Sobe o stop para Break-Even assim que o ativo atingir valorização saudável (+1.30% padrão)
     // ou logo após a execução da parcial (50% salvo)
     const isBreakEvenNowArmed = Boolean(
       pos.isBreakEvenArmed ||
@@ -670,9 +670,9 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // Stop Loss disciplinado: calibrado entre 1.2% e 2.0% (respeitando teto estrito de 2.0% dos guardrails)
     const configuredStopLoss = pos.dynamicStopLoss || bot.stopLoss || 1.6;
     const effectiveStopLoss = Math.min(2.0, Math.max(1.2, configuredStopLoss));
-    // Take Profit para scalping: alvo atingível entre 1.8% e 3.5%, garantindo lucro realizável
-    const rawTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 2.2;
-    const effectiveTakeProfit = Math.max(1.7, Math.min(3.8, rawTakeProfit));
+    // Take Profit institucional para scalping: alvo atingível entre 2.2% e 4.5%, garantindo payoff favorável
+    const rawTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 2.4;
+    const effectiveTakeProfit = Math.max(2.2, Math.min(4.5, rawTakeProfit));
 
     // 🚀 TRAILING TAKE-PROFIT DINÂMICO PARABÓLICO (Deixar o Lucro Correr em Altas Fortes)
     // Ao bater a meta de Take Profit (ex: +3.0% ou alvo ATR), o robô não vende na hora;
@@ -748,8 +748,8 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
             // Atingiu o tempo base (>= 45m) e o prejuízo zerou: sai imediatamente sem perdas
             isTimeStop = true;
             isZeroLossTimeStop = true;
-          } else if (minutesOpen >= maxTimeStopDeadline) {
-            // Esgotou 5 minutos de tolerância sem reagir: encerra compulsório disciplinado
+          } else if (minutesOpen >= maxTimeStopDeadline && gainPercent <= -1.2) {
+            // Esgotou tolerância sem reagir e com perda expressiva (<= -1.2%): encerra compulsório disciplinado
             isTimeStop = true;
             isHardDeadlineTimeStop = true;
           }
@@ -803,7 +803,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // garantindo lucro líquido no bolso e travando o restante no Break-Even com risco ZERO.
     // Requer apenas que a fatia vendida e a remanescente atendam ao minNotional da Binance (>= 5.20 USDT).
     // Para robôs de Venda Inteligente por IA (useAiExit), parciais só ocorrem se explicitamente habilitadas e com cooldown rigoroso.
-    const partialTpTrigger = Math.max(1.2, bot.partialTpTrigger ?? 1.2);
+    const partialTpTrigger = Math.max(1.6, bot.partialTpTrigger ?? 1.8);
     const now = Date.now();
     const isPartialCooldown = now < (partialRetryCooldown.get(bot.id) || 0);
 

@@ -121,12 +121,12 @@ export function scanHotCoins(
     const s = ticker.symbol;
     if (!s || !s.endsWith("USDT") || EXCLUDED_SYMBOLS.has(s) || s === "BTCUSDT") continue;
     const vol = ticker.quoteVolume || 0;
-    if (vol >= 3_000_000) {
+    if (vol >= 8_000_000) {
       qualifiedTickers.push({ ticker, logVol: Math.log10(Math.max(1, vol)) });
     }
   }
 
-  let meanLogVol = 6.5; // ~$3.16M padrão
+  let meanLogVol = 6.9; // ~$8.0M padrão
   let stdLogVol = 0.6;
   if (qualifiedTickers.length >= 5) {
     meanLogVol = qualifiedTickers.reduce((acc, q) => acc + q.logVol, 0) / qualifiedTickers.length;
@@ -148,8 +148,8 @@ export function scanHotCoins(
     const high = ticker.high || currentPrice;
     const low = ticker.low || currentPrice;
 
-    // Critério 1: Liquidez real na Binance (mínimo US$ 5 milhões nas últimas 24h)
-    if (vol < 5_000_000) continue;
+    // Critério 1: Liquidez real na Binance (mínimo US$ 8 milhões nas últimas 24h para evitar slippage e spread largo)
+    if (vol < 8_000_000) continue;
 
     // Critério 1.1: Filtro Anti-Sub-Penny (evita spread tóxico e pips gigantescos em frações de centavo)
     if (currentPrice < 0.005) continue;
