@@ -1,5 +1,25 @@
 [
   {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Implementação do Teto Institucional de 4 Posições e Concentração de Capital nos Líderes Tier-1",
+    "summary": "Implementada a diretriz estratégica de concentração de capital: 1) Trava de Concorrência de Frota (MAX_SIMULTANEOUS_BOT_POSITIONS = 4): Se houver >= 4 robôs em posição aberta, novas compras são bloqueadas, concentrando liquidez e impedindo a fragmentação da banca em micro-operações; 2) Priorização Institucional Tier-1 no Auto-Screener (quant-engine): ETH, SOL e BNB receberam bonificação de score (+14 pts) e proteção contra penalidades espúrias de correlação, garantindo preferência natural sobre altcoins ilíquidas; 3) Dimensionamento Concentrado de Capital: Posições redimensionadas para alocar entre 20% e 25% da banca por robô (~$33 USDT para banca de $144), garantindo parciais confortáveis e lucro relevante; 4) Ação Rápida 'Focar Líderes Tier-1 (BTC/ETH/SOL/BNB)' na UI da frota: Ativa os 4 líderes institucionais com alocação balanceada e pausa robôs secundários sem posições abertas; 5) Teto em Lote no painel de Entradas de IA: Criação em lote limitada aos 4 melhores setups por score.",
+    "tags": [
+      "tier-1-fleet-concentration",
+      "max-4-concurrent-positions",
+      "capital-concentration",
+      "institutional-spread-optimization",
+      "anti-fragmentation-guardrail"
+    ],
+    "details": {
+      "maxPositionsGuardrail": "MAX_SIMULTANEOUS_BOT_POSITIONS = 4 em multi-bot-engine.ts",
+      "tier1Bonus": "TIER_1_INSTITUTIONAL_MAJORS com +14.0 pts no quant-engine",
+      "quickActionButton": "Botão 'Focar Líderes Tier-1' adicionado na Central de Robôs",
+      "batchCap": "Limite de 4 robôs por geração em lote em ai-entries.tsx"
+    },
+    "id": "mem-1791946000000-tier1-fleet-concentration",
+    "timestamp": "2026-10-14T04:11:00.000Z"
+  },
+  {
     "category": "BUG_FIX",
     "title": "Correção de Travamento Infinito no Modal de IA e Desduplicação do Botão API Binance",
     "summary": "1) Modal de IA ('Motor de Inteligência Artificial'): Eliminado o estado de carregamento infinito ('Carregando configurações de IA...'). O componente ai-settings-dialog.tsx agora inicializa com fallback resiliente baseado em AI_PROVIDERS, evitando tela bloqueada e corrida de montagem/desmontagem em React 18, com carregamento assíncrono não-bloqueante, cache no-store e botão de atualização manual; 2) Botão 'API Binance': Removido o botão duplicado redundante em header.tsx, mantendo apenas o trigger oficial de ApiSettingsDialog que exibe status contextual ('Configurar' ou 'Ativa').",

@@ -201,14 +201,22 @@ export function scanHotCoins(
     }
 
     // Trava de Alta Correlação de Risco (r > 0.85):
-    // Se o operador já possui robôs em BTC/ETH ou carteira ativa e a moeda tem r > 0.85 sem desacoplamento:
     let correlationAdjustment = 0;
     let corrLabel = "Correlação Moderada";
     if (estimatedCorr <= 0.60) {
+      corrLabel = "Descorrelacionado (Desacoplamento)";
+      correlationAdjustment = +8.0; // Bonificação por diversificação de risco
+    } else if (estimatedCorr > 0.85) {
+      corrLabel = "Alta Correlação Beta (r > 0.85)";
+      if (holdsMajors && !TIER_1_INSTITUTIONAL_MAJORS.has(s)) {
+        correlationAdjustment = -12.0; // Penalização apenas para altcoins correlacionadas
+      }
+    }
+
     // Prioridade Institucional Tier-1: Ativos líderes (ETH, SOL, BNB) têm menor spread, slippage zero e máxima liquidez
     const isTier1Major = TIER_1_INSTITUTIONAL_MAJORS.has(s);
     if (isTier1Major) {
-      correlationAdjustment = Math.max(correlationAdjustment, +12.0); // Bônus de liquidez institucional
+      correlationAdjustment = Math.max(correlationAdjustment, +14.0); // Bônus de liquidez institucional
       corrLabel = "Líder Institucional Tier-1 (Baixo Spread)";
     }
 
