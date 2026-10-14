@@ -104,7 +104,7 @@ export function NavigationBreadcrumb() {
   const meta = SECTION_METAS[activeSection] || SECTION_METAS.dashboard;
   const Icon = meta.icon;
 
-  const activeBotsCount = bots.filter((b) => b.status === "running").length;
+  const activeBotsCount = bots.filter((b) => b.active).length;
 
   return (
     <nav

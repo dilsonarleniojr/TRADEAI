@@ -28,6 +28,7 @@ import {
   liquidateWalletPosition,
   adoptOrphanPositionWithBot,
   startAiExitBotForAsset,
+  syncCustodyPositionsWithBots,
 } from "@/lib/bot/multi-bot-engine";
 import {
   LineChart,
@@ -88,6 +89,7 @@ export function BotPortfolio() {
       const result = await res.json();
       if (res.ok && result.success && result.data) {
         state.setAccount(result.data);
+        syncCustodyPositionsWithBots();
         toast({
           title: "Sincronização Concluída",
           description: `Os dados da conta (${mode === "live" ? "Real" : "Simulado"}) foram atualizados.`,
@@ -149,6 +151,7 @@ export function BotPortfolio() {
           const result = await res.json();
           if (mounted && result.success && result.data) {
             state.setAccount(result.data);
+            syncCustodyPositionsWithBots();
           }
         }
       } catch {}

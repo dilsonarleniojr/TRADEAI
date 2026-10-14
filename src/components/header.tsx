@@ -9,6 +9,7 @@ import { useTheme } from "next-themes";
 import { useSyncExternalStore, useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { CryptoSelector } from "./header/crypto-selector";
+import { GlobalCommandSearch } from "./header/global-command-search";
 import { ApiSettingsDialog } from "./header/api-settings-dialog";
 import { AiSettingsDialog } from "./header/ai-settings-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -51,8 +52,29 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
     setTrades,
     portfolio,
     setActiveSection,
+    openApiSettingsModal,
+    setOpenApiSettingsModal,
+    openAiSettingsModal,
+    setOpenAiSettingsModal,
   } = useCryptoStore(
-  useShallow((s) => ({ tradingMode: s.tradingMode, setTradingMode: s.setTradingMode, botActive: s.botActive, bots: s.bots, connectionStatus: s.connectionStatus, clearMockData: s.clearMockData, clearSimulatedData: s.clearSimulatedData, binanceTestnet: s.binanceTestnet, setAccount: s.setAccount, setTrades: s.setTrades, portfolio: s.portfolio, setActiveSection: s.setActiveSection }))
+  useShallow((s) => ({
+    tradingMode: s.tradingMode,
+    setTradingMode: s.setTradingMode,
+    botActive: s.botActive,
+    bots: s.bots,
+    connectionStatus: s.connectionStatus,
+    clearMockData: s.clearMockData,
+    clearSimulatedData: s.clearSimulatedData,
+    binanceTestnet: s.binanceTestnet,
+    setAccount: s.setAccount,
+    setTrades: s.setTrades,
+    portfolio: s.portfolio,
+    setActiveSection: s.setActiveSection,
+    openApiSettingsModal: s.openApiSettingsModal,
+    setOpenApiSettingsModal: s.setOpenApiSettingsModal,
+    openAiSettingsModal: s.openAiSettingsModal,
+    setOpenAiSettingsModal: s.setOpenAiSettingsModal,
+  }))
 );
 
   const { theme, setTheme } = useTheme();
@@ -86,8 +108,9 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
       .catch(() => {});
   }, [mounted, aiDialogOpen]);
 
-  const isRealMoney = tradingMode === "live" && !binanceTestnet;
-  const modeLabel = tradingMode === "live" ? (binanceTestnet ? "TESTNET" : "REAL") : "SIMULADO";
+  const effectiveMode = mounted ? tradingMode : "paper";
+  const isRealMoney = mounted && effectiveMode === "live" && !binanceTestnet;
+  const modeLabel = effectiveMode === "live" ? (binanceTestnet ? "TESTNET" : "REAL") : "SIMULADO";
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -169,9 +192,9 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
       animate={{ y: 0 }}
       className="sticky top-0 z-40 flex flex-col select-none"
     >
-      <div className="h-13 flex items-center justify-between px-3 md:px-5 bg-[#090d14]/90 backdrop-blur-2xl border-b border-white/[0.07] relative">
-        {/* Left: Logo + Crypto Selector + Live Active Pair Stats */}
-        <div className="flex items-center gap-2 md:gap-4 min-w-0">
+      <div className="h-13 flex items-center justify-between px-3 md:px-5 bg-[#090d14]/90 backdrop-blur-2xl border-b border-white/[0.07] relative gap-2 sm:gap-4">
+        {/* Bloco 1 - Esquerda: Logo + Crypto Selector */}
+        <div className="flex items-center gap-2 shrink-0">
           {/* Mobile: compact logo */}
           <div className="md:hidden w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-emerald-500 flex items-center justify-center shadow-sm shrink-0">
             <span className="text-white font-extrabold text-[10px] tracking-wider font-mono">AI</span>
@@ -179,63 +202,25 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
 
           {/* Crypto Selector */}
           <CryptoSelector />
-
-          {/* Desktop Live Active Pair Statistics (TradingView / Binance Pro style) */}
-          {(() => {
-            const state = useCryptoStore.getState();
-            const symbol = state.selectedSymbol;
-            const ticker = state.tickers[symbol];
-            if (!ticker) return null;
-            const isPos = ticker.priceChangePercent >= 0;
-
-            return (
-              <div className="hidden xl:flex items-center gap-4 pl-3.5 border-l border-white/[0.07] text-xs tabular-nums">
-                <div className="flex flex-col leading-tight">
-                  <span className="text-[9px] text-slate-400 uppercase font-medium tracking-wider">Último Preço</span>
-                  <span className={cn("font-mono font-bold text-sm", isPos ? "text-emerald-400" : "text-rose-400")}>
-                    ${formatPrice(ticker.price)}
-                  </span>
-                </div>
-
-                <div className="flex flex-col leading-tight">
-                  <span className="text-[9px] text-slate-400 uppercase font-medium tracking-wider">Variação 24h</span>
-                  <span className={cn("font-mono font-semibold flex items-center gap-0.5", isPos ? "text-emerald-400" : "text-rose-400")}>
-                    {isPos ? "+" : ""}{ticker.priceChangePercent.toFixed(2)}%
-                  </span>
-                </div>
-
-                <div className="flex flex-col leading-tight">
-                  <span className="text-[9px] text-slate-400 uppercase font-medium tracking-wider">Máx 24h</span>
-                  <span className="font-mono text-slate-300 font-medium">
-                    ${formatPrice(ticker.high)}
-                  </span>
-                </div>
-
-                <div className="flex flex-col leading-tight">
-                  <span className="text-[9px] text-slate-400 uppercase font-medium tracking-wider">Mín 24h</span>
-                  <span className="font-mono text-slate-300 font-medium">
-                    ${formatPrice(ticker.low)}
-                  </span>
-                </div>
-
-                <div className="flex flex-col leading-tight">
-                  <span className="text-[9px] text-slate-400 uppercase font-medium tracking-wider">Volume 24h</span>
-                  <span className="font-mono text-slate-300 font-medium">
-                    ${(ticker.quoteVolume / 1000000).toFixed(2)}M
-                  </span>
-                </div>
-              </div>
-            );
-          })()}
         </div>
 
-        {/* Center/Right: Trading Mode + Balance + Controls */}
-        <div className="flex items-center gap-2">
-          {/* Quick Balance & PnL display */}
-          <div className="hidden sm:flex items-center gap-2.5 px-3 py-1 rounded-lg bg-white/[0.03] border border-white/[0.07] backdrop-blur-md shadow-sm">
+        {/* Bloco 2 - Centro: Campo de Busca Global */}
+        <div className="hidden md:flex flex-1 max-w-xs lg:max-w-sm xl:max-w-md mx-2 min-w-0">
+          <GlobalCommandSearch />
+        </div>
+
+        {/* Bloco 3 - Direita: Saldo + Modo + Ações Rápidas */}
+        <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+          {/* Mobile search trigger */}
+          <div className="md:hidden">
+            <GlobalCommandSearch compactOnly />
+          </div>
+
+          {/* Saldo da Conta */}
+          <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/[0.03] border border-white/[0.07] shadow-sm shrink-0">
             <Wallet className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
             <div className="flex flex-col text-left leading-tight">
-              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">Saldo Conta</span>
+              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">Saldo</span>
               <span className="text-xs font-bold font-mono text-slate-100 tabular-nums">
                 ${portfolio?.totalValue !== undefined ? formatPrice(portfolio.totalValue) : "0.00"}
               </span>
@@ -244,7 +229,7 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
               <Badge
                 variant="outline"
                 className={cn(
-                  "text-[9px] font-mono px-1.5 py-0 h-4 border-none rounded-md",
+                  "text-[9px] font-mono px-1 py-0 h-4 border-none rounded",
                   portfolio.pnlPercent >= 0 ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400"
                 )}
               >
@@ -253,30 +238,31 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
             )}
           </div>
 
+          {/* Modo de Operação (REAL / SIMULADO) */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7.5 gap-1.5 px-2.5 bg-white/[0.03] border-white/[0.07] hover:bg-white/[0.06] font-medium cursor-pointer shadow-sm select-none rounded-lg"
+                className="h-7.5 gap-1.5 px-2 bg-white/[0.03] border-white/[0.07] hover:bg-white/[0.06] font-medium cursor-pointer shadow-sm select-none rounded-lg shrink-0"
               >
                 <span
                   className={cn(
-                    "w-2 h-2 rounded-full",
-                    isRealMoney ? "bg-rose-500 shadow-[0_0_6px_#f43f5e]" : tradingMode === "live" ? "bg-amber-400 shadow-[0_0_6px_#f59e0b]" : "bg-cyan-400 shadow-[0_0_6px_#06b6d4]"
+                    "w-2 h-2 rounded-full shrink-0",
+                    isRealMoney ? "bg-rose-500 shadow-[0_0_6px_#f43f5e]" : effectiveMode === "live" ? "bg-amber-400 shadow-[0_0_6px_#f59e0b]" : "bg-cyan-400 shadow-[0_0_6px_#06b6d4]"
                   )}
                   aria-hidden="true"
                 />
                 <span
                   className={cn(
                     "text-[11px] font-bold tracking-wider",
-                    isRealMoney ? "text-rose-400" : tradingMode === "live" ? "text-amber-400" : "text-cyan-400"
+                    isRealMoney ? "text-rose-400" : effectiveMode === "live" ? "text-amber-400" : "text-cyan-400"
                   )}
                 >
                   {modeLabel}
                 </span>
-                <span className="hidden sm:inline text-[10px] text-slate-400 font-medium">
-                  {isRealMoney ? "Binance Spot" : tradingMode === "live" ? "Testnet" : "Sandbox"}
+                <span className="hidden xl:inline text-[10px] text-slate-400 font-medium">
+                  {isRealMoney ? "Binance Spot" : effectiveMode === "live" ? "Testnet" : "Sandbox"}
                 </span>
               </Button>
             </DropdownMenuTrigger>
@@ -342,26 +328,41 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
 
-        {/* Right: Controls */}
-        <div className="flex items-center gap-1.5 md:gap-2">
           {/* Binance API Configuration Dialog */}
           {mounted && (
             <ApiSettingsDialog
-              open={apiDialogOpen}
-              onOpenChange={setApiDialogOpen}
+              open={apiDialogOpen || openApiSettingsModal}
+              onOpenChange={(open) => {
+                setApiDialogOpen(open);
+                setOpenApiSettingsModal(open);
+              }}
             />
+          )}
+
+          {/* Botão API Binance */}
+          {mounted && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setApiDialogOpen(true)}
+              className="hidden lg:flex h-7.5 gap-1.5 px-2 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20 text-amber-300 transition-colors text-xs font-medium shrink-0 cursor-pointer"
+              title="Configurar Chaves da API Binance"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-[10px] font-bold">API Binance</span>
+            </Button>
           )}
 
           {/* Sincronizar Button */}
           {mounted && (
             <Button
               variant="ghost"
-              size="sm"
-              className="h-8 gap-1.5 px-2 hover:bg-crypto-cyan/10 text-muted-foreground hover:text-crypto-cyan transition-colors duration-200"
+              size="icon"
+              className="h-7.5 w-7.5 hover:bg-crypto-cyan/10 text-muted-foreground hover:text-crypto-cyan transition-colors duration-200 shrink-0 cursor-pointer"
               onClick={handleSync}
               disabled={isSyncing}
+              title="Sincronizar saldo da carteira"
               aria-label="Sincronizar saldo da carteira"
             >
               {isSyncing ? (
@@ -369,7 +370,6 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
               ) : (
                 <RefreshCw className="w-3.5 h-3.5" />
               )}
-              <span className="text-[10px] font-medium hidden md:inline">Sincronizar</span>
             </Button>
           )}
 
@@ -377,10 +377,11 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
           {mounted && (
             <Button
               variant="ghost"
-              size="sm"
-              className="hidden md:flex h-8 w-8 p-0 hover:bg-secondary/80 transition-transform duration-300"
+              size="icon"
+              className="hidden md:flex h-7.5 w-7.5 p-0 hover:bg-secondary/80 transition-transform duration-300 shrink-0 cursor-pointer"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+              aria-label={`Alternar para modo ${theme === "dark" ? "claro" : "escuro"}`}
+              title={`Modo ${theme === "dark" ? "claro" : "escuro"}`}
             >
               <motion.div
                 key={theme}
@@ -403,15 +404,15 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
               variant="ghost"
               size="sm"
               onClick={() => setAiDialogOpen(true)}
-              className="h-8 gap-1.5 px-2 hover:bg-purple-500/10 text-muted-foreground hover:text-purple-300 transition-colors cursor-pointer"
+              className="h-7.5 gap-1.5 px-2 hover:bg-purple-500/10 text-muted-foreground hover:text-purple-300 transition-colors cursor-pointer shrink-0"
               title={
                 aiInfo
                   ? `Motor IA: ${aiInfo.provider.toUpperCase()} (${aiInfo.configured ? "Chave configurada" : "Sem chave"})`
                   : "Configurações de IA"
               }
             >
-              <Brain className="w-3.5 h-3.5 text-purple-400" />
-              <span className="text-[10px] font-semibold hidden lg:inline capitalize">
+              <Brain className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+              <span className="text-[10px] font-semibold hidden xl:inline capitalize">
                 {aiInfo ? aiInfo.provider : "IA"}
               </span>
               <span
@@ -423,7 +424,15 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
             </Button>
           )}
 
-          {mounted && <AiSettingsDialog open={aiDialogOpen} onOpenChange={setAiDialogOpen} />}
+          {mounted && (
+            <AiSettingsDialog
+              open={aiDialogOpen || openAiSettingsModal}
+              onOpenChange={(open) => {
+                setAiDialogOpen(open);
+                setOpenAiSettingsModal(open);
+              }}
+            />
+          )}
 
           {/* System Settings Dropdown */}
           {mounted && (
@@ -431,8 +440,8 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 hover:bg-secondary/80 text-muted-foreground hover:text-foreground cursor-pointer"
+                  size="icon"
+                  className="h-7.5 w-7.5 p-0 hover:bg-secondary/80 text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
                   aria-label="Configurações do sistema"
                   title="Configurações e ações do sistema"
                 >
@@ -488,64 +497,64 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
             </DropdownMenu>
           )}
 
-          {/* Bot active badge - smaller on mobile */}
+          {/* Bot active badge */}
           {(() => {
             const count = bots ? bots.filter((b) => b.active).length : (botActive ? 1 : 0);
             if (count === 0) return null;
             return (
               <Badge
                 onClick={() => setActiveSection("bot")}
-                className="bg-crypto-green/15 text-crypto-green border-crypto-green/30 hover:bg-crypto-green/25 text-[10px] md:text-xs glow-green-sm px-1.5 md:px-2.5 py-0.5 cursor-pointer transition-all hover:scale-105 select-none"
+                className="bg-crypto-green/15 text-crypto-green border-crypto-green/30 hover:bg-crypto-green/25 text-[10px] glow-green-sm px-2 py-0.5 cursor-pointer transition-all hover:scale-105 select-none shrink-0"
                 title="Abrir Central de Robôs de Lucro"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-crypto-green mr-1 pulse-soft" />
-                <span className="hidden md:inline">{count} {count === 1 ? "Bot Ativo" : "Bots Ativos"}</span>
-                <span className="md:hidden">{count} {count === 1 ? "Bot" : "Bots"}</span>
+                <span className="hidden sm:inline">{count} {count === 1 ? "Bot Ativo" : "Bots Ativos"}</span>
+                <span className="sm:hidden">{count} Bots</span>
               </Badge>
             );
           })()}
 
-          {/* Connection status - icon only on mobile */}
+          {/* Connection status */}
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 gap-1.5 px-2 hover:bg-secondary/80"
-            aria-label={`Connection status: ${connectionStatus}`}
+            className="h-7.5 gap-1.5 px-2 hover:bg-secondary/80 shrink-0"
+            aria-label={`Status da conexão: ${connectionStatus}`}
           >
             {connectionStatus === "connected" && (
               <>
-                <div className="relative flex items-center justify-center">
-                  <Wifi className="w-4 h-4 text-crypto-green" />
+                <div className="relative flex items-center justify-center shrink-0">
+                  <Wifi className="w-3.5 h-3.5 text-crypto-green" />
                   <div className="absolute w-2 h-2 rounded-full bg-crypto-green animate-ping opacity-60" />
                 </div>
-                <span className="hidden md:inline text-xs text-crypto-green font-medium">
+                <span className="hidden sm:inline text-xs text-crypto-green font-medium">
                   Ao Vivo
                 </span>
               </>
             )}
             {connectionStatus === "rest-api" && (
               <>
-                <div className="relative flex items-center justify-center">
-                  <Wifi className="w-4 h-4 text-crypto-cyan" />
+                <div className="relative flex items-center justify-center shrink-0">
+                  <Wifi className="w-3.5 h-3.5 text-crypto-cyan" />
                   <div className="absolute w-2 h-2 rounded-full bg-crypto-cyan animate-ping opacity-50" />
                 </div>
-                <span className="hidden md:inline text-xs text-crypto-cyan font-medium">
+                <span className="hidden sm:inline text-xs text-crypto-cyan font-medium">
                   REST API
                 </span>
               </>
             )}
             {connectionStatus === "disconnected" && (
               <>
-                <WifiOff className="w-4 h-4 text-crypto-red" />
-                <span className="hidden md:inline text-xs text-crypto-red font-medium">
-                  Desconectado
+                <WifiOff className="w-3.5 h-3.5 text-crypto-red shrink-0" />
+                <span className="hidden sm:inline text-xs text-crypto-red font-medium">
+                  Offline
                 </span>
               </>
             )}
             {connectionStatus === "connecting" && (
               <>
-                <Loader2 className="w-4 h-4 text-crypto-gold animate-spin" />
-                <span className="hidden md:inline text-xs text-crypto-gold font-medium">
+                <Loader2 className="w-3.5 h-3.5 text-crypto-gold animate-spin shrink-0" />
+                <span className="hidden sm:inline text-xs text-crypto-gold font-medium">
                   Conectando...
                 </span>
               </>
@@ -555,8 +564,8 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
           {/* Mobile: Settings gear button to open drawer */}
           <Button
             variant="ghost"
-            size="sm"
-            className="md:hidden h-8 w-8 p-0 hover:bg-secondary/80 transition-transform duration-200"
+            size="icon"
+            className="md:hidden h-7.5 w-7.5 p-0 hover:bg-secondary/80 transition-transform duration-200 shrink-0 cursor-pointer"
             onClick={onOpenMobileDrawer}
             aria-label="Abrir configurações"
           >

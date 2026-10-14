@@ -49,12 +49,14 @@ interface GlobalCommandSearchProps {
   onOpenApiDialog?: () => void;
   onOpenAiDialog?: () => void;
   className?: string;
+  compactOnly?: boolean;
 }
 
 export function GlobalCommandSearch({
   onOpenApiDialog,
   onOpenAiDialog,
   className,
+  compactOnly = false,
 }: GlobalCommandSearchProps) {
   const {
     activeSection,
@@ -241,37 +243,39 @@ export function GlobalCommandSearch({
 
   return (
     <>
-      {/* Botão/Input de Busca no Header (Desktop & Tablet) */}
-      <div className={cn("flex-1 max-w-xs md:max-w-sm lg:max-w-md mx-2 md:mx-4 hidden sm:block", className)}>
-        <button
+      {/* Botão Compacto para Mobile ou quando solicitado */}
+      {compactOnly ? (
+        <Button
+          variant="ghost"
+          size="icon"
           type="button"
           onClick={() => setIsCommandSearchOpen(true)}
-          className="w-full h-8.5 px-3 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.09] hover:border-cyan-500/40 text-left flex items-center justify-between text-xs text-slate-400 hover:text-slate-200 transition-all cursor-pointer group shadow-inner focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
-          title="Buscar abas, ferramentas, robôs, criptomoedas (Atalho: Ctrl+K)"
+          className={cn("h-7.5 w-7.5 text-slate-300 hover:text-cyan-400 hover:bg-white/[0.06] rounded-lg shrink-0", className)}
+          title="Buscar abas, ferramentas, robôs, ativos (Ctrl+K)"
         >
-          <div className="flex items-center gap-2 min-w-0">
-            <Search className="w-3.5 h-3.5 text-cyan-400/80 group-hover:text-cyan-400 transition-colors shrink-0" />
-            <span className="truncate text-[11px] md:text-xs">
-              Buscar abas, robôs, moedas, ferramentas...
-            </span>
-          </div>
-          <kbd className="hidden md:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono text-slate-400 bg-white/[0.06] border border-white/[0.1] rounded shrink-0 shadow-sm">
-            <span>⌘</span>K
-          </kbd>
-        </button>
-      </div>
-
-      {/* Botão Compacto de Busca para Mobile */}
-      <Button
-        variant="ghost"
-        size="icon"
-        type="button"
-        onClick={() => setIsCommandSearchOpen(true)}
-        className="sm:hidden h-8 w-8 text-slate-300 hover:text-cyan-400 hover:bg-white/[0.06] rounded-lg shrink-0"
-        title="Buscar (Ctrl+K)"
-      >
-        <Search className="w-4 h-4" />
-      </Button>
+          <Search className="w-4 h-4" />
+        </Button>
+      ) : (
+        /* Barra de Busca no Header */
+        <div className={cn("w-full", className)}>
+          <button
+            type="button"
+            onClick={() => setIsCommandSearchOpen(true)}
+            className="w-full h-8 px-2.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.09] hover:border-cyan-500/40 text-left flex items-center justify-between text-xs text-slate-400 hover:text-slate-200 transition-all cursor-pointer group shadow-inner focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
+            title="Buscar abas, ferramentas, robôs, criptomoedas (Atalho: Ctrl+K)"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Search className="w-3.5 h-3.5 text-cyan-400/80 group-hover:text-cyan-400 transition-colors shrink-0" />
+              <span className="truncate text-[11px] text-slate-300">
+                Buscar abas, moedas, robôs...
+              </span>
+            </div>
+            <kbd className="hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.2 text-[9px] font-mono text-slate-400 bg-white/[0.06] border border-white/[0.1] rounded shrink-0 shadow-sm ml-1.5">
+              <span>⌘</span>K
+            </kbd>
+          </button>
+        </div>
+      )}
 
       {/* Modal Spotlight / Command Palette Centralizado */}
       <CommandDialog

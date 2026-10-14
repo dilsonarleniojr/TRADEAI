@@ -25,8 +25,8 @@ export interface AccountSlice {
 }
 
 export const createAccountSlice: StateCreator<AccountSlice, [], [], AccountSlice> = (set) => ({
-  // Trading mode - persistido para que F5 mantenha a escolha do usuário
-  tradingMode: getPersistedTradingMode(),
+  // Trading mode - inicialização segura para SSR/hidratação; DataProvider sincroniza com localStorage após montar
+  tradingMode: "paper",
   setTradingMode: (mode) => {
     if (typeof window !== "undefined") {
       try {

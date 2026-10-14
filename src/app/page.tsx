@@ -8,6 +8,7 @@ import { useBinanceStream } from "@/hooks/use-binance-stream";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { Sidebar } from "@/components/sidebar";
 import { Header } from "@/components/header";
+import { NavigationBreadcrumb } from "@/components/header/navigation-breadcrumb";
 import { Footer } from "@/components/footer";
 import { TickerTape } from "@/components/header/ticker-tape";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
@@ -226,6 +227,7 @@ function HomePageContent() {
           <TickerTape />
           <main className="flex-1 p-2.5 sm:p-3 md:p-4 overflow-y-auto pb-24 md:pb-4 pro-scrollbar scroll-smooth">
             <div className="max-w-[1920px] mx-auto w-full">
+              <NavigationBreadcrumb />
               <AnimatePresence mode="wait">
                 {renderContent()}
               </AnimatePresence>

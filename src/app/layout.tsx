@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ThemeProvider } from "next-themes";
+import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 

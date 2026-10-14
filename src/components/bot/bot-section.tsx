@@ -50,6 +50,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { useShallow } from "zustand/react/shallow";
 import { useBackgroundSettings, MIN_BACKGROUND_MINUTES, MAX_BACKGROUND_MINUTES } from "@/lib/bot/background-settings";
+import { syncCustodyPositionsWithBots } from "@/lib/bot/multi-bot-engine";
 
 interface TradeReport {
   totalTrades: number;
@@ -81,6 +82,8 @@ export function BotSection() {
     resetAllBotStats,
     activeExecutionReport,
     setActiveExecutionReport,
+    openBotCreateModal,
+    setOpenBotCreateModal,
   } = useCryptoStore(
   useShallow((s) => ({
     bots: s.bots,
@@ -151,6 +154,11 @@ export function BotSection() {
   useEffect(() => {
     if (isAnyActive && !botStartTimeRef.current) botStartTimeRef.current = new Date();
   }, [isAnyActive]);
+
+  // Auditoria contínua de custódia: garante que nenhum robô fique com posição fantasma de ativo inexistente
+  useEffect(() => {
+    syncCustodyPositionsWithBots();
+  }, [portfolio.positions]);
 
   // Open dialog to create or edit
   const handleOpenCreateDialog = () => {
@@ -302,6 +310,23 @@ export function BotSection() {
             >
               <Trash2 className="w-3.5 h-3.5 mr-1.5" />
               Excluir Todos
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                syncCustodyPositionsWithBots();
+                toast({
+                  title: "Frota Reconciliada",
+                  description: "As posições dos robôs foram auditadas e alinhadas aos ativos reais do portfólio.",
+                });
+              }}
+              className="h-9 px-3 border-crypto-cyan/40 text-crypto-cyan hover:bg-crypto-cyan/10 text-xs font-semibold cursor-pointer"
+              title="Auditar posições dos robôs e purgar ativos inexistentes na carteira"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
+              Reconciliar com Portfólio
             </Button>
 
             {tradingMode === "paper" && (

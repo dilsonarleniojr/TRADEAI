@@ -1,6 +1,26 @@
 [
   {
     "category": "BUG_FIX",
+    "title": "Reconciliação Reversa de Custódia e Purga de Posições Fantasmas da Frota de Robôs",
+    "summary": "Resolvido o problema de robôs exibindo status 'in_position' (em operação) para ativos inexistentes no portfólio (ex: BAT, AMP, WAL). 1) Removidos robôs de teste hardcoded legados (bot-guardian-bat e bot-guardian-amp) do DEFAULT_BOTS e sanitizado loadBotsFromStorage; 2) Implementada auditoria reversa bidirecional em syncCustodyPositionsWithBots: se um robô tiver posição aberta de um ativo ausente no portfólio, a posição é imediatamente purgada e o robô temporário é pausado/liberado; 3) Adicionado botão e hook de auto-reconciliação contínua na UI da frota.",
+    "tags": [
+      "ghost-positions-purge",
+      "custody-reverse-audit",
+      "portfolio-parity",
+      "fleet-reconciliation",
+      "institutional-standards"
+    ],
+    "details": {
+      "defaultBotsCleaned": "DEFAULT_BOTS agora contém apenas motores legítimos sem posições mockadas",
+      "storageSanitized": "loadBotsFromStorage filtra robôs de teste legados",
+      "syncCustodyPositionsWithBots": "Auditoria reversa purga b.position caso o ativo não conste em portfolio.positions",
+      "uiReconciliation": "Botão Reconciliar com Portfólio e gatilho em tempo real após fetch de saldo"
+    },
+    "id": "mem-1791943000000-ghost-positions-purge-reconciliation",
+    "timestamp": "2026-10-14T03:05:00.000Z"
+  },
+  {
+    "category": "BUG_FIX",
     "title": "Eliminação de Desligamentos Não Autorizados de Robôs e Ativos Órfãos na Carteira",
     "summary": "Corrigidas as 4 causas-raiz que causavam o encerramento indevido de robôs ou abandono de posições em carteira: 1) recordBotTrade tratava vendas parciais (50%) como encerramento total anulando a posição restante do robô; 2) Ausência de persistência em localStorage fazia F5 reiniciar a frota para padrão desativado; 3) startAiExitBotForAsset e adoptOrphanPositionWithBot não recuperavam o robô fresco do Zustand após addBot, impedindo a vinculação da posição e status in_position; 4) syncCustodyPositionsWithBots agora audita periodicamente a carteira na Binance e alinha qualquer saldo (> $0.50 USDT) com seu respectivo robô ativo.",
     "tags": [

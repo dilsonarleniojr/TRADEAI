@@ -202,8 +202,8 @@ async function isBtcMarketHealthy(): Promise<{ healthy: boolean; detail: string 
 export function syncCustodyPositionsWithBots() {
   const store = useCryptoStore.getState();
   const positions = store.portfolio.positions || [];
-  if (positions.length === 0) return;
 
+  // 1. Sincroniza posições reais de custódia com robôs existentes
   for (const pos of positions) {
     if (pos.quantity <= 0) continue;
     const tickerPrice = store.tickers[pos.symbol]?.price || pos.marketPrice || pos.avgPrice || 0;
@@ -247,6 +247,56 @@ export function syncCustodyPositionsWithBots() {
           });
         }
       }
+    }
+  }
+
+  // 2. AUDITORIA CRUZADA INSTITUCIONAL (Reconciliação Reversa / Purga de Posições Fantasmas):
+  // Se um robô alega estar em posição aberta, mas o ativo NÃO existe no portfólio,
+  // a posição deve ser imediatamente encerrada para evitar monitoramento e ordens de ativos inexistentes.
+  const validSymbols = new Set(
+    positions.filter((p) => p.quantity > 0.00001).map((p) => p.symbol)
+  );
+
+  const ghostBots = store.bots.filter(
+    (b) => b.position && b.position.quantity > 0 && !validSymbols.has(b.position.symbol)
+  );
+
+  if (ghostBots.length > 0) {
+    for (const b of ghostBots) {
+      const ghostSymbol = b.position?.symbol || b.symbol;
+      const isTemporaryGuardian =
+        b.id.startsWith("bot-guardian-") || b.name.includes("Gestor de Saída");
+
+      if (isTemporaryGuardian) {
+        // Robô temporário de custódia criado para um ativo que já não existe mais
+        store.updateBot(b.id, {
+          position: null,
+          active: false,
+          status: "stopped",
+          stats: {
+            ...b.stats,
+            lastAction: `Ativo ${ghostSymbol.replace("USDT", "")} não existe no portfólio. Robô desativado e liberado.`,
+            lastActionTime: new Date().toISOString(),
+          },
+        });
+      } else {
+        // Robô permanente de estratégia (BTC, ETH, Auto-Screener, etc.)
+        store.updateBot(b.id, {
+          position: null,
+          status: b.active ? "scanning" : "stopped",
+          stats: {
+            ...b.stats,
+            lastAction: `Posição fantasma em ${ghostSymbol.replace("USDT", "")} liberada (ativo ausente no portfólio).`,
+            lastActionTime: new Date().toISOString(),
+          },
+        });
+      }
+
+      store.addBotLog({
+        message: `🛡️ [Auditoria de Custódia] Posição de ${ghostSymbol.replace("USDT", "")} no robô "${b.name}" foi liberada pois o ativo não consta no portfólio atual.`,
+        type: "system",
+        botId: b.id,
+      });
     }
   }
 }

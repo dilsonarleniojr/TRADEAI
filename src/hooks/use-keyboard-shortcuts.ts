@@ -5,16 +5,18 @@ import { useCryptoStore } from "@/lib/store";
 import { useTheme } from "next-themes";
 import { useShallow } from "zustand/react/shallow";
 
-type SectionKey = "dashboard" | "chart" | "ai" | "bot" | "backtest" | "history" | "institutional";
+import type { ActiveSection } from "@/lib/store/types";
 
-const SECTION_MAP: Record<string, SectionKey> = {
+const SECTION_MAP: Record<string, ActiveSection> = {
   "1": "dashboard",
   "2": "chart",
   "3": "bot",
   "4": "ai",
   "5": "history",
   "6": "backtest",
+  "7": "trade-hub",
   "8": "institutional",
+  "9": "education",
 };
 
 const SYMBOLS = [
@@ -24,13 +26,38 @@ const SYMBOLS = [
 ];
 
 export function useKeyboardShortcuts() {
-  const { setActiveSection, setBotActive, botActive, setSelectedSymbol, selectedSymbol, tradingMode, setTradingMode } = useCryptoStore(
-  useShallow((s) => ({ setActiveSection: s.setActiveSection, setBotActive: s.setBotActive, botActive: s.botActive, setSelectedSymbol: s.setSelectedSymbol, selectedSymbol: s.selectedSymbol, tradingMode: s.tradingMode, setTradingMode: s.setTradingMode }))
-);
+  const {
+    setActiveSection,
+    setBotActive,
+    botActive,
+    setSelectedSymbol,
+    selectedSymbol,
+    tradingMode,
+    setTradingMode,
+    setIsCommandSearchOpen,
+  } = useCryptoStore(
+    useShallow((s) => ({
+      setActiveSection: s.setActiveSection,
+      setBotActive: s.setBotActive,
+      botActive: s.botActive,
+      setSelectedSymbol: s.setSelectedSymbol,
+      selectedSymbol: s.selectedSymbol,
+      tradingMode: s.tradingMode,
+      setTradingMode: s.setTradingMode,
+      setIsCommandSearchOpen: s.setIsCommandSearchOpen,
+    }))
+  );
   const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      // Global Command Search: Ctrl+K / Cmd+K
+      if ((e.key === "k" || e.key === "K") && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        setIsCommandSearchOpen(true);
+        return;
+      }
+
       // Don't trigger shortcuts when typing in input fields
       const target = e.target as HTMLElement;
       if (
