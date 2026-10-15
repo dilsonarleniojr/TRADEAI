@@ -84,6 +84,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
   const [emaFast, setEmaFast] = useState(12);
   const [emaSlow, setEmaSlow] = useState(26);
   const [stopAfterProfit, setStopAfterProfit] = useState(false);
+  const [disableConsecutiveLossBrake, setDisableConsecutiveLossBrake] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimized, setOptimized] = useState<GeneticChromosome | null>(null);
   const [isAutofilling, setIsAutofilling] = useState(false);
@@ -286,6 +287,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setEmaFast(botToEdit.emaFast ?? 12);
       setEmaSlow(botToEdit.emaSlow ?? 26);
       setStopAfterProfit(botToEdit.stopAfterProfit ?? false);
+      setDisableConsecutiveLossBrake(botToEdit.disableConsecutiveLossBrake ?? false);
     } else {
       setName("Novo Robô de Lucro");
       setSymbol("SOLUSDT");
@@ -316,6 +318,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setMaxDcaOrders(1);
       setUseOrderBookFilter(true);
       setStopAfterProfit(false);
+      setDisableConsecutiveLossBrake(false);
       setRsiPeriod(14);
       setBuyThreshold(30);
       setSellThreshold(70);
@@ -466,6 +469,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
         emaFast,
         emaSlow,
         stopAfterProfit,
+        disableConsecutiveLossBrake,
       });
       toast({
         title: "Robô Atualizado!",
@@ -507,6 +511,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
         emaFast,
         emaSlow,
         stopAfterProfit,
+        disableConsecutiveLossBrake,
       });
       toast({
         title: "🎉 Robô Criado com Sucesso!",
@@ -1227,6 +1232,34 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
                   </div>
                   <p className="opacity-90 leading-relaxed">
                     O robô realizará a compra, protegerá a operação e, no momento em que a venda for executada com lucro, encerrará a operação e desligará sem recomprar.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Desativar Trava de Perdas Consecutivas */}
+            <div className="border-t border-border/30 pt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="pr-3">
+                  <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                    <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                    Retirar / Desativar Trava de Perdas Consecutivas
+                  </span>
+                  <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
+                    Quando ativado, este robô nunca entrará em pausa pelo Circuit Breaker de 3 perdas seguidas, continuando a buscar novas operações livremente.
+                  </p>
+                </div>
+                <Switch checked={disableConsecutiveLossBrake} onCheckedChange={setDisableConsecutiveLossBrake} />
+              </div>
+
+              {disableConsecutiveLossBrake && (
+                <div className="bg-amber-500/10 border border-amber-500/30 p-2.5 rounded-lg text-[10px] text-amber-300 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5">
+                    <Shield className="w-3 h-3 text-amber-400" />
+                    Trava de Perda Consecutiva Desativada
+                  </div>
+                  <p className="opacity-90 leading-relaxed">
+                    O robô continuará operando e escaneando o mercado ininterruptamente sem pausas por sequências de stop-loss.
                   </p>
                 </div>
               )}

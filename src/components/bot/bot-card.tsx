@@ -94,6 +94,7 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
     setSelectedBotId,
     setSelectedSymbol,
     setActiveSection,
+    resetConsecutiveLossBrake,
   } = useCryptoStore(
     useShallow((s) => ({
       toggleBotActive: s.toggleBotActive,
@@ -107,6 +108,7 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
       setSelectedBotId: s.setSelectedBotId,
       setSelectedSymbol: s.setSelectedSymbol,
       setActiveSection: s.setActiveSection,
+      resetConsecutiveLossBrake: s.resetConsecutiveLossBrake,
     }))
   );
   const { toast } = useToast();
@@ -635,6 +637,14 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
                 </Badge>
               )}
 
+              {/* Trava de Perda Consecutiva Desativada */}
+              {bot.disableConsecutiveLossBrake && (
+                <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-amber-500/40 text-amber-300 bg-amber-500/10 flex items-center gap-1" title="Trava de perdas consecutivas desativada pelo usuário neste robô">
+                  <ShieldAlert className="w-2.5 h-2.5 text-amber-400" />
+                  Sem Trava Perda
+                </Badge>
+              )}
+
               {/* Position Mode Badge */}
               {hasPosition && (
                 <Badge
@@ -1093,6 +1103,59 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
                   <Play className="w-3 h-3 mr-1 fill-current" /> Iniciar
                 </Button>
               </div>
+
+              {/* Alerta e Desbloqueio da Trava de Perda Consecutiva */}
+              {(bot.stats.lastAction?.includes("CIRCUIT BREAKER") || bot.stats.lastAction?.includes("Perdas Consecutivas")) && (
+                <div className="bg-rose-500/15 border border-rose-500/40 rounded-lg p-2.5 space-y-2 mt-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-rose-400 font-bold flex items-center gap-1.5 text-[11px]">
+                      <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                      Trava de Perdas Consecutivas Ativa
+                    </span>
+                    <Badge variant="outline" className="text-[9px] border-rose-500/40 text-rose-300 bg-rose-500/20 py-0">
+                      Pausado
+                    </Badge>
+                  </div>
+                  <p className="text-[10px] text-rose-200/80 leading-relaxed">
+                    Este robô foi travado após sequência de stop-loss para proteger a banca. Você pode retirar a trava agora e iniciá-lo ou desativar a trava permanentemente.
+                  </p>
+                  <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        resetConsecutiveLossBrake(bot.id);
+                        toggleBotActive(bot.id, true);
+                        toast({
+                          title: "Trava Removida com Sucesso!",
+                          description: `A trava de perdas foi retirada e o robô ${bot.name} foi iniciado.`,
+                        });
+                      }}
+                      className="h-6 px-2.5 text-[10px] bg-crypto-green hover:bg-crypto-green/90 text-white font-bold cursor-pointer shadow-sm"
+                    >
+                      <Play className="w-3 h-3 mr-1 fill-current" />
+                      Remover Trava e Iniciar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const nextVal = !bot.disableConsecutiveLossBrake;
+                        updateBot(bot.id, { disableConsecutiveLossBrake: nextVal });
+                        resetConsecutiveLossBrake(bot.id);
+                        toast({
+                          title: nextVal ? "Trava Desativada" : "Trava Reativada",
+                          description: nextVal
+                            ? `Trava de perdas desativada para ${bot.name}. O robô agora operará sem interrupção por stop-loss.`
+                            : `Trava de perdas reativada para ${bot.name}.`,
+                        });
+                      }}
+                      className="h-6 px-2 text-[10px] border-rose-500/30 text-rose-300 hover:bg-rose-500/20 cursor-pointer"
+                    >
+                      {bot.disableConsecutiveLossBrake ? "Reativar Trava" : "Desativar Trava Neste Robô"}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

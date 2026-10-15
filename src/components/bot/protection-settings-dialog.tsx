@@ -47,6 +47,7 @@ export function ProtectionSettingsDialog({
   const protectionSettings = useCryptoStore((s) => s.protectionSettings);
   const updateProtectionSettings = useCryptoStore((s) => s.updateProtectionSettings);
   const resetProtectionSettings = useCryptoStore((s) => s.resetProtectionSettings);
+  const resetConsecutiveLossBrake = useCryptoStore((s) => s.resetConsecutiveLossBrake);
 
   const [fillTelemetry, setFillTelemetry] = useState<FillRateTelemetry>(() => riskManager.getFillRateTelemetry());
 
@@ -72,9 +73,14 @@ export function ProtectionSettingsDialog({
 
   const handleToggle = (key: keyof ProtectionSettings, currentVal: boolean) => {
     updateProtectionSettings({ [key]: !currentVal });
+    if (key === "consecutiveLossProtection" && currentVal === true) {
+      resetConsecutiveLossBrake();
+    }
     toast({
-      title: !currentVal ? "Proteção Ativada" : "Proteção Desativada",
-      description: `O modo de proteção foi ${!currentVal ? "ativado" : "desativado"} com sucesso.`,
+      title: !currentVal ? "Proteção Ativada" : "Trava Retirada com Sucesso",
+      description: key === "consecutiveLossProtection" && currentVal === true
+        ? "A trava de perdas consecutivas foi retirada. Os robôs continuarão operando sem interrupções."
+        : `O modo de proteção foi ${!currentVal ? "ativado" : "desativado"} com sucesso.`,
     });
   };
 
@@ -253,15 +259,32 @@ export function ProtectionSettingsDialog({
                     className={`text-[10px] ${
                       protectionSettings.consecutiveLossProtection
                         ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
-                        : "text-muted-foreground border-border/40"
+                        : "text-rose-400 border-rose-500/30 bg-rose-500/10"
                     }`}
                   >
-                    {protectionSettings.consecutiveLossProtection ? "Ativo (3 derrotas)" : "Desativado"}
+                    {protectionSettings.consecutiveLossProtection ? "Ativo (Pausa após 3 perdas)" : "Retirado / Desativado"}
                   </Badge>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Aciona um cooldown compulsório de 60 minutos caso a frota sofra 3 perdas consecutivas, blindando a banca contra mercados laterais sem tendência (*choppy market*).
+                  Quando ativo, pausa temporariamente robôs que acumularem 3 perdas seguidas. Se desativado, o robô opera livremente sem pausas compulsórias.
                 </p>
+                <div className="pt-1 flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      resetConsecutiveLossBrake();
+                      toast({
+                        title: "⚡ Travas de Perdas Zeradas",
+                        description: "Todos os contadores de perdas e tempos de espera foram zerados em toda a frota.",
+                      });
+                    }}
+                    className="h-6 text-[10px] px-2.5 border-amber-500/40 text-amber-300 hover:bg-amber-500/15 cursor-pointer font-semibold"
+                  >
+                    <RotateCcw className="w-2.5 h-2.5 mr-1" />
+                    Resetar Travas Ativas Agora
+                  </Button>
+                </div>
               </div>
               <Switch
                 checked={protectionSettings.consecutiveLossProtection}

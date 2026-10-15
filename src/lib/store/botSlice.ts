@@ -1,6 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { BotInstance, BotPosition, BotStrategy, TickerData, TradeData, BotExecutionReport } from "./types";
 import { riskManager, type ProtectionSettings, DEFAULT_PROTECTION_SETTINGS } from "../bot/risk-manager";
+import { resetBotConsecutiveLosses, resetGlobalCircuitBreaker } from "../bot/multi-bot-engine";
 
 export interface BotSlice {
   // Fleet of simultaneous bots
@@ -29,6 +30,7 @@ export interface BotSlice {
   removeAllBots: () => void;
   resetBotStats: (botId: string) => void;
   resetAllBotStats: () => void;
+  resetConsecutiveLossBrake: (botId?: string) => void;
   clearSimulatedPositions: () => void;
 
   // Live Position & Trade updates
@@ -375,6 +377,10 @@ export const createBotSlice: StateCreator<
       const updated = state.bots.map((b) => {
         if (b.id !== botId) return b;
         const newActive = active !== undefined ? active : !b.active;
+        if (newActive) {
+          // Destrava perdas consecutivas do robô ao iniciar manualmente
+          resetBotConsecutiveLosses(botId);
+        }
         return {
           ...b,
           active: newActive,
@@ -390,6 +396,31 @@ export const createBotSlice: StateCreator<
       persistBots(updated);
       // Synchronize global botActive
       get().setBotActive(updated.some((b) => b.active));
+      return { bots: updated };
+    });
+  },
+
+  resetConsecutiveLossBrake: (botId) => {
+    resetBotConsecutiveLosses(botId);
+    riskManager.resetConsecutiveLossBrake();
+    if (!botId) {
+      resetGlobalCircuitBreaker();
+    }
+    set((state) => {
+      const updated = state.bots.map((b) => {
+        if (botId && b.id !== botId) return b;
+        return {
+          ...b,
+          stats: {
+            ...b.stats,
+            lastAction: b.active
+              ? "Trava de perdas consecutivas removida (Operando normalmente)"
+              : "Trava de perdas consecutivas removida (Pronto para iniciar)",
+            lastActionTime: new Date().toISOString(),
+          },
+        };
+      });
+      persistBots(updated);
       return { bots: updated };
     });
   },
@@ -519,6 +550,7 @@ export const createBotSlice: StateCreator<
   },
 
   resetBotStats: (botId) => {
+    resetBotConsecutiveLosses(botId);
     set((state) => {
       const updated = state.bots.map((b) =>
         b.id === botId
@@ -545,6 +577,8 @@ export const createBotSlice: StateCreator<
   },
 
   resetAllBotStats: () => {
+    resetBotConsecutiveLosses();
+    riskManager.resetConsecutiveLossBrake();
     set((state) => {
       const updated = state.bots.map((b) => ({
         ...b,

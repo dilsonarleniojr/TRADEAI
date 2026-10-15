@@ -332,6 +332,29 @@ export function checkCircuitBreaker(): boolean {
   return false;
 }
 
+/**
+ * Reseta o contador de perdas consecutivas de um robô específico ou de toda a frota.
+ */
+export function resetBotConsecutiveLosses(botId?: string) {
+  if (botId) {
+    botConsecutiveLosses.delete(botId);
+  } else {
+    botConsecutiveLosses.clear();
+  }
+}
+
+/**
+ * Reseta o estado global de Circuit Breaker e destrava a frota para operações.
+ */
+export function resetGlobalCircuitBreaker() {
+  circuitBreakerState.tripped = false;
+  circuitBreakerState.trippedAt = null;
+  circuitBreakerState.reason = null;
+  circuitBreakerState.accumulatedDailyLossUsd = 0;
+  botConsecutiveLosses.clear();
+  riskManager.resetConsecutiveLossBrake();
+}
+
 let lastFleetAccountSync = 0;
 let lastLiveAccountError: string | null = null;
 let lastLiveAccountErrorLoggedAt = 0;
@@ -2992,35 +3015,45 @@ async function executeBotSell({
   }
   botSymbolLossCooldown.set(execSymbol, now + cooldownDuration);
 
-  // 2. Trava de Perdas Consecutivas por Robô (Circuit Breaker se >= 3 derrotas seguidas)
+  // 2. Trava de Perdas Consecutivas por Robô (Circuit Breaker)
+  // O operador pode desativar globalmente em protectionSettings.consecutiveLossProtection ou no próprio robô
+  const isConsecutiveProtectionActive = store.protectionSettings?.consecutiveLossProtection ?? true;
+  const isBotConsecutiveProtectionDisabled = bot.disableConsecutiveLossBrake === true;
+
   if (isLoss) {
-    const currentStreak = (botConsecutiveLosses.get(bot.id) || 0) + 1;
-    botConsecutiveLosses.set(bot.id, currentStreak);
+    if (isConsecutiveProtectionActive && !isBotConsecutiveProtectionDisabled) {
+      const currentStreak = (botConsecutiveLosses.get(bot.id) || 0) + 1;
+      botConsecutiveLosses.set(bot.id, currentStreak);
+      const maxStreak = store.protectionSettings?.maxConsecutiveLosses || 3;
 
-    if (currentStreak >= 3) {
-      // Pausa imediatamente o robô para estancar sangria da banca
-      store.updateBot(bot.id, {
-        active: false,
-        status: "stopped",
-        stats: {
-          ...bot.stats,
-          lastAction: `🛑 CIRCUIT BREAKER ACIONADO: Pausado automaticamente após 3 derrotas consecutivas (${currentStreak})`,
-          lastActionTime: new Date().toISOString(),
-        },
-      });
+      if (currentStreak >= maxStreak) {
+        // Pausa o robô apenas se a trava estiver habilitada pelo usuário
+        store.updateBot(bot.id, {
+          active: false,
+          status: "stopped",
+          stats: {
+            ...bot.stats,
+            lastAction: `🛑 CIRCUIT BREAKER ACIONADO: Pausado após ${maxStreak} perdas consecutivas (${currentStreak})`,
+            lastActionTime: new Date().toISOString(),
+          },
+        });
 
-      store.addBotLog({
-        message: `🛑 [CIRCUIT BREAKER GLOBAL] ${bot.name} pausado automaticamente para proteção patrimonial da banca após ${currentStreak} perdas consecutivas (Pilar 2)!`,
-        type: "loss",
-        botId: bot.id,
-        botName: bot.name,
-      });
+        store.addBotLog({
+          message: `🛑 [CIRCUIT BREAKER] ${bot.name} pausado após ${currentStreak} perdas consecutivas. A trava pode ser desativada ou resetada a qualquer momento nas opções de proteção.`,
+          type: "loss",
+          botId: bot.id,
+          botName: bot.name,
+        });
 
-      callbacks?.onToast?.({
-        title: `🛑 Circuit Breaker: ${bot.name} Pausado`,
-        description: `Pausado preventivamente após 3 derrotas consecutivas para preservação de capital.`,
-        variant: "destructive",
-      });
+        callbacks?.onToast?.({
+          title: `🛑 Circuit Breaker: ${bot.name} Pausado`,
+          description: `Pausado após ${maxStreak} derrotas consecutivas. Você pode retirar ou resetar a trava nas configurações de proteção.`,
+          variant: "destructive",
+        });
+      }
+    } else {
+      // Trava desativada pelo operador: zera streak e não interrompe a operação
+      botConsecutiveLosses.set(bot.id, 0);
     }
   } else {
     // Vitória zera a sequência de derrotas

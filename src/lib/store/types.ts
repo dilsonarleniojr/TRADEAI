@@ -213,6 +213,7 @@ export interface BotInstance {
   slippageTolerance?: number; // Tolerância máxima de slippage em % (ex: 0.35%)
   riskPerTradePercent?: number; // % explícita de risco por ordem do saldo livre (ex: 35.0%)
   maxHoldingMinutes?: number; // Holding time máximo para encerramento intradiário de proteção (padrão 60 min)
+  disableConsecutiveLossBrake?: boolean; // Permite desativar a pausa por perdas consecutivas neste robô
 
   // Último relatório de execução gerado ao finalizar
   lastReport?: BotExecutionReport | null;

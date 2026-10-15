@@ -177,6 +177,9 @@ export class RiskManager {
 
   public setProtectionSettings(partial: Partial<ProtectionSettings>): ProtectionSettings {
     this.settings = { ...this.settings, ...partial };
+    if (partial.consecutiveLossProtection === false) {
+      this.resetConsecutiveLossBrake();
+    }
     if (typeof window !== "undefined" && window.localStorage) {
       try {
         window.localStorage.setItem("tradeai_protection_settings", JSON.stringify(this.settings));
@@ -186,8 +189,25 @@ export class RiskManager {
     return { ...this.settings };
   }
 
+  public resetConsecutiveLossBrake() {
+    this.currentConsecutiveLosses = 0;
+    this.consecutiveLossCooldownUntil = 0;
+  }
+
+  public getConsecutiveLossStatus() {
+    return {
+      currentConsecutiveLosses: this.currentConsecutiveLosses,
+      cooldownUntil: this.consecutiveLossCooldownUntil,
+      isBlocked: this.settings.consecutiveLossProtection && (
+        this.consecutiveLossCooldownUntil > Date.now() ||
+        this.currentConsecutiveLosses >= (this.settings.maxConsecutiveLosses || RiskManager.MAX_CONSECUTIVE_LOSSES)
+      ),
+    };
+  }
+
   public resetProtectionSettings(): ProtectionSettings {
     this.settings = { ...DEFAULT_PROTECTION_SETTINGS };
+    this.resetConsecutiveLossBrake();
     if (typeof window !== "undefined" && window.localStorage) {
       try {
         window.localStorage.removeItem("tradeai_protection_settings");

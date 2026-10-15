@@ -43,6 +43,7 @@ import {
   Trash2,
   RotateCcw,
   ShieldCheck,
+  ShieldAlert,
   Scale,
   Award,
   Gauge,
@@ -89,6 +90,7 @@ export function BotSection() {
     openProtectionModal,
     setOpenProtectionModal,
     protectionSettings,
+    resetConsecutiveLossBrake,
   } = useCryptoStore(
   useShallow((s) => ({
     bots: s.bots,
@@ -110,6 +112,7 @@ export function BotSection() {
     openProtectionModal: s.openProtectionModal,
     setOpenProtectionModal: s.setOpenProtectionModal,
     protectionSettings: s.protectionSettings,
+    resetConsecutiveLossBrake: s.resetConsecutiveLossBrake,
   }))
 );
 
@@ -139,6 +142,10 @@ export function BotSection() {
   // Fleet statistics
   const activeBots = useMemo(() => bots.filter((b) => b.active), [bots]);
   const inPositionBots = useMemo(() => bots.filter((b) => !!b.position && b.position.quantity > 0), [bots]);
+  const circuitBreakerBots = useMemo(
+    () => bots.filter((b) => b.stats.lastAction?.includes("CIRCUIT BREAKER")),
+    [bots]
+  );
 
   const fleetStats = useMemo(() => {
     const totalPnl = bots.reduce((sum, b) => sum + (b.stats.realizedPnl || 0), 0);
@@ -715,6 +722,53 @@ export function BotSection() {
             ⚡ Robôs operando em tempo real na Binance / Simulado
           </span>
         </div>
+
+        {/* Banner Global de Circuit Breaker / Travas de Perdas Consecutivas */}
+        {circuitBreakerBots.length > 0 && (
+          <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-rose-500/20 text-rose-400 shrink-0">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-bold text-rose-300 flex items-center gap-2">
+                  Trava de Perdas Consecutivas Ativa
+                  <Badge variant="outline" className="border-rose-500/40 text-rose-300 bg-rose-500/20 text-[10px] py-0">
+                    {circuitBreakerBots.length} {circuitBreakerBots.length === 1 ? "robô pausado" : "robôs pausados"}
+                  </Badge>
+                </h4>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Os robôs atingiram o limite de 3 perdas seguidas e foram pausados pelo Circuit Breaker. Você pode remover todas as travas e reativá-los imediatamente.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+              <Button
+                size="sm"
+                onClick={() => {
+                  resetConsecutiveLossBrake();
+                  toggleAllBots(true);
+                  toast({
+                    title: "Travas Retiradas!",
+                    description: "Todas as travas de perda consecutiva foram removidas e a frota foi reativada.",
+                  });
+                }}
+                className="h-8 px-3 text-xs bg-crypto-green hover:bg-crypto-green/90 text-white font-bold cursor-pointer flex-1 sm:flex-none shadow-sm"
+              >
+                <Play className="w-3.5 h-3.5 mr-1 fill-current" />
+                Retirar Travas e Iniciar Frota
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setOpenProtectionModal(true)}
+                className="h-8 px-2.5 text-xs border-border text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                Ajustar Proteção
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Grid of Simultaneous Bot Cards or Empty State */}
         {bots.length === 0 ? (
