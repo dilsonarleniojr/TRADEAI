@@ -27,7 +27,7 @@ const SYMBOLS = [
   "AVAXUSDT",
   "DOTUSDT",
   "LINKUSDT",
-  "MATICUSDT",
+  "POLUSDT",
   "ATOMUSDT",
 ];
 

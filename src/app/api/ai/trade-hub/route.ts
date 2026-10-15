@@ -151,12 +151,12 @@ export async function POST(request: Request) {
 
         // Setores curados para alta diversidade setorial (filtrados contra canibalização)
         const SECTOR_POOLS: Record<string, string[]> = {
-          layer1: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'AVAXUSDT', 'NEARUSDT', 'SUIUSDT', 'APTUSDT', 'SEIUSDT', 'TIAUSDT', 'TONUSDT', 'ADAUSDT', 'DOTUSDT', 'KASUSDT'].filter(s => !isExcluded(s)),
-          defi: ['UNIUSDT', 'AAVEUSDT', 'LINKUSDT', 'MKRUSDT', 'CRVUSDT', 'INJUSDT', 'PENDLEUSDT', 'LDOUSDT', 'JUPUSDT', 'RAYUSDT', 'ENAUSDT', 'SUSHIUSDT', 'CAKEUSDT'].filter(s => !isExcluded(s)),
-          ai: ['RENDERUSDT', 'FETUSDT', 'TAOUSDT', 'NEARUSDT', 'GRTUSDT', 'WLDUSDT', 'AKTUSDT', 'ARUSDT', 'FILUSDT', 'THETAUSDT', 'IOUSDT', 'ARKMUSDT'].filter(s => !isExcluded(s)),
-          depin: ['RENDERUSDT', 'FILUSDT', 'ARUSDT', 'AKTUSDT', 'THETAUSDT', 'IOUSDT', 'HNTUSDT', 'JASMYUSDT'].filter(s => !isExcluded(s)),
-          rwa: ['ONDOUSDT', 'MKRUSDT', 'PENDLEUSDT', 'OMUSDT', 'TRUUSDT', 'SNXUSDT'].filter(s => !isExcluded(s)),
-          memes: ['DOGEUSDT', 'SHIBUSDT', 'PEPEUSDT', 'WIFUSDT', 'BONKUSDT', 'FLOKIUSDT', 'POPCATUSDT', 'BOMEUSDT', 'MEMEUSDT'].filter(s => !isExcluded(s)),
+          layer1: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'AVAXUSDT', 'NEARUSDT', 'SUIUSDT', 'APTUSDT', 'SEIUSDT', 'TIAUSDT', 'POLUSDT', 'ADAUSDT', 'DOTUSDT', 'ALGOUSDT'].filter(s => !isExcluded(s)),
+          defi: ['UNIUSDT', 'AAVEUSDT', 'LINKUSDT', 'COMPUSDT', 'CRVUSDT', 'INJUSDT', 'PENDLEUSDT', 'LDOUSDT', 'JUPUSDT', 'RAYUSDT', 'ENAUSDT', 'SUSHIUSDT', 'CAKEUSDT'].filter(s => !isExcluded(s)),
+          ai: ['RENDERUSDT', 'FETUSDT', 'TAOUSDT', 'NEARUSDT', 'GRTUSDT', 'WLDUSDT', 'PHAUSDT', 'ARUSDT', 'FILUSDT', 'THETAUSDT', 'IOUSDT', 'ARKMUSDT'].filter(s => !isExcluded(s)),
+          depin: ['RENDERUSDT', 'FILUSDT', 'ARUSDT', 'IOTXUSDT', 'THETAUSDT', 'IOUSDT', 'ANKRUSDT', 'JASMYUSDT'].filter(s => !isExcluded(s)),
+          rwa: ['ONDOUSDT', 'CFGUSDT', 'PENDLEUSDT', 'AVAXUSDT', 'LINKUSDT', 'SNXUSDT'].filter(s => !isExcluded(s)),
+          memes: ['DOGEUSDT', 'SHIBUSDT', 'PEPEUSDT', 'WIFUSDT', 'BONKUSDT', 'FLOKIUSDT', 'PEOPLEUSDT', 'BOMEUSDT', 'MEMEUSDT'].filter(s => !isExcluded(s)),
         };
 
         // Identificação dinâmica de líderes de mercado com volume > $3M excluindo pares sob custódia

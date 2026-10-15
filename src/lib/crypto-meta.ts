@@ -43,7 +43,7 @@ export const CRYPTO_LIST: CryptoMeta[] = [
   { symbol: "INJUSDT", name: "Injective", short: "INJ", color: "#0082fa", category: "Layer 1", rank: 40, launchYear: 2020, description: "Blockchain para finanças DeFi" },
   
   // === Layer 2 ===
-  { symbol: "MATICUSDT", name: "Polygon", short: "POL", color: "#8247e5", category: "Layer 2", rank: 20, launchYear: 2020, description: "Solução Layer 2 para Ethereum" },
+  { symbol: "POLUSDT", name: "Polygon (POL)", short: "POL", color: "#8247e5", category: "Layer 2", rank: 20, launchYear: 2020, description: "Solução Layer 2 para Ethereum (ex-MATIC)" },
   { symbol: "ARBUSDT", name: "Arbitrum", short: "ARB", color: "#28a0f0", category: "Layer 2", rank: 28, launchYear: 2023, description: "Rollup otimístico para Ethereum" },
   { symbol: "OPUSDT", name: "Optimism", short: "OP", color: "#ff0420", category: "Layer 2", rank: 32, launchYear: 2022, description: "Optimistic rollup para Ethereum" },
   { symbol: "MANTAUSDT", name: "Manta Network", short: "MANTA", color: "#1e40af", category: "Layer 2", rank: 80, launchYear: 2024, description: "Layer 2 com privacidade ZK" },
@@ -53,7 +53,7 @@ export const CRYPTO_LIST: CryptoMeta[] = [
   { symbol: "LINKUSDT", name: "Chainlink", short: "LINK", color: "#2a5ada", category: "DeFi", rank: 15, launchYear: 2017, description: "Rede oráculo descentralizada líder" },
   { symbol: "UNIUSDT", name: "Uniswap", short: "UNI", color: "#ff007a", category: "DeFi", rank: 22, launchYear: 2020, description: "DEX líder com AMM" },
   { symbol: "AAVEUSDT", name: "Aave", short: "AAVE", color: "#b6509e", category: "DeFi", rank: 38, launchYear: 2020, description: "Protocolo de empréstimo descentralizado" },
-  { symbol: "MKRUSDT", name: "Maker", short: "MKR", color: "#1aab9b", category: "DeFi", rank: 42, launchYear: 2017, description: "Protocolo governante do DAI" },
+  { symbol: "ENAUSDT", name: "Ethena", short: "ENA", color: "#6366f1", category: "DeFi", rank: 42, launchYear: 2024, description: "Protocolo de dólar sintético baseado em Ethereum" },
   { symbol: "COMPUSDT", name: "Compound", short: "COMP", color: "#00d395", category: "DeFi", rank: 65, launchYear: 2020, description: "Mercado de empréstimos algorítmico" },
   { symbol: "CRVUSDT", name: "Curve DAO", short: "CRV", color: "#ff4e4e", category: "DeFi", rank: 60, launchYear: 2020, description: "DEX otimizado para stablecoins" },
   { symbol: "SNXUSDT", name: "Synthetix", short: "SNX", color: "#00d1ff", category: "DeFi", rank: 70, launchYear: 2018, description: "Protocolo de ativos sintéticos" },
@@ -72,7 +72,7 @@ export const CRYPTO_LIST: CryptoMeta[] = [
   // === AI ===
   { symbol: "FETUSDT", name: "Fetch.ai", short: "FET", color: "#1d1d3c", category: "AI", rank: 50, launchYear: 2019, description: "Plataforma de IA autônoma" },
   { symbol: "RENDERUSDT", name: "Render", short: "RNDR", color: "#e63946", category: "AI", rank: 35, launchYear: 2017, description: "Rede descentralizada de renderização GPU" },
-  { symbol: "AKTUSDT", name: "Akash Network", short: "AKT", color: "#ff414c", category: "AI", rank: 65, launchYear: 2020, description: "Mercado de computação em nuvem descentralizado" },
+  { symbol: "IOUSDT", name: "io.net", short: "IO", color: "#00f0ff", category: "AI", rank: 65, launchYear: 2024, description: "Rede descentralizada de clusters GPU de alta performance para IA" },
   { symbol: "TAOUSDT", name: "Bittensor", short: "TAO", color: "#2a2a3d", category: "AI", rank: 38, launchYear: 2023, description: "Rede de machine learning descentralizada" },
   
   // === Gaming ===
@@ -94,7 +94,7 @@ export const CRYPTO_LIST: CryptoMeta[] = [
 
   // === Top Gainers / Novas Moedas em Destaque ===
   { symbol: "MOVRUSDT", name: "Moonriver", short: "MOVR", color: "#53cbc9", category: "Layer 1", rank: 95, launchYear: 2021, description: "Rede de smart contracts compatível com EVM na Kusama/Polkadot" },
-  { symbol: "STGUSDT", name: "Stargate Finance", short: "STG", color: "#e2538b", category: "DeFi", rank: 85, launchYear: 2022, description: "Protocolo de liquidez e transporte omnichain cross-chain" },
+  { symbol: "JUPUSDT", name: "Jupiter", short: "JUP", color: "#e2538b", category: "DeFi", rank: 55, launchYear: 2024, description: "Agregador DEX e infraestrutura líder de swaps da Solana" },
   { symbol: "ZROUSDT", name: "LayerZero", short: "ZRO", color: "#000000", category: "Infrastructure", rank: 45, launchYear: 2024, description: "Protocolo líder de interoperabilidade e mensagens omnichain" },
   { symbol: "PUMPUSDT", name: "Pump", short: "PUMP", color: "#10b981", category: "Meme", rank: 90, launchYear: 2024, description: "Meme coin de alta volatilidade e grande engajamento comunitário" },
   { symbol: "BERAUSDT", name: "Berachain", short: "BERA", color: "#8d5b4c", category: "Layer 1", rank: 48, launchYear: 2024, description: "Blockchain Layer 1 baseada em Proof-of-Liquidity compatível com EVM" },

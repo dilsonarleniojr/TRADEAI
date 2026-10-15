@@ -264,13 +264,16 @@ export function RealtimeNetPnlPanel() {
       targetBots.forEach((bot) => {
         updateBot(bot.id, {
           signalConfidenceThreshold: Math.max(bot.signalConfidenceThreshold || 50, 65),
-          stopLoss: Math.min(bot.stopLoss, 1.5),
+          stopLoss: Math.max(2.6, Math.min(bot.stopLoss || 2.8, 3.2)),
+          useSmartDca: true,
+          dcaDipThreshold: 1.8,
           autoBreakEven: true,
-          breakEvenTrigger: 1.2,
+          breakEvenTrigger: 2.0,
+          breakEvenBuffer: 0.60,
           useMarketRegime: true,
           stats: {
             ...bot.stats,
-            lastAction: "Regime Defensivo IA: Threshold 65% + Stop curto (1.5%)",
+            lastAction: "Regime Defensivo IA: Threshold 65% + Stop Estrutural (2.8%) + Smart DCA",
             lastActionTime: new Date().toISOString(),
           },
         });
@@ -407,10 +410,12 @@ export function RealtimeNetPnlPanel() {
           strategy: "QUANT_ENSEMBLE",
           active: true,
           slippageTolerance: 0.10,
-          takeProfit: 2.5,
-          stopLoss: 1.2,
+          takeProfit: 3.8,
+          stopLoss: 2.8,
           trailingStop: true,
-          trailingStopDistance: 0.5,
+          trailingStopDistance: 0.60,
+          useSmartDca: true,
+          dcaDipThreshold: 1.8,
           allocationAmount: 25,
           maxDailyTrades: 5,
           signalConfidenceThreshold: 80,
@@ -609,8 +614,11 @@ export function RealtimeNetPnlPanel() {
       activeBots.forEach((bot) => {
         updateBot(bot.id, {
           signalConfidenceThreshold: 75,
-          stopLoss: Math.min(bot.stopLoss, 1.5),
+          stopLoss: Math.max(2.6, Math.min(bot.stopLoss || 2.8, 3.2)),
+          useSmartDca: true,
+          dcaDipThreshold: 1.8,
           autoBreakEven: true,
+          breakEvenTrigger: 2.0,
           stats: {
             ...bot.stats,
             lastAction: `Regime Defensivo ativado por risco preditivo: ${alert.recommendedAction}`,

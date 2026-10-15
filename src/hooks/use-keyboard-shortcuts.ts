@@ -22,7 +22,7 @@ const SECTION_MAP: Record<string, ActiveSection> = {
 const SYMBOLS = [
   "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT",
   "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT",
-  "DOTUSDT", "LINKUSDT", "MATICUSDT", "ATOMUSDT",
+  "DOTUSDT", "LINKUSDT", "POLUSDT", "ATOMUSDT",
 ];
 
 export function useKeyboardShortcuts() {

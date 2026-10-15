@@ -525,14 +525,22 @@ export function syncCustodyPositionsWithBots(force: boolean = false) {
             quantity: pos.quantity,
             entryPrice,
             currentPrice: tickerPrice,
-            highestPrice: Math.max(entryPrice, tickerPrice),
+            highestPrice: Math.max(associatedBot.position?.highestPrice || entryPrice, tickerPrice),
             totalCost: entryPrice * pos.quantity,
             unrealizedPnl: (tickerPrice - entryPrice) * pos.quantity,
             unrealizedPnlPercent: pnlPercent,
             entryTime: associatedBot.position?.entryTime || new Date().toISOString(),
             mode: store.tradingMode,
-            breakEvenPrice: entryPrice * 1.003,
+            breakEvenPrice: associatedBot.position?.breakEvenPrice || entryPrice * 1.008,
             isBreakEvenArmed: associatedBot.position?.isBreakEvenArmed ?? false,
+            partialTpExecuted: associatedBot.position?.partialTpExecuted ?? false,
+            partialTpSoldQty: associatedBot.position?.partialTpSoldQty,
+            partialTpRealizedPnl: associatedBot.position?.partialTpRealizedPnl,
+            isTakeProfitArmed: associatedBot.position?.isTakeProfitArmed ?? false,
+            tpPeakPrice: associatedBot.position?.tpPeakPrice,
+            dynamicTakeProfit: associatedBot.position?.dynamicTakeProfit,
+            dynamicStopLoss: associatedBot.position?.dynamicStopLoss,
+            dcaCount: associatedBot.position?.dcaCount,
           });
 
           store.updateBot(associatedBot.id, {
@@ -955,26 +963,26 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // O valor residual continua aberto protegido no Break-Even (+0.30% de buffer).
     // Para ser elegível a parcial, a metade vendida e a metade remanescente precisam respeitar minNotional da Binance (>= $5.20).
     const isAutoBreakEvenEnabled = bot.autoBreakEven ?? true;
-    const isUsePartialTp = bot.usePartialTp ?? true;
-    const beTrigger = Math.max(1.30, Math.min(2.20, bot.breakEvenTrigger ?? 1.40));
-    const beBuffer = Math.max(0.40, Math.min(0.60, bot.breakEvenBuffer ?? 0.45));
+    const isUsePartialTp = bot.usePartialTp ?? false; // Opção A: Foco em lucro integral
+    const beTrigger = Math.max(2.20, bot.breakEvenTrigger ?? 2.40);
+    const beBuffer = Math.max(0.70, Math.min(1.00, bot.breakEvenBuffer ?? 0.80));
     const breakEvenPrice = pos.entryPrice * (1 + beBuffer / 100);
     const positionNotional = pos.quantity * currentPrice!;
-    const partialRatio = (bot.partialTpPercent ?? 50) / 100;
+    const partialRatio = (bot.partialTpPercent ?? 30) / 100;
     const estimatedSellNotional = positionNotional * partialRatio;
     const estimatedRemainingNotional = positionNotional * (1 - partialRatio);
     const canUsePartialTp = isUsePartialTp && (estimatedSellNotional >= 5.20) && (estimatedRemainingNotional >= 5.20);
 
-    // Sobe o stop para Break-Even assim que o ativo atingir valorização saudável (+1.30% padrão)
-    // ou logo após a execução da parcial (50% salvo)
+    // Sobe o stop para Break-Even apenas quando o ativo atingir valorização saudável (≥ +2.20%)
+    // ou se parcial já tiver sido concluída
     const isBreakEvenNowArmed = Boolean(
       pos.isBreakEvenArmed ||
-      pos.partialTpExecuted ||
+      (pos.partialTpExecuted && gainPercent >= beBuffer) ||
       (isAutoBreakEvenEnabled && peakGain >= beTrigger)
     );
 
     // O Break-Even só fecha a posição se estiver devidamente armado E
-    // o preço recuar até a margem de proteção do Break-Even (garantindo lucro líquido positivo pós-taxas)
+    // o preço recuar até a margem de proteção do Break-Even (garantindo lucro líquido positivo de verdade pós-taxas)
     const isBreakEvenTriggered =
       isAutoBreakEvenEnabled &&
       isBreakEvenNowArmed &&
@@ -1009,18 +1017,18 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // 🏄‍♂️ Aperto Parabólico de Stop (Lock-in agressivo de lucros estendidos em pumps)
     let effectiveTpDistance = baseTpDistance;
     if (peakGainFromTp >= 6.0) {
-      effectiveTpDistance = Math.min(baseTpDistance, 0.30); // Acima de +6%, tolera apenas 0.30% de recuo do pico
+      effectiveTpDistance = Math.min(baseTpDistance, 0.35); // Acima de +6%, tolera 0.35% de recuo do pico
     } else if (peakGainFromTp >= 4.0) {
-      effectiveTpDistance = Math.min(baseTpDistance, 0.45); // Entre +4% e +6%, tolera apenas 0.45% de recuo do pico
+      effectiveTpDistance = Math.min(baseTpDistance, 0.50); // Entre +4% e +6%, tolera 0.50% de recuo do pico
     }
 
     // Condição de saída pelo Trailing TP:
     // 1. Está armado
-    // 2. Teve um recuo >= effectiveTpDistance a partir do topo OU o lucro recuou para a base de proteção (effectiveTakeProfit - 0.3%)
+    // 2. Teve um recuo >= effectiveTpDistance a partir do topo OU o lucro recuou para a base de proteção (effectiveTakeProfit - 0.4%)
     const isTrailingTakeProfitTriggered =
       isTrailingTakeProfitEnabled &&
       isTakeProfitNowArmed &&
-      (pullbackFromTpPeak >= effectiveTpDistance || gainPercent <= Math.max(1.5, effectiveTakeProfit - 0.3));
+      (pullbackFromTpPeak >= effectiveTpDistance || gainPercent <= Math.max(1.8, effectiveTakeProfit - 0.4));
 
     // Update position mark-to-market
     const updatedPosition: BotPosition = {
@@ -1054,17 +1062,15 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       if (!isNaN(entryMs)) {
         minutesOpen = Math.max(0, (Date.now() - entryMs) / 60000);
         if (minutesOpen >= timeStopMinutes) {
-          // Checagem se o prejuízo é zero (ou lucro): gainPercent >= 0 ou PnL >= 0
-          const isZeroLossOrProfitable = gainPercent >= -0.05 || unrealizedPnlUsdt >= -0.05;
-          if (isZeroLossOrProfitable) {
-            // Atingiu o tempo base (>= 45m) e o prejuízo zerou: sai imediatamente sem perdas
+          // Checagem se o lucro cobre taxas com folga: gainPercent >= +0.40%
+          const isProfitableAboveFees = gainPercent >= 0.40;
+          if (isProfitableAboveFees) {
+            // Atingiu o tempo base e está no lucro líquido cobrindo taxas: realiza e libera capital
             isTimeStop = true;
             isZeroLossTimeStop = true;
-          } else if (minutesOpen >= maxTimeStopDeadline && gainPercent <= -1.2) {
-            // Esgotou tolerância sem reagir e com perda expressiva (<= -1.2%): encerra compulsório disciplinado
-            isTimeStop = true;
-            isHardDeadlineTimeStop = true;
           }
+          // NUNCA liquidar a mercado no prejuízo ou no zero-a-zero por mero tempo em mercado Spot!
+          // Deixar o trade buscar o Take Profit ou ser gerenciado pelo Stop Loss estrutural/DCA.
         }
       }
     }
@@ -1116,7 +1122,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // garantindo lucro líquido no bolso e travando o restante no Break-Even com risco ZERO.
     // Requer apenas que a fatia vendida e a remanescente atendam ao minNotional da Binance (>= 5.20 USDT).
     // Para robôs de Venda Inteligente por IA (useAiExit), parciais só ocorrem se explicitamente habilitadas e com cooldown rigoroso.
-    const partialTpTrigger = Math.max(1.6, bot.partialTpTrigger ?? 1.8);
+    const partialTpTrigger = Math.max(2.4, bot.partialTpTrigger ?? 2.6);
     const now = Date.now();
     const isPartialCooldown = now < (partialRetryCooldown.get(bot.id) || 0);
 
@@ -1217,24 +1223,17 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     }
 
     // 1.2 TRAILING STOP / BREAKEVEN PROFIT LOCK
-    // Arma assim que superar ganho saudável (>= 1.5% ou 65% do alvo de TP)
+    // Arma assim que superar ganho saudável (>= 1.8% ou 70% do alvo de TP)
     const pullbackFromPeak = peakGain - gainPercent;
-    const trailingArmThreshold = Math.max(1.5, effectiveTakeProfit * 0.65);
+    const trailingArmThreshold = Math.max(1.8, effectiveTakeProfit * 0.70);
     const isTrailingStop =
       bot.trailingStop &&
       !isTakeProfitNowArmed &&
       peakGain >= trailingArmThreshold &&
-      pullbackFromPeak >= (bot.trailingStopDistance || 0.45) &&
-      gainPercent >= 0.50;
+      pullbackFromPeak >= (bot.trailingStopDistance || 0.60) &&
+      gainPercent >= 0.80;
 
-    // 1.3 STOP LOSS DISCIPLINADO (Respeita o risco adaptativo configurado por ATR)
-    // Para robôs de Saída Inteligente por IA (useAiExit), não aciona stop loss curto acidental
-    const isHardStopLoss = isAiExitBot && (bot.stopLoss ?? 99) >= 50
-      ? false
-      : gainPercent <= -effectiveStopLoss;
-    const isStopLoss = isHardStopLoss;
-
-    // 1.4 ONE-SHOT QUICK PROFIT (Venda com lucro real conquistado)
+    // 1.3 ONE-SHOT QUICK PROFIT (Venda com lucro real conquistado)
     const isQuickProfit = bot.stopAfterProfit && gainPercent >= Math.max(1.2, effectiveTakeProfit * 0.85);
 
     let shouldSell = false;
@@ -1267,19 +1266,8 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       logType = "profit";
     } else if (isTimeStop) {
       shouldSell = true;
-      if (isZeroLossTimeStop) {
-        sellReason = `⏱️ TIME-STOP / ESTAGNAÇÃO (${minutesOpen.toFixed(0)}m): Prejuízo zerado na janela de tolerância (+${gainPercent.toFixed(2)}%) · Capital liberado sem perdas`;
-        logType = "profit";
-      } else {
-        sellReason = `⏱️ TIME-STOP DEFINITIVO (${minutesOpen.toFixed(0)}m): Limite de estagnação atingido (${timeStopMinutes}m + ${timeStopGraceMinutes}m) sem zerar prejuízo · Encerrando a mercado`;
-        logType = "warning";
-      }
-    } else if (isStopLoss) {
-      shouldSell = true;
-      sellReason = isHardStopLoss
-        ? `🛑 STOP LOSS PREVENTIVO (-${Math.abs(gainPercent).toFixed(2)}%)`
-        : `🛑 INVALIDAÇÃO DE SCALP (-${Math.abs(gainPercent).toFixed(2)}% em ${minutesOpen.toFixed(0)}m) · CORTE RÁPIDO`;
-      logType = "loss";
+      sellReason = `⏱️ TIME-STOP / ESTAGNAÇÃO (${minutesOpen.toFixed(0)}m): Lucro cobrindo taxas (+${gainPercent.toFixed(2)}%) · Capital liberado`;
+      logType = "profit";
     }
 
     if (shouldSell) {
@@ -1297,18 +1285,19 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     }
 
     // ==========================================================
-    // 1.6 SMART SUPPORT DCA (Preço Médio Estratégico em Suporte)
+    // 1.4 SMART SUPPORT DCA (Preço Médio Estratégico em Suporte)
+    // Avaliado ANTES do Stop Loss: Dá chance à posição de se recuperar no suporte
     // ==========================================================
     const isSmartDcaEnabled = bot.useSmartDca ?? true;
     const maxDca = bot.maxDcaOrders ?? 1;
     const currentDcaCount = pos.dcaCount ?? 0;
-    const dcaDip = bot.dcaDipThreshold ?? 1.5; // ex: -1.5% de recuo
+    const dcaDip = bot.dcaDipThreshold ?? 1.8; // ex: -1.8% de recuo em suporte
 
     if (
       isSmartDcaEnabled &&
       currentDcaCount < maxDca &&
       gainPercent <= -dcaDip &&
-      gainPercent > -bot.stopLoss &&
+      gainPercent > -(effectiveStopLoss * 1.25) &&
       cash >= 5.20
     ) {
       const posKlines1m = await getSymbolKlines(symbol, "1m");
@@ -1317,8 +1306,6 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         const lastCandle = posKlines1m[posKlines1m.length - 1];
 
         // 🛡️ FIM DO DCA CEGO: Reversão Confirmada de Price Action Obrigatória
-        // É estritamente proibido DCA baseado apenas em RSI sobrevendido.
-        // Exige fechamento de candle de alta ou absorção compradora com pavio inferior expressivo (martelo)
         const isBullishCandle = lastCandle.close > lastCandle.open;
         const candleRange = lastCandle.high - lastCandle.low;
         const lowerWick = Math.min(lastCandle.open, lastCandle.close) - lastCandle.low;
@@ -1332,13 +1319,13 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
           const closes15 = posKlines15m.map((k) => k.close);
           const ema9_15 = calculateEMA(closes15, 9);
           const lastClose15 = closes15[closes15.length - 1];
-          if (lastClose15 < ema9_15 * 0.98) {
+          if (lastClose15 < ema9_15 * 0.975) {
             isMacroNotCrashing = false;
           }
         }
 
-        // Confirma suporte: RSI em sobrevenda (<= 42) E Price Action com reversão confirmada E sem colapso macro
-        const isSupportConfirmed = currentRsi <= 42 && hasPriceActionReversal && isMacroNotCrashing;
+        // Confirma suporte: RSI em sobrevenda (<= 45) E Price Action com reversão confirmada E sem colapso macro
+        const isSupportConfirmed = currentRsi <= 45 && hasPriceActionReversal && isMacroNotCrashing;
 
         if (isSupportConfirmed) {
           await executeBotDcaReentry({
@@ -1353,21 +1340,42 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         } else {
           // Log de governança no robô para transparência institucional
           const blockReason = !hasPriceActionReversal
-            ? `DCA bloqueado: RSI (${currentRsi.toFixed(0)}) sem candle de reversão no price action (DCA Cego Proibido).`
+            ? `DCA aguardando candle comprador/martelo no 1m (RSI atual: ${currentRsi.toFixed(0)})`
             : !isMacroNotCrashing
-            ? `DCA bloqueado: Tendência macro de 15m em colapso acelerado (risco de rompimento de suporte).`
-            : `Aguardando sobrevenda com suporte (RSI atual: ${currentRsi.toFixed(0)}).`;
+            ? `DCA bloqueado: Tendência macro de 15m em colapso acelerado`
+            : `Aguardando sobrevenda com suporte (RSI atual: ${currentRsi.toFixed(0)})`;
 
           store.updateBot(bot.id, {
             stats: {
               ...bot.stats,
-              lastAction: `🛡️ Governança DCA: ${blockReason}`,
+              lastAction: `🔄 DCA Monitorando · ${blockReason}`,
               lastActionTime: new Date().toISOString(),
             },
           });
-          return;
         }
       }
+    }
+
+    // ==========================================================
+    // 1.5 STOP LOSS ESTRUTURAL (Acionado se suporte romper ou DCA esgotado)
+    // ==========================================================
+    const isHardStopLoss = isAiExitBot && (bot.stopLoss ?? 99) >= 50
+      ? false
+      : gainPercent <= -effectiveStopLoss;
+
+    if (isHardStopLoss) {
+      const stopReason = `🛑 STOP LOSS PREVENTIVO (-${Math.abs(gainPercent).toFixed(2)}%)`;
+      await executeBotSell({
+        bot,
+        position: updatedPosition,
+        sellPrice: currentPrice!,
+        pnl: unrealizedPnlUsdt,
+        gainPercent,
+        reason: stopReason,
+        logType: "loss",
+        callbacks,
+      });
+      return;
     }
 
     return;
@@ -2362,6 +2370,9 @@ async function executeBotPartialSell({
   if (inFlightSells.has(sellLockKey)) {
     return false;
   }
+  if (position.partialTpExecuted) {
+    return false;
+  }
   inFlightSells.add(sellLockKey);
 
   try {
@@ -2959,17 +2970,24 @@ async function executeBotSell({
     symbolLossTimestamps.set(execSymbol, recentSymbolLosses);
 
     if (recentSymbolLosses.length >= 2) {
-      // 🚨 QUARENTENA PREVENTIVA: 2 ou mais perdas recentes -> 5 minutos de resfriamento
-      cooldownDuration = 5 * 60 * 1000;
+      // 🚨 QUARENTENA PREVENTIVA INSTITUCIONAL: 2 ou mais perdas recentes -> 60 minutos de resfriamento total
+      cooldownDuration = 60 * 60 * 1000;
       isQuarantine = true;
       store.addBotLog({
-        message: `🚨 [QUARENTENA PREVENTIVA] Par ${execSymbol.replace("USDT", "")} registrou ${recentSymbolLosses.length} perdas em 6h. Resfriando por 5m para proteção de capital.`,
+        message: `🚨 [QUARENTENA PREVENTIVA] Par ${execSymbol.replace("USDT", "")} registrou ${recentSymbolLosses.length} perdas em 6h. Bloqueado por 60m para proteção rigorosa de capital (Anti-Churn).`,
         type: "warning",
         botId: bot.id,
         botName: bot.name,
       });
     } else {
-      cooldownDuration = 90 * 1000; // 90 segundos após perda isolada (em vez de 30 minutos)
+      // Cooldown de 35 minutos após perda isolada para evitar "faca caindo" e churn imediato no par
+      cooldownDuration = 35 * 60 * 1000;
+      store.addBotLog({
+        message: `⏳ [RESFRIAMENTO PÓS-STOP] Par ${execSymbol.replace("USDT", "")} em resfriamento técnico de 35m após stop para consolidação de suporte.`,
+        type: "warning",
+        botId: bot.id,
+        botName: bot.name,
+      });
     }
   }
   botSymbolLossCooldown.set(execSymbol, now + cooldownDuration);
@@ -3065,6 +3083,7 @@ export async function manualCloseBotPosition(botId: string, callbacks?: MultiBot
 
   const gainPercent = ((currentPrice - bot.position.entryPrice) / bot.position.entryPrice) * 100;
   const pnl = parseFloat(((currentPrice - bot.position.entryPrice) * bot.position.quantity).toFixed(2));
+  const sign = gainPercent >= 0 ? "+" : "";
 
   await executeBotSell({
     bot,
@@ -3073,8 +3092,8 @@ export async function manualCloseBotPosition(botId: string, callbacks?: MultiBot
     pnl,
     gainPercent,
     reason: callbacks?.stopBotAfterClose
-      ? `🎯 REALIZAÇÃO DE LUCRO E ENCERRAMENTO DO ROBÔ (+${gainPercent.toFixed(2)}%)`
-      : `⚡ FECHAMENTO MANUAL / REALIZAÇÃO IMEDIATA (+${gainPercent.toFixed(2)}%)`,
+      ? `${pnl >= 0 ? "🎯 REALIZAÇÃO DE LUCRO" : "🛑 ENCERRAMENTO"} E DESATIVAÇÃO (${sign}${gainPercent.toFixed(2)}%)`
+      : `${pnl >= 0 ? "⚡ FECHAMENTO MANUAL COM LUCRO" : "⚡ FECHAMENTO MANUAL"} (${sign}${gainPercent.toFixed(2)}%)`,
     logType: pnl >= 0 ? "profit" : "loss",
     callbacks,
   });

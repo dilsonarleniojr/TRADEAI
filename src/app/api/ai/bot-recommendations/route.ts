@@ -92,10 +92,10 @@ export async function POST(request: NextRequest) {
 
     // D) Altcoins Populares e Narrativas Quentes (IA, L1s, DeFi, Memes)
     const hotNarrativesSymbols = new Set([
-      'RENDERUSDT', 'NEARUSDT', 'SUIUSDT', 'SEIUSDT', 'INJUSDT', 'TIAUSDT', 'KASUSDT',
+      'RENDERUSDT', 'NEARUSDT', 'SUIUSDT', 'SEIUSDT', 'INJUSDT', 'TIAUSDT', 'POLUSDT',
       'ARUSDT', 'TAOUSDT', 'FETUSDT', 'APTUSDT', 'PENDLEUSDT', 'JUPUSDT', 'WIFUSDT',
       'PEPEUSDT', 'FLOKIUSDT', 'BONKUSDT', 'AVAXUSDT', 'LINKUSDT', 'AAVEUSDT', 'UNIUSDT',
-      'GALAUSDT', 'STXUSDT', 'FTMUSDT', 'OPUSDT', 'ARBUSDT', 'STRKUSDT', 'RUNEUSDT',
+      'GALAUSDT', 'STXUSDT', 'ATOMUSDT', 'OPUSDT', 'ARBUSDT', 'STRKUSDT', 'RUNEUSDT',
       'DYDXUSDT', 'ONDOUSDT', 'ENAUSDT', 'PYTHUSDT', 'WLDUSDT', 'IOUSDT', 'ZROUSDT'
     ]);
     const hotAltcoins = allValid.filter((c) => hotNarrativesSymbols.has(c.symbol));

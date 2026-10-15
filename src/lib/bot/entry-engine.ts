@@ -374,8 +374,22 @@ export function evaluateStrategySignal(
       if (!signal) return { ok: false, detail: "nenhum sinal da IA para este ativo" };
       // O store guarda a confiança dos sinais em 0–1; aceita também 0–100 por segurança.
       const confPct = signal.confidence <= 1 ? signal.confidence * 100 : signal.confidence;
-      const ok = signal.action === "BUY" && confPct >= minConf;
-      return { ok, detail: `IA: ${signal.action} com ${confPct.toFixed(0)}% de confiança (precisa de COMPRA ≥ ${minConf}%)` };
+      const isConfOk = signal.action === "BUY" && confPct >= minConf;
+      if (!isConfOk) {
+        return { ok: false, detail: `IA: ${signal.action} com ${confPct.toFixed(0)}% de confiança (precisa de COMPRA ≥ ${minConf}%)` };
+      }
+
+      // Validação técnica complementar: exige confirmação de candle comprador ou sustentação na EMA9
+      const closes = klines.map((k) => k.close);
+      const ema9 = emaSeries(closes, 9);
+      const lastEma = ema9[ema9.length - 1];
+      const lastCandle = klines[klines.length - 1];
+      const isGreenOrHolding = lastCandle.close >= lastCandle.open || lastCandle.close >= lastEma * 0.998;
+      if (!isGreenOrHolding) {
+        return { ok: false, detail: `IA indica COMPRA (${confPct.toFixed(0)}%), mas candle 1m em queda — aguardando candle comprador de confirmação` };
+      }
+
+      return { ok: true, detail: `IA: COMPRA confirmada com ${confPct.toFixed(0)}% de confiança e price action em sustentação` };
     }
 
     default:
@@ -425,7 +439,7 @@ export function evaluateEntry(
     const isExhausted = change24h > 18.0;
     const isSubPenny = currentPrice > 0 && currentPrice < 0.005;
     const isMomentumValid = change24h >= 0.5 && !isExhausted;
-    const isVolumeValid = vol >= 5_000_000;
+    const isVolumeValid = vol >= 8_000_000;
     const isHotCandidate = isMomentumValid && isVolumeValid && !isSubPenny;
     checks.push({
       label: "Auto-Screener Alta",
@@ -436,7 +450,7 @@ export function evaluateEntry(
           ? `Cotação sub-penny ($${currentPrice.toFixed(4)} < $0.005) — bloqueado contra spread tóxico`
           : isHotCandidate
             ? `Líder em momentum saudável (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M)`
-            : `Ativo sem liquidez/momentum suficiente (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M — precisa entre +0.5% e +18.0% e Vol ≥ $5M)`,
+            : `Ativo sem liquidez/momentum suficiente (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M — precisa entre +0.5% e +18.0% e Vol ≥ $8M)`,
     });
   } else if (bot.overrideSymbol && bot.overrideSymbol !== "AUTO") {
     checks.push({
@@ -512,7 +526,7 @@ export function evaluateEntry(
   }
 
   // 🛡️ Filtro Anti-Topo & Pullback Saudável:
-  // Impede compra se o candle de 1m esticou demais acima da EMA9 (> 2.0%) ou se formou exaustão clara com pavio vendedor longo em candle amplo
+  // Impede compra se o candle de 1m esticou demais acima da EMA9 (> 0.85%) ou se formou exaustão com pavio superior (≥ 35%)
   const closes1m = klines.map((k) => k.close);
   const fastEma1m = emaSeries(closes1m, 9);
   const lastFastEma = fastEma1m[fastEma1m.length - 1];
@@ -520,21 +534,24 @@ export function evaluateEntry(
   const candleRange = lastCandle.high - lastCandle.low;
   const upperWick = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
   const distFromEma9Pct = lastFastEma > 0 ? ((lastCandle.close - lastFastEma) / lastFastEma) * 100 : 0;
-  const isExtendedFromEma = distFromEma9Pct > 2.0;
+  const isExtendedFromEma = distFromEma9Pct > 0.85;
 
-  // Só veta por pavio se o candle tiver amplitude significativa (> 0.2% da cotação) e estiver esticado (> 0.8% da EMA9)
-  const isWideCandle = candleRange > (lastCandle.close * 0.002);
-  const wickRejection = isWideCandle && distFromEma9Pct > 0.8 && candleRange > 0 && (upperWick / candleRange) >= 0.55;
+  // Veta por rejeição de topo se o candle tiver pavio superior expressivo (≥ 35% da amplitude)
+  const isWideCandle = candleRange > (lastCandle.close * 0.0015);
+  const wickRejection = isWideCandle && candleRange > 0 && (upperWick / candleRange) >= 0.35;
+  const isFallingKnife = distFromEma9Pct < -1.2;
 
-  const isPullbackHealthy = !wickRejection && !isExtendedFromEma;
+  const isPullbackHealthy = !wickRejection && !isExtendedFromEma && !isFallingKnife;
   checks.push({
     label: "Anti-Topo & Pullback",
     ok: isPullbackHealthy,
     detail: isExtendedFromEma
-      ? `Preço esticado (+${distFromEma9Pct.toFixed(1)}% acima da EMA9) — aguardando recuo para a média`
-      : wickRejection
-        ? `Rejeição vendedora de topo (pavio ${(upperWick / candleRange * 100).toFixed(0)}%) — perigo de falso rompimento`
-        : `Preço em suporte saudável (distância da EMA9: ${distFromEma9Pct.toFixed(1)}%)`,
+      ? `Preço esticado (+${distFromEma9Pct.toFixed(2)}% acima da EMA9 de 1m) — aguardando recuo para a média (Anti-FOMO)`
+      : isFallingKnife
+        ? `Preço em queda livre (${distFromEma9Pct.toFixed(2)}% abaixo da EMA9 de 1m) — aguardando suporte`
+        : wickRejection
+          ? `Rejeição vendedora de topo (pavio ${(upperWick / candleRange * 100).toFixed(0)}%) — perigo de falso rompimento`
+          : `Preço em suporte saudável (distância da EMA9: ${distFromEma9Pct.toFixed(2)}%)`,
   });
 
   // 🛡️ Filtro de Regime Macro do Bitcoin (BTCUSDT Guardrail):
@@ -629,24 +646,25 @@ export function evaluateEntry(
       : `Volume murcho (${volRatio.toFixed(2)}x da média) — risco de falso rompimento`,
   });
 
-  // Alvos Dinâmicos Adaptativos por ATR com Risco:Retorno Assimétrico Positivo (R:R ≥ 1.8x)
+  // Alvos Dinâmicos Adaptativos por ATR com Risco:Retorno Assimétrico Positivo (R:R ≥ 1.6x)
   const relATRPercent = (analysis.relATR || 0) * 100;
-  let suggestedSl = bot.stopLoss || 1.3;
-  let suggestedTp = bot.takeProfit || 2.4;
+  let suggestedSl = bot.stopLoss || 2.8;
+  let suggestedTp = bot.takeProfit || 4.2;
   const estimatedRoundtripFees = 0.20; // 0.10% entrada + 0.10% saída Binance Spot
   const estimatedSlippage = 0.10; // margem conservadora de derrapagem
   const totalFriction = estimatedRoundtripFees + estimatedSlippage; // ~0.30%
 
   if (relATRPercent > 0) {
-    // Stop adaptativo curto e disciplinado (entre 1.0% e 1.6%)
-    suggestedSl = Math.min(1.6, Math.max(1.0, parseFloat((relATRPercent * 1.5).toFixed(1))));
-    // Alvo adaptativo institucional garantindo Payoff bruto >= 1.85x (entre 2.4% e 4.5%)
-    const targetWithPayoff = parseFloat((suggestedSl * 1.85).toFixed(1));
-    const dynamicAtrTp = parseFloat((relATRPercent * 2.8).toFixed(1));
-    suggestedTp = Math.max(2.4, Math.min(4.5, Math.max(targetWithPayoff, dynamicAtrTp)));
+    // Stop adaptativo realista para Spot (entre 2.4% e 3.8% — evita ser violinado por ruído)
+    const atrSl = parseFloat((relATRPercent * 1.8).toFixed(1));
+    suggestedSl = Math.max(2.4, Math.min(3.8, Math.max(bot.stopLoss || 2.5, atrSl)));
+    // Alvo adaptativo institucional garantindo Payoff bruto >= 1.65x (entre 3.5% e 6.5%)
+    const targetWithPayoff = parseFloat((suggestedSl * 1.65).toFixed(1));
+    const dynamicAtrTp = parseFloat((relATRPercent * 3.2).toFixed(1));
+    suggestedTp = Math.max(3.5, Math.min(6.5, Math.max(bot.takeProfit || 4.0, targetWithPayoff, dynamicAtrTp)));
   } else {
-    suggestedSl = Math.min(1.6, bot.stopLoss || 1.3);
-    suggestedTp = Math.max(2.4, bot.takeProfit || 2.5);
+    suggestedSl = Math.max(2.4, bot.stopLoss || 2.8);
+    suggestedTp = Math.max(3.5, bot.takeProfit || 4.2);
   }
 
   // Potencial de ganho líquido do trade (Take Profit alvo deduzido das taxas operacionais e slippage)

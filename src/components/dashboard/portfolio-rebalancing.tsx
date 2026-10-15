@@ -13,7 +13,7 @@ import { useShallow } from "zustand/react/shallow";
 const MARKET_CAP_WEIGHTS: Record<string, number> = {
   BTCUSDT: 0.52, ETHUSDT: 0.18, BNBUSDT: 0.05, SOLUSDT: 0.04,
   XRPUSDT: 0.03, ADAUSDT: 0.02, DOGEUSDT: 0.03, AVAXUSDT: 0.02,
-  DOTUSDT: 0.01, LINKUSDT: 0.02, ATOMUSDT: 0.01, MATICUSDT: 0.01,
+  DOTUSDT: 0.01, LINKUSDT: 0.02, ATOMUSDT: 0.01, POLUSDT: 0.01,
 };
 
 interface RebalanceAction {
