@@ -209,6 +209,61 @@ export function ProtectionSettingsDialog({
 
         {/* Protection Groups */}
         <div className="space-y-4 pt-2">
+          {/* GRUPO 0: Capacidade da Frota & Execução Simultânea */}
+          <div className="rounded-xl border border-cyan-500/40 bg-cyan-500/5 p-4 space-y-3.5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-crypto-cyan" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-crypto-cyan">
+                  Capacidade da Frota & Execução Simultânea
+                </h3>
+              </div>
+              <Badge variant="outline" className="border-crypto-cyan/40 bg-crypto-cyan/15 text-crypto-cyan font-mono font-bold text-xs px-2.5 py-0.5">
+                {protectionSettings.maxSimultaneousPositions || 5} Vagas Ativas
+              </Badge>
+            </div>
+
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Define quantos robôs podem abrir posição e ficar operando ativamente ao mesmo tempo. Ao atingir este teto, novos robôs aguardam a liberação de vaga pelos que já estão em operação para evitar pulverização de margem.
+            </p>
+
+            <div className="flex items-center justify-between gap-4 p-2.5 rounded-lg bg-background/60 border border-border/40 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-foreground">
+                  Teto de Robôs Simultâneos:
+                </span>
+                <span className="font-mono font-bold text-sm text-crypto-cyan">
+                  {protectionSettings.maxSimultaneousPositions || 5}
+                </span>
+              </div>
+
+              {/* Botões Rápidos */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[1, 2, 3, 4, 5, 6, 8, 10, 15, 20].map((num) => (
+                  <Button
+                    key={num}
+                    size="sm"
+                    variant={(protectionSettings.maxSimultaneousPositions || 5) === num ? "default" : "outline"}
+                    onClick={() => {
+                      updateProtectionSettings({ maxSimultaneousPositions: num });
+                      toast({
+                        title: "Limite Simultâneo Atualizado",
+                        description: `Frota configurada para até ${num} robôs simultâneos.`,
+                      });
+                    }}
+                    className={`h-6 px-2 text-[11px] font-bold cursor-pointer ${
+                      (protectionSettings.maxSimultaneousPositions || 5) === num
+                        ? "bg-crypto-cyan text-slate-900 font-extrabold shadow-sm"
+                        : "border-border/60 hover:bg-secondary/40 text-muted-foreground"
+                    }`}
+                  >
+                    {num}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {/* GRUPO 1: Circuit Breakers de Carteira */}
           <div className="rounded-xl border border-border/70 bg-card/60 p-4 space-y-3.5">
             <div className="flex items-center gap-2">

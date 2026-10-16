@@ -8,11 +8,13 @@ export async function GET() {
   try {
     const cbStatus = getCircuitBreakerStatus();
     const rmTelemetry = riskManager.getTelemetry(90.0);
+    const settings = riskManager.getProtectionSettings();
 
     return NextResponse.json({
       success: true,
       circuitBreaker: cbStatus,
       riskManager: rmTelemetry,
+      maxSimultaneousPositions: settings.maxSimultaneousPositions || 5,
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
@@ -26,19 +28,28 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    const body = await req.json().catch(() => ({}));
+    if (body && typeof body.maxSimultaneousPositions === "number") {
+      riskManager.setProtectionSettings({
+        maxSimultaneousPositions: Math.max(1, Math.min(50, body.maxSimultaneousPositions)),
+      });
+    }
+
     resetCircuitBreaker();
     riskManager.resetCircuitBreakers();
 
     const updatedCb = getCircuitBreakerStatus();
     const rmTelemetry = riskManager.getTelemetry(90.0);
+    const settings = riskManager.getProtectionSettings();
 
     return NextResponse.json({
       success: true,
-      message: "Circuit breakers destravados com sucesso. Limites e robôs redefinidos.",
+      message: "Circuit breakers destravados e limites atualizados com sucesso.",
       circuitBreaker: updatedCb,
       riskManager: rmTelemetry,
+      maxSimultaneousPositions: settings.maxSimultaneousPositions || 5,
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
