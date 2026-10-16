@@ -155,7 +155,6 @@ export function PredictiveAlertsPanel() {
     addBotLog({
       type: "system",
       message: `⚡ [GOVERNANÇA IA APLICADA] Alerta '${alert.title}': ${actionsTaken.join(" | ")}`,
-      timestamp: Date.now(),
     });
 
     toast({
@@ -240,7 +239,7 @@ export function PredictiveAlertsPanel() {
       <CardContent className="p-4 space-y-3 text-xs">
         {/* Banner de Pulso de Alerta Crítico com Sugestão de Correção Imediata */}
         <AnimatePresence>
-          {criticalPulseActive && (
+          {criticalPulseActive && activeCriticalAlert && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
@@ -432,14 +431,21 @@ export function PredictiveAlertsPanel() {
                       </div>
                     </div>
 
-                    <Button
-                      size="sm"
-                      onClick={() => handleApplyAction(alert)}
-                      className="h-7 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 shrink-0 rounded-lg cursor-pointer self-end sm:self-center shadow-[0_0_10px_rgba(16,185,129,0.3)] flex items-center gap-1"
-                    >
-                      <Zap className="w-3 h-3" />
-                      Aplicar Correção
-                    </Button>
+                    {alert.isResolved ? (
+                      <Badge className="h-7 text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 px-3 shrink-0 rounded-lg flex items-center gap-1.5 font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        Correção Aplicada
+                      </Badge>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => handleApplyAction(alert)}
+                        className="h-7 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 shrink-0 rounded-lg cursor-pointer self-end sm:self-center shadow-[0_0_10px_rgba(16,185,129,0.3)] flex items-center gap-1"
+                      >
+                        <Zap className="w-3 h-3" />
+                        Aplicar Correção
+                      </Button>
+                    )}
                   </div>
                 </div>
               );

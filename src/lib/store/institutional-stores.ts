@@ -317,9 +317,11 @@ export const useAlertStore = create<AlertState>((set) => ({
   clearAlerts: () => set({ alerts: [], criticalPulseActive: false, resolvedAlertIds: [] }),
   dismissCriticalPulse: () =>
     set((state) => {
-      // Também marca os críticos atuais como lidos para não rearmar o pulso imediatamente
-      const updated = state.alerts.map((a) => (a.severity === "critico" ? { ...a, isRead: true } : a));
-      return { alerts: updated, criticalPulseActive: false };
+      // Marca todos os alertas críticos atuais como lidos e resolvidos para não rearmar o pulso imediatamente
+      const updated = state.alerts.map((a) => (a.severity === "critico" ? { ...a, isRead: true, isResolved: true } : a));
+      const criticalIds = state.alerts.filter((a) => a.severity === "critico").map((a) => a.id);
+      const nextResolved = Array.from(new Set([...state.resolvedAlertIds, ...criticalIds]));
+      return { alerts: updated, resolvedAlertIds: nextResolved, criticalPulseActive: false };
     }),
 }));
 
