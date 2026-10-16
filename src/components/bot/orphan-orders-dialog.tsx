@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useCryptoStore } from "@/lib/store";
+import { useShallow } from "zustand/react/shallow";
 import { useToast } from "@/hooks/use-toast";
 import {
   ShieldAlert,

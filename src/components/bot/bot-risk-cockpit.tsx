@@ -29,6 +29,7 @@ import {
   Gauge,
 } from "lucide-react";
 import { computeCorrelationMatrix, type CorrelationMatrixResult } from "@/lib/bot/correlation-service";
+import { useShallow } from "zustand/react/shallow";
 
 interface BotRiskCockpitProps {
   open: boolean;
@@ -36,13 +37,15 @@ interface BotRiskCockpitProps {
 }
 
 export function BotRiskCockpit({ open, onOpenChange }: BotRiskCockpitProps) {
-  const { bots, portfolio, tickers, protectionSettings, trades } = useCryptoStore((s) => ({
-    bots: s.bots,
-    portfolio: s.portfolio,
-    tickers: s.tickers,
-    protectionSettings: s.protectionSettings,
-    trades: s.trades,
-  }));
+  const { bots, portfolio, tickers, protectionSettings, trades } = useCryptoStore(
+    useShallow((s) => ({
+      bots: s.bots,
+      portfolio: s.portfolio,
+      tickers: s.tickers,
+      protectionSettings: s.protectionSettings,
+      trades: s.trades,
+    }))
+  );
 
   const [isLoading, setIsLoading] = useState(false);
   const [correlationData, setCorrelationData] = useState<CorrelationMatrixResult | null>(null);
