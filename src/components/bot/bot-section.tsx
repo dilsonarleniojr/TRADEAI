@@ -48,6 +48,7 @@ import {
   ShieldAlert,
   Scale,
   Award,
+  Trophy,
   Gauge,
   Receipt,
 } from "lucide-react";
