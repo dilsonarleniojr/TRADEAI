@@ -34,6 +34,8 @@ export type {
   TradePrefill,
 } from "./types";
 
+export { deduplicateBots } from "./botSlice";
+
 // Combined store type
 export type CryptoStore = AccountSlice &
   PortfolioSlice &

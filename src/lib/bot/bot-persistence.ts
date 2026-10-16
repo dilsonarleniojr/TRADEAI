@@ -4,7 +4,7 @@
 // poderia operar no modo errado. Os que estavam ligados ficam na lista para retomar.
 
 import { create } from "zustand";
-import { useCryptoStore, type BotInstance } from "@/lib/store";
+import { useCryptoStore, deduplicateBots, type BotInstance } from "@/lib/store";
 
 const STORAGE_KEY = "tradeai_bots_v1";
 const SAVE_DEBOUNCE_MS = 800;
@@ -41,7 +41,7 @@ function read(): SavedFleet | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed?.version !== 1 || !Array.isArray(parsed.bots)) return null;
-    return { ...parsed, bots: parsed.bots.filter(isBot) };
+    return { ...parsed, bots: deduplicateBots(parsed.bots.filter(isBot)) };
   } catch {
     return null;
   }

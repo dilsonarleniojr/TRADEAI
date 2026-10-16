@@ -310,6 +310,66 @@ export const DEFAULT_BOTS: BotInstance[] = [
 
 const BOTS_STORAGE_KEY = "tradeai_fleet_bots";
 
+/**
+ * Deduplica a frota de robôs garantindo estritamente que não existam robôs repetidos para o mesmo par ou ID.
+ * Se houver duplicidade, preserva o robô com prioridade institucional:
+ * 1. Robô com posição aberta em andamento (protege o capital alocado).
+ * 2. Robô ativo em execução (evita desarmar monitoramento).
+ * 3. Maior histórico operacional (totalTrades / winTrades / PnL realizado).
+ */
+export function deduplicateBots(bots: BotInstance[]): BotInstance[] {
+  if (!Array.isArray(bots) || bots.length <= 1) return bots || [];
+
+  const seenSymbols = new Map<string, BotInstance>();
+  const seenIds = new Set<string>();
+
+  for (const b of bots) {
+    if (!b || !b.id || !b.symbol) continue;
+    const sym = b.symbol.trim().toUpperCase();
+
+    // Se já vimos esse ID exato
+    if (seenIds.has(b.id)) continue;
+
+    if (!seenSymbols.has(sym)) {
+      seenSymbols.set(sym, b);
+      seenIds.add(b.id);
+    } else {
+      const current = seenSymbols.get(sym)!;
+      const bHasPos = !!(b.position && b.position.quantity > 0);
+      const curHasPos = !!(current.position && current.position.quantity > 0);
+
+      let replace = false;
+      if (bHasPos && !curHasPos) {
+        replace = true;
+      } else if (!bHasPos && curHasPos) {
+        replace = false;
+      } else if (b.active && !current.active) {
+        replace = true;
+      } else if (!b.active && current.active) {
+        replace = false;
+      } else {
+        const bTrades = b.stats?.totalTrades || 0;
+        const curTrades = current.stats?.totalTrades || 0;
+        if (bTrades > curTrades) {
+          replace = true;
+        } else if (bTrades === curTrades) {
+          const bPnl = b.stats?.realizedPnl || 0;
+          const curPnl = current.stats?.realizedPnl || 0;
+          if (bPnl > curPnl) replace = true;
+        }
+      }
+
+      if (replace) {
+        seenIds.delete(current.id);
+        seenSymbols.set(sym, b);
+        seenIds.add(b.id);
+      }
+    }
+  }
+
+  return Array.from(seenSymbols.values());
+}
+
 function loadBotsFromStorage(): BotInstance[] {
   if (typeof window === "undefined") return DEFAULT_BOTS;
   try {
@@ -326,6 +386,7 @@ function loadBotsFromStorage(): BotInstance[] {
         // 1. Desativa DCA Martingale por padrão (evita dobrar posições em queda)
         // 2. Trava Stop Loss em no máximo 2.0% (Guardrails rígidos de governança)
         // 3. Calibra Break-Even em +1.4% para travar lucro precocemente
+        // 4. Deduplica para NUNCA permitir bots repetidos do mesmo par
         const migrated = sanitized.map((b) => {
           return {
             ...b,
@@ -338,7 +399,7 @@ function loadBotsFromStorage(): BotInstance[] {
             timeStopMinutes: Math.max(b.timeStopMinutes || 0, 60),
           };
         });
-        return migrated;
+        return deduplicateBots(migrated);
       }
     }
   } catch (e) {
@@ -396,10 +457,11 @@ export const createBotSlice: StateCreator<
   },
 
   setBots: (bots) => {
-    persistBots(bots);
-    set({ bots });
+    const deduplicated = deduplicateBots(bots);
+    persistBots(deduplicated);
+    set({ bots: deduplicated });
     // Keep global botActive in sync
-    get().setBotActive(bots.some((b) => b.active));
+    get().setBotActive(deduplicated.some((b) => b.active));
   },
 
   toggleBotActive: (botId, active) => {
@@ -617,19 +679,57 @@ export const createBotSlice: StateCreator<
         return b;
       });
 
-      persistBots(updated);
-      return { bots: updated };
+      const deduplicated = deduplicateBots(updated);
+      persistBots(deduplicated);
+      return { bots: deduplicated };
     });
 
     return { rotatedCount: rotatedPairs.length, newPairs: rotatedPairs };
   },
 
   addBot: (botData) => {
-    const id = `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const cleanSymbol = (botData.symbol || "").trim().toUpperCase();
+    const cleanId = botData.id?.trim();
+
+    // Guardrail Institucional: Não permitir robôs repetidos para o mesmo par ou mesmo ID
+    const state = get();
+    const existingIndex = state.bots.findIndex(
+      (b) => b.symbol.trim().toUpperCase() === cleanSymbol || (cleanId && b.id === cleanId)
+    );
+
+    if (existingIndex !== -1) {
+      const existing = state.bots[existingIndex];
+      const shouldActivate = botData.active !== undefined ? botData.active : existing.active;
+      const updatedBot: BotInstance = {
+        ...existing,
+        ...botData,
+        id: existing.id,
+        symbol: existing.symbol,
+        active: shouldActivate,
+        status: (shouldActivate ? (existing.position ? "in_position" : "scanning") : "stopped") as BotInstance["status"],
+        stats: {
+          ...existing.stats,
+          lastAction: shouldActivate
+            ? "Parâmetros atualizados (robô existente preservado, sem duplicação)"
+            : existing.stats.lastAction,
+          lastActionTime: new Date().toISOString(),
+        },
+      };
+
+      const updatedList = [...state.bots];
+      updatedList[existingIndex] = updatedBot;
+      const deduplicated = deduplicateBots(updatedList);
+      persistBots(deduplicated);
+      set({ bots: deduplicated, selectedBotId: existing.id });
+      get().setBotActive(deduplicated.some((b) => b.active));
+      return existing.id;
+    }
+
+    const id = cleanId || `bot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const newBot: BotInstance = {
       id,
-      name: botData.name || (botData.symbol === "AUTO" ? "Bot Auto-Screener" : `Bot ${botData.symbol.replace("USDT", "")}`),
-      symbol: botData.symbol.toUpperCase(),
+      name: botData.name || (cleanSymbol === "AUTO" ? "Bot Auto-Screener" : `Bot ${cleanSymbol.replace("USDT", "")}`),
+      symbol: cleanSymbol,
       strategy: botData.strategy || "AI",
       active: botData.active ?? false,
       status: (botData.active ? (botData.position ? "in_position" : "scanning") : "stopped") as BotInstance["status"],
@@ -650,7 +750,7 @@ export const createBotSlice: StateCreator<
       useMarketRegime: botData.useMarketRegime ?? true,
       useEnsemble: botData.useEnsemble ?? false,
       useMultiTimeframe: botData.useMultiTimeframe ?? true,
-      useAutoScreener: botData.useAutoScreener ?? (botData.symbol === "AUTO"),
+      useAutoScreener: botData.useAutoScreener ?? (cleanSymbol === "AUTO"),
       autoBreakEven: botData.autoBreakEven ?? true,
       breakEvenTrigger: botData.breakEvenTrigger ?? 2.0,
       breakEvenBuffer: botData.breakEvenBuffer ?? 0.60,
@@ -681,14 +781,14 @@ export const createBotSlice: StateCreator<
         lossTrades: 0,
         winRate: 0,
         realizedPnl: 0,
-        lastAction: botData.active ? (botData.position ? `Gerenciando custódia de ${botData.position.quantity} ${botData.symbol.replace("USDT", "")}` : "Iniciado e analisando mercado") : "Criado (Desligado)",
+        lastAction: botData.active ? (botData.position ? `Gerenciando custódia de ${botData.position.quantity} ${cleanSymbol.replace("USDT", "")}` : "Iniciado e analisando mercado") : "Criado (Desligado)",
         lastActionTime: new Date().toISOString(),
       },
       createdAt: new Date().toISOString(),
     };
 
     set((state) => {
-      const updated = [newBot, ...state.bots];
+      const updated = deduplicateBots([newBot, ...state.bots]);
       persistBots(updated);
       get().setBotActive(updated.some((b) => b.active));
       return { bots: updated, selectedBotId: id };

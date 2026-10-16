@@ -3812,11 +3812,6 @@ export async function rotateFleetWithTopScanner(topCount: number = 5): Promise<{
     );
 
     const candidates = qualified.length >= topCount ? qualified : recommendations;
-    const topPairs = candidates.slice(0, topCount);
-
-    if (topPairs.length === 0) {
-      return { rotatedCount: 0, newPairs: [] };
-    }
 
     // Identifica robôs ativos que NÃO possuem posições abertas
     const eligibleBots = store.bots.filter(
@@ -3824,6 +3819,30 @@ export async function rotateFleetWithTopScanner(topCount: number = 5): Promise<{
     );
 
     if (eligibleBots.length === 0) {
+      return { rotatedCount: 0, newPairs: [] };
+    }
+
+    // Símbolos que já estão em uso por outros robôs da frota (para NUNCA duplicar pares)
+    const inUseSymbols = new Set(
+      store.bots
+        .filter((b) => !eligibleBots.some((eb) => eb.id === b.id))
+        .map((b) => b.symbol.trim().toUpperCase())
+    );
+
+    // Seleciona pares candidatos únicos e sem colisão com símbolos em custódia/existentes
+    const assignedSymbols = new Set<string>();
+    const topPairs: any[] = [];
+    for (const c of candidates) {
+      const sym = (c.symbol || "").trim().toUpperCase();
+      if (!sym) continue;
+      if (!inUseSymbols.has(sym) && !assignedSymbols.has(sym)) {
+        assignedSymbols.add(sym);
+        topPairs.push(c);
+        if (topPairs.length >= Math.min(topCount, eligibleBots.length)) break;
+      }
+    }
+
+    if (topPairs.length === 0) {
       return { rotatedCount: 0, newPairs: [] };
     }
 

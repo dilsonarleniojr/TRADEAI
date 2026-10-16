@@ -29,7 +29,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { Bot, Sparkles, Target, ShieldAlert, ShieldCheck, DollarSign, Search, ChevronDown, Dna, Loader2, CheckCircle2, Rocket, TrendingUp, Zap, Shield, Clock } from "lucide-react";
+import { Bot, Sparkles, Target, ShieldAlert, ShieldCheck, DollarSign, Search, ChevronDown, Dna, Loader2, CheckCircle2, Rocket, TrendingUp, Zap, Shield, Clock, AlertTriangle } from "lucide-react";
 import { STRATEGY_CATALOG, ENGINE_FILTERS, getStrategy } from "@/lib/bot/strategy-catalog";
 import { runGeneticOptimization, type GeneticChromosome } from "@/lib/bot/quant-engine";
 import { getSymbolKlines } from "@/lib/bot/kline-cache";
@@ -45,8 +45,13 @@ interface BotDialogProps {
 }
 
 export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
-  const { addBot, updateBot, tickers } = useCryptoStore(
-    useShallow((s) => ({ addBot: s.addBot, updateBot: s.updateBot, tickers: s.tickers }))
+  const { addBot, updateBot, tickers, bots } = useCryptoStore(
+    useShallow((s) => ({
+      addBot: s.addBot,
+      updateBot: s.updateBot,
+      tickers: s.tickers,
+      bots: s.bots,
+    }))
   );
   const { toast } = useToast();
 
