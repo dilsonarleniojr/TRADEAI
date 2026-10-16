@@ -466,7 +466,17 @@ export function BotPnLRegistry() {
               </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setOpenBinanceScannerModal(true)}
+                className="h-8 px-3 border-amber-500/40 text-amber-300 hover:bg-amber-500/10 text-xs font-bold cursor-pointer transition-all duration-200"
+              >
+                <Trophy className="w-3.5 h-3.5 mr-1.5 text-amber-400" />
+                Escanear Binance (764+ Pares)
+              </Button>
+
               <Button
                 size="sm"
                 onClick={handleActivateProfitable}
