@@ -1771,6 +1771,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
           minNotional: minRequiredCash,
           riskPercentage: (bot.riskPerTradePercent ? bot.riskPerTradePercent / 100 : RiskManager.DEFAULT_RISK_PER_TRADE_PCT),
           maxCapitalAllocationCap: Math.min(150.0, maxCap),
+          relativeAtr: decision.relATR,
         });
 
         if (!posSizing.isViable) {
