@@ -11,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { BotCard } from "./bot-card";
 import { BotDialog } from "./bot-dialog";
 import { AIBotRecommendationsDialog } from "./ai-bot-recommendations-dialog";
+import { BinanceProfitableBotsDialog } from "./binance-profitable-bots-dialog";
 import { BotExecutionReportDialog } from "./bot-execution-report-dialog";
 import { ProtectionSettingsDialog } from "./protection-settings-dialog";
 import { BinanceConnection } from "./binance-connection";
@@ -94,6 +95,8 @@ export function BotSection() {
     protectionSettings,
     resetConsecutiveLossBrake,
     activateTopProfitableBots,
+    openBinanceScannerModal,
+    setOpenBinanceScannerModal,
   } = useCryptoStore(
   useShallow((s) => ({
     bots: s.bots,
@@ -114,6 +117,8 @@ export function BotSection() {
     setOpenBotCreateModal: s.setOpenBotCreateModal,
     openProtectionModal: s.openProtectionModal,
     setOpenProtectionModal: s.setOpenProtectionModal,
+    openBinanceScannerModal: s.openBinanceScannerModal,
+    setOpenBinanceScannerModal: s.setOpenBinanceScannerModal,
     protectionSettings: s.protectionSettings,
     resetConsecutiveLossBrake: s.resetConsecutiveLossBrake,
     activateTopProfitableBots: s.activateTopProfitableBots,
@@ -531,6 +536,16 @@ export function BotSection() {
             >
               <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
               Zerar Métricas
+            </Button>
+
+            <Button
+              size="sm"
+              onClick={() => setOpenBinanceScannerModal(true)}
+              className="h-9 px-3.5 bg-gradient-to-r from-amber-500 via-amber-600 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-slate-950 text-xs font-black shadow-md shadow-amber-500/25 border border-amber-400/40 cursor-pointer transition-all duration-200 hover:scale-[1.02]"
+              title="Escanear todos os pares binários da Binance e criar os robôs mais lucrativos"
+            >
+              <Trophy className="w-3.5 h-3.5 mr-1.5 text-slate-950 fill-current" />
+              Robôs Mais Lucrativos (Binance)
             </Button>
 
             <Button

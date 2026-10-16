@@ -61,6 +61,8 @@ export interface UISlice {
   setOpenAiSettingsModal: (open: boolean) => void;
   openProtectionModal: boolean;
   setOpenProtectionModal: (open: boolean) => void;
+  openBinanceScannerModal: boolean;
+  setOpenBinanceScannerModal: (open: boolean) => void;
 }
 
 // Default widget order
@@ -261,4 +263,6 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   setOpenAiSettingsModal: (open) => set({ openAiSettingsModal: open }),
   openProtectionModal: false,
   setOpenProtectionModal: (open) => set({ openProtectionModal: open }),
+  openBinanceScannerModal: false,
+  setOpenBinanceScannerModal: (open) => set({ openBinanceScannerModal: open }),
 });
