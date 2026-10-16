@@ -1091,8 +1091,8 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // Para ser elegível a parcial, a metade vendida e a metade remanescente precisam respeitar minNotional da Binance (>= $5.20).
     const isAutoBreakEvenEnabled = bot.autoBreakEven ?? true;
     const isUsePartialTp = bot.usePartialTp ?? false; // Opção A: Foco em lucro integral
-    const beTrigger = Math.max(1.80, bot.breakEvenTrigger ?? 2.00);
-    const beBuffer = Math.max(0.65, Math.min(1.20, bot.breakEvenBuffer ?? 0.70));
+    const beTrigger = Math.max(0.85, Math.min(1.20, bot.breakEvenTrigger ?? 0.85));
+    const beBuffer = Math.max(0.25, Math.min(0.40, bot.breakEvenBuffer ?? 0.28));
     const breakEvenPrice = pos.entryPrice * (1 + beBuffer / 100);
     const positionNotional = pos.quantity * currentPrice!;
     const partialRatio = (bot.partialTpPercent ?? 30) / 100;
@@ -1100,7 +1100,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     const estimatedRemainingNotional = positionNotional * (1 - partialRatio);
     const canUsePartialTp = isUsePartialTp && (estimatedSellNotional >= 5.20) && (estimatedRemainingNotional >= 5.20);
 
-    // Sobe o stop para Break-Even apenas quando o ativo atingir valorização saudável (≥ +1.40%)
+    // Sobe o stop para Break-Even apenas quando o ativo atingir valorização saudável (≥ +0.85%)
     // ou se parcial já tiver sido concluída
     const isBreakEvenNowArmed = Boolean(
       pos.isBreakEvenArmed ||
@@ -1116,13 +1116,13 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       gainPercent <= beBuffer;
 
     // 🎯 ALVOS DINÂMICOS ADAPTATIVOS & PARABÓLICOS
-    // Stop Loss disciplinado: calibrado com teto estrito de 2.0% para proteger a banca (Guardrail Institucional)
-    const configuredStopLoss = pos.dynamicStopLoss || bot.stopLoss || 1.8;
-    const effectiveStopLoss = Math.max(1.4, Math.min(2.0, configuredStopLoss));
-    // Take Profit institucional: garante assimetria R:R positiva (≥ 1.65x do Stop Loss e mínimo de 2.8%)
-    const rawTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 3.2;
-    const minTpByRiskReward = parseFloat((effectiveStopLoss * 1.65).toFixed(2));
-    const effectiveTakeProfit = Math.max(minTpByRiskReward, Math.max(2.8, Math.min(6.5, rawTakeProfit)));
+    // Stop Loss disciplinado: calibrado com teto estrito de 1.35% para proteger a banca (Guardrail Institucional)
+    const configuredStopLoss = pos.dynamicStopLoss || bot.stopLoss || 1.25;
+    const effectiveStopLoss = Math.max(1.10, Math.min(1.35, configuredStopLoss));
+    // Take Profit institucional: garante assimetria R:R positiva (≥ 1.85x do Stop Loss e mínimo de 2.2%)
+    const rawTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 2.8;
+    const minTpByRiskReward = parseFloat((effectiveStopLoss * 1.85).toFixed(2));
+    const effectiveTakeProfit = Math.max(minTpByRiskReward, Math.max(2.2, Math.min(6.5, rawTakeProfit)));
 
     // 🚀 TRAILING TAKE-PROFIT DINÂMICO PARABÓLICO (Deixar o Lucro Correr em Altas Fortes)
     // Ao bater a meta de Take Profit (ex: +3.0% ou alvo ATR), o robô não vende na hora;
@@ -1350,16 +1350,22 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       }
     }
 
-    // 1.2 TRAILING STOP / BREAKEVEN PROFIT LOCK
-    // Arma assim que superar ganho saudável (>= 1.8% ou 70% do alvo de TP)
+    // 1.2 CHANDELIER EXIT / ATR TRAILING STOP & BREAKEVEN PROFIT LOCK
+    // Arma assim que superar ganho saudável (>= 1.20% ou 55% do alvo de TP)
     const pullbackFromPeak = peakGain - gainPercent;
-    const trailingArmThreshold = Math.max(1.8, effectiveTakeProfit * 0.70);
+    const trailingArmThreshold = Math.max(1.20, effectiveTakeProfit * 0.55);
+
+    // Distância adaptativa Chandelier baseada na volatilidade real (relativeAtrAtEntry ou 1.2%)
+    const atrValue = pos.relativeAtrAtEntry || 0.012;
+    const dynamicAtrDist = atrValue * 1.4 * 100;
+    const effectiveTrailingDist = Math.max(0.55, Math.min(1.60, bot.trailingStopDistance || dynamicAtrDist));
+
     const isTrailingStop =
       bot.trailingStop &&
       !isTakeProfitNowArmed &&
       peakGain >= trailingArmThreshold &&
-      pullbackFromPeak >= (bot.trailingStopDistance || 0.60) &&
-      gainPercent >= 0.80;
+      pullbackFromPeak >= effectiveTrailingDist &&
+      gainPercent >= beBuffer;
 
     // 1.3 ONE-SHOT QUICK PROFIT (Venda com lucro real conquistado)
     const isQuickProfit = bot.stopAfterProfit && gainPercent >= Math.max(1.2, effectiveTakeProfit * 0.85);
@@ -1383,8 +1389,8 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     } else if (isTrailingStop) {
       shouldSell = true;
       sellReason = bot.stopAfterProfit
-        ? `🔒 TRAILING STOP LUCRO PROTEGIDO (+${gainPercent.toFixed(2)}%) · OPERAÇÃO ÚNICA CONCLUÍDA`
-        : `🔒 TRAILING STOP LUCRO PROTEGIDO (+${gainPercent.toFixed(2)}%)`;
+        ? `🔒 CHANDELIER ATR TRAILING STOP (+${gainPercent.toFixed(2)}%) · OPERAÇÃO ÚNICA CONCLUÍDA`
+        : `🔒 CHANDELIER ATR TRAILING STOP (+${gainPercent.toFixed(2)}%) · PICO: +${peakGain.toFixed(2)}% (Recuo de ${pullbackFromPeak.toFixed(2)}% vs Chandelier ATR ${effectiveTrailingDist.toFixed(2)}%)`;
       logType = "profit";
     } else if (isBreakEvenTriggered) {
       shouldSell = true;
@@ -1486,7 +1492,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // 1.5 STOP LOSS ESTRUTURAL (Acionado se suporte romper ou DCA esgotado)
     // ==========================================================
     const isHardStopLoss = isAiExitBot && (bot.stopLoss ?? 99) >= 50
-      ? false
+      ? gainPercent <= -2.5
       : gainPercent <= -effectiveStopLoss;
 
     if (isHardStopLoss) {
