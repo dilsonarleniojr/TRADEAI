@@ -957,6 +957,12 @@ export function BotSection() {
         }}
       />
 
+      {/* Dialog for Binance 360° Profitable Bots Scanner */}
+      <BinanceProfitableBotsDialog
+        open={openBinanceScannerModal}
+        onOpenChange={setOpenBinanceScannerModal}
+      />
+
       {/* Dialog for Protection Modes and Capital Governance */}
       <ProtectionSettingsDialog
         open={openProtectionModal}
