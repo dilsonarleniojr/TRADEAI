@@ -76,6 +76,8 @@ export function BotPnLRegistry() {
     setOpenBinanceScannerModal,
     fleetAutoRotationEnabled,
     setFleetAutoRotationEnabled,
+    protectionSettings,
+    updateProtectionSettings,
   } = useCryptoStore(
     useShallow((s) => ({
       bots: s.bots,
@@ -87,6 +89,8 @@ export function BotPnLRegistry() {
       setOpenBinanceScannerModal: s.setOpenBinanceScannerModal,
       fleetAutoRotationEnabled: s.fleetAutoRotationEnabled,
       setFleetAutoRotationEnabled: s.setFleetAutoRotationEnabled,
+      protectionSettings: s.protectionSettings,
+      updateProtectionSettings: s.updateProtectionSettings,
     }))
   );
 
@@ -210,9 +214,10 @@ export function BotPnLRegistry() {
   }, [botRows]);
 
   const handleActivateProfitable = () => {
-    const res = activateTopProfitableBots(5);
+    const limit = protectionSettings?.maxSimultaneousPositions || 5;
+    const res = activateTopProfitableBots(limit);
     toast({
-      title: "🏆 Frota Otimizada por Lucratividade",
+      title: `🏆 Frota Otimizada (Top ${limit} Bots)`,
       description: res.activated.length > 0
         ? `${res.activated.length} robô(s) lucrativos priorizados. Robôs em prejuízo foram pausados.`
         : "Os robôs mais lucrativos já estão selecionados e operando.",
@@ -233,7 +238,8 @@ export function BotPnLRegistry() {
   const handleManualRotation = async () => {
     setIsRotating(true);
     try {
-      const res = await rotateFleetWithTopScanner(5);
+      const limit = protectionSettings?.maxSimultaneousPositions || 5;
+      const res = await rotateFleetWithTopScanner(limit);
       if (res.rotatedCount > 0) {
         toast({
           title: "🔄 Frota Rotacionada com Sucesso",
@@ -616,13 +622,52 @@ export function BotPnLRegistry() {
                 Pausar Deficitários
               </Button>
 
+              {/* Seletor de Limite Simultâneo */}
+              <div className="flex items-center gap-1.5 bg-secondary/35 px-2.5 py-1 rounded-lg border border-border/40 text-xs">
+                <Layers className="w-3.5 h-3.5 text-crypto-cyan shrink-0" />
+                <span className="text-muted-foreground font-semibold text-[11px] whitespace-nowrap">
+                  Simultâneos:
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-5 p-0 text-xs font-bold hover:bg-secondary text-foreground cursor-pointer"
+                    onClick={() => {
+                      const current = protectionSettings?.maxSimultaneousPositions || 5;
+                      const nextVal = Math.max(1, current - 1);
+                      updateProtectionSettings({ maxSimultaneousPositions: nextVal });
+                    }}
+                    disabled={(protectionSettings?.maxSimultaneousPositions || 5) <= 1}
+                  >
+                    -
+                  </Button>
+                  <Badge variant="outline" className="h-6 px-1.5 text-xs font-mono font-bold border-crypto-cyan/40 bg-crypto-cyan/10 text-crypto-cyan">
+                    {protectionSettings?.maxSimultaneousPositions || 5}
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-5 p-0 text-xs font-bold hover:bg-secondary text-foreground cursor-pointer"
+                    onClick={() => {
+                      const current = protectionSettings?.maxSimultaneousPositions || 5;
+                      const nextVal = Math.min(Math.max(20, bots.length), current + 1);
+                      updateProtectionSettings({ maxSimultaneousPositions: nextVal });
+                    }}
+                  >
+                    +
+                  </Button>
+                </div>
+              </div>
+
               <Button
                 size="sm"
                 onClick={handleActivateProfitable}
                 className="h-8 px-3.5 bg-gradient-to-r from-amber-500 via-emerald-600 to-teal-500 hover:from-amber-400 hover:to-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 border border-amber-400/40 cursor-pointer transition-all duration-200 hover:scale-[1.02]"
+                title={`Ativar os ${protectionSettings?.maxSimultaneousPositions || 5} robôs com melhor histórico de lucro e pausar deficitários`}
               >
                 <Sparkles className="w-3.5 h-3.5 mr-1.5 text-amber-200 animate-pulse" />
-                Ativar & Priorizar Mais Lucrativos
+                Top {protectionSettings?.maxSimultaneousPositions || 5} Mais Lucrativos
               </Button>
             </div>
           </div>

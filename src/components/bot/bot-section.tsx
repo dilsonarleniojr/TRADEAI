@@ -776,7 +776,56 @@ export function BotSection() {
             </Button>
           </div>
 
-          <span className="text-xs text-muted-foreground hidden sm:inline">
+          {/* Seletor Dinâmico de Posições / Robôs Simultâneos Decidido pelo Usuário */}
+          <div className="flex items-center gap-2 bg-secondary/35 px-2.5 py-1 rounded-xl border border-border/40 text-xs shadow-sm">
+            <Layers className="w-3.5 h-3.5 text-crypto-cyan shrink-0" />
+            <span className="text-muted-foreground font-semibold text-[11px] whitespace-nowrap">
+              Execução Simultânea:
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0 text-xs font-bold hover:bg-secondary text-foreground cursor-pointer"
+                onClick={() => {
+                  const current = protectionSettings?.maxSimultaneousPositions || 5;
+                  const nextVal = Math.max(1, current - 1);
+                  updateProtectionSettings({ maxSimultaneousPositions: nextVal });
+                  toast({
+                    title: "Teto de Execução Atualizado",
+                    description: `Máximo de ${nextVal} robôs em operação simultânea.`,
+                  });
+                }}
+                disabled={(protectionSettings?.maxSimultaneousPositions || 5) <= 1}
+                title="Diminuir teto de posições simultâneas"
+              >
+                -
+              </Button>
+              <Badge variant="outline" className="h-6 px-2 text-xs font-mono font-bold border-crypto-cyan/40 bg-crypto-cyan/10 text-crypto-cyan">
+                {protectionSettings?.maxSimultaneousPositions || 5}
+              </Badge>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0 text-xs font-bold hover:bg-secondary text-foreground cursor-pointer"
+                onClick={() => {
+                  const current = protectionSettings?.maxSimultaneousPositions || 5;
+                  const nextVal = Math.min(Math.max(20, bots.length), current + 1);
+                  updateProtectionSettings({ maxSimultaneousPositions: nextVal });
+                  toast({
+                    title: "Teto de Execução Atualizado",
+                    description: `Máximo de ${nextVal} robôs em operação simultânea.`,
+                  });
+                }}
+                title="Aumentar teto de posições simultâneas"
+              >
+                +
+              </Button>
+            </div>
+            <span className="text-[10px] text-muted-foreground hidden lg:inline">vagas</span>
+          </div>
+
+          <span className="text-xs text-muted-foreground hidden xl:inline">
             ⚡ Robôs operando em tempo real na Binance / Simulado
           </span>
         </div>
