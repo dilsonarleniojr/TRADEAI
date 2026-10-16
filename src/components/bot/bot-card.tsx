@@ -1241,15 +1241,15 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
         <div className="flex items-center justify-between pt-1 border-t border-border/30 text-[11px]">
           <div className="flex items-center gap-1">
             <span className="text-muted-foreground">Lucro Realizado:</span>
-            <span className={`font-bold ${bot.stats.realizedPnl >= 0 ? "text-crypto-green" : "text-crypto-red"}`}>
-              {bot.stats.realizedPnl >= 0 ? "+" : ""}${formatPrice(Math.abs(bot.stats.realizedPnl))}
+            <span className={`font-bold ${(bot.stats?.realizedPnl ?? 0) >= 0 ? "text-crypto-green" : "text-crypto-red"}`}>
+              {(bot.stats?.realizedPnl ?? 0) >= 0 ? "+" : ""}${formatPrice(Math.abs(bot.stats?.realizedPnl ?? 0))}
             </span>
           </div>
 
           <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground">Acerto:</span>
             <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-crypto-green/30 text-crypto-green bg-crypto-green/10 font-bold">
-              {bot.stats.winRate.toFixed(0)}% ({bot.stats.winTrades}V/{bot.stats.lossTrades}D)
+              {(bot.stats?.winRate ?? 0).toFixed(0)}% ({bot.stats?.winTrades ?? 0}V/{bot.stats?.lossTrades ?? 0}D)
             </Badge>
           </div>
         </div>
