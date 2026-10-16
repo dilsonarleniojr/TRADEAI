@@ -6,8 +6,9 @@
 
 const BINANCE_SERVICE_URL = process.env.BINANCE_SERVICE_URL || 'http://localhost:3001';
 let serviceOfflineUntil = 0;
+let consecutiveFailures = 0;
 
-export async function fetchFromBinanceService(path: string, timeoutMs: number = 400): Promise<Response | null> {
+export async function fetchFromBinanceService(path: string, timeoutMs: number = 2500): Promise<Response | null> {
   if (Date.now() < serviceOfflineUntil) {
     return null;
   }
@@ -19,13 +20,18 @@ export async function fetchFromBinanceService(path: string, timeoutMs: number = 
     });
     if (res.ok) {
       serviceOfflineUntil = 0;
+      consecutiveFailures = 0;
       return res;
     }
     // Se respondeu status de erro (ex: 404/500), não marca offline mas retorna null
     return null;
   } catch {
-    // Falha de rede/conexão recusada: desliga chamadas por 60s
-    serviceOfflineUntil = Date.now() + 60_000;
+    consecutiveFailures++;
+    // Apenas ativa circuit-breaker temporário após falhas consecutivas, e por apenas 10s
+    if (consecutiveFailures >= 3) {
+      serviceOfflineUntil = Date.now() + 10_000;
+      consecutiveFailures = 0;
+    }
     return null;
   }
 }

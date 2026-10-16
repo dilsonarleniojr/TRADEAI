@@ -34,7 +34,7 @@ export async function GET() {
 
   pendingFetch = (async () => {
     // 3. Tenta microserviço local (com fail-fast circuit-breaker)
-    const localRes = await fetchFromBinanceService('/api/market/ticker', 300);
+    const localRes = await fetchFromBinanceService('/api/market/ticker', 2000);
     if (localRes) {
       const data = await localRes.json();
       if (data && Array.isArray(data.data)) {
@@ -52,12 +52,21 @@ export async function GET() {
 
     for (const url of fallbackUrls) {
       try {
-        const resp = await fetch(url, { signal: AbortSignal.timeout(5000), cache: 'no-store' });
+        const resp = await fetch(url, { signal: AbortSignal.timeout(8000), cache: 'no-store' });
         if (resp.ok) {
           const raw = await resp.json();
           if (Array.isArray(raw)) {
+            // Filtrar estritamente pares USDT ativos: bid e ask DEVEM ser maiores que zero
+            // Pares suspensos, delistados ou com status BREAK têm bidPrice/askPrice = "0.00000000"
             const usdt = raw
-              .filter((t: any) => t.symbol?.endsWith('USDT'))
+              .filter((t: any) => {
+                if (!t.symbol?.endsWith('USDT')) return false;
+                const bid = parseFloat(t.bidPrice || '0');
+                const ask = parseFloat(t.askPrice || '0');
+                const last = parseFloat(t.lastPrice || '0');
+                const vol = parseFloat(t.quoteVolume || '0');
+                return bid > 0 && ask > 0 && last > 0 && vol > 0;
+              })
               .sort((a: any, b: any) => parseFloat(b.quoteVolume || '0') - parseFloat(a.quoteVolume || '0'));
             cachedTickers = { data: usdt, timestamp: Date.now() };
             return usdt;

@@ -16,17 +16,17 @@ const TOP_SYMBOLS = [
   "SEIUSDT", "TIAUSDT", "INJUSDT",
 
   // === Layer 2 ===
-  "MATICUSDT", "ARBUSDT", "OPUSDT", "MANTAUSDT", "STRKUSDT",
+  "POLUSDT", "ARBUSDT", "OPUSDT", "MANTAUSDT", "STRKUSDT",
 
   // === DeFi ===
-  "LINKUSDT", "UNIUSDT", "AAVEUSDT", "MKRUSDT", "COMPUSDT",
+  "LINKUSDT", "UNIUSDT", "AAVEUSDT", "ONDOUSDT", "ENAUSDT",
   "CRVUSDT", "SNXUSDT", "LDOUSDT", "DYDXUSDT", "PENDLEUSDT",
 
   // === Meme ===
   "DOGEUSDT", "SHIBUSDT", "PEPEUSDT", "FLOKIUSDT", "BONKUSDT", "WIFUSDT",
 
   // === AI ===
-  "FETUSDT", "RENDERUSDT", "AKTUSDT", "TAOUSDT",
+  "FETUSDT", "RENDERUSDT", "TAOUSDT", "WLDUSDT",
 
   // === Gaming ===
   "IMXUSDT", "GALAUSDT", "RONINUSDT", "AXSUSDT",
@@ -38,7 +38,7 @@ const TOP_SYMBOLS = [
   "XRPUSDT", "LTCUSDT", "TRXUSDT", "XLMUSDT",
 
   // === Top Gainers / Novas Moedas em Alta ===
-  "MOVRUSDT", "STGUSDT", "ZROUSDT", "PUMPUSDT", "BERAUSDT",
+  "MOVRUSDT", "JUPUSDT", "ZROUSDT", "PUMPUSDT", "BERAUSDT",
   "PHAUSDT", "NIGHTUSDT", "INITUSDT", "OGUSDT", "QNTUSDT",
 ];
 
@@ -52,17 +52,17 @@ const SYMBOL_CATEGORIES: Record<string, string> = {
   NEARUSDT: "Layer 1", ALGOUSDT: "Layer 1", SUIUSDT: "Layer 1", APTUSDT: "Layer 1",
   SEIUSDT: "Layer 1", TIAUSDT: "Layer 1", INJUSDT: "Layer 1",
   // Layer 2
-  MATICUSDT: "Layer 2", ARBUSDT: "Layer 2", OPUSDT: "Layer 2",
+  POLUSDT: "Layer 2", ARBUSDT: "Layer 2", OPUSDT: "Layer 2",
   MANTAUSDT: "Layer 2", STRKUSDT: "Layer 2",
   // DeFi
-  LINKUSDT: "DeFi", UNIUSDT: "DeFi", AAVEUSDT: "DeFi", MKRUSDT: "DeFi",
-  COMPUSDT: "DeFi", CRVUSDT: "DeFi", SNXUSDT: "DeFi", LDOUSDT: "DeFi",
+  LINKUSDT: "DeFi", UNIUSDT: "DeFi", AAVEUSDT: "DeFi", ONDOUSDT: "DeFi",
+  ENAUSDT: "DeFi", CRVUSDT: "DeFi", SNXUSDT: "DeFi", LDOUSDT: "DeFi",
   DYDXUSDT: "DeFi", PENDLEUSDT: "DeFi",
   // Meme
   DOGEUSDT: "Meme", SHIBUSDT: "Meme", PEPEUSDT: "Meme", FLOKIUSDT: "Meme",
   BONKUSDT: "Meme", WIFUSDT: "Meme",
   // AI
-  FETUSDT: "AI", RENDERUSDT: "AI", AKTUSDT: "AI", TAOUSDT: "AI",
+  FETUSDT: "AI", RENDERUSDT: "AI", TAOUSDT: "AI", WLDUSDT: "AI",
   // Gaming
   IMXUSDT: "Gaming", GALAUSDT: "Gaming", RONINUSDT: "Gaming", AXSUSDT: "Gaming",
   // Storage/Infrastructure
@@ -71,7 +71,7 @@ const SYMBOL_CATEGORIES: Record<string, string> = {
   XRPUSDT: "Stablecoin/Exchange", LTCUSDT: "Stablecoin/Exchange",
   TRXUSDT: "Stablecoin/Exchange", XLMUSDT: "Stablecoin/Exchange",
   // Top Gainers / Novas Moedas
-  MOVRUSDT: "Layer 1", STGUSDT: "DeFi", ZROUSDT: "Storage/Infrastructure",
+  MOVRUSDT: "Layer 1", JUPUSDT: "DeFi", ZROUSDT: "Storage/Infrastructure",
   PUMPUSDT: "Meme", BERAUSDT: "Layer 1", PHAUSDT: "AI",
   NIGHTUSDT: "Storage/Infrastructure", INITUSDT: "Layer 1", OGUSDT: "Gaming", QNTUSDT: "Storage/Infrastructure",
 };
@@ -86,17 +86,17 @@ const SYMBOL_NAMES: Record<string, string> = {
   NEARUSDT: "NEAR Protocol", ALGOUSDT: "Algorand", SUIUSDT: "Sui", APTUSDT: "Aptos",
   SEIUSDT: "Sei", TIAUSDT: "Celestia", INJUSDT: "Injective",
   // Layer 2
-  MATICUSDT: "Polygon", ARBUSDT: "Arbitrum", OPUSDT: "Optimism",
+  POLUSDT: "Polygon Ecosystem Token", ARBUSDT: "Arbitrum", OPUSDT: "Optimism",
   MANTAUSDT: "Manta Network", STRKUSDT: "Starknet",
   // DeFi
-  LINKUSDT: "Chainlink", UNIUSDT: "Uniswap", AAVEUSDT: "Aave", MKRUSDT: "Maker",
-  COMPUSDT: "Compound", CRVUSDT: "Curve", SNXUSDT: "Synthetix", LDOUSDT: "Lido DAO",
+  LINKUSDT: "Chainlink", UNIUSDT: "Uniswap", AAVEUSDT: "Aave", ONDOUSDT: "Ondo",
+  ENAUSDT: "Ethena", CRVUSDT: "Curve", SNXUSDT: "Synthetix", LDOUSDT: "Lido DAO",
   DYDXUSDT: "dYdX", PENDLEUSDT: "Pendle",
   // Meme
   DOGEUSDT: "Dogecoin", SHIBUSDT: "Shiba Inu", PEPEUSDT: "Pepe",
   FLOKIUSDT: "Floki", BONKUSDT: "Bonk", WIFUSDT: "dogwifhat",
   // AI
-  FETUSDT: "Fetch.ai", RENDERUSDT: "Render", AKTUSDT: "Akash Network", TAOUSDT: "Bittensor",
+  FETUSDT: "Artificial Superintelligence", RENDERUSDT: "Render", TAOUSDT: "Bittensor", WLDUSDT: "Worldcoin",
   // Gaming
   IMXUSDT: "Immutable", GALAUSDT: "Gala", RONINUSDT: "Ronin", AXSUSDT: "Axie Infinity",
   // Storage/Infrastructure
@@ -104,7 +104,7 @@ const SYMBOL_NAMES: Record<string, string> = {
   // Stablecoin/Exchange
   XRPUSDT: "XRP", LTCUSDT: "Litecoin", TRXUSDT: "TRON", XLMUSDT: "Stellar",
   // Top Gainers / Novas Moedas
-  MOVRUSDT: "Moonriver", STGUSDT: "Stargate", ZROUSDT: "LayerZero",
+  MOVRUSDT: "Moonriver", JUPUSDT: "Jupiter", ZROUSDT: "LayerZero",
   PUMPUSDT: "Pump", BERAUSDT: "Berachain", PHAUSDT: "Phala Network",
   NIGHTUSDT: "Midnight", INITUSDT: "Initia", OGUSDT: "OG Fan Token", QNTUSDT: "Quant",
 };
