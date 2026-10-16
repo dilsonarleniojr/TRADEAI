@@ -18,14 +18,20 @@ import {
   Search,
   RotateCcw,
   SlidersHorizontal,
+  Bot,
+  Receipt,
+  ListFilter,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
+import { BotPnLRegistry } from "@/components/bot/bot-pnl-registry";
 
 export function HistorySection() {
   const { trades } = useCryptoStore(
   useShallow((s) => ({ trades: s.trades }))
 );
+
+  const [activeHistoryTab, setActiveHistoryTab] = useState<"bots" | "trades">("bots");
 
   // Filter states
   const [symbolSearch, setSymbolSearch] = useState("");
@@ -137,8 +143,40 @@ export function HistorySection() {
       transition={{ duration: 0.3 }}
       className="space-y-5"
     >
-      {/* Dynamic Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* Seletor de Modo: Registro dos Robôs vs Histórico Geral de Ordens */}
+      <div className="flex items-center justify-between flex-wrap gap-2 pb-1">
+        <div className="flex items-center gap-1.5 bg-secondary/40 p-1 rounded-xl border border-border/40">
+          <Button
+            size="sm"
+            variant={activeHistoryTab === "bots" ? "default" : "ghost"}
+            onClick={() => setActiveHistoryTab("bots")}
+            className={`h-8 px-3.5 text-xs cursor-pointer ${
+              activeHistoryTab === "bots" ? "bg-emerald-500 text-white font-bold shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Bot className="w-3.5 h-3.5 mr-1.5" />
+            Registro dos Robôs (Lucro & Perda)
+          </Button>
+          <Button
+            size="sm"
+            variant={activeHistoryTab === "trades" ? "default" : "ghost"}
+            onClick={() => setActiveHistoryTab("trades")}
+            className={`h-8 px-3.5 text-xs cursor-pointer ${
+              activeHistoryTab === "trades" ? "bg-crypto-cyan text-white font-bold shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <ListFilter className="w-3.5 h-3.5 mr-1.5" />
+            Histórico Geral de Ordens
+          </Button>
+        </div>
+      </div>
+
+      {activeHistoryTab === "bots" ? (
+        <BotPnLRegistry />
+      ) : (
+        <>
+          {/* Dynamic Summary Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {summaryCards.map((card, i) => (
           <motion.div
             key={card.label}
@@ -287,6 +325,8 @@ export function HistorySection() {
 
       {/* Equity Curve & Replay Section */}
       <EquityCurve />
+        </>
+      )}
     </motion.div>
   );
 }

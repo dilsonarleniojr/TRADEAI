@@ -1,6 +1,25 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Registro Consolidado de Lucro e Perda dos Robôs (BotPnLRegistry)",
+    "summary": "1) Componente BotPnLRegistry (src/components/bot/bot-pnl-registry.tsx): Interface limpa, simples e direta apresentando em tempo real o Lucro Bruto acumulado (+USD), Perda Bruta acumulada (-USD), PnL Líquido consolidado (+/- USD), Taxa de Acerto (Win Rate), Fator de Lucro e Posições Abertas com PnL não realizado flutuante; 2) Integração Direta: Incorporado como primeira aba padrão ('Registro de Lucro & Perda') nas Tabs da Frota de Robôs (bot-section.tsx) com atalho de 1 clique no cabeçalho superior e também integrado como seletor alternável no topo do Histórico (history-section.tsx); 3) Detalhamento por Robô: Expansão com clique simples exibindo cada trade fechado (Data/Hora, Lado, Preço, Montante USDT, PnL Líquido e Estratégia); 4) Exportação e Filtros: Filtros instantâneos (Todos, No Lucro, No Prejuízo, Em Operação) e exportação da planilha completa em CSV.",
+    "tags": [
+      "bot-pnl-registry",
+      "profit-and-loss-ledger",
+      "pnl-observability",
+      "bot-performance-tracking",
+      "csv-export"
+    ],
+    "details": {
+      "componentPath": "src/components/bot/bot-pnl-registry.tsx",
+      "integratedIn": ["src/components/bot/bot-section.tsx", "src/components/history/history-section.tsx"],
+      "metrics": ["grossProfit", "grossLoss", "netPnl", "winRate", "profitFactor", "unrealizedPnl"]
+    },
+    "id": "mem-1792112000000-bot-pnl-registry",
+    "timestamp": "2026-10-16T01:07:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Telemetria de Taxa de Preenchimento (Fill-Rate Telemetry) e Repricing Dinâmico de 1 Tick para LIMIT_MAKER",
     "summary": "1) Telemetria de Preenchimento (src/lib/bot/risk-manager.ts): Rastreamento em tempo real de ordens LIMIT_MAKER totais, preenchidas, canceladas e repriced, com cálculo da taxa global e da taxa recente em janela móvel de eventos terminais (recentFillRatePct). Detecção instantânea de choques de volatilidade extrema no book quando fill-rate cai abaixo de 40% (isExtremeVolatility = true); 2) Repricing Dinâmico de 1 Tick aos 30s (src/lib/bot/multi-bot-engine.ts): Se uma ordem resting LIMIT_MAKER permanecer aberta por >= 30s e a taxa de preenchimento recente estiver abaixo de 40% (ou volatilidade extrema detectada), o motor cancela atomicamente a ordem original e a recoloca a +1 tick (em direção ao touch), garantindo que ela permaneça estritamente passiva (cleanPrice < bestAsk, respeitando tickSize) para manter 100% dos descontos de taxa Maker da Binance; 3) Cancelamento Definitivo aos 60s: Se a ordem permanecer não executada após 60s, o cancelamento definitivo é acionado e contabilizado na telemetria; 4) Reconciliação em Tempo Real na Binance (/api/trades): Adicionada ação 'orderStatus' autenticada via HMAC SHA256 contra GET /api/v3/order para reconciliar o status exato (FILLED, CANCELED, NEW) de ordens em repouso no mercado real; 5) Cockpit Visual & Controles de Usuário (protection-settings-dialog.tsx): Adicionado Card de Telemetria de Fill-Rate em tempo real e controle liga/desliga 3.3 para 'Repricing Dinâmico de 1 Tick (30s se Fill-Rate < 40%)'; 6) Cobertura de Testes: Adicionada Seção 8 ao scripts/test_risk_manager.ts validando telemetria saudável, choque de volatilidade, preservação de passividade e controle do usuário com 100% de sucesso.",
     "tags": [

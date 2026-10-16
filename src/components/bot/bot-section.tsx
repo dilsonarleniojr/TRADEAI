@@ -20,6 +20,7 @@ import { BotActivityLog } from "./bot-activity-log";
 import { BotPortfolio } from "./bot-portfolio";
 import { BotPerformanceChart } from "./bot-performance-chart";
 import { RealtimeNetPnlPanel } from "./realtime-net-pnl-panel";
+import { BotPnLRegistry } from "./bot-pnl-registry";
 import {
   Play,
   Pause,
@@ -47,6 +48,7 @@ import {
   Scale,
   Award,
   Gauge,
+  Receipt,
 } from "lucide-react";
 import { calculateRiskMetrics } from "@/lib/bot/risk-metrics";
 import { motion, AnimatePresence } from "framer-motion";
@@ -127,6 +129,7 @@ export function BotSection() {
   const [isAiRecommendationsOpen, setIsAiRecommendationsOpen] = useState(false);
   const [botToEdit, setBotToEdit] = useState<BotInstance | null>(null);
   const [botFilter, setBotFilter] = useState<"all" | "active" | "in_position" | "stopped">("all");
+  const [activeBotTab, setActiveBotTab] = useState("registry");
 
   useEffect(() => {
     if (openBotCreateModal) {
@@ -438,6 +441,21 @@ export function BotSection() {
             >
               <Zap className="w-3.5 h-3.5 mr-1.5 text-amber-400 fill-amber-400" />
               Focar Líderes Tier-1 (BTC/ETH/SOL/BNB)
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setActiveBotTab("registry");
+                const el = document.getElementById("bot-tabs-section");
+                if (el) el.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="h-9 px-3.5 border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/15 text-xs font-bold cursor-pointer bg-emerald-500/10 shadow-sm"
+              title="Acessar o Registro simples e direto de Lucro e Perda de cada robô"
+            >
+              <Receipt className="w-3.5 h-3.5 mr-1.5 text-emerald-400" />
+              Registro de Lucro & Perda
             </Button>
 
             <Button
@@ -823,10 +841,14 @@ export function BotSection() {
       </div>
 
       {/* ========================================================================= */}
-      {/* 3. TABS: QUANT ENGINE, ACTIVITY LOGS, PORTFOLIO & CONFIGURATION */}
+      {/* 3. TABS: REGISTRO DE LUCRO/PERDA, QUANT ENGINE, LOGS & CONFIGURATION */}
       {/* ========================================================================= */}
-      <Tabs defaultValue="realtime-pnl" className="space-y-4 pt-2">
+      <Tabs value={activeBotTab} onValueChange={setActiveBotTab} className="space-y-4 pt-2" id="bot-tabs-section">
         <TabsList className="bg-secondary/40 border border-border/40 p-1 h-auto flex flex-wrap gap-1 rounded-xl">
+          <TabsTrigger value="registry" className="text-xs py-1.5 px-3 data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400 font-bold border border-transparent data-[state=active]:border-emerald-500/30">
+            <Receipt className="w-3.5 h-3.5 mr-1.5 text-emerald-400" />
+            Registro de Lucro & Perda
+          </TabsTrigger>
           <TabsTrigger value="realtime-pnl" className="text-xs py-1.5 px-3 data-[state=active]:bg-crypto-green/15 data-[state=active]:text-crypto-green font-bold">
             <Gauge className="w-3.5 h-3.5 mr-1.5" />
             Painel de PnL Líquido L2 (Ao Vivo)
@@ -852,6 +874,10 @@ export function BotSection() {
             Conexão Binance
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="registry">
+          <BotPnLRegistry />
+        </TabsContent>
 
         <TabsContent value="realtime-pnl">
           <RealtimeNetPnlPanel />

@@ -1,0 +1,678 @@
+"use client";
+
+import { useState, useMemo } from "react";
+import { useCryptoStore, type BotInstance, type TradeData } from "@/lib/store";
+import { useShallow } from "zustand/react/shallow";
+import { formatPrice, formatPercent } from "@/lib/format";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Bot,
+  Search,
+  Download,
+  ChevronDown,
+  ChevronUp,
+  Layers,
+  Activity,
+  CheckCircle2,
+  XCircle,
+  Percent,
+  RotateCcw,
+  Clock,
+  ArrowUpRight,
+  ArrowDownRight,
+  ShieldCheck,
+  Zap,
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
+
+interface BotRowData {
+  bot: BotInstance;
+  tradesCount: number;
+  winCount: number;
+  lossCount: number;
+  winRate: number;
+  grossProfit: number;
+  grossLoss: number;
+  netPnl: number;
+  avgWin: number;
+  avgLoss: number;
+  profitFactor: number;
+  trades: TradeData[];
+  hasPosition: boolean;
+  unrealizedPnl: number;
+}
+
+export function BotPnLRegistry() {
+  const { bots, trades, tradingMode } = useCryptoStore(
+    useShallow((s) => ({
+      bots: s.bots,
+      trades: s.trades,
+      tradingMode: s.tradingMode,
+    }))
+  );
+
+  const { toast } = useToast();
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"all" | "profit" | "loss" | "in_position" | "active">("all");
+  const [expandedBotId, setExpandedBotId] = useState<string | null>(null);
+
+  // Computa as informações de Lucro e Perda para cada robô de maneira simples e direta
+  const botRows: BotRowData[] = useMemo(() => {
+    return bots.map((bot) => {
+      // Trades vinculados a este robô
+      const botTrades = trades.filter(
+        (t) =>
+          t.botId === bot.id ||
+          (t.botName && t.botName === bot.name) ||
+          (!t.botId && t.symbol === bot.symbol)
+      );
+
+      // Trades fechados (com PnL apurado ou SELL)
+      const closedTrades = botTrades.filter((t) => typeof t.pnl === "number" && t.pnl !== 0);
+
+      let grossProfit = 0;
+      let grossLoss = 0;
+      let winCount = 0;
+      let lossCount = 0;
+
+      closedTrades.forEach((t) => {
+        const pnl = t.netPnl ?? t.pnl;
+        if (pnl > 0) {
+          grossProfit += pnl;
+          winCount++;
+        } else if (pnl < 0) {
+          grossLoss += Math.abs(pnl);
+          lossCount++;
+        }
+      });
+
+      // Se não há trades no array global (ou após limpeza), usa os acumuladores de bot.stats
+      if (closedTrades.length === 0 && bot.stats) {
+        winCount = bot.stats.winTrades || 0;
+        lossCount = bot.stats.lossTrades || 0;
+        const statPnl = bot.stats.realizedPnl || 0;
+        if (statPnl > 0) grossProfit = statPnl;
+        else if (statPnl < 0) grossLoss = Math.abs(statPnl);
+      }
+
+      const totalClosed = winCount + lossCount;
+      const netPnl = grossProfit - grossLoss;
+      const winRate = totalClosed > 0 ? (winCount / totalClosed) * 100 : (bot.stats?.winRate ?? 100);
+      const avgWin = winCount > 0 ? grossProfit / winCount : 0;
+      const avgLoss = lossCount > 0 ? grossLoss / lossCount : 0;
+      const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 99.9 : 0);
+
+      const hasPosition = !!bot.position && bot.position.quantity > 0;
+      const unrealizedPnl = bot.position?.unrealizedPnl || 0;
+
+      return {
+        bot,
+        tradesCount: totalClosed,
+        winCount,
+        lossCount,
+        winRate,
+        grossProfit,
+        grossLoss,
+        netPnl,
+        avgWin,
+        avgLoss,
+        profitFactor,
+        trades: botTrades,
+        hasPosition,
+        unrealizedPnl,
+      };
+    });
+  }, [bots, trades]);
+
+  // Totais consolidados da frota
+  const summary = useMemo(() => {
+    let totalGrossProfit = 0;
+    let totalGrossLoss = 0;
+    let totalWins = 0;
+    let totalLosses = 0;
+    let botsInProfit = 0;
+    let botsInLoss = 0;
+
+    botRows.forEach((r) => {
+      totalGrossProfit += r.grossProfit;
+      totalGrossLoss += r.grossLoss;
+      totalWins += r.winCount;
+      totalLosses += r.lossCount;
+      if (r.netPnl > 0) botsInProfit++;
+      else if (r.netPnl < 0) botsInLoss++;
+    });
+
+    const netPnl = totalGrossProfit - totalGrossLoss;
+    const totalTrades = totalWins + totalLosses;
+    const winRate = totalTrades > 0 ? (totalWins / totalTrades) * 100 : 100;
+
+    return {
+      totalGrossProfit,
+      totalGrossLoss,
+      netPnl,
+      totalWins,
+      totalLosses,
+      totalTrades,
+      winRate,
+      botsInProfit,
+      botsInLoss,
+      totalBots: botRows.length,
+    };
+  }, [botRows]);
+
+  // Filtros de listagem
+  const filteredRows = useMemo(() => {
+    return botRows.filter((r) => {
+      const q = search.toLowerCase().trim();
+      if (q) {
+        const matchName = r.bot.name.toLowerCase().includes(q);
+        const matchSymbol = r.bot.symbol.toLowerCase().includes(q);
+        const matchStrategy = r.bot.strategy.toLowerCase().includes(q);
+        if (!matchName && !matchSymbol && !matchStrategy) return false;
+      }
+
+      if (filter === "profit" && r.netPnl <= 0) return false;
+      if (filter === "loss" && r.netPnl >= 0) return false;
+      if (filter === "in_position" && !r.hasPosition) return false;
+      if (filter === "active" && !r.bot.active) return false;
+
+      return true;
+    });
+  }, [botRows, search, filter]);
+
+  // Exportar dados do registro para CSV
+  const handleExportCSV = () => {
+    if (botRows.length === 0) {
+      toast({ title: "Sem dados", description: "Nenhum robô encontrado para exportar.", variant: "destructive" });
+      return;
+    }
+
+    const headers = [
+      "Robô",
+      "Par",
+      "Estratégia",
+      "Status",
+      "Lucro Bruto (USD)",
+      "Perda Bruta (USD)",
+      "PnL Líquido (USD)",
+      "Trades Fechados",
+      "Vitórias",
+      "Derrotas",
+      "Taxa de Acerto (%)",
+      "Fator de Lucro",
+      "Posição Aberta",
+      "PnL Não Realizado (USD)",
+    ];
+
+    const rows = botRows.map((r) => [
+      r.bot.name,
+      r.bot.symbol,
+      r.bot.strategy,
+      r.bot.active ? (r.hasPosition ? "Em Operação" : "Ativo") : "Pausado",
+      r.grossProfit.toFixed(2),
+      r.grossLoss.toFixed(2),
+      r.netPnl.toFixed(2),
+      r.tradesCount,
+      r.winCount,
+      r.lossCount,
+      r.winRate.toFixed(1),
+      r.profitFactor.toFixed(2),
+      r.hasPosition ? "SIM" : "NÃO",
+      r.unrealizedPnl.toFixed(2),
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map((row) => row.map((cell) => `"${cell}"`).join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `registro_bots_lucro_perda_${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Exportação Concluída",
+      description: "O registro consolidado de lucro e perda dos robôs foi baixado com sucesso.",
+    });
+  };
+
+  return (
+    <Card className="border border-border/40 bg-card/60 backdrop-blur-md shadow-xl overflow-hidden">
+      <CardHeader className="p-4 sm:p-5 border-b border-border/30 bg-secondary/10">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-crypto-green/10 text-crypto-green border border-crypto-green/20">
+                <DollarSign className="w-4 h-4" />
+              </div>
+              <CardTitle className="text-base sm:text-lg font-bold text-foreground">
+                Registro de Lucro & Perda dos Robôs
+              </CardTitle>
+              <Badge variant="outline" className="text-[10px] bg-crypto-cyan/10 text-crypto-cyan border-crypto-cyan/30">
+                Modo {tradingMode === "live" ? "Real" : "Simulado"}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Quadro direto e transparente do desempenho financeiro de cada robô da frota em tempo real.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCSV}
+              className="h-8 px-3 text-xs border-border/60 hover:bg-secondary/60 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5 text-crypto-cyan" />
+              Exportar CSV
+            </Button>
+          </div>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* RESUMO SIMPLES E DIRETO (METRIC CARDS) */}
+        {/* ========================================================================= */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-4">
+          {/* Lucro Total Acumulado */}
+          <div className="p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                Lucro Total (Ganhos)
+              </span>
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div className="text-lg sm:text-xl font-extrabold text-emerald-400 mt-1">
+              +${formatPrice(summary.totalGrossProfit)}
+            </div>
+            <div className="text-[11px] text-emerald-400/80 mt-0.5 flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" />
+              {summary.totalWins} {summary.totalWins === 1 ? "operação vencedora" : "operações vencedoras"}
+            </div>
+          </div>
+
+          {/* Perda Total Acumulada */}
+          <div className="p-3 rounded-xl border border-rose-500/20 bg-rose-500/5 relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                Perda Total (Prejuízos)
+              </span>
+              <TrendingDown className="w-4 h-4 text-rose-400" />
+            </div>
+            <div className="text-lg sm:text-xl font-extrabold text-rose-400 mt-1">
+              -${formatPrice(summary.totalGrossLoss)}
+            </div>
+            <div className="text-[11px] text-rose-400/80 mt-0.5 flex items-center gap-1">
+              <XCircle className="w-3 h-3" />
+              {summary.totalLosses} {summary.totalLosses === 1 ? "operação perdedora" : "operações perdedoras"}
+            </div>
+          </div>
+
+          {/* PnL Líquido Consolidado */}
+          <div
+            className={`p-3 rounded-xl border relative overflow-hidden ${
+              summary.netPnl >= 0
+                ? "border-crypto-green/30 bg-crypto-green/10"
+                : "border-crypto-red/30 bg-crypto-red/10"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                Resultado Líquido (PnL)
+              </span>
+              <DollarSign
+                className={`w-4 h-4 ${summary.netPnl >= 0 ? "text-crypto-green" : "text-crypto-red"}`}
+              />
+            </div>
+            <div
+              className={`text-lg sm:text-xl font-black mt-1 ${
+                summary.netPnl >= 0 ? "text-crypto-green" : "text-crypto-red"
+              }`}
+            >
+              {summary.netPnl >= 0 ? "+" : ""}${formatPrice(summary.netPnl)}
+            </div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">
+              {summary.botsInProfit} robôs no lucro • {summary.botsInLoss} no prejuízo
+            </div>
+          </div>
+
+          {/* Taxa de Acerto (Win Rate) */}
+          <div className="p-3 rounded-xl border border-crypto-cyan/20 bg-crypto-cyan/5 relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                Assertividade Geral
+              </span>
+              <Percent className="w-4 h-4 text-crypto-cyan" />
+            </div>
+            <div className="text-lg sm:text-xl font-extrabold text-crypto-cyan mt-1">
+              {summary.winRate.toFixed(1)}%
+            </div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">
+              {summary.totalTrades} {summary.totalTrades === 1 ? "trade finalizado" : "trades finalizados"}
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="p-4 sm:p-5 space-y-4">
+        {/* ========================================================================= */}
+        {/* BARRA DE FILTROS E PESQUISA */}
+        {/* ========================================================================= */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Button
+              size="sm"
+              variant={filter === "all" ? "default" : "outline"}
+              onClick={() => setFilter("all")}
+              className={`h-7 px-2.5 text-xs cursor-pointer ${
+                filter === "all" ? "bg-primary text-primary-foreground font-bold" : "text-muted-foreground"
+              }`}
+            >
+              Todos ({botRows.length})
+            </Button>
+            <Button
+              size="sm"
+              variant={filter === "profit" ? "default" : "outline"}
+              onClick={() => setFilter("profit")}
+              className={`h-7 px-2.5 text-xs cursor-pointer ${
+                filter === "profit" ? "bg-emerald-500 text-white font-bold" : "text-muted-foreground"
+              }`}
+            >
+              No Lucro ({summary.botsInProfit})
+            </Button>
+            <Button
+              size="sm"
+              variant={filter === "loss" ? "default" : "outline"}
+              onClick={() => setFilter("loss")}
+              className={`h-7 px-2.5 text-xs cursor-pointer ${
+                filter === "loss" ? "bg-rose-500 text-white font-bold" : "text-muted-foreground"
+              }`}
+            >
+              No Prejuízo ({summary.botsInLoss})
+            </Button>
+            <Button
+              size="sm"
+              variant={filter === "in_position" ? "default" : "outline"}
+              onClick={() => setFilter("in_position")}
+              className={`h-7 px-2.5 text-xs cursor-pointer ${
+                filter === "in_position" ? "bg-amber-500 text-slate-900 font-bold" : "text-muted-foreground"
+              }`}
+            >
+              Em Operação ({botRows.filter((r) => r.hasPosition).length})
+            </Button>
+          </div>
+
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Buscar robô ou moeda..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-8 pl-8 text-xs bg-secondary/30 border-border/50"
+            />
+          </div>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* LISTAGEM DIRETA DE CADA ROBÔ COM LUCRO E PERDA */}
+        {/* ========================================================================= */}
+        {filteredRows.length === 0 ? (
+          <div className="text-center py-10 border border-dashed border-border/40 rounded-xl bg-secondary/10">
+            <Bot className="w-8 h-8 mx-auto text-muted-foreground opacity-50 mb-2" />
+            <p className="text-sm font-semibold text-foreground">Nenhum robô encontrado</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Tente alterar o filtro ou termo de busca.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredRows.map((row) => {
+              const isExpanded = expandedBotId === row.bot.id;
+              const isProfit = row.netPnl >= 0;
+
+              return (
+                <div
+                  key={row.bot.id}
+                  className={`rounded-xl border transition-all duration-200 overflow-hidden ${
+                    row.hasPosition
+                      ? "border-amber-500/40 bg-card/90 shadow-sm"
+                      : isProfit && row.netPnl > 0
+                      ? "border-emerald-500/30 bg-card/80"
+                      : row.netPnl < 0
+                      ? "border-rose-500/30 bg-card/80"
+                      : "border-border/30 bg-card/60"
+                  }`}
+                >
+                  {/* Linha Principal do Robô */}
+                  <div className="p-3 sm:p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                    {/* Identificação do Robô */}
+                    <div className="flex items-center gap-3 min-w-[220px]">
+                      <div
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                          row.bot.active
+                            ? "bg-crypto-green/15 text-crypto-green border border-crypto-green/30"
+                            : "bg-secondary text-muted-foreground border border-border/40"
+                        }`}
+                      >
+                        <Bot className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className="text-sm font-bold text-foreground">{row.bot.name}</h4>
+                          <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-border/50 text-foreground font-mono">
+                            {row.bot.symbol}
+                          </Badge>
+                          <Badge
+                            variant="secondary"
+                            className="text-[9px] py-0 px-1 bg-secondary text-muted-foreground uppercase"
+                          >
+                            {row.bot.strategy}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                row.bot.active ? (row.hasPosition ? "bg-amber-400 animate-pulse" : "bg-emerald-400") : "bg-zinc-500"
+                              }`}
+                            />
+                            {row.bot.active
+                              ? row.hasPosition
+                                ? "Em Operação"
+                                : "Analisando Mercado"
+                              : "Pausado"}
+                          </span>
+                          <span>•</span>
+                          <span>Alocação: ${row.bot.allocationAmount || 40} USDT</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bloco de Lucro, Perda e PnL Líquido */}
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-4 w-full md:w-auto items-center">
+                      {/* Lucro Bruto */}
+                      <div className="text-left sm:text-right">
+                        <span className="text-[10px] text-muted-foreground uppercase block font-semibold">Lucro</span>
+                        <div className="text-xs sm:text-sm font-bold text-emerald-400">
+                          +${formatPrice(row.grossProfit)}
+                        </div>
+                        <span className="text-[10px] text-emerald-400/80">{row.winCount} wins</span>
+                      </div>
+
+                      {/* Perda Bruta */}
+                      <div className="text-left sm:text-right">
+                        <span className="text-[10px] text-muted-foreground uppercase block font-semibold">Perda</span>
+                        <div className="text-xs sm:text-sm font-bold text-rose-400">
+                          -${formatPrice(row.grossLoss)}
+                        </div>
+                        <span className="text-[10px] text-rose-400/80">{row.lossCount} losses</span>
+                      </div>
+
+                      {/* Resultado Líquido (PnL) */}
+                      <div className="text-left sm:text-right">
+                        <span className="text-[10px] text-muted-foreground uppercase block font-semibold">PnL Líquido</span>
+                        <div
+                          className={`text-xs sm:text-sm font-black ${
+                            row.netPnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                          }`}
+                        >
+                          {row.netPnl >= 0 ? "+" : ""}${formatPrice(row.netPnl)}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">
+                          {row.winRate.toFixed(0)}% acerto
+                        </span>
+                      </div>
+
+                      {/* Posição Aberta (se houver) */}
+                      <div className="hidden sm:block text-right">
+                        <span className="text-[10px] text-muted-foreground uppercase block font-semibold">Posição Atual</span>
+                        {row.hasPosition ? (
+                          <div>
+                            <span
+                              className={`text-xs font-bold ${
+                                row.unrealizedPnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                              }`}
+                            >
+                              {row.unrealizedPnl >= 0 ? "+" : ""}${formatPrice(row.unrealizedPnl)}
+                            </span>
+                            <span className="text-[10px] text-amber-400 block font-semibold">Aberta</span>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">Nenhuma</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Botão para Expandir Trades */}
+                    <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setExpandedBotId(isExpanded ? null : row.bot.id)}
+                        className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                      >
+                        {isExpanded ? (
+                          <>
+                            Ocultar Trades <ChevronUp className="w-3.5 h-3.5 ml-1" />
+                          </>
+                        ) : (
+                          <>
+                            Ver Trades ({row.trades.length}) <ChevronDown className="w-3.5 h-3.5 ml-1" />
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Detalhe Expansível: Lista de Trades do Robô */}
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="border-t border-border/30 bg-secondary/15 p-3 sm:p-4"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <h5 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-crypto-cyan" />
+                            Histórico de Operações de {row.bot.name} ({row.bot.symbol})
+                          </h5>
+                          <span className="text-[10px] text-muted-foreground">
+                            Fator de Lucro: <strong className="text-foreground">{row.profitFactor.toFixed(2)}x</strong>
+                            {row.avgWin > 0 && ` • Ganho Médio: +$${row.avgWin.toFixed(2)}`}
+                            {row.avgLoss > 0 && ` • Perda Média: -$${row.avgLoss.toFixed(2)}`}
+                          </span>
+                        </div>
+
+                        {row.trades.length === 0 ? (
+                          <div className="text-center py-4 text-xs text-muted-foreground">
+                            Nenhuma operação individual gravada no cache recente para este robô.
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-[11px] text-left">
+                              <thead>
+                                <tr className="border-b border-border/30 text-muted-foreground text-[10px] uppercase font-semibold">
+                                  <th className="py-1.5 px-2">Data/Hora</th>
+                                  <th className="py-1.5 px-2">Lado</th>
+                                  <th className="py-1.5 px-2">Preço</th>
+                                  <th className="py-1.5 px-2">Montante</th>
+                                  <th className="py-1.5 px-2">PnL Líquido</th>
+                                  <th className="py-1.5 px-2">Estratégia</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-border/20">
+                                {row.trades.map((t) => {
+                                  const pnlVal = t.netPnl ?? t.pnl;
+                                  const isTradeProfit = pnlVal > 0;
+                                  const isTradeLoss = pnlVal < 0;
+
+                                  return (
+                                    <tr key={t.id} className="hover:bg-secondary/20 transition-colors">
+                                      <td className="py-2 px-2 text-muted-foreground whitespace-nowrap">
+                                        {new Date(t.timestamp).toLocaleDateString("pt-BR")}{" "}
+                                        {new Date(t.timestamp).toLocaleTimeString("pt-BR", {
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                          second: "2-digit",
+                                        })}
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <Badge
+                                          variant="outline"
+                                          className={`text-[9px] py-0 px-1.5 font-bold ${
+                                            t.side === "BUY"
+                                              ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/10"
+                                              : "border-rose-500/40 text-rose-400 bg-rose-500/10"
+                                          }`}
+                                        >
+                                          {t.side === "BUY" ? "COMPRA" : "VENDA"}
+                                        </Badge>
+                                      </td>
+                                      <td className="py-2 px-2 font-mono font-medium text-foreground">
+                                        ${formatPrice(t.price)}
+                                      </td>
+                                      <td className="py-2 px-2 font-mono text-muted-foreground">
+                                        ${t.total.toFixed(2)} USDT
+                                      </td>
+                                      <td className="py-2 px-2 font-mono font-bold">
+                                        {pnlVal !== 0 ? (
+                                          <span className={isTradeProfit ? "text-emerald-400" : "text-rose-400"}>
+                                            {isTradeProfit ? "+" : ""}${formatPrice(pnlVal)}
+                                          </span>
+                                        ) : (
+                                          <span className="text-muted-foreground">-</span>
+                                        )}
+                                      </td>
+                                      <td className="py-2 px-2 text-muted-foreground">
+                                        {t.strategy || row.bot.strategy}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
