@@ -232,16 +232,20 @@ export interface InstitutionalAlert {
   };
   timestamp: string;
   isRead?: boolean;
+  isResolved?: boolean;
+  resolvedAt?: string;
 }
 
 export interface AlertState {
   alerts: InstitutionalAlert[];
   filterSeverity: "all" | AlertSeverity;
   criticalPulseActive: boolean;
+  resolvedAlertIds: string[];
   setFilterSeverity: (sev: "all" | AlertSeverity) => void;
   addAlert: (alert: InstitutionalAlert) => void;
   setAlerts: (alerts: InstitutionalAlert[]) => void;
   markAsRead: (id: string) => void;
+  resolveAlert: (id: string) => void;
   clearAlerts: () => void;
   dismissCriticalPulse: () => void;
 }
@@ -250,35 +254,73 @@ export const useAlertStore = create<AlertState>((set) => ({
   alerts: [],
   filterSeverity: "all",
   criticalPulseActive: false,
+  resolvedAlertIds: [],
   setFilterSeverity: (filterSeverity) => set({ filterSeverity }),
   addAlert: (alert) =>
     set((state) => {
-      const isCritical = alert.severity === "critico";
+      const isResolved = state.resolvedAlertIds.includes(alert.id);
+      const isCritical = alert.severity === "critico" && !isResolved;
       return {
-        alerts: [alert, ...state.alerts.filter((a) => a.id !== alert.id)].slice(0, 200),
+        alerts: [{ ...alert, isResolved }, ...state.alerts.filter((a) => a.id !== alert.id)].slice(0, 200),
         criticalPulseActive: isCritical ? true : state.criticalPulseActive,
       };
     }),
-  setAlerts: (alerts) =>
+  setAlerts: (incomingAlerts) =>
     set((state) => {
-      const hasUnreadCritical = alerts.some((a) => a.severity === "critico" && !a.isRead);
+      const resolvedSet = new Set(state.resolvedAlertIds);
+      const readMap = new Map(state.alerts.map((a) => [a.id, a.isRead]));
+      const resolvedMap = new Map(state.alerts.map((a) => [a.id, a.isResolved]));
+
+      const merged = incomingAlerts.map((a) => {
+        const wasResolved = resolvedSet.has(a.id) || resolvedMap.get(a.id) || a.isResolved;
+        const wasRead = readMap.get(a.id) ?? false;
+        return {
+          ...a,
+          isRead: Boolean(wasRead || wasResolved || a.isRead),
+          isResolved: Boolean(wasResolved),
+        };
+      });
+
+      const hasUnreadCritical = merged.some(
+        (a) => a.severity === "critico" && !a.isRead && !a.isResolved
+      );
+
       return {
-        alerts,
-        // Só ativa o pulso se houver alerta crítico não lido, ou mantém se já havia crítico ativo
-        criticalPulseActive: hasUnreadCritical || (state.criticalPulseActive && alerts.some((a) => a.severity === "critico")),
+        alerts: merged,
+        criticalPulseActive: hasUnreadCritical,
       };
     }),
   markAsRead: (id) =>
     set((state) => {
       const updated = state.alerts.map((a) => (a.id === id ? { ...a, isRead: true } : a));
-      const hasUnreadCritical = updated.some((a) => a.severity === "critico" && !a.isRead);
+      const hasUnreadCritical = updated.some((a) => a.severity === "critico" && !a.isRead && !a.isResolved);
       return {
         alerts: updated,
         criticalPulseActive: hasUnreadCritical,
       };
     }),
-  clearAlerts: () => set({ alerts: [], criticalPulseActive: false }),
-  dismissCriticalPulse: () => set({ criticalPulseActive: false }),
+  resolveAlert: (id) =>
+    set((state) => {
+      const nextResolved = Array.from(new Set([...state.resolvedAlertIds, id]));
+      const updated = state.alerts.map((a) =>
+        a.id === id ? { ...a, isRead: true, isResolved: true, resolvedAt: new Date().toISOString() } : a
+      );
+      const hasUnreadCritical = updated.some(
+        (a) => a.severity === "critico" && !a.isRead && !a.isResolved
+      );
+      return {
+        alerts: updated,
+        resolvedAlertIds: nextResolved,
+        criticalPulseActive: hasUnreadCritical,
+      };
+    }),
+  clearAlerts: () => set({ alerts: [], criticalPulseActive: false, resolvedAlertIds: [] }),
+  dismissCriticalPulse: () =>
+    set((state) => {
+      // Também marca os críticos atuais como lidos para não rearmar o pulso imediatamente
+      const updated = state.alerts.map((a) => (a.severity === "critico" ? { ...a, isRead: true } : a));
+      return { alerts: updated, criticalPulseActive: false };
+    }),
 }));
 
 // ============================================================================

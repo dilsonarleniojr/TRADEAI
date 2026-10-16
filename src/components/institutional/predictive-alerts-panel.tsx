@@ -26,12 +26,17 @@ import { FastCloseBadge } from "@/components/bot/fast-close-badge";
 export function PredictiveAlertsPanel() {
   const { toast } = useToast();
   const bots = useCryptoStore((s) => s.bots);
+  const setBots = useCryptoStore((s) => s.setBots);
+  const addBotLog = useCryptoStore((s) => s.addBotLog);
+  const updateProtectionSettings = useCryptoStore((s) => s.updateProtectionSettings);
+
   const alerts = useAlertStore((s) => s.alerts);
   const filterSeverity = useAlertStore((s) => s.filterSeverity);
   const setFilterSeverity = useAlertStore((s) => s.setFilterSeverity);
   const criticalPulseActive = useAlertStore((s) => s.criticalPulseActive);
   const dismissCriticalPulse = useAlertStore((s) => s.dismissCriticalPulse);
   const markAsRead = useAlertStore((s) => s.markAsRead);
+  const resolveAlert = useAlertStore((s) => s.resolveAlert);
   const clearAlerts = useAlertStore((s) => s.clearAlerts);
 
   // Filtragem
@@ -40,10 +45,122 @@ export function PredictiveAlertsPanel() {
   );
 
   const handleApplyAction = (alert: InstitutionalAlert) => {
-    markAsRead(alert.id);
+    // 1. Marca como resolvido e desativa o pulso crítico
+    resolveAlert(alert.id);
+    dismissCriticalPulse();
+
+    const currentBots = useCryptoStore.getState().bots;
+    const alertText = `${alert.title} ${alert.recommendedAction} ${alert.prediction}`.toLowerCase();
+    const targetSymbol =
+      alert.context?.pair ||
+      alert.title.match(/([A-Z0-9]+USDT)/i)?.[1]?.toUpperCase() ||
+      "";
+
+    const actionsTaken: string[] = [];
+
+    // Caso A: Slippage / Compras a mercado / Ativo específico (ex: AAVEUSDT)
+    if (
+      alertText.includes("slippage") ||
+      alertText.includes("compras a mercado") ||
+      alertText.includes("limit / ioc") ||
+      targetSymbol.length > 0
+    ) {
+      updateProtectionSettings({ postOnlyMakerOrders: true });
+      actionsTaken.push("Ordens Post-Only LIMIT_MAKER forçadas (Zero Taker Fee)");
+
+      if (targetSymbol) {
+        const updatedBots = currentBots.map((b) => {
+          if (b.symbol.toUpperCase() === targetSymbol) {
+            const hasOpenPos = !!b.position && b.position.quantity > 0;
+            return {
+              ...b,
+              active: hasOpenPos ? b.active : false,
+              slippageTolerance: 0.20,
+              useOrderBookFilter: true,
+              maxSpreadPercent: 0.08,
+              minBidAskRatio: 0.60,
+              stats: {
+                ...b.stats,
+                lastAction: hasOpenPos
+                  ? `🛡️ Proteção IA: Slippage limitado a 0.20% e filtro L2 ativado para ${targetSymbol}`
+                  : `⏸️ Compras a mercado suspensas pela IA (Risco de slippage > 0.30% em ${targetSymbol})`,
+                lastActionTime: new Date().toISOString(),
+              },
+            };
+          }
+          return b;
+        });
+        setBots(updatedBots);
+        actionsTaken.push(`Parâmetros de ${targetSymbol} ajustados (Slippage max 0.20%, Filtro L2 ativado)`);
+      }
+    }
+
+    // Caso B: Queda futura no PnL / Confluência / Regime Defensivo (65%)
+    if (
+      alertText.includes("confluência") ||
+      alertText.includes("65%") ||
+      alertText.includes("regime defensivo") ||
+      alertText.includes("queda futura") ||
+      alertText.includes("pnl líquido")
+    ) {
+      const updatedBots = currentBots.map((b) => {
+        const isTargetStrategy =
+          b.strategy === "MOMENTUM" ||
+          b.strategy === "BREAKOUT" ||
+          b.strategy === "MACD" ||
+          b.strategy === "QUANT_ENSEMBLE" ||
+          b.strategy === "AI";
+
+        if (isTargetStrategy || b.active) {
+          return {
+            ...b,
+            signalConfidenceThreshold: Math.max(65, b.signalConfidenceThreshold || 55),
+            useMarketRegime: true,
+            autoBreakEven: true,
+            breakEvenTrigger: Math.max(1.4, b.breakEvenTrigger || 1.6),
+            stats: {
+              ...b.stats,
+              lastAction: "🛡️ Regime Defensivo IA: Confluência elevada para 65% e Break-Even armado",
+              lastActionTime: new Date().toISOString(),
+            },
+          };
+        }
+        return b;
+      });
+
+      setBots(updatedBots);
+      updateProtectionSettings({
+        operationalViabilityFilter: true,
+        minNetRewardRiskRatio: 1.50,
+        consecutiveLossProtection: true,
+        dailyDrawdownProtection: true,
+        btcMacroFilter: true,
+        dynamicBreakEven: true,
+      });
+      actionsTaken.push("Threshold de confluência elevado para 65% e Regime Defensivo ativado na frota");
+    }
+
+    // Caso C: Geral / Outros Alertas
+    if (actionsTaken.length === 0) {
+      updateProtectionSettings({
+        operationalViabilityFilter: true,
+        minNetRewardRiskRatio: 1.50,
+        postOnlyMakerOrders: true,
+        dynamicBreakEven: true,
+      });
+      actionsTaken.push("Filtros de viabilidade operacional e proteção atômica ativados");
+    }
+
+    // Registra no log de auditoria dos robôs
+    addBotLog({
+      type: "system",
+      message: `⚡ [GOVERNANÇA IA APLICADA] Alerta '${alert.title}': ${actionsTaken.join(" | ")}`,
+      timestamp: Date.now(),
+    });
+
     toast({
-      title: "⚡ Recomendação IA Aplicada",
-      description: `Medida de governança executada: "${alert.recommendedAction}".`,
+      title: "⚡ Correção IA Aplicada com Sucesso!",
+      description: actionsTaken.join(". ") + ".",
     });
   };
 
@@ -77,11 +194,10 @@ export function PredictiveAlertsPanel() {
     }
   };
 
-  // Encontrar o alerta crítico ou de maior risco ativo para guiar a sugestão de correção
-  const activeCriticalAlert =
-    alerts.find((a) => a.severity === "critico" && !a.isRead) ||
-    alerts.find((a) => a.severity === "critico") ||
-    alerts.find((a) => a.severity === "risco");
+  // Encontrar estritamente o alerta crítico pendente (NÃO lido e NÃO resolvido)
+  const activeCriticalAlert = alerts.find(
+    (a) => a.severity === "critico" && !a.isRead && !a.isResolved
+  );
 
   return (
     <Card className="bg-[#080d17] border border-purple-500/20 shadow-xl overflow-hidden font-mono">
