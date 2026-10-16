@@ -83,6 +83,9 @@ export interface ProtectionSettings {
   dynamicMakerRepricing: boolean;
   repricingTimeoutSeconds: number; // e.g. 30
   minFillRateThreshold: number; // e.g. 40 (40%)
+
+  // 11. Limite de Posições e Robôs em Execução Simultânea na Frota
+  maxSimultaneousPositions?: number; // e.g. 5 (1 a 20)
 }
 
 export const DEFAULT_PROTECTION_SETTINGS: ProtectionSettings = {
@@ -105,6 +108,7 @@ export const DEFAULT_PROTECTION_SETTINGS: ProtectionSettings = {
   dynamicMakerRepricing: true,
   repricingTimeoutSeconds: 30,
   minFillRateThreshold: 40,
+  maxSimultaneousPositions: 5,
 };
 
 export interface FillRateEvent {
@@ -215,6 +219,10 @@ export class RiskManager {
         this.currentConsecutiveLosses >= (this.settings.maxConsecutiveLosses || RiskManager.MAX_CONSECUTIVE_LOSSES)
       ),
     };
+  }
+
+  public getMaxSimultaneousPositions(): number {
+    return this.settings.maxSimultaneousPositions || 5;
   }
 
   public resetProtectionSettings(): ProtectionSettings {

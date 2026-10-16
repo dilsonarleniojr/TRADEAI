@@ -41,8 +41,12 @@ let lastCircuitBreakerResetTimestamp = (() => {
   return 0;
 })();
 
-/** Teto institucional de posições simultâneas para concentrar liquidez nos líderes e evitar fragmentação */
+/** Teto configurável de posições simultâneas para concentrar liquidez e respeitar a escolha do usuário */
 export const MAX_SIMULTANEOUS_BOT_POSITIONS = 5;
+
+export function getMaxSimultaneousPositions(): number {
+  return riskManager.getMaxSimultaneousPositions();
+}
 
 export function getCircuitBreakerStatus(): CircuitBreakerState {
   return { ...circuitBreakerState };
@@ -1614,13 +1618,14 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   // CONCENTRATION GUARDRAIL: Limite de 4 posições simultâneas na frota
   // Foca capital nos líderes institucionais (BTC/ETH/SOL/BNB) e evita pulverização
   // ==========================================================
+  const maxPositions = getMaxSimultaneousPositions();
   const currentPositionsCount = store.bots.filter((b) => b.position && b.position.quantity > 0).length;
-  if (currentPositionsCount >= MAX_SIMULTANEOUS_BOT_POSITIONS) {
+  if (currentPositionsCount >= maxPositions) {
     store.updateBot(bot.id, {
       status: "scanning",
       stats: {
         ...bot.stats,
-        lastAction: `🛡️ Limite Institucional: Teto de ${MAX_SIMULTANEOUS_BOT_POSITIONS} posições atingido (${currentPositionsCount} ativas). Capital concentrado nos líderes.`,
+        lastAction: `🛡️ Teto Configurado de ${maxPositions} posições simultâneas atingido (${currentPositionsCount} ativas). Aguardando liberação de vaga.`,
         lastActionTime: new Date().toISOString(),
       },
     });

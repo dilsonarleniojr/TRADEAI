@@ -94,6 +94,7 @@ export function BotSection() {
     openProtectionModal,
     setOpenProtectionModal,
     protectionSettings,
+    updateProtectionSettings,
     resetConsecutiveLossBrake,
     activateTopProfitableBots,
     openBinanceScannerModal,
@@ -121,6 +122,7 @@ export function BotSection() {
     openBinanceScannerModal: s.openBinanceScannerModal,
     setOpenBinanceScannerModal: s.setOpenBinanceScannerModal,
     protectionSettings: s.protectionSettings,
+    updateProtectionSettings: s.updateProtectionSettings,
     resetConsecutiveLossBrake: s.resetConsecutiveLossBrake,
     activateTopProfitableBots: s.activateTopProfitableBots,
   }))
@@ -352,9 +354,10 @@ export function BotSection() {
             <Button
               size="sm"
               onClick={() => {
-                const res = activateTopProfitableBots(5);
+                const limit = protectionSettings?.maxSimultaneousPositions || 5;
+                const res = activateTopProfitableBots(limit);
                 toast({
-                  title: "🏆 Frota Otimizada por Lucratividade",
+                  title: `🏆 Frota Otimizada (Top ${limit} Bots)`,
                   description: res.activated.length > 0
                     ? `${res.activated.length} robô(s) lucrativos priorizados. Robôs em prejuízo foram pausados.`
                     : "Os robôs mais lucrativos já estão selecionados e operando.",
@@ -362,10 +365,10 @@ export function BotSection() {
               }}
               disabled={bots.length === 0}
               className="h-9 px-3.5 bg-gradient-to-r from-amber-500 via-emerald-600 to-teal-500 hover:from-amber-400 hover:to-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/25 border border-amber-400/30 cursor-pointer disabled:opacity-50 transition-all duration-200 hover:scale-[1.02]"
-              title="Sugerir e ativar automaticamente apenas os robôs criados com melhor histórico de lucro e pausar robôs deficitários"
+              title={`Sugerir e ativar automaticamente até ${protectionSettings?.maxSimultaneousPositions || 5} robôs com melhor histórico de lucro`}
             >
               <Award className="w-3.5 h-3.5 mr-1.5 text-amber-200 animate-pulse" />
-              Escolher Mais Lucrativos
+              Top {protectionSettings?.maxSimultaneousPositions || 5} Lucrativos
             </Button>
 
             <Button

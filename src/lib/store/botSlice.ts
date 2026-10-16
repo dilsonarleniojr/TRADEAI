@@ -473,9 +473,10 @@ export const createBotSlice: StateCreator<
     });
   },
 
-  activateTopProfitableBots: (maxActive = 6) => {
+  activateTopProfitableBots: (maxActive) => {
     const activated: string[] = [];
     const paused: string[] = [];
+    const effectiveMaxActive = maxActive || get().protectionSettings.maxSimultaneousPositions || 5;
 
     set((state) => {
       // 1. Calcula o Score de Lucratividade institucional para cada robô
@@ -504,7 +505,7 @@ export const createBotSlice: StateCreator<
 
       // Prioridade 2: robôs com lucro positivo comprovado
       for (const item of scored) {
-        if (activeIds.size >= maxActive) break;
+        if (activeIds.size >= effectiveMaxActive) break;
         if (item.pnl > 0) {
           activeIds.add(item.bot.id);
         }
@@ -512,7 +513,7 @@ export const createBotSlice: StateCreator<
 
       // Prioridade 3: robôs com melhor score (neutros/novos), descartando robôs deficitários
       for (const item of scored) {
-        if (activeIds.size >= maxActive) break;
+        if (activeIds.size >= effectiveMaxActive) break;
         if (item.pnl < 0 && !item.hasOpenPosition) continue; // Descarta deficitários
         activeIds.add(item.bot.id);
       }
