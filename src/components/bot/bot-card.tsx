@@ -4,7 +4,7 @@ import { useState, memo } from "react";
 import { type BotInstance } from "@/lib/store";
 import { useCryptoStore } from "@/lib/store";
 import { formatPrice } from "@/lib/format";
-import { manualCloseBotPosition, manualOpenBotPosition } from "@/lib/bot/multi-bot-engine";
+import { manualCloseBotPosition, manualOpenBotPosition, resetCircuitBreaker } from "@/lib/bot/multi-bot-engine";
 import { PauseBotDialog } from "./pause-bot-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -883,10 +883,35 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
               </div>
 
               {/* Real-time status / lastAction feedback */}
-              <div className="flex items-center gap-2 text-[11px] text-muted-foreground bg-secondary/35 px-2.5 py-1.5 rounded-lg border border-border/20">
-                <Clock className="w-3.5 h-3.5 text-crypto-cyan shrink-0 animate-spin" style={{ animationDuration: "6s" }} />
-                <span className="truncate">{bot.stats.lastAction || "Analisando volatilidade e ponto ideal de entrada..."}</span>
-              </div>
+              {bot.stats.lastAction?.includes("Circuit Breaker") ? (
+                <div className="flex items-center justify-between gap-2 text-[11px] text-rose-300 bg-rose-500/15 px-2.5 py-1.5 rounded-lg border border-rose-500/40">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                    <ShieldAlert className="w-3.5 h-3.5 text-rose-400 shrink-0 animate-pulse" />
+                    <span className="truncate font-medium">{bot.stats.lastAction}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => {
+                      resetCircuitBreaker();
+                      fetch("/api/bot/circuit-breaker", { method: "POST" }).catch(() => {});
+                      toast({
+                        title: "🛡️ Circuit Breakers Destravados",
+                        description: "Limites zerados e frota normalizada para operar.",
+                      });
+                    }}
+                    className="h-5 px-2 text-[10px] font-bold cursor-pointer shrink-0 ml-1"
+                  >
+                    <RotateCcw className="w-2.5 h-2.5 mr-1" />
+                    Destravar
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground bg-secondary/35 px-2.5 py-1.5 rounded-lg border border-border/20">
+                  <Clock className="w-3.5 h-3.5 text-crypto-cyan shrink-0 animate-spin" style={{ animationDuration: "6s" }} />
+                  <span className="truncate">{bot.stats.lastAction || "Analisando volatilidade e ponto ideal de entrada..."}</span>
+                </div>
+              )}
 
               {/* Telemetria de Frequência de Disparo (Entry Frequency Telemetry) */}
               <div className="bg-secondary/35 rounded-lg p-2.5 border border-border/30 space-y-2">
