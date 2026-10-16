@@ -27,10 +27,17 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ShieldCheck,
+  ShieldAlert,
   Zap,
+  Trophy,
+  Award,
+  Sparkles,
+  Play,
+  Pause,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
+import { calculateBotProfitabilityScore } from "@/lib/bot/multi-bot-engine";
 
 interface BotRowData {
   bot: BotInstance;
@@ -47,25 +54,30 @@ interface BotRowData {
   trades: TradeData[];
   hasPosition: boolean;
   unrealizedPnl: number;
+  profitScore: number;
+  rank: number;
+  recommendation: "CHAMPION" | "PROFITABLE" | "NEUTRAL" | "DEFICIT";
 }
 
 export function BotPnLRegistry() {
-  const { bots, trades, tradingMode } = useCryptoStore(
+  const { bots, trades, tradingMode, activateTopProfitableBots, toggleBotActive } = useCryptoStore(
     useShallow((s) => ({
       bots: s.bots,
       trades: s.trades,
       tradingMode: s.tradingMode,
+      activateTopProfitableBots: s.activateTopProfitableBots,
+      toggleBotActive: s.toggleBotActive,
     }))
   );
 
   const { toast } = useToast();
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "profit" | "loss" | "in_position" | "active">("all");
+  const [filter, setFilter] = useState<"all" | "top_ranked" | "profit" | "loss" | "in_position" | "active">("all");
   const [expandedBotId, setExpandedBotId] = useState<string | null>(null);
 
-  // Computa as informações de Lucro e Perda para cada robô de maneira simples e direta
+  // Computa as informações de Lucro e Perda para cada robô com Score Institucional de Lucratividade
   const botRows: BotRowData[] = useMemo(() => {
-    return bots.map((bot) => {
+    const raw = bots.map((bot) => {
       // Trades vinculados a este robô
       const botTrades = trades.filter(
         (t) =>
@@ -111,6 +123,7 @@ export function BotPnLRegistry() {
 
       const hasPosition = !!bot.position && bot.position.quantity > 0;
       const unrealizedPnl = bot.position?.unrealizedPnl || 0;
+      const profitScore = calculateBotProfitabilityScore(bot);
 
       return {
         bot,
@@ -127,9 +140,53 @@ export function BotPnLRegistry() {
         trades: botTrades,
         hasPosition,
         unrealizedPnl,
+        profitScore,
+      };
+    });
+
+    // Ordena cópia por profitScore decrescente para determinar o ranking institucional
+    const sorted = [...raw].sort((a, b) => b.profitScore - a.profitScore);
+    const rankMap = new Map<string, number>();
+    sorted.forEach((item, index) => {
+      rankMap.set(item.bot.id, index + 1);
+    });
+
+    return raw.map((r) => {
+      const rank = rankMap.get(r.bot.id) || 99;
+      let recommendation: "CHAMPION" | "PROFITABLE" | "NEUTRAL" | "DEFICIT" = "NEUTRAL";
+      if (rank === 1 && (r.netPnl > 0 || r.unrealizedPnl > 0)) {
+        recommendation = "CHAMPION";
+      } else if (r.netPnl > 0 || (r.hasPosition && r.unrealizedPnl > 0) || (r.profitFactor >= 1.5 && r.winCount > 0)) {
+        recommendation = "PROFITABLE";
+      } else if (r.netPnl < -0.10 && r.lossCount > r.winCount) {
+        recommendation = "DEFICIT";
+      }
+
+      return {
+        ...r,
+        rank,
+        recommendation,
       };
     });
   }, [bots, trades]);
+
+  // Top 3 Robôs Mais Lucrativos para Sugestão Institucional
+  const topChampions = useMemo(() => {
+    return [...botRows]
+      .filter((r) => r.recommendation !== "DEFICIT")
+      .sort((a, b) => b.profitScore - a.profitScore)
+      .slice(0, 3);
+  }, [botRows]);
+
+  const handleActivateProfitable = () => {
+    const res = activateTopProfitableBots(5);
+    toast({
+      title: "🏆 Frota Otimizada por Lucratividade",
+      description: res.activated.length > 0
+        ? `${res.activated.length} robô(s) lucrativos priorizados. Robôs em prejuízo foram pausados.`
+        : "Os robôs mais lucrativos já estão selecionados e operando.",
+    });
+  };
 
   // Totais consolidados da frota
   const summary = useMemo(() => {
@@ -169,7 +226,7 @@ export function BotPnLRegistry() {
 
   // Filtros de listagem
   const filteredRows = useMemo(() => {
-    return botRows.filter((r) => {
+    const list = botRows.filter((r) => {
       const q = search.toLowerCase().trim();
       if (q) {
         const matchName = r.bot.name.toLowerCase().includes(q);
@@ -182,9 +239,16 @@ export function BotPnLRegistry() {
       if (filter === "loss" && r.netPnl >= 0) return false;
       if (filter === "in_position" && !r.hasPosition) return false;
       if (filter === "active" && !r.bot.active) return false;
+      if (filter === "top_ranked" && (r.recommendation === "DEFICIT" || r.netPnl < 0)) return false;
 
       return true;
     });
+
+    if (filter === "top_ranked") {
+      return [...list].sort((a, b) => b.profitScore - a.profitScore);
+    }
+
+    return list;
   }, [botRows, search, filter]);
 
   // Exportar dados do registro para CSV
@@ -195,10 +259,12 @@ export function BotPnLRegistry() {
     }
 
     const headers = [
+      "Ranking",
       "Robô",
       "Par",
       "Estratégia",
       "Status",
+      "Classificação",
       "Lucro Bruto (USD)",
       "Perda Bruta (USD)",
       "PnL Líquido (USD)",
@@ -207,26 +273,38 @@ export function BotPnLRegistry() {
       "Derrotas",
       "Taxa de Acerto (%)",
       "Fator de Lucro",
+      "Score Lucratividade",
       "Posição Aberta",
       "PnL Não Realizado (USD)",
     ];
 
-    const rows = botRows.map((r) => [
-      r.bot.name,
-      r.bot.symbol,
-      r.bot.strategy,
-      r.bot.active ? (r.hasPosition ? "Em Operação" : "Ativo") : "Pausado",
-      r.grossProfit.toFixed(2),
-      r.grossLoss.toFixed(2),
-      r.netPnl.toFixed(2),
-      r.tradesCount,
-      r.winCount,
-      r.lossCount,
-      r.winRate.toFixed(1),
-      r.profitFactor.toFixed(2),
-      r.hasPosition ? "SIM" : "NÃO",
-      r.unrealizedPnl.toFixed(2),
-    ]);
+    const rows = [...botRows]
+      .sort((a, b) => b.profitScore - a.profitScore)
+      .map((r, idx) => [
+        `#${idx + 1}`,
+        r.bot.name,
+        r.bot.symbol,
+        r.bot.strategy,
+        r.bot.active ? (r.hasPosition ? "Em Operação" : "Ativo") : "Pausado",
+        r.recommendation === "CHAMPION"
+          ? "Top 1 Campeão"
+          : r.recommendation === "PROFITABLE"
+          ? "Lucrativo (Recomendado)"
+          : r.recommendation === "DEFICIT"
+          ? "Deficitário (Pausar)"
+          : "Neutro/Novo",
+        r.grossProfit.toFixed(2),
+        r.grossLoss.toFixed(2),
+        r.netPnl.toFixed(2),
+        r.tradesCount,
+        r.winCount,
+        r.lossCount,
+        r.winRate.toFixed(1),
+        r.profitFactor.toFixed(2),
+        r.profitScore.toFixed(1),
+        r.hasPosition ? "SIM" : "NÃO",
+        r.unrealizedPnl.toFixed(2),
+      ]);
 
     const csvContent = [headers.join(","), ...rows.map((row) => row.map((cell) => `"${cell}"`).join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -241,7 +319,7 @@ export function BotPnLRegistry() {
 
     toast({
       title: "Exportação Concluída",
-      description: "O registro consolidado de lucro e perda dos robôs foi baixado com sucesso.",
+      description: "O registro consolidado com ranking de lucratividade dos robôs foi baixado com sucesso.",
     });
   };
 
@@ -262,7 +340,7 @@ export function BotPnLRegistry() {
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Quadro direto e transparente do desempenho financeiro de cada robô da frota em tempo real.
+              Quadro direto e transparente do desempenho financeiro de cada robô da frota em tempo real com ranking de lucratividade.
             </p>
           </div>
 
@@ -365,6 +443,88 @@ export function BotPnLRegistry() {
 
       <CardContent className="p-4 sm:p-5 space-y-4">
         {/* ========================================================================= */}
+        {/* COCKPIT DE SUGESTÃO E SELEÇÃO INTELIGENTE DOS MAIS LUCRATIVOS */}
+        {/* ========================================================================= */}
+        <div className="p-3.5 sm:p-4 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-emerald-500/5 to-cyan-500/10 relative overflow-hidden">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  <Trophy className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  Sugestão da Frota · Priorização por Lucratividade
+                  <Badge variant="outline" className="text-[10px] bg-amber-500/15 text-amber-300 border-amber-500/40 font-mono">
+                    {topChampions.length} Recomendado(s)
+                  </Badge>
+                </h3>
+              </div>
+              <p className="text-xs text-muted-foreground max-w-2xl">
+                O motor algorítmico avalia o retorno real de cada robô (PnL líquido, Fator de Lucro e Win Rate).
+                Ative com 1 clique apenas os robôs que comprovadamente geram lucro e pause os robôs com prejuízo acumulado.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                size="sm"
+                onClick={handleActivateProfitable}
+                className="h-8 px-3.5 bg-gradient-to-r from-amber-500 via-emerald-600 to-teal-500 hover:from-amber-400 hover:to-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 border border-amber-400/40 cursor-pointer transition-all duration-200 hover:scale-[1.02]"
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1.5 text-amber-200 animate-pulse" />
+                Ativar & Priorizar Mais Lucrativos
+              </Button>
+            </div>
+          </div>
+
+          {/* Destaque dos Top Bots Mais Lucrativos */}
+          {topChampions.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-3 pt-3 border-t border-border/30">
+              {topChampions.map((top, idx) => (
+                <div
+                  key={top.bot.id}
+                  className="p-2.5 rounded-lg border border-border/40 bg-background/50 flex items-center justify-between gap-2"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-base shrink-0">
+                      {idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉"}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-foreground truncate" title={top.bot.name}>
+                        {top.bot.name}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono">
+                        <span>{top.bot.symbol}</span>
+                        <span>•</span>
+                        <span className={top.netPnl >= 0 ? "text-emerald-400 font-bold" : "text-rose-400"}>
+                          {top.netPnl >= 0 ? "+" : ""}${top.netPnl.toFixed(2)}
+                        </span>
+                        {top.tradesCount > 0 && (
+                          <>
+                            <span>•</span>
+                            <span>PF {top.profitFactor.toFixed(1)}x</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={`text-[9px] px-1.5 py-0 shrink-0 ${
+                      top.bot.active
+                        ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 font-semibold"
+                        : "bg-zinc-800 text-zinc-400 border-zinc-700"
+                    }`}
+                  >
+                    {top.bot.active ? "Ativo" : "Pausado"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ========================================================================= */}
         {/* BARRA DE FILTROS E PESQUISA */}
         {/* ========================================================================= */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
@@ -378,6 +538,17 @@ export function BotPnLRegistry() {
               }`}
             >
               Todos ({botRows.length})
+            </Button>
+            <Button
+              size="sm"
+              variant={filter === "top_ranked" ? "default" : "outline"}
+              onClick={() => setFilter("top_ranked")}
+              className={`h-7 px-2.5 text-xs cursor-pointer ${
+                filter === "top_ranked" ? "bg-amber-500 text-slate-950 font-bold" : "text-muted-foreground"
+              }`}
+            >
+              <Trophy className="w-3 h-3 mr-1" />
+              Mais Lucrativos (Rank)
             </Button>
             <Button
               size="sm"
@@ -466,10 +637,28 @@ export function BotPnLRegistry() {
                       </div>
                       <div>
                         <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-bold font-mono px-1.5 py-0.5 rounded bg-secondary/80 border border-border/50 text-foreground">
+                            {row.rank === 1 ? "🥇 #1" : row.rank === 2 ? "🥈 #2" : row.rank === 3 ? "🥉 #3" : `#${row.rank}`}
+                          </span>
                           <h4 className="text-sm font-bold text-foreground">{row.bot.name}</h4>
                           <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-border/50 text-foreground font-mono">
                             {row.bot.symbol}
                           </Badge>
+                          {row.recommendation === "CHAMPION" && (
+                            <Badge className="text-[9px] py-0 px-1.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold border-none shadow-xs">
+                              ⭐ Top Campeão
+                            </Badge>
+                          )}
+                          {row.recommendation === "PROFITABLE" && (
+                            <Badge className="text-[9px] py-0 px-1.5 bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-semibold">
+                              ✓ Recomendado
+                            </Badge>
+                          )}
+                          {row.recommendation === "DEFICIT" && (
+                            <Badge className="text-[9px] py-0 px-1.5 bg-rose-500/15 text-rose-300 border-rose-500/30">
+                              ⚠️ Deficitário
+                            </Badge>
+                          )}
                           <Badge
                             variant="secondary"
                             className="text-[9px] py-0 px-1 bg-secondary text-muted-foreground uppercase"
@@ -551,8 +740,37 @@ export function BotPnLRegistry() {
                       </div>
                     </div>
 
-                    {/* Botão para Expandir Trades */}
+                    {/* Ações Rápidas: Ativar/Pausar e Expandir Trades */}
                     <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                      <Button
+                        size="sm"
+                        variant={row.bot.active ? "outline" : "default"}
+                        onClick={() => {
+                          toggleBotActive(row.bot.id);
+                          toast({
+                            title: row.bot.active ? "Robô Pausado" : "Robô Ativado",
+                            description: `${row.bot.name} (${row.bot.symbol}) foi ${row.bot.active ? "pausado" : "ativado"}.`,
+                          });
+                        }}
+                        className={`h-8 px-2.5 text-xs font-semibold cursor-pointer ${
+                          row.bot.active
+                            ? "border-border/60 hover:bg-rose-500/10 hover:text-rose-400 hover:border-rose-500/40"
+                            : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs"
+                        }`}
+                      >
+                        {row.bot.active ? (
+                          <>
+                            <Pause className="w-3.5 h-3.5 mr-1 text-muted-foreground" />
+                            Pausar
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-3.5 h-3.5 mr-1 text-white fill-current" />
+                            Ativar
+                          </>
+                        )}
+                      </Button>
+
                       <Button
                         size="sm"
                         variant="ghost"

@@ -48,6 +48,50 @@ export function resetCircuitBreaker(): void {
   };
 }
 
+/**
+ * 🏆 SCORE INSTITUCIONAL DE LUCRATIVIDADE:
+ * Avalia o histórico de rentabilidade e consistência do robô para ordenar
+ * a prioridade de execução na frota e sugerir os melhores bots ao operador.
+ * - PnL líquido realizado (maior peso: +15x por dólar de lucro, -25x por dólar de perda)
+ * - PnL não realizado de posições abertas (+12x)
+ * - Proporção de Vitórias / Derrotas (+4x vitória, -8x derrota)
+ * - Fator de Lucro (> 1.5 bonifica) e Taxa de Acerto (%)
+ */
+export function calculateBotProfitabilityScore(bot: BotInstance): number {
+  const stats = bot.stats || {
+    realizedPnl: 0,
+    winTrades: 0,
+    lossTrades: 0,
+    winRate: 0,
+    totalTrades: 0,
+  };
+
+  const pnl = stats.realizedPnl || 0;
+  const wins = stats.winTrades || 0;
+  const losses = stats.lossTrades || 0;
+  const total = wins + losses;
+  const winRate = total > 0 ? (wins / total) * 100 : (stats.winRate || 50);
+  const profitFactor = losses > 0 ? wins / losses : (wins > 0 ? 3.0 : 1.0);
+  const openPnl = bot.position?.unrealizedPnl || 0;
+  const hasOpenPos = Boolean(bot.position && bot.position.quantity > 0);
+
+  let score = 0;
+  if (pnl > 0) {
+    score += pnl * 15;
+  } else if (pnl < 0) {
+    score += pnl * 25; // Penalidade estrita para robôs em prejuízo
+  }
+
+  score += (wins * 4) - (losses * 8);
+  score += (profitFactor * 3) + (winRate * 0.05);
+
+  if (hasOpenPos) {
+    score += openPnl > 0 ? (openPnl * 12 + 5) : (openPnl * 8);
+  }
+
+  return parseFloat(score.toFixed(2));
+}
+
 export interface RestingLimitMakerOrder {
   orderId: string | number;
   symbol: string;
@@ -772,9 +816,19 @@ export async function tickMultiBotFleet(callbacks?: MultiBotEngineCallbacks) {
     }
   }
 
-  // Execute each bot asynchronously in parallel
+  // 🏆 PRIORIZAÇÃO POR LUCRATIVIDADE (Seleção dos Mais Lucrativos):
+  // 1. Robôs com posições abertas têm prioridade máxima de execução concorrente para garantir
+  //    Trailing Stop, Break-Even e Take Profit instantâneos sem latência.
+  // 2. Robôs buscando novas compras são ordenados pelo Score de Lucratividade histórico (PnL, Win Rate, Profit Factor).
+  //    Robôs mais lucrativos recebem o capital livre da banca primeiro!
+  const positionBots = activeBots.filter((b) => b.position && b.position.quantity > 0);
+  const entryBots = activeBots
+    .filter((b) => !b.position || b.position.quantity <= 0)
+    .sort((a, b) => calculateBotProfitabilityScore(b) - calculateBotProfitabilityScore(a));
+
+  // 1. Executa gerenciamento das posições ativas em paralelo
   await Promise.all(
-    activeBots.map(async (bot) => {
+    positionBots.map(async (bot) => {
       try {
         await processSingleBotTick(bot, callbacks);
         botConsecutiveFailures.delete(bot.id);
@@ -788,6 +842,19 @@ export async function tickMultiBotFleet(callbacks?: MultiBotEngineCallbacks) {
       }
     })
   );
+
+  // 2. Executa robôs sem posição em ordem estrita de lucratividade
+  // Garante que o robô com melhor histórico consuma o saldo livre primeiro
+  for (const bot of entryBots) {
+    try {
+      await processSingleBotTick(bot, callbacks);
+      botConsecutiveFailures.delete(bot.id);
+    } catch (err: any) {
+      const fails = (botConsecutiveFailures.get(bot.id) || 0) + 1;
+      botConsecutiveFailures.set(bot.id, fails);
+      console.error(`[MultiBotFleet] Erro no robô ${bot.name} (falha ${fails}):`, err);
+    }
+  }
 }
 
 /**
@@ -1465,6 +1532,29 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       },
     });
     return;
+  }
+
+  // 🛡️ GUARDRAIL DE PRIORIDADE POR LUCRATIVIDADE (Alocação Inteligente de Capital):
+  // Se o robô acumula prejuízo líquido histórico (ex: BATUSDT com PnL < 0) e o capital em caixa
+  // for moderado (< $50), bloqueia novas compras para este robô se existirem outros robôs
+  // mais lucrativos ou neutros ativos na frota, garantindo que o saldo seja consumido pelos melhores bots.
+  const botRealizedPnl = bot.stats?.realizedPnl || 0;
+  const isDeficitBot = botRealizedPnl < -0.20 && (bot.stats?.lossTrades || 0) > (bot.stats?.winTrades || 0);
+  if (isDeficitBot && cash < 50) {
+    const hasBetterBotActive = store.bots.some(
+      (other) => other.active && other.id !== bot.id && (!other.position || other.position.quantity <= 0) && (other.stats?.realizedPnl || 0) > botRealizedPnl
+    );
+    if (hasBetterBotActive) {
+      store.updateBot(bot.id, {
+        status: "scanning",
+        stats: {
+          ...bot.stats,
+          lastAction: `🛡️ Prioridade de Lucratividade: Saldo reservado para robôs com histórico lucrativo superior na frota.`,
+          lastActionTime: new Date().toISOString(),
+        },
+      });
+      return;
+    }
   }
 
   const btcTicker = tickers["BTCUSDT"];

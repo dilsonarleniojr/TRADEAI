@@ -93,6 +93,7 @@ export function BotSection() {
     setOpenProtectionModal,
     protectionSettings,
     resetConsecutiveLossBrake,
+    activateTopProfitableBots,
   } = useCryptoStore(
   useShallow((s) => ({
     bots: s.bots,
@@ -115,6 +116,7 @@ export function BotSection() {
     setOpenProtectionModal: s.setOpenProtectionModal,
     protectionSettings: s.protectionSettings,
     resetConsecutiveLossBrake: s.resetConsecutiveLossBrake,
+    activateTopProfitableBots: s.activateTopProfitableBots,
   }))
 );
 
@@ -341,6 +343,25 @@ export function BotSection() {
 
           {/* Global Fleet Controls */}
           <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              size="sm"
+              onClick={() => {
+                const res = activateTopProfitableBots(5);
+                toast({
+                  title: "🏆 Frota Otimizada por Lucratividade",
+                  description: res.activated.length > 0
+                    ? `${res.activated.length} robô(s) lucrativos priorizados. Robôs em prejuízo foram pausados.`
+                    : "Os robôs mais lucrativos já estão selecionados e operando.",
+                });
+              }}
+              disabled={bots.length === 0}
+              className="h-9 px-3.5 bg-gradient-to-r from-amber-500 via-emerald-600 to-teal-500 hover:from-amber-400 hover:to-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/25 border border-amber-400/30 cursor-pointer disabled:opacity-50 transition-all duration-200 hover:scale-[1.02]"
+              title="Sugerir e ativar automaticamente apenas os robôs criados com melhor histórico de lucro e pausar robôs deficitários"
+            >
+              <Award className="w-3.5 h-3.5 mr-1.5 text-amber-200 animate-pulse" />
+              Escolher Mais Lucrativos
+            </Button>
+
             <Button
               size="sm"
               onClick={() => {

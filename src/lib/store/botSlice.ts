@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { BotInstance, BotPosition, BotStrategy, TickerData, TradeData, BotExecutionReport } from "./types";
 import { riskManager, type ProtectionSettings, DEFAULT_PROTECTION_SETTINGS } from "../bot/risk-manager";
-import { resetBotConsecutiveLosses, resetGlobalCircuitBreaker } from "../bot/multi-bot-engine";
+import { resetBotConsecutiveLosses, resetGlobalCircuitBreaker, calculateBotProfitabilityScore } from "../bot/multi-bot-engine";
 
 export interface BotSlice {
   // Fleet of simultaneous bots
@@ -22,6 +22,7 @@ export interface BotSlice {
   // Bot activation controls
   toggleBotActive: (botId: string, active?: boolean) => void;
   toggleAllBots: (active: boolean) => void;
+  activateTopProfitableBots: (maxActive?: number) => { activated: string[]; paused: string[] };
 
   // Bot CRUD
   addBot: (bot: Partial<BotInstance> & { name: string; symbol: string; strategy: BotStrategy }) => string;
@@ -442,6 +443,84 @@ export const createBotSlice: StateCreator<
       get().setBotActive(active && updated.length > 0);
       return { bots: updated };
     });
+  },
+
+  activateTopProfitableBots: (maxActive = 6) => {
+    const activated: string[] = [];
+    const paused: string[] = [];
+
+    set((state) => {
+      // 1. Calcula o Score de Lucratividade institucional para cada robô
+      const scored = state.bots.map((b) => ({
+        bot: b,
+        score: calculateBotProfitabilityScore(b),
+        pnl: b.stats?.realizedPnl || 0,
+        hasOpenPosition: Boolean(b.position && b.position.quantity > 0),
+      }));
+
+      // Ordena decrescente por score de lucratividade
+      scored.sort((a, b) => b.score - a.score);
+
+      // 2. Define o conjunto de robôs elegíveis a ficarem ativos:
+      // - Robôs com posições abertas DEVEM continuar ativos para gerenciar Take Profit / Stop Loss / Break-Even
+      // - Os melhores robôs lucrativos até a cota maxActive
+      // - Robôs com prejuízo comprovado (pnl < 0) e sem posição são sumariamente pausados
+      const activeIds = new Set<string>();
+
+      // Prioridade 1: robôs com posições em andamento
+      scored.forEach((item) => {
+        if (item.hasOpenPosition) {
+          activeIds.add(item.bot.id);
+        }
+      });
+
+      // Prioridade 2: robôs com lucro positivo comprovado
+      for (const item of scored) {
+        if (activeIds.size >= maxActive) break;
+        if (item.pnl > 0) {
+          activeIds.add(item.bot.id);
+        }
+      }
+
+      // Prioridade 3: robôs com melhor score (neutros/novos), descartando robôs deficitários
+      for (const item of scored) {
+        if (activeIds.size >= maxActive) break;
+        if (item.pnl < 0 && !item.hasOpenPosition) continue; // Descarta deficitários
+        activeIds.add(item.bot.id);
+      }
+
+      const updated = state.bots.map((b) => {
+        const shouldBeActive = activeIds.has(b.id);
+        if (shouldBeActive && !b.active) {
+          activated.push(b.name);
+        } else if (!shouldBeActive && b.active) {
+          paused.push(b.name);
+        }
+
+        const newStatus = shouldBeActive
+          ? (b.position ? "in_position" : "scanning")
+          : "stopped";
+
+        return {
+          ...b,
+          active: shouldBeActive,
+          status: newStatus as BotInstance["status"],
+          stats: {
+            ...b.stats,
+            lastAction: shouldBeActive
+              ? (b.active ? b.stats.lastAction : "🏆 Priorizado e ativado por Score de Lucratividade")
+              : (b.active ? "🛑 Pausado automaticamente (baixo rendimento/prejuízo acumulado)" : b.stats.lastAction),
+            lastActionTime: new Date().toISOString(),
+          },
+        };
+      });
+
+      persistBots(updated);
+      get().setBotActive(updated.some((b) => b.active));
+      return { bots: updated };
+    });
+
+    return { activated, paused };
   },
 
   addBot: (botData) => {
