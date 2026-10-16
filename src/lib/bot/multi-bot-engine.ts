@@ -988,8 +988,8 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // Para ser elegível a parcial, a metade vendida e a metade remanescente precisam respeitar minNotional da Binance (>= $5.20).
     const isAutoBreakEvenEnabled = bot.autoBreakEven ?? true;
     const isUsePartialTp = bot.usePartialTp ?? false; // Opção A: Foco em lucro integral
-    const beTrigger = Math.max(2.20, bot.breakEvenTrigger ?? 2.40);
-    const beBuffer = Math.max(0.70, Math.min(1.00, bot.breakEvenBuffer ?? 0.80));
+    const beTrigger = Math.max(1.40, bot.breakEvenTrigger ?? 1.60);
+    const beBuffer = Math.max(0.35, Math.min(0.80, bot.breakEvenBuffer ?? 0.50));
     const breakEvenPrice = pos.entryPrice * (1 + beBuffer / 100);
     const positionNotional = pos.quantity * currentPrice!;
     const partialRatio = (bot.partialTpPercent ?? 30) / 100;
@@ -997,7 +997,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     const estimatedRemainingNotional = positionNotional * (1 - partialRatio);
     const canUsePartialTp = isUsePartialTp && (estimatedSellNotional >= 5.20) && (estimatedRemainingNotional >= 5.20);
 
-    // Sobe o stop para Break-Even apenas quando o ativo atingir valorização saudável (≥ +2.20%)
+    // Sobe o stop para Break-Even apenas quando o ativo atingir valorização saudável (≥ +1.40%)
     // ou se parcial já tiver sido concluída
     const isBreakEvenNowArmed = Boolean(
       pos.isBreakEvenArmed ||
@@ -1013,13 +1013,13 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       gainPercent <= beBuffer;
 
     // 🎯 ALVOS DINÂMICOS ADAPTATIVOS & PARABÓLICOS
-    // Stop Loss disciplinado: calibrado com piso de 1.5% para evitar stop hunt e ruído de mercado (regra de ouro do diário de trades)
-    const configuredStopLoss = pos.dynamicStopLoss || bot.stopLoss || 2.0;
-    const effectiveStopLoss = Math.max(1.5, Math.min(3.2, configuredStopLoss));
-    // Take Profit institucional: garante assimetria R:R positiva (≥ 1.5x do Stop Loss e mínimo de 2.5%)
-    const rawTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 3.0;
-    const minTpByRiskReward = parseFloat((effectiveStopLoss * 1.5).toFixed(2));
-    const effectiveTakeProfit = Math.max(minTpByRiskReward, Math.max(2.5, Math.min(6.5, rawTakeProfit)));
+    // Stop Loss disciplinado: calibrado com teto estrito de 2.0% para proteger a banca (Guardrail Institucional)
+    const configuredStopLoss = pos.dynamicStopLoss || bot.stopLoss || 1.8;
+    const effectiveStopLoss = Math.max(1.4, Math.min(2.0, configuredStopLoss));
+    // Take Profit institucional: garante assimetria R:R positiva (≥ 1.65x do Stop Loss e mínimo de 2.8%)
+    const rawTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 3.2;
+    const minTpByRiskReward = parseFloat((effectiveStopLoss * 1.65).toFixed(2));
+    const effectiveTakeProfit = Math.max(minTpByRiskReward, Math.max(2.8, Math.min(6.5, rawTakeProfit)));
 
     // 🚀 TRAILING TAKE-PROFIT DINÂMICO PARABÓLICO (Deixar o Lucro Correr em Altas Fortes)
     // Ao bater a meta de Take Profit (ex: +3.0% ou alvo ATR), o robô não vende na hora;
@@ -1309,11 +1309,9 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       return;
     }
 
-    // ==========================================================
-    // 1.4 SMART SUPPORT DCA (Preço Médio Estratégico em Suporte)
-    // Avaliado ANTES do Stop Loss: Dá chance à posição de se recuperar no suporte
-    // ==========================================================
-    const isSmartDcaEnabled = bot.useSmartDca ?? true;
+    // 🛡️ ANTI-MARTINGALE / FIM DO DCA CEGO (Guardrail Institucional 7):
+    // Desativado por padrão. Jamais dobrar posição em ativo em queda sem intervenção deliberada do operador.
+    const isSmartDcaEnabled = bot.useSmartDca === true;
     const maxDca = bot.maxDcaOrders ?? 1;
     const currentDcaCount = pos.dcaCount ?? 0;
     const dcaDip = bot.dcaDipThreshold ?? 1.8; // ex: -1.8% de recuo em suporte
@@ -3145,9 +3143,9 @@ export async function manualCloseBotPosition(botId: string, callbacks?: MultiBot
     pnl,
     gainPercent,
     reason: callbacks?.stopBotAfterClose
-      ? `${pnl >= 0 ? "🎯 REALIZAÇÃO DE LUCRO" : "🛑 ENCERRAMENTO"} E DESATIVAÇÃO (${sign}${gainPercent.toFixed(2)}%)`
-      : `${pnl >= 0 ? "⚡ FECHAMENTO MANUAL COM LUCRO" : "⚡ FECHAMENTO MANUAL"} (${sign}${gainPercent.toFixed(2)}%)`,
-    logType: pnl >= 0 ? "profit" : "loss",
+      ? `${pnl > 0 ? "🎯 REALIZAÇÃO DE LUCRO" : "🛑 ENCERRAMENTO"} E DESATIVAÇÃO (${sign}${gainPercent.toFixed(2)}%)`
+      : `${pnl > 0 ? "⚡ FECHAMENTO MANUAL COM LUCRO" : "⚡ FECHAMENTO MANUAL"} (${sign}${gainPercent.toFixed(2)}%)`,
+    logType: pnl > 0 ? "profit" : "loss",
     callbacks,
   });
 }
