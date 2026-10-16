@@ -31,6 +31,16 @@ let circuitBreakerState: CircuitBreakerState = {
   reason: null,
 };
 
+let lastCircuitBreakerResetTimestamp = (() => {
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      const saved = window.localStorage.getItem("tradeai_cb_unlocked_at");
+      if (saved) return parseInt(saved, 10) || 0;
+    } catch {}
+  }
+  return 0;
+})();
+
 /** Teto institucional de posições simultâneas para concentrar liquidez nos líderes e evitar fragmentação */
 export const MAX_SIMULTANEOUS_BOT_POSITIONS = 5;
 
@@ -342,11 +352,13 @@ export function checkCircuitBreaker(): boolean {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayTimestamp = today.getTime();
+  // Se o operador destravou manualmente, perdas anteriores ao destravamento não rearmam o circuit breaker
+  const effectiveStartTimestamp = Math.max(todayTimestamp, lastCircuitBreakerResetTimestamp);
 
   let dailyNetPnl = 0;
   for (const trade of store.trades) {
     const tradeTime = new Date(trade.timestamp).getTime();
-    if (tradeTime >= todayTimestamp && trade.side === "SELL") {
+    if (tradeTime >= effectiveStartTimestamp && trade.side === "SELL") {
       dailyNetPnl += (trade.pnl || 0);
     }
   }
@@ -412,6 +424,14 @@ export function resetGlobalCircuitBreaker() {
   circuitBreakerState.reason = null;
   circuitBreakerState.accumulatedDailyLossUsd = 0;
   
+  lastCircuitBreakerResetTimestamp = Date.now();
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.setItem("tradeai_cb_unlocked_at", String(lastCircuitBreakerResetTimestamp));
+      window.dispatchEvent(new CustomEvent("tradeai_circuit_breaker_unlocked", { detail: { timestamp: lastCircuitBreakerResetTimestamp } }));
+    } catch {}
+  }
+
   botConsecutiveLosses.clear();
   botErrorCooldown.clear();
   botConsecutiveFailures.clear();
@@ -424,13 +444,15 @@ export function resetGlobalCircuitBreaker() {
     if (store && store.bots) {
       let unblockedCount = 0;
       store.bots.forEach((b) => {
-        // Se o robô foi parado pelo kill switch ou está inativo com status stopped
-        if (!b.active && b.status === "stopped") {
+        const isTrippedAction = b.stats?.lastAction?.includes("Circuit Breaker") || b.stats?.lastAction?.includes("Kill Switch");
+        const isStopped = !b.active || b.status === "stopped";
+
+        if (isTrippedAction || isStopped) {
           unblockedCount++;
           const hasPos = !!b.position && b.position.quantity > 0;
           store.updateBot(b.id, {
             active: true,
-            status: hasPos ? "holding" : "scanning",
+            status: hasPos ? "in_position" : "scanning",
             stats: {
               ...b.stats,
               lastAction: "🟢 Destravado pelo operador · Monitorando mercado",
@@ -440,7 +462,7 @@ export function resetGlobalCircuitBreaker() {
         }
       });
       store.addBotLog({
-        message: `🟢 [Circuit Breaker] Destravado com sucesso pelo operador. ${unblockedCount > 0 ? `${unblockedCount} robô(s) reativado(s).` : "Frota pronta para novas operações."}`,
+        message: `🟢 [Circuit Breaker] Destravado com sucesso pelo operador. ${unblockedCount > 0 ? `${unblockedCount} robô(s) normalizado(s).` : "Frota pronta para novas operações."}`,
         type: "info",
       });
     }

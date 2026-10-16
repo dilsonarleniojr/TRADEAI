@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useCryptoStore, type BotInstance, type TradeData } from "@/lib/store";
 import { useShallow } from "zustand/react/shallow";
 import { formatPrice, formatPercent } from "@/lib/format";
@@ -96,6 +96,15 @@ export function BotPnLRegistry() {
   const [expandedBotId, setExpandedBotId] = useState<string | null>(null);
   const [isRotating, setIsRotating] = useState(false);
   const [cbStatus, setCbStatus] = useState(() => getCircuitBreakerStatus());
+
+  // Polling periódico do status do circuit breaker para manter a UI em sincronia imediata
+  useEffect(() => {
+    const checkCb = () => {
+      setCbStatus(getCircuitBreakerStatus());
+    };
+    const interval = setInterval(checkCb, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Computa as informações de Lucro e Perda para cada robô com Score Institucional de Lucratividade
   const botRows: BotRowData[] = useMemo(() => {
@@ -241,13 +250,22 @@ export function BotPnLRegistry() {
     }
   };
 
-  const handleResetKillSwitch = () => {
-    resetCircuitBreaker();
-    setCbStatus(getCircuitBreakerStatus());
-    toast({
-      title: "🛡️ Kill Switch Diário Reiniciado",
-      description: "O limite de segurança diário da carteira foi resetado. Os robôs podem voltar a escanear novas oportunidades.",
-    });
+  const handleResetKillSwitch = async () => {
+    try {
+      resetCircuitBreaker();
+      setCbStatus(getCircuitBreakerStatus());
+      fetch("/api/bot/circuit-breaker", { method: "POST" }).catch(() => {});
+      toast({
+        title: "🛡️ Circuit Breakers Destravados",
+        description: "Os limites diários e cooldowns de proteção foram zerados. Robôs reativados e operando normalmente.",
+      });
+    } catch {
+      toast({
+        title: "Erro ao destravar",
+        description: "Não foi possível reiniciar o circuit breaker.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Totais consolidados da frota
