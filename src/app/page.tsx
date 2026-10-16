@@ -28,6 +28,7 @@ import { MobileDrawer } from "@/components/mobile/mobile-drawer";
 import { AlertNotification } from "@/components/dashboard/alert-notification";
 import { ShortcutsHint } from "@/components/dashboard/shortcuts-hint";
 import { BotExecutionReportDialog } from "@/components/bot/bot-execution-report-dialog";
+import { SectionErrorBoundary } from "@/components/common/section-error-boundary";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";

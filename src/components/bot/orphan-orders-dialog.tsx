@@ -44,10 +44,12 @@ interface OrphanOrdersDialogProps {
 }
 
 export function OrphanOrdersDialog({ open, onOpenChange }: OrphanOrdersDialogProps) {
-  const { bots, tradingMode } = useCryptoStore((s) => ({
-    bots: s.bots,
-    tradingMode: s.tradingMode,
-  }));
+  const { bots, tradingMode } = useCryptoStore(
+    useShallow((s) => ({
+      bots: s.bots,
+      tradingMode: s.tradingMode,
+    }))
+  );
 
   const { toast } = useToast();
   const [orders, setOrders] = useState<BinanceOrder[]>([]);
