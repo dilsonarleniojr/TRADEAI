@@ -698,6 +698,7 @@ export function syncCustodyPositionsWithBots(force: boolean = false) {
             mode: store.tradingMode,
             breakEvenPrice: associatedBot.position?.breakEvenPrice || entryPrice * 1.008,
             isBreakEvenArmed: associatedBot.position?.isBreakEvenArmed ?? false,
+            isProfitFloorArmed: associatedBot.position?.isProfitFloorArmed ?? false,
             partialTpExecuted: associatedBot.position?.partialTpExecuted ?? false,
             partialTpSoldQty: associatedBot.position?.partialTpSoldQty,
             partialTpRealizedPnl: associatedBot.position?.partialTpRealizedPnl,
@@ -1031,6 +1032,38 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     return;
   }
 
+  // 🛑 Quarentena Preventiva Automática de Bots Deficitários (Corte Imediato de Sangria):
+  // Se o robô não tem posição aberta e possui histórico deficitário, pausa imediatamente.
+  const botRealizedPnl = bot.stats?.realizedPnl || 0;
+  const botLossTrades = bot.stats?.lossTrades || 0;
+  const botWinTrades = bot.stats?.winTrades || 0;
+  const DEFICIT_SYMBOLS = new Set(["DOGEUSDT", "APTUSDT", "NEARUSDT", "FETUSDT"]);
+  const isDeficitQuarantine =
+    !hasOpenPosition &&
+    ((botRealizedPnl < -0.10 && botLossTrades > botWinTrades) ||
+      botRealizedPnl < -0.25 ||
+      (botLossTrades >= 2 && botWinTrades === 0) ||
+      (DEFICIT_SYMBOLS.has(symbol) && botRealizedPnl < 0));
+
+  if (isDeficitQuarantine && bot.active) {
+    store.updateBot(bot.id, {
+      active: false,
+      status: "stopped",
+      stats: {
+        ...bot.stats,
+        lastAction: `🛑 Quarentena de Prejuízo Ativa: Sangria estancada (PnL: $${botRealizedPnl.toFixed(2)} USDT).`,
+        lastActionTime: new Date().toISOString(),
+      },
+    });
+    store.addBotLog({
+      message: `🛑 [${bot.name}] Quarentena Automática Ativada: Robô pausado para proteção de capital (PnL: $${botRealizedPnl.toFixed(2)} USDT). Novas entradas bloqueadas.`,
+      type: "warning",
+      botId: bot.id,
+      botName: bot.name,
+    });
+    return;
+  }
+
   let ticker = tickers[symbol];
   let currentPrice = ticker?.price;
 
@@ -1159,13 +1192,12 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     const highestPrice = Math.max(pos.highestPrice || pos.entryPrice, currentPrice!);
     const peakGain = ((highestPrice - pos.entryPrice) / pos.entryPrice) * 100;
 
-    // 🛡️ BREAK-EVEN AUTOMÁTICO & REALIZAÇÃO PARCIAL (Risco Zero Institucional)
-    // Realização Parcial embolsa 50% ao atingir +1.0% (cobrindo taxas e garantindo lucro).
-    // O valor residual continua aberto protegido no Break-Even (+0.30% de buffer).
-    // Para ser elegível a parcial, a metade vendida e a metade remanescente precisam respeitar minNotional da Binance (>= $5.20).
+    // 🛡️ ESCADA DINÂMICA DE LUCROS EM 3 ESTÁGIOS (Institucional Profit Escalator)
+    // ESTÁGIO 1: BREAK-EVEN AUTOMÁTICO (Risco Zero Institucional)
+    // Sobe o stop para Break-Even quando o ativo atingir valorização saudável (≥ +1.10% a +1.20%)
     const isAutoBreakEvenEnabled = bot.autoBreakEven ?? true;
     const isUsePartialTp = bot.usePartialTp ?? false; // Opção A: Foco em lucro integral
-    const beTrigger = Math.max(0.85, Math.min(1.20, bot.breakEvenTrigger ?? 0.85));
+    const beTrigger = Math.max(0.85, Math.min(1.20, bot.breakEvenTrigger ?? 1.10));
     const beBuffer = Math.max(0.25, Math.min(0.40, bot.breakEvenBuffer ?? 0.28));
     const breakEvenPrice = pos.entryPrice * (1 + beBuffer / 100);
     const positionNotional = pos.quantity * currentPrice!;
@@ -1174,7 +1206,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     const estimatedRemainingNotional = positionNotional * (1 - partialRatio);
     const canUsePartialTp = isUsePartialTp && (estimatedSellNotional >= 5.20) && (estimatedRemainingNotional >= 5.20);
 
-    // Sobe o stop para Break-Even apenas quando o ativo atingir valorização saudável (≥ +0.85%)
+    // Sobe o stop para Break-Even apenas quando o ativo atingir valorização saudável (≥ +1.10%)
     // ou se parcial já tiver sido concluída
     const isBreakEvenNowArmed = Boolean(
       pos.isBreakEvenArmed ||
@@ -1182,27 +1214,38 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       (isAutoBreakEvenEnabled && peakGain >= beTrigger)
     );
 
-    // O Break-Even só fecha a posição se estiver devidamente armado E
-    // o preço recuar até a margem de proteção do Break-Even (garantindo lucro líquido positivo de verdade pós-taxas)
+    // ESTÁGIO 2: PISO DE LUCRO GARANTIDO (Lock-in ≥ +1.20% quando o pico atingir ≥ +2.20%)
+    // Impede que trades que valorizaram mais de +2.20% devolvam o lucro até o mero zero-a-zero (+0.28%)
+    const isProfitFloorNowArmed = Boolean(
+      pos.isProfitFloorArmed ||
+      peakGain >= 2.20
+    );
+    const profitFloorBuffer = 1.20; // 1.20% líquido garantido no bolso
+    const isProfitFloorTriggered =
+      isProfitFloorNowArmed &&
+      gainPercent <= profitFloorBuffer;
+
+    // O Break-Even só fecha a posição se estiver devidamente armado E o piso de lucro ainda não tiver assumido
     const isBreakEvenTriggered =
       isAutoBreakEvenEnabled &&
       isBreakEvenNowArmed &&
+      !isProfitFloorNowArmed &&
       gainPercent <= beBuffer;
 
     // 🎯 ALVOS DINÂMICOS ADAPTATIVOS & PARABÓLICOS
     // Stop Loss disciplinado: calibrado com teto estrito de 1.35% para proteger a banca (Guardrail Institucional)
     const configuredStopLoss = pos.dynamicStopLoss || bot.stopLoss || 1.25;
     const effectiveStopLoss = Math.max(1.10, Math.min(1.35, configuredStopLoss));
-    // Take Profit institucional: garante assimetria R:R positiva (≥ 1.85x do Stop Loss e mínimo de 2.2%)
-    const rawTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 2.8;
+    // Take Profit institucional: garante assimetria R:R positiva (≥ 1.85x a 2.5x do Stop Loss e mínimo de 2.2%)
+    const rawTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 3.2;
     const minTpByRiskReward = parseFloat((effectiveStopLoss * 1.85).toFixed(2));
     const effectiveTakeProfit = Math.max(minTpByRiskReward, Math.max(2.2, Math.min(6.5, rawTakeProfit)));
 
-    // 🚀 TRAILING TAKE-PROFIT DINÂMICO PARABÓLICO (Deixar o Lucro Correr em Altas Fortes)
-    // Ao bater a meta de Take Profit (ex: +3.0% ou alvo ATR), o robô não vende na hora;
+    // ESTÁGIO 3: TRAILING TAKE-PROFIT DINÂMICO PARABÓLICO (Deixar o Lucro Correr em Altas Fortes)
+    // Ao bater a meta de Take Profit (ex: +3.2% ou alvo ATR), o robô não vende na hora;
     // ele arma o Trailing TP, rastreia o topo do pump e estreita o stop parabolicamente conforme o lucro sobe.
     const isTrailingTakeProfitEnabled = bot.trailingTakeProfit ?? true;
-    const baseTpDistance = bot.trailingTakeProfitDistance ?? 0.6; // recuo percentual padrão do pico
+    const baseTpDistance = bot.trailingTakeProfitDistance ?? 0.55; // recuo percentual padrão do pico
 
     let isTakeProfitNowArmed = Boolean(pos.isTakeProfitArmed);
     if (isTrailingTakeProfitEnabled && gainPercent >= effectiveTakeProfit) {
@@ -1221,16 +1264,16 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     if (peakGainFromTp >= 6.0) {
       effectiveTpDistance = Math.min(baseTpDistance, 0.35); // Acima de +6%, tolera 0.35% de recuo do pico
     } else if (peakGainFromTp >= 4.0) {
-      effectiveTpDistance = Math.min(baseTpDistance, 0.50); // Entre +4% e +6%, tolera 0.50% de recuo do pico
+      effectiveTpDistance = Math.min(baseTpDistance, 0.45); // Entre +4% e +6%, tolera 0.45% de recuo do pico
     }
 
     // Condição de saída pelo Trailing TP:
     // 1. Está armado
-    // 2. Teve um recuo >= effectiveTpDistance a partir do topo OU o lucro recuou para a base de proteção (effectiveTakeProfit - 0.4%)
+    // 2. Teve um recuo >= effectiveTpDistance a partir do topo OU o lucro recuou para a base de proteção (effectiveTakeProfit - 0.3%)
     const isTrailingTakeProfitTriggered =
       isTrailingTakeProfitEnabled &&
       isTakeProfitNowArmed &&
-      (pullbackFromTpPeak >= effectiveTpDistance || gainPercent <= Math.max(1.8, effectiveTakeProfit - 0.4));
+      (pullbackFromTpPeak >= effectiveTpDistance || gainPercent <= Math.max(2.0, effectiveTakeProfit - 0.3));
 
     // Update position mark-to-market
     const updatedPosition: BotPosition = {
@@ -1241,6 +1284,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       unrealizedPnlPercent: parseFloat(gainPercent.toFixed(2)),
       isBreakEvenArmed: isBreakEvenNowArmed,
       breakEvenPrice,
+      isProfitFloorArmed: isProfitFloorNowArmed,
       isTakeProfitArmed: isTakeProfitNowArmed,
       tpPeakPrice,
     };
@@ -1466,6 +1510,12 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         ? `🔒 CHANDELIER ATR TRAILING STOP (+${gainPercent.toFixed(2)}%) · OPERAÇÃO ÚNICA CONCLUÍDA`
         : `🔒 CHANDELIER ATR TRAILING STOP (+${gainPercent.toFixed(2)}%) · PICO: +${peakGain.toFixed(2)}% (Recuo de ${pullbackFromPeak.toFixed(2)}% vs Chandelier ATR ${effectiveTrailingDist.toFixed(2)}%)`;
       logType = "profit";
+    } else if (isProfitFloorTriggered) {
+      shouldSell = true;
+      sellReason = bot.stopAfterProfit
+        ? `🔒 PISO DE LUCRO GARANTIDO (+${gainPercent.toFixed(2)}%) · OPERAÇÃO ÚNICA CONCLUÍDA`
+        : `🔒 PISO DE LUCRO GARANTIDO (+${gainPercent.toFixed(2)}%) · PICO: +${peakGain.toFixed(2)}% (Piso de +1.20% protegido)`;
+      logType = "profit";
     } else if (isBreakEvenTriggered) {
       shouldSell = true;
       sellReason = bot.stopAfterProfit
@@ -1655,15 +1705,21 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   // Se o robô acumula prejuízo líquido histórico (< -0.40 USDT) ou >= 2 perdas seguidas,
   // BLOQUEIA 100% DE NOVAS COMPRAS e coloca o robô em quarentena imediatamente,
   // impedindo que bots deficitários consumam saldo ou façam novas entradas.
-  const botRealizedPnl = bot.stats?.realizedPnl || 0;
-  const isDeficitBot = botRealizedPnl < -0.40 || ((bot.stats?.lossTrades || 0) >= 2 && (bot.stats?.winTrades || 0) === 0);
+  const pnlPreOrder = bot.stats?.realizedPnl || 0;
+  const botLossesCount = bot.stats?.lossTrades || 0;
+  const botWinsCount = bot.stats?.winTrades || 0;
+  const isDeficitBot =
+    (pnlPreOrder < -0.10 && botLossesCount > botWinsCount) ||
+    pnlPreOrder < -0.25 ||
+    (botLossesCount >= 2 && botWinsCount === 0) ||
+    (new Set(["DOGEUSDT", "APTUSDT", "NEARUSDT", "FETUSDT"]).has(symbol) && pnlPreOrder < 0);
   if (isDeficitBot) {
     store.updateBot(bot.id, {
       active: false,
       status: "stopped",
       stats: {
         ...bot.stats,
-        lastAction: `🛡️ Quarentena de Prejuízo Ativa: Robô pausado para estancar perdas (PnL: $${botRealizedPnl.toFixed(2)}).`,
+        lastAction: `🛡️ Quarentena de Prejuízo Ativa: Robô pausado para estancar perdas (PnL: $${pnlPreOrder.toFixed(2)}).`,
         lastActionTime: new Date().toISOString(),
       },
     });
@@ -1860,12 +1916,13 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         const slPct = (decision.suggestedSl || bot.stopLoss || 1.3) / 100;
         const stopLossPrice = freshCandPrice * (1 - slPct);
 
+        const kellyRiskPct = decision.suggestedNavPercent ? (decision.suggestedNavPercent / 100) * slPct : undefined;
         const posSizing = riskManager.calculatePositionSize({
           accountBalance: cash,
           entryPrice: freshCandPrice,
           stopLossPrice,
           minNotional: minRequiredCash,
-          riskPercentage: (bot.riskPerTradePercent ? bot.riskPerTradePercent / 100 : RiskManager.DEFAULT_RISK_PER_TRADE_PCT),
+          riskPercentage: kellyRiskPct ?? (bot.riskPerTradePercent ? bot.riskPerTradePercent / 100 : RiskManager.DEFAULT_RISK_PER_TRADE_PCT),
           maxCapitalAllocationCap: Math.min(150.0, maxCap),
           relativeAtr: decision.relATR,
         });
@@ -2070,12 +2127,13 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     const slPct = (decision.suggestedSl || bot.stopLoss || 1.3) / 100;
     const stopLossPrice = currentPrice * (1 - slPct);
 
+    const kellyRiskPct = decision.suggestedNavPercent ? (decision.suggestedNavPercent / 100) * slPct : undefined;
     const posSizing = riskManager.calculatePositionSize({
       accountBalance: cash,
       entryPrice: currentPrice,
       stopLossPrice,
       minNotional: minRequiredCash,
-      riskPercentage: (bot.riskPerTradePercent ? bot.riskPerTradePercent / 100 : RiskManager.DEFAULT_RISK_PER_TRADE_PCT),
+      riskPercentage: kellyRiskPct ?? (bot.riskPerTradePercent ? bot.riskPerTradePercent / 100 : RiskManager.DEFAULT_RISK_PER_TRADE_PCT),
       maxCapitalAllocationCap: Math.min(150.0, maxCap),
       relativeAtr: decision.relATR,
     });
@@ -3167,7 +3225,11 @@ async function executeBotSell({
   const accumulatedPnl = botStats?.realizedPnl ?? 0;
   const botLosses = botStats?.lossTrades ?? 0;
   const botWins = botStats?.winTrades ?? 0;
-  const isNowDeficit = accumulatedPnl < -0.40 || (botLosses >= 2 && botWins === 0);
+  const isNowDeficit =
+    (accumulatedPnl < -0.10 && botLosses > botWins) ||
+    accumulatedPnl < -0.25 ||
+    (botLosses >= 2 && botWins === 0) ||
+    (new Set(["DOGEUSDT", "APTUSDT", "NEARUSDT", "FETUSDT"]).has(bot.symbol) && accumulatedPnl < 0);
 
   if (shouldStopFleetBot || isNowDeficit) {
     const isQuarantineHalt = isNowDeficit && !shouldStopFleetBot;
@@ -3768,6 +3830,7 @@ export async function startAiExitBotForAsset(symbol: string, callbacks?: MultiBo
     mode: store.tradingMode,
     breakEvenPrice: entryPrice * 1.003,
     isBreakEvenArmed: false,
+    isProfitFloorArmed: false,
   };
 
   if (!targetId) {

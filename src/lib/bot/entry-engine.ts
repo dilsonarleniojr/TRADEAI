@@ -29,6 +29,7 @@ import {
 import { getStrategy, VOLATILITY_VETO_LIMIT } from "./strategy-catalog";
 import type { OrderBookAnalysis } from "@/lib/bot/order-book-cache";
 import { riskManager } from "./risk-manager";
+import { MathematicalExpectancyGate } from "./mathematical-expectancy-gate";
 
 export const MIN_CANDLES = 25;
 
@@ -52,6 +53,8 @@ export interface EntryDecision {
   suggestedTp?: number;
   suggestedSl?: number;
   relATR?: number;
+  expectedValuePercent?: number;
+  suggestedNavPercent?: number;
 }
 
 const DEFAULT_FAST = 9;
@@ -711,25 +714,25 @@ export function evaluateEntry(
       : `Volume murcho (${volRatio.toFixed(2)}x da média) — risco de falso rompimento`,
   });
 
-  // Alvos Dinâmicos Adaptativos por ATR com Risco:Retorno Assimétrico Positivo (R:R ≥ 1.6x)
+  // Alvos Dinâmicos Adaptativos por ATR com Risco:Retorno Assimétrico Positivo (R:R ≥ 1.85x a 2.5x)
   const relATRPercent = (analysis.relATR || 0) * 100;
-  let suggestedSl = bot.stopLoss || 2.8;
-  let suggestedTp = bot.takeProfit || 4.2;
-  const estimatedRoundtripFees = 0.20; // 0.10% entrada + 0.10% saída Binance Spot
-  const estimatedSlippage = 0.10; // margem conservadora de derrapagem
-  const totalFriction = estimatedRoundtripFees + estimatedSlippage; // ~0.30%
+  let suggestedSl = bot.stopLoss || 1.25;
+  let suggestedTp = bot.takeProfit || 3.2;
+  const estimatedRoundtripFees = 0.10; // Post-Only Maker 0.05% entrada + 0.05% saída
+  const estimatedSlippage = 0.05; // margem conservadora de derrapagem
+  const totalFriction = estimatedRoundtripFees + estimatedSlippage; // ~0.15%
 
   if (relATRPercent > 0) {
     // Stop adaptativo estrito conforme Guardrail Institucional (piso 1.1% e teto 1.35% para proteger capital contra perdas acentuadas)
     const atrSl = parseFloat((relATRPercent * 1.2).toFixed(1));
     suggestedSl = Math.max(1.10, Math.min(1.35, Math.min(bot.stopLoss || 1.25, atrSl || 1.25)));
-    // Alvo adaptativo institucional garantindo Payoff bruto >= 1.85x (entre 2.0% e 3.8%)
-    const targetWithPayoff = parseFloat((suggestedSl * 1.85).toFixed(1));
-    const dynamicAtrTp = parseFloat((relATRPercent * 1.6).toFixed(1));
-    suggestedTp = Math.max(2.0, Math.min(3.8, Math.max(bot.takeProfit || 2.4, targetWithPayoff, dynamicAtrTp)));
+    // Alvo adaptativo institucional garantindo Payoff bruto >= 1.85x a 2.5x (entre 2.2% e 4.8%)
+    const targetWithPayoff = parseFloat((suggestedSl * 2.0).toFixed(1));
+    const dynamicAtrTp = parseFloat((relATRPercent * 2.0).toFixed(1));
+    suggestedTp = Math.max(2.2, Math.min(4.8, Math.max(bot.takeProfit || 2.8, targetWithPayoff, dynamicAtrTp)));
   } else {
     suggestedSl = Math.max(1.10, Math.min(1.35, bot.stopLoss || 1.25));
-    suggestedTp = Math.max(2.0, Math.min(3.8, bot.takeProfit || 2.4));
+    suggestedTp = Math.max(2.2, Math.min(4.8, bot.takeProfit || 2.8));
   }
 
   // Potencial de ganho líquido do trade (Take Profit alvo deduzido das taxas operacionais e slippage)
@@ -767,13 +770,44 @@ export function evaluateEntry(
     detail: viability.reason,
   });
 
+  // 🛡️ Portão de Expectativa Matemática & Dimensionamento Fracionário de Kelly (EV Gate)
+  const is15mTrendOk = checks.find((c) => c.label === "Multi-Timeframe 15m")?.ok ?? true;
+  const isBookOk = checks.find((c) => c.label === "Livro & Spread")?.ok ?? true;
+  const winProbability = MathematicalExpectancyGate.estimateConfluenceProbability({
+    hasTrendAlignment: analysis.votes.trend === "BUY" || signal.ok,
+    hasMomentumAlignment: analysis.votes.momentum === "BUY" || (analysis.rsi >= 40 && analysis.rsi <= 65),
+    hasOrderBookSupport: isBookOk && (orderBook ? (orderBook.imbalanceRatio ? orderBook.imbalanceRatio >= 1.05 : true) : true),
+    hasMultiTimeframe15m: is15mTrendOk,
+    adxStrength: analysis.adx ?? 20,
+  });
+
+  const evResult = MathematicalExpectancyGate.evaluate({
+    winProbability,
+    projectedTpPercent: suggestedTp,
+    projectedSlPercent: suggestedSl,
+    isMaker: true,
+    estimatedSlippagePercent: 0.05,
+  });
+
+  if (bot.useMathematicalExpectancyGate !== false) {
+    checks.push({
+      label: "Expectativa Matemática (EV Gate)",
+      ok: evResult.viable,
+      detail: evResult.reason + ` (Kelly: ${(evResult.recommendedKellyFraction * 100).toFixed(1)}% | NAV: ${evResult.suggestedNavPercent}%)`,
+    });
+  }
+
   const blocker = checks.find((c) => !c.ok);
   return {
     shouldBuy: !blocker,
-    reason: blocker ? `${blocker.label}: ${blocker.detail}` : `Entrada confirmada — ${signal.detail} (Alvo ATR: +${suggestedTp}% / Stop: -${suggestedSl}%)`,
+    reason: blocker
+      ? `${blocker.label}: ${blocker.detail}`
+      : `Entrada confirmada — ${signal.detail} (Alvo ATR: +${suggestedTp}% / Stop: -${suggestedSl}% | EV: +${evResult.expectedValuePercent.toFixed(2)}%)`,
     checks,
     suggestedTp,
     suggestedSl,
     relATR: analysis.relATR,
+    expectedValuePercent: evResult.expectedValuePercent,
+    suggestedNavPercent: evResult.suggestedNavPercent,
   };
 }

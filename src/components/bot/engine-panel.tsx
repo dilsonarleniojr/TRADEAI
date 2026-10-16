@@ -224,17 +224,32 @@ export function EnginePanel() {
                     </div>
                   </div>
                   {decision && (
-                    <Badge
-                      className={cn(
-                        "text-[10px] shrink-0 font-medium",
-                        decision.shouldBuy
-                          ? "bg-crypto-green/15 text-crypto-green border-crypto-green/30"
-                          : "bg-secondary text-muted-foreground border-border"
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {typeof decision.expectedValuePercent === "number" && (
+                        <Badge
+                          className={cn(
+                            "text-[9px] font-mono px-1.5 py-0",
+                            decision.expectedValuePercent >= 0.40
+                              ? "bg-crypto-cyan/15 text-crypto-cyan border-crypto-cyan/30"
+                              : "bg-crypto-amber/15 text-crypto-amber border-crypto-amber/30"
+                          )}
+                          variant="outline"
+                        >
+                          EV {decision.expectedValuePercent >= 0 ? "+" : ""}{decision.expectedValuePercent.toFixed(2)}%
+                        </Badge>
                       )}
-                      variant="outline"
-                    >
-                      {decision.shouldBuy ? "Compraria agora" : "Aguardando confluência"}
-                    </Badge>
+                      <Badge
+                        className={cn(
+                          "text-[10px] shrink-0 font-medium",
+                          decision.shouldBuy
+                            ? "bg-crypto-green/15 text-crypto-green border-crypto-green/30"
+                            : "bg-secondary text-muted-foreground border-border"
+                        )}
+                        variant="outline"
+                      >
+                        {decision.shouldBuy ? "Compraria agora" : "Aguardando confluência"}
+                      </Badge>
+                    </div>
                   )}
                 </div>
                 {decision ? (

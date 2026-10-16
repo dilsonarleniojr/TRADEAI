@@ -51,6 +51,7 @@ export interface BotConfigData {
   autoBreakEven?: boolean;
   breakEvenTrigger?: number;
   breakEvenBuffer?: number;
+  useMathematicalExpectancyGate?: boolean; // Portão de Expectativa Matemática (EV >= +0.40% & Kelly)
   // Scalping de Curto Prazo: Parciais, Time-Stop e Filtro BTC
   usePartialTp?: boolean;
   partialTpTrigger?: number;
@@ -88,6 +89,8 @@ export interface BotPosition {
   /** Break-Even Automático armado para proteger o capital com risco zero */
   isBreakEvenArmed?: boolean;
   breakEvenPrice?: number;
+  /** Estágio 2 da Escada de Lucro: Piso de Lucro Garantido (Lock-in >= +1.20%) */
+  isProfitFloorArmed?: boolean;
   /** Trailing Take-Profit Dinâmico: deixa o lucro correr além da meta em fortes altas */
   isTakeProfitArmed?: boolean;
   tpPeakPrice?: number;
@@ -179,6 +182,7 @@ export interface BotInstance {
   autoBreakEven?: boolean; // Break-Even Automático (move stop para o lucro/zero após atingir gatilho)
   breakEvenTrigger?: number; // % de lucro para armar o break-even (ex: 1.0% ou 1.2%)
   breakEvenBuffer?: number; // % acima do preço de entrada para cobrir taxas da Binance (ex: +0.25%)
+  useMathematicalExpectancyGate?: boolean; // Portão de Expectativa Matemática (EV >= +0.40% & Kelly)
 
   // Trailing Take-Profit Dinâmico (deixar o lucro correr em fortes altas)
   trailingTakeProfit?: boolean;

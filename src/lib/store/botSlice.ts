@@ -387,16 +387,53 @@ function loadBotsFromStorage(): BotInstance[] {
         // 2. Trava Stop Loss em no máximo 2.0% (Guardrails rígidos de governança)
         // 3. Calibra Break-Even em +1.4% para travar lucro precocemente
         // 4. Deduplica para NUNCA permitir bots repetidos do mesmo par
+        // 5. Quarentena Automática de Robôs Deficitários sem posição aberta (DOGE, APT, NEAR, FET)
+        // 6. Alocação Kelly Fracionária ampliada (25 USDT) para Top Performers (SUI, AVAX, FIL, LINK, PUMP)
+        const TOP_PERFORMER_SYMBOLS = new Set(["SUIUSDT", "AVAXUSDT", "FILUSDT", "LINKUSDT", "PUMPUSDT"]);
+        const DEFICIT_SYMBOLS = new Set(["DOGEUSDT", "APTUSDT", "NEARUSDT", "FETUSDT"]);
+
         const migrated = sanitized.map((b) => {
+          const pnl = b.stats?.realizedPnl || 0;
+          const losses = b.stats?.lossTrades || 0;
+          const wins = b.stats?.winTrades || 0;
+          const hasOpenPos = Boolean(b.position && b.position.quantity > 0);
+          const isDeficit =
+            !hasOpenPos &&
+            ((pnl < -0.10 && losses > wins) ||
+              pnl < -0.25 ||
+              (losses >= 2 && wins === 0) ||
+              (DEFICIT_SYMBOLS.has(b.symbol) && pnl < 0));
+
+          const isTopPerformer =
+            TOP_PERFORMER_SYMBOLS.has(b.symbol) ||
+            (wins >= 1 && losses === 0 && pnl > 0);
+
+          let activeState = b.active;
+          let statusState = b.status;
+          let lastActionText = b.stats?.lastAction;
+
+          if (isDeficit && b.active) {
+            activeState = false;
+            statusState = "stopped";
+            lastActionText = `🛑 Quarentena Automática: Sangria estancada (PnL: $${pnl.toFixed(2)} USDT)`;
+          }
+
           return {
             ...b,
-            stopLoss: Math.max(1.4, Math.min(2.0, b.stopLoss || 1.8)),
+            active: activeState,
+            status: statusState,
+            allocationAmount: isTopPerformer ? Math.max(b.allocationAmount || 12, 25) : (b.allocationAmount || 12),
+            stopLoss: Math.max(1.10, Math.min(2.0, b.stopLoss || 1.35)),
             takeProfit: Math.max(3.0, Math.min(6.0, b.takeProfit || 3.5)),
             useSmartDca: b.useSmartDca === true, // Anti-Martingale: false por padrão
             autoBreakEven: b.autoBreakEven ?? true,
-            breakEvenTrigger: Math.max(1.4, b.breakEvenTrigger || 1.6),
-            breakEvenBuffer: Math.max(0.35, Math.min(0.80, b.breakEvenBuffer || 0.45)),
+            breakEvenTrigger: Math.max(1.10, b.breakEvenTrigger || 1.20),
+            breakEvenBuffer: Math.max(0.28, Math.min(0.80, b.breakEvenBuffer || 0.35)),
             timeStopMinutes: Math.max(b.timeStopMinutes || 0, 60),
+            stats: {
+              ...b.stats,
+              lastAction: lastActionText,
+            },
           };
         });
         return deduplicateBots(migrated);
@@ -616,12 +653,18 @@ export const createBotSlice: StateCreator<
 
   pauseDeficitBots: () => {
     const pausedNames: string[] = [];
+    const DEFICIT_SYMBOLS = new Set(["DOGEUSDT", "APTUSDT", "NEARUSDT", "FETUSDT"]);
+
     set((state) => {
       const updated: BotInstance[] = state.bots.map((b): BotInstance => {
         const pnl = b.stats?.realizedPnl || 0;
         const losses = b.stats?.lossTrades || 0;
         const wins = b.stats?.winTrades || 0;
-        const isDeficit = pnl < -0.30 || (losses >= 2 && wins === 0);
+        const isDeficit =
+          (pnl < -0.10 && losses > wins) ||
+          pnl < -0.25 ||
+          (losses >= 2 && wins === 0) ||
+          (DEFICIT_SYMBOLS.has(b.symbol) && pnl < 0);
 
         if (isDeficit && b.active && (!b.position || b.position.quantity <= 0)) {
           pausedNames.push(b.name);

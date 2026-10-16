@@ -77,6 +77,7 @@ export function strategyName(id: string): string {
 }
 
 export type EngineFilterKey =
+  | "useMathematicalExpectancyGate"
   | "autoBreakEven"
   | "useAutoScreener"
   | "useMultiTimeframe"
@@ -94,6 +95,12 @@ export interface EngineFilterInfo {
 }
 
 export const ENGINE_FILTERS: EngineFilterInfo[] = [
+  {
+    key: "useMathematicalExpectancyGate",
+    name: "Portão de Expectativa Matemática (EV Gate)",
+    description:
+      "Avalia a probabilidade de vitória e a assimetria risco:retorno. Só autoriza compras se o Valor Esperado líquido for estritamente positivo (EV ≥ +0.40% líquido de taxas/slippage) e dimensiona via Critério de Kelly Fracionário.",
+  },
   {
     key: "autoBreakEven",
     name: "Break-Even Automático (Risco Zero)",

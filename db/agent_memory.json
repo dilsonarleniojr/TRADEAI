@@ -1,6 +1,29 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Maximização de Lucros, Escada em 3 Estágios, Quarentena de Sangria e Kelly para Campeões",
+    "summary": "1) Quarentena Automática e Corte Imediato de Sangria: Implementada trava proativa em multi-bot-engine.ts e botSlice.ts para pausar robôs sem posição aberta com PnL < -0.10 e perdas > vitórias (DOGE, APT, NEAR, FET), impedindo drenagem de banca; 2) Escada Dinâmica de Lucro em 3 Estágios: Estágio 1 Break-Even Automático (+1.10% pico travando +0.28% cobrindo taxas), Estágio 2 Piso de Lucro Garantido (pico >= +2.20% trava no mínimo +1.20% líquido no bolso), e Estágio 3 Trailing Take-Profit Parabólico com aperto dinâmico em altas fortes; 3) Portão de Expectativa Matemática Positiva (EV Gate): Avaliação mandatória pré-ordem deduzindo taxas de corretagem Maker/Taker e slippage, exigindo EV >= +0.40% e R:R >= 1.85x; 4) Concentração de Capital Kelly: Alocação elevada para 25 USDT nos Top Performers com 100% Win Rate (SUI, AVAX, FIL, LINK, PUMP) respeitando o teto de 5% NAV por ativo; 5) Preservação de Posições Abertas: O motor nunca encerra precocemente robôs com posições em andamento, permitindo que as metas da escada sejam executadas com disciplina institucional.",
+    "tags": [
+      "profit-maximization",
+      "three-stage-profit-escalator",
+      "deficit-quarantine-halt",
+      "mathematical-expectancy-gate",
+      "kelly-fractional-allocation",
+      "risk-governance"
+    ],
+    "details": {
+      "evGatePath": "src/lib/bot/mathematical-expectancy-gate.ts",
+      "enginePath": "src/lib/bot/multi-bot-engine.ts",
+      "storePath": "src/lib/store/botSlice.ts",
+      "quarantinedBots": ["DOGE", "APT", "NEAR", "FET"],
+      "topPerformers": ["SUI", "AVAX", "FIL", "LINK", "PUMP"],
+      "testCoverage": "tests/unit/mathematical-expectancy-gate.test.ts (100% passing)"
+    },
+    "id": "mem-1792162800000-profit-optimization-and-quarantine",
+    "timestamp": "2026-10-16T14:48:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Registro Consolidado de Lucro e Perda dos Robôs (BotPnLRegistry)",
     "summary": "1) Componente BotPnLRegistry (src/components/bot/bot-pnl-registry.tsx): Interface limpa, simples e direta apresentando em tempo real o Lucro Bruto acumulado (+USD), Perda Bruta acumulada (-USD), PnL Líquido consolidado (+/- USD), Taxa de Acerto (Win Rate), Fator de Lucro e Posições Abertas com PnL não realizado flutuante; 2) Integração Direta: Incorporado como primeira aba padrão ('Registro de Lucro & Perda') nas Tabs da Frota de Robôs (bot-section.tsx) com atalho de 1 clique no cabeçalho superior e também integrado como seletor alternável no topo do Histórico (history-section.tsx); 3) Detalhamento por Robô: Expansão com clique simples exibindo cada trade fechado (Data/Hora, Lado, Preço, Montante USDT, PnL Líquido e Estratégia); 4) Exportação e Filtros: Filtros instantâneos (Todos, No Lucro, No Prejuízo, Em Operação) e exportação da planilha completa em CSV.",
     "tags": [
@@ -656,5 +679,34 @@
     },
     "id": "mem-1791845400000-batch-bots",
     "timestamp": "2026-10-13T23:30:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Portão de Expectativa Matemática (EV Gate) & Escada Dinâmica de Lucros",
+    "summary": "Implementada infraestrutura matemática inspirada na skill de binary-options-regulatory-and-risk-considerations adaptada para Spot/Futures: Portão EV (EV >= +0.40% líquido de fricção), Dimensionamento por Critério de Kelly Fracionário (1.0% a 5.0% NAV) e Escada de Lucro em 3 Estágios (Break-Even em +1.1%, Piso de Lucro Garantido em +1.2% quando pico >= +2.2%, e Trailing Take-Profit Parabólico em alvos >= +3.2%).",
+    "tags": [
+      "profit-maximization",
+      "mathematical-expectancy-gate",
+      "kelly-criterion",
+      "profit-ladder",
+      "risk-reward-asymmetry",
+      "pilar-2-guardrails"
+    ],
+    "details": {
+      "files": [
+        "src/lib/bot/mathematical-expectancy-gate.ts",
+        "src/lib/bot/entry-engine.ts",
+        "src/lib/bot/multi-bot-engine.ts",
+        "src/lib/bot/strategy-catalog.ts",
+        "tests/unit/mathematical-expectancy-gate.test.ts"
+      ],
+      "formulas": [
+        "EV = (p * NetTP) - ((1 - p) * NetSL) >= 0.40%",
+        "f* = ((p * b - (1 - p)) / b) * 0.25 (Quarter Kelly)"
+      ],
+      "guardrails": "Teto de 5% NAV por ativo mantido estritamente"
+    },
+    "id": "mem-1792156000000-ev-gate",
+    "timestamp": "2026-10-16T13:05:00.000Z"
   }
 ]
