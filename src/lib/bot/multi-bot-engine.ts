@@ -39,13 +39,7 @@ export function getCircuitBreakerStatus(): CircuitBreakerState {
 }
 
 export function resetCircuitBreaker(): void {
-  circuitBreakerState = {
-    ...circuitBreakerState,
-    tripped: false,
-    trippedAt: null,
-    accumulatedDailyLossUsd: 0,
-    reason: null,
-  };
+  resetGlobalCircuitBreaker();
 }
 
 /**

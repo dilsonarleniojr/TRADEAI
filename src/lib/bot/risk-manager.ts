@@ -194,6 +194,18 @@ export class RiskManager {
     this.consecutiveLossCooldownUntil = 0;
   }
 
+  /**
+   * Destrava manualmente todos os circuit breakers (Daily Drawdown e Consecutive Losses),
+   * zerando o acumulador de perda diária e os tempos de cooldown em memória.
+   */
+  public resetCircuitBreakers() {
+    this.dailyHaltedUntil = 0;
+    this.consecutiveLossCooldownUntil = 0;
+    this.currentConsecutiveLosses = 0;
+    this.dailyLossUsdt = 0;
+    this.lastResetDay = new Date().getUTCDate();
+  }
+
   public getConsecutiveLossStatus() {
     return {
       currentConsecutiveLosses: this.currentConsecutiveLosses,
