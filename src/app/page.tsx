@@ -155,7 +155,9 @@ function HomePageContent() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <BotSection />
+            <SectionErrorBoundary sectionName="Central de Robôs de Lucro">
+              <BotSection />
+            </SectionErrorBoundary>
           </motion.div>
         );
       case "backtest":
