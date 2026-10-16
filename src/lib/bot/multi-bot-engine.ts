@@ -25,8 +25,8 @@ export interface CircuitBreakerState {
 let circuitBreakerState: CircuitBreakerState = {
   tripped: false,
   trippedAt: null,
-  dailyLossLimitUsd: 15.0, // Limite absoluto de perda diária em USD
-  dailyLossLimitPercent: 5.0, // Limite de 5% sobre o equity
+  dailyLossLimitUsd: 3.0, // Limite absoluto de perda diária em USD (Pilar 2 Institucional)
+  dailyLossLimitPercent: 3.0, // Limite estrito de 3.0% sobre o equity/NAV da banca
   accumulatedDailyLossUsd: 0,
   reason: null,
 };
@@ -359,15 +359,36 @@ export function checkCircuitBreaker(): boolean {
 
   circuitBreakerState.accumulatedDailyLossUsd = dailyLoss;
   const maxPercentLossUsd = (totalValue * circuitBreakerState.dailyLossLimitPercent) / 100;
-  const effectiveLimitUsd = Math.min(circuitBreakerState.dailyLossLimitUsd, maxPercentLossUsd);
+  // Piso de segurança de $2.50 ou 3% do NAV da banca
+  const effectiveLimitUsd = Math.max(2.50, Math.min(circuitBreakerState.dailyLossLimitUsd, maxPercentLossUsd));
 
-  if (dailyLoss >= effectiveLimitUsd) {
+  const shouldTrip = rmStatus.blocked || dailyLoss >= effectiveLimitUsd;
+
+  if (shouldTrip) {
     if (!circuitBreakerState.tripped) {
       circuitBreakerState.tripped = true;
       circuitBreakerState.trippedAt = Date.now();
-      circuitBreakerState.reason = `Perda diária acumulada ($${dailyLoss.toFixed(2)} USDT) atingiu limite de segurança ($${effectiveLimitUsd.toFixed(2)} USDT)`;
+      circuitBreakerState.reason = rmStatus.blocked
+        ? (rmStatus.reason || "Trava de risco acionada pelo RiskManager")
+        : `Perda diária acumulada ($${dailyLoss.toFixed(2)} USDT) atingiu limite de segurança ($${effectiveLimitUsd.toFixed(2)} USDT)`;
+      
+      // Congela todos os robôs ociosos para estancar perdas imediatas da carteira
+      store.bots.forEach((b) => {
+        if (b.active && (!b.position || b.position.quantity <= 0)) {
+          store.updateBot(b.id, {
+            active: false,
+            status: "stopped",
+            stats: {
+              ...b.stats,
+              lastAction: `🚨 Congelado pelo Kill Switch Global da Carteira (${circuitBreakerState.reason})`,
+              lastActionTime: new Date().toISOString(),
+            },
+          });
+        }
+      });
+
       store.addBotLog({
-        message: `🚨 [Circuit Breaker Global] ACIONADO: ${circuitBreakerState.reason}. Todas as novas compras bloqueadas. Frota migrada para modo de proteção/observação.`,
+        message: `🚨 [Kill Switch Global da Carteira] ACIONADO: ${circuitBreakerState.reason}. Todas as novas compras bloqueadas e robôs ociosos pausados.`,
         type: "error",
       });
     }
@@ -520,11 +541,11 @@ async function isBtcMarketHealthy(): Promise<{ healthy: boolean; detail: string 
     const ema20 = calculateEMA(klines5m.map((k) => k.close), 20);
 
     let res: { healthy: boolean; detail: string };
-    // Se o BTC caiu mais de -1.5% nos últimos 15 min E está negociando significativamente abaixo da EMA20:
-    if (btc15mChange <= -1.5 && currentBtc < ema20 * 0.995) {
+    // Se o BTC caiu mais de -0.45% nos últimos 15 min E está negociando abaixo da EMA20, ou se caiu mais de -0.80%:
+    if ((btc15mChange <= -0.45 && currentBtc < ema20) || btc15mChange <= -0.80) {
       res = {
         healthy: false,
-        detail: `BTC em correção severa (${btc15mChange.toFixed(2)}% nos 15m · $${currentBtc.toFixed(0)} < EMA20 $${ema20.toFixed(0)})`,
+        detail: `BTC em correção intradiária (${btc15mChange.toFixed(2)}% nos 15m · $${currentBtc.toFixed(0)} < EMA20 $${ema20.toFixed(0)}) — altcoins bloqueadas`,
       };
     } else {
       res = { healthy: true, detail: `BTC saudável ($${currentBtc.toFixed(0)} · 15m: ${btc15mChange >= 0 ? "+" : ""}${btc15mChange.toFixed(2)}%)` };
@@ -568,8 +589,8 @@ export function syncCustodyPositionsWithBots(force: boolean = false) {
     const tickerPrice = store.tickers[posFull]?.price || store.tickers[pos.symbol]?.price || pos.marketPrice || pos.avgPrice || 0;
     const notionalUsd = pos.marketValue > 0 ? pos.marketValue : pos.quantity * tickerPrice;
 
-    // Ignora pó insignificante de frações de centavos (< $0.50 USDT)
-    if (notionalUsd < 0.50) continue;
+    // Ignora pó insignificante de frações de centavos ou posições inferiores ao lote mínimo da Binance (< $5.20 USDT)
+    if (notionalUsd < 5.20) continue;
 
     // Localiza se já existe um robô para este ativo (pelo símbolo fixo ou pela posição, normalizado)
     const associatedBot = store.bots.find((b) => {
@@ -1055,8 +1076,8 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // Para ser elegível a parcial, a metade vendida e a metade remanescente precisam respeitar minNotional da Binance (>= $5.20).
     const isAutoBreakEvenEnabled = bot.autoBreakEven ?? true;
     const isUsePartialTp = bot.usePartialTp ?? false; // Opção A: Foco em lucro integral
-    const beTrigger = Math.max(1.40, bot.breakEvenTrigger ?? 1.60);
-    const beBuffer = Math.max(0.35, Math.min(0.80, bot.breakEvenBuffer ?? 0.50));
+    const beTrigger = Math.max(1.80, bot.breakEvenTrigger ?? 2.00);
+    const beBuffer = Math.max(0.65, Math.min(1.20, bot.breakEvenBuffer ?? 0.70));
     const breakEvenPrice = pos.entryPrice * (1 + beBuffer / 100);
     const positionNotional = pos.quantity * currentPrice!;
     const partialRatio = (bot.partialTpPercent ?? 30) / 100;
@@ -1534,27 +1555,23 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     return;
   }
 
-  // 🛡️ GUARDRAIL DE PRIORIDADE POR LUCRATIVIDADE (Alocação Inteligente de Capital):
-  // Se o robô acumula prejuízo líquido histórico (ex: BATUSDT com PnL < 0) e o capital em caixa
-  // for moderado (< $50), bloqueia novas compras para este robô se existirem outros robôs
-  // mais lucrativos ou neutros ativos na frota, garantindo que o saldo seja consumido pelos melhores bots.
+  // 🛡️ GUARDRAIL DE PRIORIDADE POR LUCRATIVIDADE & QUARENTENA DE PREJUÍZO:
+  // Se o robô acumula prejuízo líquido histórico (< -0.40 USDT) ou >= 2 perdas seguidas,
+  // BLOQUEIA 100% DE NOVAS COMPRAS e coloca o robô em quarentena imediatamente,
+  // impedindo que bots deficitários consumam saldo ou façam novas entradas.
   const botRealizedPnl = bot.stats?.realizedPnl || 0;
-  const isDeficitBot = botRealizedPnl < -0.20 && (bot.stats?.lossTrades || 0) > (bot.stats?.winTrades || 0);
-  if (isDeficitBot && cash < 50) {
-    const hasBetterBotActive = store.bots.some(
-      (other) => other.active && other.id !== bot.id && (!other.position || other.position.quantity <= 0) && (other.stats?.realizedPnl || 0) > botRealizedPnl
-    );
-    if (hasBetterBotActive) {
-      store.updateBot(bot.id, {
-        status: "scanning",
-        stats: {
-          ...bot.stats,
-          lastAction: `🛡️ Prioridade de Lucratividade: Saldo reservado para robôs com histórico lucrativo superior na frota.`,
-          lastActionTime: new Date().toISOString(),
-        },
-      });
-      return;
-    }
+  const isDeficitBot = botRealizedPnl < -0.40 || ((bot.stats?.lossTrades || 0) >= 2 && (bot.stats?.winTrades || 0) === 0);
+  if (isDeficitBot) {
+    store.updateBot(bot.id, {
+      active: false,
+      status: "stopped",
+      stats: {
+        ...bot.stats,
+        lastAction: `🛡️ Quarentena de Prejuízo Ativa: Robô pausado para estancar perdas (PnL: $${botRealizedPnl.toFixed(2)}).`,
+        lastActionTime: new Date().toISOString(),
+      },
+    });
+    return;
   }
 
   const btcTicker = tickers["BTCUSDT"];
@@ -3011,30 +3028,62 @@ async function executeBotSell({
   // Apenas encerra o robô se solicitado explicitamente via UI (callbacks?.stopBotAfterClose) ou configuração pontual
   const shouldStopFleetBot = Boolean(callbacks?.stopBotAfterClose) || Boolean(bot.stopAfterProfit && isProfitableSell);
 
-  if (shouldStopFleetBot) {
+  // 🛡️ AUTO-QUARENTENA DE PREJUÍZO (Hard Deficit Halt):
+  // Se o trade fechou no prejuízo e o robô acumulou prejuízo (< -$0.40) ou sofreu perdas consecutivas (>= 2):
+  // Pausa o robô automaticamente para estancar perdas e proteger o capital da banca.
+  const accumulatedPnl = botStats?.realizedPnl ?? 0;
+  const botLosses = botStats?.lossTrades ?? 0;
+  const botWins = botStats?.winTrades ?? 0;
+  const isNowDeficit = accumulatedPnl < -0.40 || (botLosses >= 2 && botWins === 0);
+
+  if (shouldStopFleetBot || isNowDeficit) {
+    const isQuarantineHalt = isNowDeficit && !shouldStopFleetBot;
+    const finalAction = isQuarantineHalt
+      ? `🛑 Quarentena Automática: Robô pausado após trade negativo para estancar perdas (PnL: $${accumulatedPnl.toFixed(2)}).`
+      : `🎯 Operação finalizada com lucro (+${gainPercent.toFixed(2)}%)! Robô desativado automaticamente (Operação Única solicitada).`;
+
     store.updateBot(bot.id, {
       active: false,
       status: "stopped",
       lastReport: executionReport,
       stats: {
         ...bot.stats,
-        lastAction: `🎯 Operação finalizada com lucro (+${gainPercent.toFixed(2)}%)! Robô desativado automaticamente (Operação Única solicitada).`,
+        lastAction: finalAction,
         lastActionTime: new Date().toISOString(),
       },
     });
+
+    if (isQuarantineHalt) {
+      store.addBotLog({
+        message: `🛑 [${bot.name}] Quarentena Automática Ativada: Robô pausado com PnL acumulado de $${accumulatedPnl.toFixed(2)} USDT (${botLosses} derrotas). Novas operações bloqueadas para proteção de capital.`,
+        type: "warning",
+        botId: bot.id,
+        botName: bot.name,
+      });
+
+      callbacks?.onToast?.({
+        title: `🛑 Quarentena de Prejuízo (${bot.name})`,
+        description: `Robô pausado automaticamente após perda (PnL: $${accumulatedPnl.toFixed(2)}). Operações suspensas para proteger a banca.`,
+        variant: "destructive",
+      });
+    }
 
     // Sincroniza estado de botActive global
     const hasOtherActive = useCryptoStore.getState().bots.some((b) => b.id !== bot.id && b.active);
     store.setBotActive(hasOtherActive);
   } else {
-    // 🚀 MODO CONTÍNUO: Robô permanece ATIVO e em SCANNING, buscando incessantemente novas oportunidades de lucro!
+    // 🚀 MODO CONTÍNUO: Robô permanece ATIVO e em SCANNING apenas se for saudável
+    const scanMsg = netPnl >= 0
+      ? `🎯 Lucro consolidado (+${gainPercent.toFixed(2)}%)! Buscando próxima oportunidade lucrativa...`
+      : `⚠️ Trade encerrado (-${Math.abs(gainPercent).toFixed(2)}%). Analisando mercado com rigor para próximo ciclo...`;
+
     store.updateBot(bot.id, {
       active: true,
       status: "scanning",
       lastReport: executionReport,
       stats: {
         ...bot.stats,
-        lastAction: `🎯 Lucro consolidado (+${gainPercent.toFixed(2)}%)! Buscando próxima oportunidade lucrativa...`,
+        lastAction: scanMsg,
         lastActionTime: new Date().toISOString(),
       },
     });

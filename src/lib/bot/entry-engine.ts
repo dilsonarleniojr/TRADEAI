@@ -169,7 +169,8 @@ export function evaluateStrategySignal(
   >,
   klines: KlineData[],
   analysis: MarketAnalysis,
-  aiSignals: AISignalData[]
+  aiSignals: AISignalData[],
+  klines15m?: KlineData[]
 ): SignalResult {
   const closes = klines.map((k) => k.close);
   const last = klines[klines.length - 1];
@@ -372,6 +373,16 @@ export function evaluateStrategySignal(
       const minConf = bot.signalConfidenceThreshold ?? 70; // em %
       const signal = aiSignals.find((s) => s.symbol === bot.symbol);
       if (!signal) return { ok: false, detail: "nenhum sinal da IA para este ativo" };
+
+      // 🛡️ Data Freshness Guardrail: Sinais de IA devem ter no máximo 10 minutos
+      if (signal.createdAt) {
+        const signalAgeMs = Date.now() - new Date(signal.createdAt).getTime();
+        if (signalAgeMs > 10 * 60 * 1000) {
+          const ageMin = Math.round(signalAgeMs / 60000);
+          return { ok: false, detail: `sinal de IA obsoleto (${ageMin}m atrás > teto de 10m) — aguardando nova análise fresca` };
+        }
+      }
+
       // O store guarda a confiança dos sinais em 0–1; aceita também 0–100 por segurança.
       const confPct = signal.confidence <= 1 ? signal.confidence * 100 : signal.confidence;
       const isConfOk = signal.action === "BUY" && confPct >= minConf;
@@ -382,6 +393,17 @@ export function evaluateStrategySignal(
       // 🛡️ Mitigação de Confiança Cega em IA: O comitê quantitativo institucional NÃO pode vetar com SELL
       if (analysis.committee === "SELL") {
         return { ok: false, detail: `IA indica COMPRA (${confPct.toFixed(0)}%), mas Comitê Quantitativo indica VENDA — confluência ausente` };
+      }
+
+      // Validação de confluência macro 15m se klines estiver disponível
+      if (klines15m && klines15m.length >= 10) {
+        const closes15 = klines15m.map((k) => k.close);
+        const ema21_15 = emaSeries(closes15, 21);
+        const lastClose15 = closes15[closes15.length - 1];
+        const lastEma21_15 = ema21_15[ema21_15.length - 1];
+        if (lastClose15 < lastEma21_15 * 0.995) {
+          return { ok: false, detail: `IA indica COMPRA, mas ativo abaixo da EMA21 de 15m ($${lastClose15.toFixed(4)} < $${lastEma21_15.toFixed(4)}) — tendência macro fraca` };
+        }
       }
 
       // Validação técnica complementar: exige confirmação de candle comprador ou sustentação na EMA9
@@ -436,6 +458,22 @@ export function evaluateEntry(
 
   const checks: BotEntryCheck[] = [];
 
+  // 🛡️ PISO UNIVERSAL DE LIQUIDEZ E VOLUME 24H (Guardrail Institucional para TODOS os Robôs):
+  // Previne armadilhas de baixa liquidez e spreads largos que causam derrapagem e falsos stops
+  // (ex: pares de baixa liquidez onde qualquer ordem a mercado gera perda instantânea)
+  const vol24h = ticker.quoteVolume ?? 0;
+  const isMajorPair = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"].includes(evalSymbol);
+  const minRequiredVol24h = isMajorPair ? 5_000_000 : 10_000_000;
+  const isLiquiditySufficient = vol24h >= minRequiredVol24h;
+
+  checks.push({
+    label: "Liquidez 24h",
+    ok: isLiquiditySufficient,
+    detail: isLiquiditySufficient
+      ? `Volume 24h robusto ($${(vol24h / 1e6).toFixed(1)}M ≥ $${(minRequiredVol24h / 1e6).toFixed(0)}M)`
+      : `Volume 24h insuficiente ($${(vol24h / 1e6).toFixed(1)}M < $${(minRequiredVol24h / 1e6).toFixed(0)}M) — risco de spread tóxico e baixa liquidez`,
+  });
+
   // Filtro Auto-Screener: Se ativo (e sem override manual forçado pelo operador), exige momentum seguro e bloqueia exaustão
   if ((bot.useAutoScreener || bot.symbol === "AUTO") && (!bot.overrideSymbol || bot.overrideSymbol === "AUTO")) {
     const change24h = ticker.priceChangePercent ?? 0;
@@ -444,7 +482,7 @@ export function evaluateEntry(
     const isExhausted = change24h > 18.0;
     const isSubPenny = currentPrice > 0 && currentPrice < 0.005;
     const isMomentumValid = change24h >= 0.5 && !isExhausted;
-    const isVolumeValid = vol >= 8_000_000;
+    const isVolumeValid = vol >= 10_000_000;
     const isHotCandidate = isMomentumValid && isVolumeValid && !isSubPenny;
     checks.push({
       label: "Auto-Screener Alta",
@@ -455,7 +493,7 @@ export function evaluateEntry(
           ? `Cotação sub-penny ($${currentPrice.toFixed(4)} < $0.005) — bloqueado contra spread tóxico`
           : isHotCandidate
             ? `Líder em momentum saudável (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M)`
-            : `Ativo sem liquidez/momentum suficiente (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M — precisa entre +0.5% e +18.0% e Vol ≥ $8M)`,
+            : `Ativo sem liquidez/momentum suficiente (+${change24h.toFixed(1)}% 24h, Vol US$ ${(vol / 1e6).toFixed(1)}M — precisa entre +0.5% e +18.0% e Vol ≥ $10M)`,
     });
   } else if (bot.overrideSymbol && bot.overrideSymbol !== "AUTO") {
     checks.push({
@@ -465,7 +503,7 @@ export function evaluateEntry(
     });
   }
 
-  const signal = evaluateStrategySignal({ ...bot, symbol: evalSymbol }, klines, analysis, aiSignals);
+  const signal = evaluateStrategySignal({ ...bot, symbol: evalSymbol }, klines, analysis, aiSignals, klines15m);
   checks.push({ label: "Estratégia", ok: signal.ok, detail: signal.detail });
 
   checks.push({
@@ -476,10 +514,14 @@ export function evaluateEntry(
 
   // Filtro de Spread e Livro de Ofertas: Veta entradas com spread alargado ou livro dominado por vendedores
   if (bot.useOrderBookFilter !== false && orderBook) {
+    const isSpreadTolerable = typeof orderBook.spreadPercent === "number" ? orderBook.spreadPercent <= 0.12 : true;
+    const isOrderBookOk = orderBook.ok && isSpreadTolerable;
     checks.push({
       label: "Livro & Spread",
-      ok: orderBook.ok,
-      detail: orderBook.detail,
+      ok: isOrderBookOk,
+      detail: !isSpreadTolerable
+        ? `Spread do livro muito aberto (${orderBook.spreadPercent.toFixed(2)}% > 0.12%) — risco severo de slippage`
+        : orderBook.detail,
     });
   }
 
@@ -519,7 +561,7 @@ export function evaluateEntry(
       });
     } else {
       const change24h = ticker.priceChangePercent ?? 0;
-      const isNotDumping = change24h >= -2.5;
+      const isNotDumping = change24h >= -0.8;
       checks.push({
         label: "Multi-Timeframe 15m",
         ok: isNotDumping,
@@ -560,11 +602,11 @@ export function evaluateEntry(
   });
 
   // 🛡️ Filtro de Regime Macro do Bitcoin (BTCUSDT Guardrail):
-  // Se o ativo for uma altcoin, veta compra se o BTC estiver em forte queda no dia (≤ -2.5%) (se ativo pelo usuário)
+  // Se o ativo for uma altcoin, veta compra se o BTC estiver em forte queda no dia (≤ -1.2%) (se ativo pelo usuário)
   if (evalSymbol !== "BTCUSDT" && btcTicker) {
     const isFilterActive = riskManager.getProtectionSettings().btcMacroFilter;
     const btcChange = btcTicker.priceChangePercent ?? 0;
-    const isBtcSevereDrop = btcChange <= -2.5;
+    const isBtcSevereDrop = btcChange <= -1.2;
     checks.push({
       label: "Regime Macro BTC",
       ok: !isFilterActive || !isBtcSevereDrop,

@@ -247,6 +247,7 @@ export class RiskManager {
     minNotional?: number;
     riskPercentage?: number;
     maxCapitalAllocationCap?: number;
+    relativeAtr?: number;
   }): PositionSizeResult {
     const {
       accountBalance,
@@ -255,6 +256,7 @@ export class RiskManager {
       minNotional = 10.0,
       riskPercentage = RiskManager.DEFAULT_RISK_PER_TRADE_PCT,
       maxCapitalAllocationCap,
+      relativeAtr,
     } = params;
 
     if (!Number.isFinite(accountBalance) || accountBalance <= 0) {
@@ -313,9 +315,15 @@ export class RiskManager {
     if (!this.settings.fractionalRiskSizing) {
       const stopDistanceUsdt = Math.max(0, entryPrice - stopLossPrice);
       const effectiveSlPercent = (stopDistanceUsdt / entryPrice) * 100;
-      const targetAllocation = maxCapitalAllocationCap && maxCapitalAllocationCap > 0
+      let targetAllocation = maxCapitalAllocationCap && maxCapitalAllocationCap > 0
         ? Math.min(accountBalance, maxCapitalAllocationCap)
         : Math.min(accountBalance, 50.0);
+
+      // Modulação de risco por volatilidade ATR (Risk-Parity institucional)
+      if (typeof relativeAtr === "number" && Number.isFinite(relativeAtr) && relativeAtr > 1.60) {
+        const volMultiplier = Math.min(1.0, Math.max(0.40, 1.60 / relativeAtr));
+        targetAllocation = targetAllocation * volMultiplier;
+      }
       
       const quantity = parseFloat((targetAllocation / entryPrice).toFixed(6));
       const notionalUsdt = parseFloat((quantity * entryPrice).toFixed(2));
@@ -349,6 +357,15 @@ export class RiskManager {
     // Quantidade teórica: Q = Risco em $ / Distância do Stop em $
     let quantity = riskAmountUsdt / stopDistanceUsdt;
     let notionalUsdt = quantity * entryPrice;
+
+    // Modulação de risco por volatilidade ATR (Risk-Parity institucional)
+    // Se o par apresenta volatilidade relativa elevada (> 1.60%), reduz proporcionalmente
+    // a exposição da ordem (até 60% de corte) para conter o risco em dólares contra pavios e solavancos.
+    if (typeof relativeAtr === "number" && Number.isFinite(relativeAtr) && relativeAtr > 1.60) {
+      const volMultiplier = Math.min(1.0, Math.max(0.40, 1.60 / relativeAtr));
+      notionalUsdt = notionalUsdt * volMultiplier;
+      quantity = notionalUsdt / entryPrice;
+    }
 
     // Teto de Alocação de Capital (ex: teto de capital para não concentrar a banca inteira em stop muito curto)
     const effectiveMaxCap = maxCapitalAllocationCap && maxCapitalAllocationCap > 0

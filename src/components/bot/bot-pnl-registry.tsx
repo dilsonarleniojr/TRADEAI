@@ -60,12 +60,13 @@ interface BotRowData {
 }
 
 export function BotPnLRegistry() {
-  const { bots, trades, tradingMode, activateTopProfitableBots, toggleBotActive, setOpenBinanceScannerModal } = useCryptoStore(
+  const { bots, trades, tradingMode, activateTopProfitableBots, pauseDeficitBots, toggleBotActive, setOpenBinanceScannerModal } = useCryptoStore(
     useShallow((s) => ({
       bots: s.bots,
       trades: s.trades,
       tradingMode: s.tradingMode,
       activateTopProfitableBots: s.activateTopProfitableBots,
+      pauseDeficitBots: s.pauseDeficitBots,
       toggleBotActive: s.toggleBotActive,
       setOpenBinanceScannerModal: s.setOpenBinanceScannerModal,
     }))
@@ -186,6 +187,17 @@ export function BotPnLRegistry() {
       description: res.activated.length > 0
         ? `${res.activated.length} robô(s) lucrativos priorizados. Robôs em prejuízo foram pausados.`
         : "Os robôs mais lucrativos já estão selecionados e operando.",
+    });
+  };
+
+  const handlePauseDeficit = () => {
+    const res = pauseDeficitBots();
+    toast({
+      title: res.pausedCount > 0 ? "🛡️ Robôs Deficitários Pausados" : "Nenhum Robô Deficitário Ativo",
+      description: res.pausedCount > 0
+        ? `${res.pausedCount} robô(s) em prejuízo foram pausados imediatamente (${res.pausedNames.join(", ")}).`
+        : "Todos os robôs em prejuízo já estão pausados ou em quarentena.",
+      variant: res.pausedCount > 0 ? "destructive" : "default",
     });
   };
 
@@ -475,6 +487,16 @@ export function BotPnLRegistry() {
               >
                 <Trophy className="w-3.5 h-3.5 mr-1.5 text-amber-400" />
                 Escanear Binance (764+ Pares)
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handlePauseDeficit}
+                className="h-8 px-3 border-rose-500/40 text-rose-300 hover:bg-rose-500/10 text-xs font-bold cursor-pointer transition-all duration-200"
+              >
+                <ShieldAlert className="w-3.5 h-3.5 mr-1.5 text-rose-400" />
+                Pausar Deficitários
               </Button>
 
               <Button

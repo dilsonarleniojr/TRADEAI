@@ -23,6 +23,7 @@ export interface BotSlice {
   toggleBotActive: (botId: string, active?: boolean) => void;
   toggleAllBots: (active: boolean) => void;
   activateTopProfitableBots: (maxActive?: number) => { activated: string[]; paused: string[] };
+  pauseDeficitBots: () => { pausedCount: number; pausedNames: string[] };
 
   // Bot CRUD
   addBot: (bot: Partial<BotInstance> & { name: string; symbol: string; strategy: BotStrategy }) => string;
@@ -521,6 +522,38 @@ export const createBotSlice: StateCreator<
     });
 
     return { activated, paused };
+  },
+
+  pauseDeficitBots: () => {
+    const pausedNames: string[] = [];
+    set((state) => {
+      const updated: BotInstance[] = state.bots.map((b): BotInstance => {
+        const pnl = b.stats?.realizedPnl || 0;
+        const losses = b.stats?.lossTrades || 0;
+        const wins = b.stats?.winTrades || 0;
+        const isDeficit = pnl < -0.30 || (losses >= 2 && wins === 0);
+
+        if (isDeficit && b.active && (!b.position || b.position.quantity <= 0)) {
+          pausedNames.push(b.name);
+          return {
+            ...b,
+            active: false,
+            status: "stopped" as const,
+            stats: {
+              ...b.stats,
+              lastAction: `🛑 Pausado por Quarentena Deficitária (PnL: $${pnl.toFixed(2)} USDT)`,
+              lastActionTime: new Date().toISOString(),
+            },
+          };
+        }
+        return b;
+      });
+
+      persistBots(updated);
+      get().setBotActive(updated.some((b) => b.active));
+      return { bots: updated };
+    });
+    return { pausedCount: pausedNames.length, pausedNames };
   },
 
   addBot: (botData) => {
