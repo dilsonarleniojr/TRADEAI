@@ -349,13 +349,14 @@ export function checkCircuitBreaker(): boolean {
   today.setHours(0, 0, 0, 0);
   const todayTimestamp = today.getTime();
 
-  let dailyLoss = 0;
+  let dailyNetPnl = 0;
   for (const trade of store.trades) {
     const tradeTime = new Date(trade.timestamp).getTime();
-    if (tradeTime >= todayTimestamp && trade.side === "SELL" && trade.pnl < 0) {
-      dailyLoss += Math.abs(trade.pnl);
+    if (tradeTime >= todayTimestamp && trade.side === "SELL") {
+      dailyNetPnl += (trade.pnl || 0);
     }
   }
+  const dailyLoss = dailyNetPnl < 0 ? Math.abs(dailyNetPnl) : 0;
 
   circuitBreakerState.accumulatedDailyLossUsd = dailyLoss;
   const maxPercentLossUsd = (totalValue * circuitBreakerState.dailyLossLimitPercent) / 100;

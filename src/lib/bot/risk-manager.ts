@@ -580,7 +580,8 @@ export class RiskManager {
         this.dailyHaltedUntil = Date.now() + RiskManager.DAILY_HIBERNATION_MS;
       }
     } else if (netPnlUsdt > 0) {
-      // Ganho reseta o contador de perdas consecutivas
+      // Ganho compensa a perda acumulada no dia e reseta perdas consecutivas
+      this.dailyLossUsdt = Math.max(0, this.dailyLossUsdt - netPnlUsdt);
       this.currentConsecutiveLosses = 0;
     }
   }

@@ -720,16 +720,16 @@ export function evaluateEntry(
   const totalFriction = estimatedRoundtripFees + estimatedSlippage; // ~0.30%
 
   if (relATRPercent > 0) {
-    // Stop adaptativo estrito conforme Guardrail Institucional (piso 1.5% e teto 2.0% para proteger capital contra perdas acentuadas)
-    const atrSl = parseFloat((relATRPercent * 1.5).toFixed(1));
-    suggestedSl = Math.max(1.5, Math.min(2.0, Math.min(bot.stopLoss || 1.8, atrSl || 1.8)));
-    // Alvo adaptativo institucional garantindo Payoff bruto >= 1.75x (entre 3.0% e 5.5%)
-    const targetWithPayoff = parseFloat((suggestedSl * 1.75).toFixed(1));
-    const dynamicAtrTp = parseFloat((relATRPercent * 2.8).toFixed(1));
-    suggestedTp = Math.max(3.0, Math.min(5.5, Math.max(bot.takeProfit || 3.5, targetWithPayoff, dynamicAtrTp)));
+    // Stop adaptativo estrito conforme Guardrail Institucional (piso 1.1% e teto 1.35% para proteger capital contra perdas acentuadas)
+    const atrSl = parseFloat((relATRPercent * 1.2).toFixed(1));
+    suggestedSl = Math.max(1.10, Math.min(1.35, Math.min(bot.stopLoss || 1.25, atrSl || 1.25)));
+    // Alvo adaptativo institucional garantindo Payoff bruto >= 1.85x (entre 2.0% e 3.8%)
+    const targetWithPayoff = parseFloat((suggestedSl * 1.85).toFixed(1));
+    const dynamicAtrTp = parseFloat((relATRPercent * 1.6).toFixed(1));
+    suggestedTp = Math.max(2.0, Math.min(3.8, Math.max(bot.takeProfit || 2.4, targetWithPayoff, dynamicAtrTp)));
   } else {
-    suggestedSl = Math.max(1.5, Math.min(2.0, bot.stopLoss || 1.8));
-    suggestedTp = Math.max(3.0, Math.min(5.5, bot.takeProfit || 3.5));
+    suggestedSl = Math.max(1.10, Math.min(1.35, bot.stopLoss || 1.25));
+    suggestedTp = Math.max(2.0, Math.min(3.8, bot.takeProfit || 2.4));
   }
 
   // Potencial de ganho líquido do trade (Take Profit alvo deduzido das taxas operacionais e slippage)
