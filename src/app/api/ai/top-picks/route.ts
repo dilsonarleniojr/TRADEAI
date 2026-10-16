@@ -43,8 +43,21 @@ export async function POST(request: Request) {
     // Sem busca de notícias: a busca antiga dependia do SDK da Z.AI.
     const newsContext = '';
 
+    const KNOWN_DELISTED = new Set([
+      'ACA', 'VIC', 'MATIC', 'MKR', 'AKT', 'STG', 'IDEX', 'WTC', 'WABI', 'TORN', 'VGX',
+      'NULS', 'DREP', 'MOB', 'PNT', 'BTG', 'HIFI', 'EPX', 'FOR', 'LOOM', 'REEF', 'BOND',
+      'DOCK', 'POLS', 'MDX', 'VOXEL', 'WRX', 'UNFI', 'BLZ', 'KEY', 'AMB', 'KP3R', 'AKRO',
+      'MULTIA', 'OMG', 'WAVES', 'WNXM', 'XEM', 'DGB'
+    ]);
+
     // Amostragem diversificada: selecionar pares de alta liquidez, maiores altas, maiores quedas e altcoins variadas
-    const allMarketEntries = Object.entries(marketData).filter(([_, d]: [string, any]) => d && d.price > 0);
+    const allMarketEntries = Object.entries(marketData).filter(([sym, d]: [string, any]) => {
+      if (!d || d.price <= 0 || !sym.endsWith('USDT')) return false;
+      const base = sym.replace('USDT', '');
+      if (KNOWN_DELISTED.has(base)) return false;
+      const vol = Number(d.quoteVolume) || 0;
+      return vol > 100000;
+    });
     const sortedByChange = [...allMarketEntries].sort((a, b) => (b[1].priceChangePercent || 0) - (a[1].priceChangePercent || 0));
     const topGainersSlice = sortedByChange.slice(0, 10);
     const topLosersSlice = sortedByChange.slice(-6);

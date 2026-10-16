@@ -30,14 +30,23 @@ export interface AIBotRecommendation {
 // Moedas estáveis ou atreladas que NÃO devem ser operadas por robôs direcionais/volatilidade
 const STABLE_AND_PEGGED = new Set([
   'USDC', 'FDUSD', 'TUSD', 'USDD', 'DAI', 'BUSD', 'EUR', 'AEUR', 'USDP', 
-  'WBTC', 'WBETH', 'TBTC', 'PAXG', 'UST', 'USDE', 'USDJ', 'CUSD', 'FDUSD'
+  'WBTC', 'WBETH', 'TBTC', 'PAXG', 'UST', 'USDE', 'USDJ', 'CUSD',
+]);
+
+// Tokens deslistados, suspensos ou em status BREAK na Binance Spot
+const KNOWN_DELISTED_OR_HALTED = new Set([
+  'ACA', 'VIC', 'MATIC', 'MKR', 'AKT', 'STG', 'IDEX', 'WTC', 'WABI', 'TORN', 'VGX',
+  'NULS', 'DREP', 'MOB', 'PNT', 'BTG', 'HIFI', 'EPX', 'FOR', 'LOOM', 'REEF', 'BOND',
+  'DOCK', 'POLS', 'MDX', 'VOXEL', 'WRX', 'UNFI', 'BLZ', 'KEY', 'AMB', 'KP3R', 'AKRO',
+  'MULTIA', 'OMG', 'WAVES', 'WNXM', 'XEM', 'DGB'
 ]);
 
 function isTradableCrypto(sym: string): boolean {
   if (!sym.endsWith('USDT')) return false;
   if (sym.includes('UP') || sym.includes('DOWN') || sym.includes('BEAR') || sym.includes('BULL')) return false;
   const base = sym.replace('USDT', '');
-  return !STABLE_AND_PEGGED.has(base);
+  if (STABLE_AND_PEGGED.has(base) || KNOWN_DELISTED_OR_HALTED.has(base)) return false;
+  return true;
 }
 
 function shuffleArray<T>(array: T[]): T[] {

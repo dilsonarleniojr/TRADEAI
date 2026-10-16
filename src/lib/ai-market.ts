@@ -11,7 +11,12 @@ export async function loadSnapshot(symbol: string): Promise<MarketSnapshot | nul
     const t = await tRes.json();
     const k: any[] = await kRes.json();
     const price = parseFloat(t.lastPrice);
-    if (!Number.isFinite(price) || price <= 0) return null;
+    const bid = parseFloat(t.bidPrice || '0');
+    const ask = parseFloat(t.askPrice || '0');
+    // Moedas sem liquidez ou suspensas/delistadas na Binance Spot têm bid/ask zerados
+    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(bid) || bid <= 0 || !Number.isFinite(ask) || ask <= 0) {
+      return null;
+    }
     return {
       symbol,
       price,

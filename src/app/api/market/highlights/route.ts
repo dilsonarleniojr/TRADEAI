@@ -20,7 +20,7 @@ export async function GET() {
   }
 
   // 1. Try local microservice with circuit breaker
-  const localRes = await fetchFromBinanceService('/api/market/highlights', 300);
+  const localRes = await fetchFromBinanceService('/api/market/highlights', 1500);
   if (localRes) {
     try {
       const data = await localRes.json();
@@ -42,7 +42,14 @@ export async function GET() {
 
     if (resp.ok) {
       const raw: any[] = await resp.json();
-      const usdt = raw.filter((t) => t.symbol?.endsWith('USDT'));
+      const usdt = raw.filter((t) => {
+        if (!t.symbol?.endsWith('USDT')) return false;
+        const bid = parseFloat(t.bidPrice || '0');
+        const ask = parseFloat(t.askPrice || '0');
+        const last = parseFloat(t.lastPrice || '0');
+        const vol = parseFloat(t.quoteVolume || '0');
+        return bid > 0 && ask > 0 && last > 0 && vol > 0;
+      });
       const sorted = [...usdt].sort(
         (a, b) => parseFloat(b.priceChangePercent || '0') - parseFloat(a.priceChangePercent || '0')
       );

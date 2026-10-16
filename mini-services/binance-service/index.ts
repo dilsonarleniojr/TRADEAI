@@ -263,7 +263,7 @@ const TICKER_CACHE_TTL = 15000; // 15 seconds
 const PRIORITY_SYMBOLS = [
   "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT",
   "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT",
-  "DOTUSDT", "LINKUSDT", "MATICUSDT", "ATOMUSDT",
+  "DOTUSDT", "LINKUSDT", "POLUSDT", "ATOMUSDT",
 ];
 
 // Synchronize all available spot USDT pairs from Binance exchangeInfo
@@ -359,7 +359,14 @@ async function fetchAllTickers(forceRefresh = false): Promise<any[]> {
       const data = await resp.json();
       if (Array.isArray(data) && data.length > 0) {
         const filtered = data
-          .filter((t: any) => trackedSymbolsMap.has(t.symbol))
+          .filter((t: any) => {
+            if (!trackedSymbolsMap.has(t.symbol)) return false;
+            const bid = parseFloat(t.bidPrice || "0");
+            const ask = parseFloat(t.askPrice || "0");
+            const last = parseFloat(t.lastPrice || "0");
+            const vol = parseFloat(t.quoteVolume || "0");
+            return bid > 0 && ask > 0 && last > 0 && vol > 0;
+          })
           .sort((a: any, b: any) => parseFloat(b.quoteVolume || "0") - parseFloat(a.quoteVolume || "0"));
 
         if (filtered.length > 0) {
@@ -383,7 +390,12 @@ async function fetchAllTickers(forceRefresh = false): Promise<any[]> {
       if (resp.ok) {
         const data = await resp.json();
         if (Array.isArray(data) && data.length > 0) {
-          tickerCache = data;
+          tickerCache = data.filter((t: any) => {
+            const bid = parseFloat(t.bidPrice || "0");
+            const ask = parseFloat(t.askPrice || "0");
+            const last = parseFloat(t.lastPrice || "0");
+            return bid > 0 && ask > 0 && last > 0;
+          });
           tickerCacheTime = now;
           return tickerCache;
         }
