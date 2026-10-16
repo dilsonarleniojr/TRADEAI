@@ -163,17 +163,18 @@ export function BotSection() {
   const botStartTimeRef = useRef<Date | null>(null);
 
   // Fleet statistics
-  const activeBots = useMemo(() => bots.filter((b) => b.active), [bots]);
-  const inPositionBots = useMemo(() => bots.filter((b) => !!b.position && b.position.quantity > 0), [bots]);
+  const activeBots = useMemo(() => (bots || []).filter((b) => b?.active), [bots]);
+  const inPositionBots = useMemo(() => (bots || []).filter((b) => !!b?.position && (b.position.quantity || 0) > 0), [bots]);
   const circuitBreakerBots = useMemo(
-    () => bots.filter((b) => b.stats.lastAction?.includes("CIRCUIT BREAKER")),
+    () => (bots || []).filter((b) => b?.stats?.lastAction?.includes("CIRCUIT BREAKER")),
     [bots]
   );
 
   const fleetStats = useMemo(() => {
-    const totalPnl = bots.reduce((sum, b) => sum + (b.stats.realizedPnl || 0), 0);
-    const totalTrades = bots.reduce((sum, b) => sum + (b.stats.totalTrades || 0), 0);
-    const totalWins = bots.reduce((sum, b) => sum + (b.stats.winTrades || 0), 0);
+    const safeBots = bots || [];
+    const totalPnl = safeBots.reduce((sum, b) => sum + (b?.stats?.realizedPnl || 0), 0);
+    const totalTrades = safeBots.reduce((sum, b) => sum + (b?.stats?.totalTrades || 0), 0);
+    const totalWins = safeBots.reduce((sum, b) => sum + (b?.stats?.winTrades || 0), 0);
     const winRate = totalTrades > 0 ? (totalWins / Math.max(1, totalTrades)) * 100 : 100;
     return {
       totalPnl,
