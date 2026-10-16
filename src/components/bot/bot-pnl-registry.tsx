@@ -23,6 +23,7 @@ import {
   XCircle,
   Percent,
   RotateCcw,
+  RefreshCw,
   Clock,
   ArrowUpRight,
   ArrowDownRight,
@@ -37,7 +38,12 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
-import { calculateBotProfitabilityScore } from "@/lib/bot/multi-bot-engine";
+import {
+  calculateBotProfitabilityScore,
+  rotateFleetWithTopScanner,
+  getCircuitBreakerStatus,
+  resetCircuitBreaker,
+} from "@/lib/bot/multi-bot-engine";
 
 interface BotRowData {
   bot: BotInstance;
@@ -60,7 +66,17 @@ interface BotRowData {
 }
 
 export function BotPnLRegistry() {
-  const { bots, trades, tradingMode, activateTopProfitableBots, pauseDeficitBots, toggleBotActive, setOpenBinanceScannerModal } = useCryptoStore(
+  const {
+    bots,
+    trades,
+    tradingMode,
+    activateTopProfitableBots,
+    pauseDeficitBots,
+    toggleBotActive,
+    setOpenBinanceScannerModal,
+    fleetAutoRotationEnabled,
+    setFleetAutoRotationEnabled,
+  } = useCryptoStore(
     useShallow((s) => ({
       bots: s.bots,
       trades: s.trades,
@@ -69,6 +85,8 @@ export function BotPnLRegistry() {
       pauseDeficitBots: s.pauseDeficitBots,
       toggleBotActive: s.toggleBotActive,
       setOpenBinanceScannerModal: s.setOpenBinanceScannerModal,
+      fleetAutoRotationEnabled: s.fleetAutoRotationEnabled,
+      setFleetAutoRotationEnabled: s.setFleetAutoRotationEnabled,
     }))
   );
 
@@ -76,6 +94,8 @@ export function BotPnLRegistry() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "top_ranked" | "profit" | "loss" | "in_position" | "active">("all");
   const [expandedBotId, setExpandedBotId] = useState<string | null>(null);
+  const [isRotating, setIsRotating] = useState(false);
+  const [cbStatus, setCbStatus] = useState(() => getCircuitBreakerStatus());
 
   // Computa as informações de Lucro e Perda para cada robô com Score Institucional de Lucratividade
   const botRows: BotRowData[] = useMemo(() => {
@@ -198,6 +218,35 @@ export function BotPnLRegistry() {
         ? `${res.pausedCount} robô(s) em prejuízo foram pausados imediatamente (${res.pausedNames.join(", ")}).`
         : "Todos os robôs em prejuízo já estão pausados ou em quarentena.",
       variant: res.pausedCount > 0 ? "destructive" : "default",
+    });
+  };
+
+  const handleManualRotation = async () => {
+    setIsRotating(true);
+    try {
+      const res = await rotateFleetWithTopScanner(5);
+      if (res.rotatedCount > 0) {
+        toast({
+          title: "🔄 Frota Rotacionada com Sucesso",
+          description: `${res.rotatedCount} robô(s) ociosos foram atualizados para os pares líderes da Binance: ${res.newPairs.join(", ")}.`,
+        });
+      } else {
+        toast({
+          title: "Frota Já Atualizada",
+          description: "Os robôs ativos já estão operando os melhores pares ou possuem operações abertas em andamento.",
+        });
+      }
+    } finally {
+      setIsRotating(false);
+    }
+  };
+
+  const handleResetKillSwitch = () => {
+    resetCircuitBreaker();
+    setCbStatus(getCircuitBreakerStatus());
+    toast({
+      title: "🛡️ Kill Switch Diário Reiniciado",
+      description: "O limite de segurança diário da carteira foi resetado. Os robôs podem voltar a escanear novas oportunidades.",
     });
   };
 
@@ -479,6 +528,22 @@ export function BotPnLRegistry() {
             </div>
 
             <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              {cbStatus.tripped && (
+                <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs">
+                  <ShieldAlert className="w-3.5 h-3.5 text-rose-400 shrink-0 animate-pulse" />
+                  <span className="font-semibold text-[11px]">Kill Switch Ativado (3% NAV)</span>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={handleResetKillSwitch}
+                    className="h-6 px-2 text-[10px] ml-1 font-bold cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3 mr-1" />
+                    Destravar
+                  </Button>
+                </div>
+              )}
+
               <Button
                 size="sm"
                 variant="outline"
@@ -487,6 +552,40 @@ export function BotPnLRegistry() {
               >
                 <Trophy className="w-3.5 h-3.5 mr-1.5 text-amber-400" />
                 Escanear Binance (764+ Pares)
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isRotating}
+                onClick={handleManualRotation}
+                className="h-8 px-3 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 text-xs font-bold cursor-pointer transition-all duration-200"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-1.5 text-cyan-400 ${isRotating ? "animate-spin" : ""}`} />
+                {isRotating ? "Rotacionando..." : "Rotacionar Campeões"}
+              </Button>
+
+              <Button
+                size="sm"
+                variant={fleetAutoRotationEnabled ? "secondary" : "outline"}
+                onClick={() => {
+                  const next = !fleetAutoRotationEnabled;
+                  setFleetAutoRotationEnabled(next);
+                  toast({
+                    title: next ? "🔄 Auto-Rotação Ativada" : "Auto-Rotação Desativada",
+                    description: next
+                      ? "A frota atualizará os robôs ociosos automaticamente a cada 4 horas com os líderes da Binance."
+                      : "A rotação automática periódica da frota foi pausada.",
+                  });
+                }}
+                className={`h-8 px-2.5 text-xs font-bold cursor-pointer border transition-all duration-200 ${
+                  fleetAutoRotationEnabled
+                    ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/40 hover:bg-cyan-500/25"
+                    : "text-muted-foreground border-border/40 hover:bg-secondary/40"
+                }`}
+              >
+                <Zap className={`w-3.5 h-3.5 mr-1.5 ${fleetAutoRotationEnabled ? "text-cyan-400" : "text-muted-foreground"}`} />
+                Auto-4h: {fleetAutoRotationEnabled ? "ON" : "OFF"}
               </Button>
 
               <Button

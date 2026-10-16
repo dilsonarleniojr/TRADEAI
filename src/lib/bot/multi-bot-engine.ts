@@ -421,6 +421,8 @@ export function resetGlobalCircuitBreaker() {
 }
 
 let lastFleetAccountSync = 0;
+let lastFleetRotationCheck = 0;
+const FLEET_ROTATION_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 horas
 let lastLiveAccountError: string | null = null;
 let lastLiveAccountErrorLoggedAt = 0;
 const botErrorCooldown = new Map<string, number>();
@@ -807,6 +809,19 @@ export async function tickMultiBotFleet(callbacks?: MultiBotEngineCallbacks) {
   // Filter only active bots
   const activeBots = bots.filter((b) => b.active);
   if (activeBots.length === 0) return;
+
+  // 🔄 AUTO-ROTAÇÃO AUTÔNOMA DA FROTA (Pilar 3):
+  // Se a rotação contínua estiver ativada e o intervalo de 4h tiver expirado,
+  // busca os novos líderes da Binance e atualiza robôs ociosos sem afetar trades abertos.
+  if (
+    store.fleetAutoRotationEnabled &&
+    Date.now() - lastFleetRotationCheck >= FLEET_ROTATION_INTERVAL_MS
+  ) {
+    lastFleetRotationCheck = Date.now();
+    rotateFleetWithTopScanner().catch((e) =>
+      console.warn("[MultiBotFleet] Falha na auto-rotação em background:", e.message)
+    );
+  }
 
   // Sempre sincroniza o saldo real da conta (Spot Binance) periodicamente para que o portfólio esteja sempre atualizado
   if (tradingMode === "live" && Date.now() - lastFleetAccountSync >= 4000) {
@@ -3706,5 +3721,80 @@ export async function startAiExitBotForAsset(symbol: string, callbacks?: MultiBo
   }
 
   return null;
+}
+
+/**
+ * Auto-Rotação Autônoma da Frota com os Pares Mais Lucrativos da Binance (Pilar 3)
+ * Consulta os top pares do Binance Profitable Scanner (ordenados por profitScore, volume >= $10M e spread <= 0.12%)
+ * e atualiza os robôs ociosos (em scanning, sem posição aberta) com os novos pares líderes do mercado.
+ */
+export async function rotateFleetWithTopScanner(topCount: number = 5): Promise<{
+  rotatedCount: number;
+  newPairs: string[];
+}> {
+  const store = useCryptoStore.getState();
+  try {
+    const res = await fetch("/api/bot/binance-profitable-scanner?limit=20");
+    if (!res.ok) {
+      return { rotatedCount: 0, newPairs: [] };
+    }
+    const data = await res.json();
+    const recommendations: any[] = data.recommendations || [];
+    if (!recommendations || recommendations.length === 0) {
+      return { rotatedCount: 0, newPairs: [] };
+    }
+
+    // Filtra pares com volume >= $10M e spread <= 0.12%
+    const qualified = recommendations.filter(
+      (r) => (r.volume24h || 0) >= 10_000_000 && (r.spreadPct || 0) <= 0.12
+    );
+
+    const candidates = qualified.length >= topCount ? qualified : recommendations;
+    const topPairs = candidates.slice(0, topCount);
+
+    if (topPairs.length === 0) {
+      return { rotatedCount: 0, newPairs: [] };
+    }
+
+    // Identifica robôs ativos que NÃO possuem posições abertas
+    const eligibleBots = store.bots.filter(
+      (b) => b.active && (!b.position || b.position.quantity <= 0)
+    );
+
+    if (eligibleBots.length === 0) {
+      return { rotatedCount: 0, newPairs: [] };
+    }
+
+    const assignments = eligibleBots.slice(0, topPairs.length).map((b, idx) => {
+      const top = topPairs[idx];
+      return {
+        botId: b.id,
+        symbol: top.symbol,
+        name: `Bot ${top.baseAsset} — ${top.strategyLabel || "Alta Liquidez"}`,
+        takeProfit: top.takeProfit || 2.5,
+        stopLoss: top.stopLoss || 1.4,
+        trailingStop: top.trailingStop ?? true,
+        trailingStopDistance: top.trailingStopDistance || 0.40,
+        breakEvenTrigger: Math.max(1.80, top.breakEvenTrigger || 1.80),
+        breakEvenBuffer: Math.max(0.65, top.breakEvenBuffer || 0.65),
+        score: top.profitScore || 80,
+        volume24h: top.volume24h || 10_000_000,
+      };
+    });
+
+    const result = store.applyFleetRotation(assignments);
+
+    if (result.rotatedCount > 0) {
+      store.addBotLog({
+        message: `🔄 [Auto-Rotação da Frota] ${result.rotatedCount} robô(s) ociosos rotacionados com sucesso para os líderes da Binance: ${result.newPairs.join(", ")}.`,
+        type: "info",
+      });
+    }
+
+    return result;
+  } catch (err: any) {
+    console.warn("[MultiBotEngine] Falha ao rotacionar frota:", err.message);
+    return { rotatedCount: 0, newPairs: [] };
+  }
 }
 

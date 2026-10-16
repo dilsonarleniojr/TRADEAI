@@ -25,6 +25,23 @@ export interface BotSlice {
   activateTopProfitableBots: (maxActive?: number) => { activated: string[]; paused: string[] };
   pauseDeficitBots: () => { pausedCount: number; pausedNames: string[] };
 
+  // Fleet Auto-Rotation (Pilar 3)
+  fleetAutoRotationEnabled: boolean;
+  setFleetAutoRotationEnabled: (enabled: boolean) => void;
+  applyFleetRotation: (assignments: {
+    botId: string;
+    symbol: string;
+    name: string;
+    takeProfit: number;
+    stopLoss: number;
+    trailingStop: boolean;
+    trailingStopDistance: number;
+    breakEvenTrigger: number;
+    breakEvenBuffer: number;
+    score: number;
+    volume24h: number;
+  }[]) => { rotatedCount: number; newPairs: string[] };
+
   // Bot CRUD
   addBot: (bot: Partial<BotInstance> & { name: string; symbol: string; strategy: BotStrategy }) => string;
   updateBot: (botId: string, partial: Partial<BotInstance>) => void;
@@ -354,6 +371,16 @@ export const createBotSlice: StateCreator<
   selectedBotId: "bot-alpha-btc",
   activeExecutionReport: null,
   protectionSettings: riskManager.getProtectionSettings(),
+  fleetAutoRotationEnabled: typeof window !== "undefined"
+    ? window.localStorage.getItem("tradeai_fleet_auto_rotation") !== "false"
+    : true,
+
+  setFleetAutoRotationEnabled: (enabled) => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("tradeai_fleet_auto_rotation", String(enabled));
+    }
+    set({ fleetAutoRotationEnabled: enabled });
+  },
 
   setSelectedBotId: (id) => set({ selectedBotId: id }),
   setActiveExecutionReport: (report) => set({ activeExecutionReport: report }),
@@ -554,6 +581,46 @@ export const createBotSlice: StateCreator<
       return { bots: updated };
     });
     return { pausedCount: pausedNames.length, pausedNames };
+  },
+
+  applyFleetRotation: (assignments) => {
+    const rotatedPairs: string[] = [];
+    const assignmentMap = new Map(assignments.map((a) => [a.botId, a]));
+
+    set((state) => {
+      const updated: BotInstance[] = state.bots.map((b): BotInstance => {
+        // Robô com posição aberta JAMAIS é rotacionado para proteger o trade
+        if (b.position && b.position.quantity > 0) return b;
+
+        const assign = assignmentMap.get(b.id);
+        if (assign && assign.symbol !== b.symbol) {
+          rotatedPairs.push(assign.symbol);
+          return {
+            ...b,
+            symbol: assign.symbol,
+            name: assign.name,
+            takeProfit: assign.takeProfit,
+            stopLoss: assign.stopLoss,
+            trailingStop: assign.trailingStop,
+            trailingStopDistance: assign.trailingStopDistance,
+            autoBreakEven: true,
+            breakEvenTrigger: assign.breakEvenTrigger,
+            breakEvenBuffer: assign.breakEvenBuffer,
+            stats: {
+              ...b.stats,
+              lastAction: `🔄 Par rotacionado para ${assign.symbol} (Score: ${assign.score.toFixed(0)} | Vol: $${(assign.volume24h / 1e6).toFixed(1)}M)`,
+              lastActionTime: new Date().toISOString(),
+            },
+          };
+        }
+        return b;
+      });
+
+      persistBots(updated);
+      return { bots: updated };
+    });
+
+    return { rotatedCount: rotatedPairs.length, newPairs: rotatedPairs };
   },
 
   addBot: (botData) => {
