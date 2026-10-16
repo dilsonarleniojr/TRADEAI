@@ -140,7 +140,7 @@ export function BotPortfolio() {
     return () => clearInterval(interval);
   }, [botActive]);
 
-  // Sincronização automática contínua do portfólio com a Binance em tempo real
+  // Sincronização inicial ao trocar de modo e reação a atualizações de custódia
   useEffect(() => {
     let mounted = true;
     const syncAccount = async () => {
@@ -159,12 +159,14 @@ export function BotPortfolio() {
     };
 
     syncAccount();
-    const interval = setInterval(syncAccount, 4000);
     return () => {
       mounted = false;
-      clearInterval(interval);
     };
   }, [tradingMode]);
+
+  useEffect(() => {
+    syncCustodyPositionsWithBots();
+  }, [portfolio.positions]);
 
   const orphanPositions = useMemo(() => {
     const list = portfolio.positions ?? [];

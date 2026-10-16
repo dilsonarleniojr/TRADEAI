@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getOrderBookAnalysis } from "@/lib/bot/order-book-cache";
 import { getExecutionTelemetry } from "@/lib/bot/multi-bot-engine";
 import { evaluatePredictiveAlerts } from "@/lib/bot/predictive-alerts-engine";
+import { memoryCache } from "@/lib/cache/memory-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -24,15 +25,11 @@ interface StrategyCard {
   statusEmoji: string;
 }
 
-export async function GET(req: NextRequest) {
-  try {
-    const url = new URL(req.url);
-    const mode = url.searchParams.get("mode") || "all";
-
-    // 1. Fetch trades from SQLite WAL
-    const where: any = {};
-    if (mode === "live") where.mode = "live";
-    else if (mode === "paper") where.mode = "paper";
+async function buildRealtimeMetrics(mode: string, qActive?: string | null, qTotal?: string | null) {
+  // 1. Fetch trades from SQLite WAL
+  const where: any = {};
+  if (mode === "live") where.mode = "live";
+  else if (mode === "paper") where.mode = "paper";
 
     const allTrades = await db.trade.findMany({
       where: Object.keys(where).length > 0 ? where : undefined,
@@ -268,10 +265,8 @@ export async function GET(req: NextRequest) {
 
     // Active bots from BotConfig or query parameters fallback
     const botConfigs = await db.botConfig.findMany();
-    const qActive = url.searchParams.get("activeBots");
-    const qTotal = url.searchParams.get("totalBots");
-    const totalBotsCount = qTotal !== null ? parseInt(qTotal, 10) : botConfigs.length > 0 ? botConfigs.length : 6;
-    const activeBotsCount = qActive !== null ? parseInt(qActive, 10) : botConfigs.length > 0 ? botConfigs.filter((b) => b.isActive).length : 4;
+    const totalBotsCount = qTotal !== null && qTotal !== undefined ? parseInt(qTotal, 10) : botConfigs.length > 0 ? botConfigs.length : 6;
+    const activeBotsCount = qActive !== null && qActive !== undefined ? parseInt(qActive, 10) : botConfigs.length > 0 ? botConfigs.filter((b) => b.isActive).length : 4;
     const pausedBotsCount = Math.max(0, totalBotsCount - activeBotsCount);
 
     // 8. Automated Alerts Evaluation
@@ -325,10 +320,8 @@ export async function GET(req: NextRequest) {
       dailyLossLimitUsd: telemetry.circuitBreaker.dailyLossLimitUsd || 15.0,
     });
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        timestamp: new Date().toISOString(),
+    return {
+      timestamp: new Date().toISOString(),
         predictiveAlerts: predictiveResult.alerts,
         predictiveSummary: predictiveResult.summary,
         aiModelScores: predictiveResult.aiModelScores,
@@ -371,8 +364,34 @@ export async function GET(req: NextRequest) {
           totalSellsAudited: sellTrades.length,
           consistencyStatus: "PERFECT_MATCH",
         },
+  };
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const url = new URL(req.url);
+    const mode = url.searchParams.get("mode") || "all";
+    const qActive = url.searchParams.get("activeBots");
+    const qTotal = url.searchParams.get("totalBots");
+    const cacheKey = `bot:realtime-metrics:${mode}:${qActive || 'def'}:${qTotal || 'def'}`;
+
+    const { data, isHit, durationMs } = await memoryCache.getOrFetch(
+      cacheKey,
+      () => buildRealtimeMetrics(mode, qActive, qTotal),
+      2500
+    );
+
+    return NextResponse.json(
+      {
+        success: true,
+        data,
       },
-    });
+      {
+        headers: {
+          'Server-Timing': `cache;desc="${isHit ? 'HIT' : 'MISS'}", total;dur=${durationMs}`,
+        },
+      }
+    );
   } catch (error: any) {
     console.error("[RealtimeMetrics API] Error generating metrics:", error);
     return NextResponse.json(

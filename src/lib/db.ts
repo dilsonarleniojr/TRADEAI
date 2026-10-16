@@ -22,11 +22,24 @@ function resolveDatabaseUrl(): string | undefined {
 
 const resolvedUrl = resolveDatabaseUrl()
 
+const isDev = process.env.NODE_ENV !== 'production'
+const debugQueries = process.env.DEBUG_QUERIES === 'true'
+
 export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: ['query'],
+    log: debugQueries ? ['query', 'info', 'warn', 'error'] : ['warn', 'error'],
     ...(resolvedUrl ? { datasources: { db: { url: resolvedUrl } } } : {})
   })
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
+// Habilitar modo WAL e otimizações de concorrência no SQLite
+if (!globalForPrisma.prisma) {
+  db.$queryRawUnsafe('PRAGMA journal_mode = WAL;')
+    .catch((err) => console.warn('[Prisma] Falha ao definir PRAGMA journal_mode = WAL:', err.message));
+  db.$queryRawUnsafe('PRAGMA synchronous = NORMAL;')
+    .catch(() => {});
+  db.$queryRawUnsafe('PRAGMA busy_timeout = 5000;')
+    .catch(() => {});
+}
+
+if (isDev) globalForPrisma.prisma = db

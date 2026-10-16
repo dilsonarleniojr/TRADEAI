@@ -129,6 +129,8 @@ function priceAsset(asset: string, prices: Record<string, number>): { symbol: st
   return null;
 }
 
+import { memoryCache } from '@/lib/cache/memory-cache';
+
 export async function GET(request: NextRequest) {
   try {
     const mode = request.nextUrl.searchParams.get('mode') === 'live' ? 'live' : 'paper';
@@ -138,11 +140,21 @@ export async function GET(request: NextRequest) {
 
     if (mode === 'live') {
       try {
-        const liveData = await buildLiveAccount(binanceApiKey || '', binanceApiSecret || '', isTestnet);
-        return NextResponse.json({
-          success: true,
-          data: liveData,
-        });
+        const cacheKey = `account:live:${(binanceApiKey || '').slice(-6)}:${isTestnet}`;
+        const { data: liveData, isHit, durationMs } = await memoryCache.getOrFetch(
+          cacheKey,
+          () => buildLiveAccount(binanceApiKey || '', binanceApiSecret || '', isTestnet),
+          1800
+        );
+
+        return NextResponse.json(
+          { success: true, data: liveData },
+          {
+            headers: {
+              'Server-Timing': `cache;desc="${isHit ? 'HIT' : 'MISS'}", total;dur=${durationMs}`,
+            },
+          }
+        );
       } catch (liveErr: any) {
         return NextResponse.json(
           {
@@ -155,7 +167,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, data: await buildPaperAccount() });
+    const { data: paperData, isHit, durationMs } = await memoryCache.getOrFetch(
+      'account:paper',
+      () => buildPaperAccount(),
+      1800
+    );
+
+    return NextResponse.json(
+      { success: true, data: paperData },
+      {
+        headers: {
+          'Server-Timing': `cache;desc="${isHit ? 'HIT' : 'MISS'}", total;dur=${durationMs}`,
+        },
+      }
+    );
   } catch (error: any) {
     console.error('[Account API] GET error:', error.message);
     return NextResponse.json(
@@ -373,6 +398,8 @@ export async function POST(request: NextRequest) {
       });
     });
 
+    memoryCache.invalidate('account:*');
+
     return NextResponse.json({
       success: true,
       data: account,
@@ -405,6 +432,8 @@ export async function DELETE() {
         },
       });
     });
+
+    memoryCache.invalidate('account:*');
 
     return NextResponse.json({
       success: true,

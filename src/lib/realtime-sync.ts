@@ -28,6 +28,7 @@ class RealTimeSyncManagerImpl {
   private pollingInterval: ReturnType<typeof setInterval> | null = null;
   private pollingIntervalMs = 5000;
   private maxPollingFailures = 3;
+  private isPollingBusy = false;
 
   /**
    * Notify the manager that WebSocket connected.
@@ -104,6 +105,9 @@ class RealTimeSyncManagerImpl {
     if (this.pollingInterval) return; // Already polling
 
     this.pollingInterval = setInterval(async () => {
+      // Evita requisições sobrepostas se a anterior ainda estiver em trânsito
+      if (this.isPollingBusy) return;
+
       const store = useCryptoStore.getState();
 
       // Don't poll if WS is connected (realtime mode) unless in live trading mode
@@ -112,6 +116,14 @@ class RealTimeSyncManagerImpl {
         return;
       }
 
+      // Se a aba estiver oculta/em segundo plano, desacelera para checar apenas a cada 15s
+      if (typeof document !== "undefined" && document.hidden) {
+        if (Date.now() - store.lastSyncAt < 15000) {
+          return;
+        }
+      }
+
+      this.isPollingBusy = true;
       try {
         const accountRes = await fetch(`/api/account?mode=${store.tradingMode}`);
         if (accountRes.ok) {
@@ -124,6 +136,8 @@ class RealTimeSyncManagerImpl {
         this.onPollingSuccess();
       } catch (err) {
         this.onPollingFailure();
+      } finally {
+        this.isPollingBusy = false;
       }
     }, this.pollingIntervalMs);
   }

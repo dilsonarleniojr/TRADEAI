@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { getBinanceCredentials } from '@/lib/binance-session';
 import { isRateLimited } from '@/lib/rate-limit';
 import crypto from 'crypto';
+import { memoryCache } from '@/lib/cache/memory-cache';
 
 // Limites de segurança para ordens em dinheiro real (em USDT). Configuráveis por variável de ambiente.
 const MAX_ORDER_USD = Number(process.env.MAX_LIVE_ORDER_USD) || 500;
@@ -403,20 +404,34 @@ export async function GET(request: NextRequest) {
     const symbol = searchParams.get('symbol');
     const mode = searchParams.get('mode'); // 'paper' | 'live'
 
-    const where: any = {};
-    if (symbol) where.symbol = symbol;
-    if (mode && (mode === 'paper' || mode === 'live')) where.mode = mode;
+    const cacheKey = `trades:${mode || 'all'}:${symbol || 'all'}:${limit}`;
+    const { data: trades, isHit, durationMs } = await memoryCache.getOrFetch(
+      cacheKey,
+      async () => {
+        const where: any = {};
+        if (symbol) where.symbol = symbol;
+        if (mode && (mode === 'paper' || mode === 'live')) where.mode = mode;
 
-    const trades = await db.trade.findMany({
-      where: Object.keys(where).length > 0 ? where : undefined,
-      orderBy: { timestamp: 'desc' },
-      take: limit,
-    });
+        return await db.trade.findMany({
+          where: Object.keys(where).length > 0 ? where : undefined,
+          orderBy: { timestamp: 'desc' },
+          take: limit,
+        });
+      },
+      1500
+    );
 
-    return NextResponse.json({
-      success: true,
-      data: trades,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        data: trades,
+      },
+      {
+        headers: {
+          'Server-Timing': `cache;desc="${isHit ? 'HIT' : 'MISS'}", total;dur=${durationMs}`,
+        },
+      }
+    );
   } catch (error: any) {
     console.error('[Trades API] GET error:', error.message);
     return NextResponse.json(
@@ -712,6 +727,9 @@ export async function POST(request: NextRequest) {
       slippagePercent: body.slippagePercent,
     };
 
+    memoryCache.invalidate('trades:*');
+    memoryCache.invalidate('account:*');
+
     return NextResponse.json({
       success: true,
       data: auditTrade,
@@ -840,6 +858,9 @@ export async function DELETE(request: NextRequest) {
         socket.close();
       });
     } catch {}
+
+    memoryCache.invalidate('trades:*');
+    memoryCache.invalidate('account:*');
 
     return NextResponse.json({
       success: true,

@@ -12,17 +12,46 @@ import { NavigationBreadcrumb } from "@/components/header/navigation-breadcrumb"
 import { Footer } from "@/components/footer";
 import { TickerTape } from "@/components/header/ticker-tape";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
-import { ChatSection } from "@/components/ai/chat-section";
+import dynamic from "next/dynamic";
 import { ChartSection } from "@/components/chart/chart-section";
 import { BotSection } from "@/components/bot/bot-section";
 import { BotBackgroundRunner } from "@/components/bot/bot-background-runner";
 import { HistoryBootstrap } from "@/components/bot/history-bootstrap";
 import { BotReadinessWatcher } from "@/components/bot/bot-readiness";
-import { HistorySection } from "@/components/history/history-section";
-import { InstitutionalCockpit } from "@/components/institutional/institutional-cockpit";
-import { BacktestSection } from "@/components/backtest/backtest-section";
-import { EducationSection } from "@/components/education/education-section";
-import { TradeHubSection } from "@/components/trade-hub";
+
+function TabLoadingSkeleton() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[40vh] gap-3">
+      <Loader2 className="w-6 h-6 text-crypto-cyan animate-spin" />
+      <span className="text-xs text-muted-foreground animate-pulse">Carregando módulo...</span>
+    </div>
+  );
+}
+
+const ChatSection = dynamic(
+  () => import("@/components/ai/chat-section").then((m) => m.ChatSection),
+  { ssr: false, loading: () => <TabLoadingSkeleton /> }
+);
+const HistorySection = dynamic(
+  () => import("@/components/history/history-section").then((m) => m.HistorySection),
+  { ssr: false, loading: () => <TabLoadingSkeleton /> }
+);
+const InstitutionalCockpit = dynamic(
+  () => import("@/components/institutional/institutional-cockpit").then((m) => m.InstitutionalCockpit),
+  { ssr: false, loading: () => <TabLoadingSkeleton /> }
+);
+const BacktestSection = dynamic(
+  () => import("@/components/backtest/backtest-section").then((m) => m.BacktestSection),
+  { ssr: false, loading: () => <TabLoadingSkeleton /> }
+);
+const EducationSection = dynamic(
+  () => import("@/components/education/education-section").then((m) => m.EducationSection),
+  { ssr: false, loading: () => <TabLoadingSkeleton /> }
+);
+const TradeHubSection = dynamic(
+  () => import("@/components/trade-hub").then((m) => m.TradeHubSection),
+  { ssr: false, loading: () => <TabLoadingSkeleton /> }
+);
 import { MobilePortfolioBar } from "@/components/mobile/mobile-portfolio-bar";
 import { MobileDrawer } from "@/components/mobile/mobile-drawer";
 import { AlertNotification } from "@/components/dashboard/alert-notification";
