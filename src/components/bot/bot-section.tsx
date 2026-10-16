@@ -14,6 +14,10 @@ import { AIBotRecommendationsDialog } from "./ai-bot-recommendations-dialog";
 import { BinanceProfitableBotsDialog } from "./binance-profitable-bots-dialog";
 import { BotExecutionReportDialog } from "./bot-execution-report-dialog";
 import { ProtectionSettingsDialog } from "./protection-settings-dialog";
+import { NotificationSettingsDialog } from "./notification-settings-dialog";
+import { OrphanOrdersDialog } from "./orphan-orders-dialog";
+import { BotBacktestDialog } from "./bot-backtest-dialog";
+import { BotRiskCockpit } from "./bot-risk-cockpit";
 import { BinanceConnection } from "./binance-connection";
 import { EnginePanel } from "./engine-panel";
 import { BotReadinessBar } from "./bot-readiness";
@@ -51,6 +55,8 @@ import {
   Trophy,
   Gauge,
   Receipt,
+  Bell,
+  FlaskConical,
 } from "lucide-react";
 import { calculateRiskMetrics } from "@/lib/bot/risk-metrics";
 import { motion, AnimatePresence } from "framer-motion";
@@ -137,6 +143,10 @@ export function BotSection() {
   // Multi-bot modal state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isAiRecommendationsOpen, setIsAiRecommendationsOpen] = useState(false);
+  const [isNotificationDialogOpen, setIsNotificationDialogOpen] = useState(false);
+  const [isOrphanOrdersDialogOpen, setIsOrphanOrdersDialogOpen] = useState(false);
+  const [isBacktestDialogOpen, setIsBacktestDialogOpen] = useState(false);
+  const [isRiskCockpitDialogOpen, setIsRiskCockpitDialogOpen] = useState(false);
   const [botToEdit, setBotToEdit] = useState<BotInstance | null>(null);
   const [botFilter, setBotFilter] = useState<"all" | "active" | "in_position" | "stopped">("all");
   const [activeBotTab, setActiveBotTab] = useState("registry");
@@ -500,6 +510,50 @@ export function BotSection() {
               <Badge variant="outline" className="ml-1.5 px-1.5 py-0 text-[10px] border-emerald-500/30 text-emerald-300 bg-emerald-500/15">
                 {Object.values(protectionSettings || {}).filter((v) => v === true).length}/10
               </Badge>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsRiskCockpitDialogOpen(true)}
+              className="h-9 px-3 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/15 text-xs font-semibold cursor-pointer bg-indigo-500/10 shadow-sm"
+              title="Visualizar Cockpit de Risco, exposição NAV por ativo e matriz de correlação de Pearson"
+            >
+              <Gauge className="w-3.5 h-3.5 mr-1.5 text-indigo-400" />
+              Cockpit & Correlação
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsBacktestDialogOpen(true)}
+              className="h-9 px-3 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/15 text-xs font-semibold cursor-pointer bg-cyan-500/10 shadow-sm"
+              title="Executar simulação histórica com klines reais, taxas de 0.075% e slippage de 0.05%"
+            >
+              <FlaskConical className="w-3.5 h-3.5 mr-1.5 text-cyan-400" />
+              Backtest Express
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsOrphanOrdersDialogOpen(true)}
+              className="h-9 px-3 border-amber-500/40 text-amber-300 hover:bg-amber-500/15 text-xs font-semibold cursor-pointer bg-amber-500/10 shadow-sm"
+              title="Auditar e reconciliar ordens abertas na exchange que não pertencem à frota local ativa"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 mr-1.5 text-amber-400" />
+              Ordens Órfãs
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsNotificationDialogOpen(true)}
+              className="h-9 px-3 border-sky-500/40 text-sky-300 hover:bg-sky-500/15 text-xs font-semibold cursor-pointer bg-sky-500/10 shadow-sm"
+              title="Configurar canais de alerta em tempo real para Telegram e Discord"
+            >
+              <Bell className="w-3.5 h-3.5 mr-1.5 text-sky-400" />
+              Notificações
             </Button>
 
             {tradingMode === "paper" && (
@@ -1020,6 +1074,30 @@ export function BotSection() {
       <ProtectionSettingsDialog
         open={openProtectionModal}
         onOpenChange={setOpenProtectionModal}
+      />
+
+      {/* Dialog for Real-Time Institutional Notifications (Telegram & Discord) */}
+      <NotificationSettingsDialog
+        open={isNotificationDialogOpen}
+        onOpenChange={setIsNotificationDialogOpen}
+      />
+
+      {/* Dialog for Exchange vs Fleet Orphan Orders Reconciliation */}
+      <OrphanOrdersDialog
+        open={isOrphanOrdersDialogOpen}
+        onOpenChange={setIsOrphanOrdersDialogOpen}
+      />
+
+      {/* Dialog for Institutional Backtesting with Friction & Slippage */}
+      <BotBacktestDialog
+        open={isBacktestDialogOpen}
+        onOpenChange={setIsBacktestDialogOpen}
+      />
+
+      {/* Dialog for Risk Cockpit & Pearson Correlation Matrix */}
+      <BotRiskCockpit
+        open={isRiskCockpitDialogOpen}
+        onOpenChange={setIsRiskCockpitDialogOpen}
       />
 
     </motion.div>

@@ -7,6 +7,7 @@ import { scanHotCoins, type HotCoinCandidate } from "./quant-engine";
 import { getOrderBookAnalysis, estimateDepthSlippage } from "@/lib/bot/order-book-cache";
 import { getCostBasisForSymbol } from "./cost-basis";
 import { riskManager, RiskManager } from "./risk-manager";
+import { dispatchNotification } from "@/lib/notifications/notification-service";
 
 export interface MultiBotEngineCallbacks {
   onToast?: (toast: { title: string; description: string; variant?: "default" | "destructive" }) => void;
@@ -402,6 +403,15 @@ export function checkCircuitBreaker(): boolean {
         message: `🚨 [Kill Switch Global da Carteira] ACIONADO: ${circuitBreakerState.reason}. Todas as novas compras bloqueadas e robôs ociosos pausados.`,
         type: "error",
       });
+
+      dispatchNotification({
+        type: "CIRCUIT_BREAKER_TRIPPED",
+        title: "🚨 Circuit Breaker Disparado!",
+        message: circuitBreakerState.reason || "Kill switch ativado",
+        reason: circuitBreakerState.reason || undefined,
+        mode: useCryptoStore.getState().tradingMode,
+        timestamp: Date.now(),
+      });
     }
     return true;
   }
@@ -442,6 +452,14 @@ export function resetGlobalCircuitBreaker() {
   botSymbolLossCooldown.clear();
   symbolLossTimestamps.clear();
   riskManager.resetCircuitBreakers();
+
+  dispatchNotification({
+    type: "CIRCUIT_BREAKER_RESET",
+    title: "✅ Circuit Breaker Destravado",
+    message: "O Kill Switch global foi destravado e os robôs foram liberados para novas operações.",
+    mode: useCryptoStore.getState().tradingMode,
+    timestamp: Date.now(),
+  });
 
   try {
     const store = useCryptoStore.getState();
@@ -2397,6 +2415,20 @@ async function executeBotBuy({
     botName: bot.name,
   });
 
+  dispatchNotification({
+    type: "TRADE_ENTRY",
+    title: `🚀 Entrada de Trade: ${execSymbol.replace("USDT", "")}`,
+    message: `Robô ${bot.name} comprou ${finalQty.toFixed(4)} ${execSymbol.replace("USDT", "")} a $${buyPrice.toLocaleString()} (${bot.strategy}).`,
+    symbol: execSymbol,
+    side: "BUY",
+    price: buyPrice,
+    quantity: finalQty,
+    strategy: bot.strategy,
+    botName: bot.name,
+    mode: tradingMode,
+    timestamp: Date.now(),
+  });
+
   callbacks?.onToast?.({
     title: `🤖 ${bot.name} ${modeTag}`,
     description: `Comprou ${finalQty.toFixed(4)} ${execSymbol.replace("USDT", "")} @ $${buyPrice.toLocaleString()} (Alvo: +${effectiveTarget}%)${atrTag}`,
@@ -3031,6 +3063,23 @@ async function executeBotSell({
   const totalNav = store.portfolio?.totalValue || store.portfolio?.cashBalance || 90.0;
   riskManager.recordTradeResult(netPnl, totalNav);
   checkCircuitBreaker();
+
+  dispatchNotification({
+    type: "TRADE_EXIT",
+    title: netPnl >= 0 ? `💰 Lucro Realizado: +$${netPnl.toFixed(2)} (${execSymbol.replace("USDT", "")})` : `🛡️ Stop Acionado: -$${Math.abs(netPnl).toFixed(2)} (${execSymbol.replace("USDT", "")})`,
+    message: `Robô ${bot.name} encerrou posição em ${execSymbol}. PnL Líquido: ${netPnl >= 0 ? "+" : ""}$${netPnl.toFixed(2)} USDT (${netGainPercent >= 0 ? "+" : ""}${netGainPercent.toFixed(2)}%). Motivo: ${reason}.`,
+    symbol: execSymbol,
+    side: "SELL",
+    price: sellPrice,
+    quantity: position.quantity,
+    pnlUsdt: netPnl,
+    pnlPercent: netGainPercent,
+    strategy: bot.strategy,
+    botName: bot.name,
+    reason: reason,
+    mode: tradingMode,
+    timestamp: Date.now(),
+  });
 
   // Duração da operação
   const entryDate = position.entryTime ? new Date(position.entryTime).getTime() : Date.now();
@@ -3869,6 +3918,16 @@ export async function rotateFleetWithTopScanner(topCount: number = 5): Promise<{
       store.addBotLog({
         message: `🔄 [Auto-Rotação da Frota] ${result.rotatedCount} robô(s) ociosos rotacionados com sucesso para os líderes da Binance: ${result.newPairs.join(", ")}.`,
         type: "info",
+      });
+
+      dispatchNotification({
+        type: "FLEET_ROTATION",
+        title: `🔄 Auto-Rotação da Frota Binance`,
+        message: `${result.rotatedCount} robô(s) ociosos foram rotacionados para os pares com maior pontuação: ${result.newPairs.join(", ")}.`,
+        symbol: result.newPairs.join(", "),
+        reason: "Otimização automática de liquidez e momento",
+        mode: store.tradingMode,
+        timestamp: Date.now(),
       });
     }
 
