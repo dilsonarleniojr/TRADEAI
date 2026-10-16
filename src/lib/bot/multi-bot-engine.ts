@@ -411,8 +411,42 @@ export function resetGlobalCircuitBreaker() {
   circuitBreakerState.trippedAt = null;
   circuitBreakerState.reason = null;
   circuitBreakerState.accumulatedDailyLossUsd = 0;
+  
   botConsecutiveLosses.clear();
-  riskManager.resetConsecutiveLossBrake();
+  botErrorCooldown.clear();
+  botConsecutiveFailures.clear();
+  botSymbolLossCooldown.clear();
+  symbolLossTimestamps.clear();
+  riskManager.resetCircuitBreakers();
+
+  try {
+    const store = useCryptoStore.getState();
+    if (store && store.bots) {
+      let unblockedCount = 0;
+      store.bots.forEach((b) => {
+        // Se o robô foi parado pelo kill switch ou está inativo com status stopped
+        if (!b.active && b.status === "stopped") {
+          unblockedCount++;
+          const hasPos = !!b.position && b.position.quantity > 0;
+          store.updateBot(b.id, {
+            active: true,
+            status: hasPos ? "holding" : "scanning",
+            stats: {
+              ...b.stats,
+              lastAction: "🟢 Destravado pelo operador · Monitorando mercado",
+              lastActionTime: new Date().toISOString(),
+            },
+          });
+        }
+      });
+      store.addBotLog({
+        message: `🟢 [Circuit Breaker] Destravado com sucesso pelo operador. ${unblockedCount > 0 ? `${unblockedCount} robô(s) reativado(s).` : "Frota pronta para novas operações."}`,
+        type: "info",
+      });
+    }
+  } catch (err) {
+    console.error("[CircuitBreaker] Erro ao sincronizar destravamento com o store:", err);
+  }
 }
 
 let lastFleetAccountSync = 0;
