@@ -74,7 +74,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
   const [partialTpPercent, setPartialTpPercent] = useState(50);
   const [timeStopMinutes, setTimeStopMinutes] = useState(45);
   const [useBtcGatekeeper, setUseBtcGatekeeper] = useState(true);
-  const [useSmartDca, setUseSmartDca] = useState(true);
+  const [useSmartDca, setUseSmartDca] = useState(false);
   const [dcaDipThreshold, setDcaDipThreshold] = useState(1.5);
   const [maxDcaOrders, setMaxDcaOrders] = useState(1);
   const [useOrderBookFilter, setUseOrderBookFilter] = useState(true);
@@ -277,7 +277,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setPartialTpPercent(botToEdit.partialTpPercent ?? 50);
       setTimeStopMinutes(botToEdit.timeStopMinutes ?? 60);
       setUseBtcGatekeeper(botToEdit.useBtcGatekeeper ?? true);
-      setUseSmartDca(botToEdit.useSmartDca ?? true);
+      setUseSmartDca(botToEdit.useSmartDca ?? false);
       setDcaDipThreshold(botToEdit.dcaDipThreshold ?? 1.5);
       setMaxDcaOrders(botToEdit.maxDcaOrders ?? 1);
       setUseOrderBookFilter(botToEdit.useOrderBookFilter ?? true);

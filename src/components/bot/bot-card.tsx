@@ -614,7 +614,7 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
               )}
 
               {/* Smart DCA Badge */}
-              {(bot.useSmartDca ?? true) && (
+              {Boolean(bot.useSmartDca) && (
                 <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0 border-cyan-500/40 text-cyan-400 bg-cyan-500/10 flex items-center gap-1" title="DCA Inteligente ativo: reentrada estratégica em suporte se houver recuo">
                   <TrendingUp className="w-2.5 h-2.5 text-cyan-400" />
                   DCA Suporte

@@ -303,20 +303,21 @@ function loadBotsFromStorage(): BotInstance[] {
         (b) => b && b.id !== "bot-guardian-bat" && b.id !== "bot-guardian-amp"
       );
       if (sanitized.length > 0) {
-        // Auto-migração para parâmetros institucionais: eleva stopLoss e takeProfit se estiverem defasados
+        // Auto-migração institucional obrigatória:
+        // 1. Desativa DCA Martingale por padrão (evita dobrar posições em queda)
+        // 2. Trava Stop Loss em no máximo 2.0% (Guardrails rígidos de governança)
+        // 3. Calibra Break-Even em +1.4% para travar lucro precocemente
         const migrated = sanitized.map((b) => {
-          if (b && typeof b.stopLoss === "number" && b.stopLoss < 2.2) {
-            return {
-              ...b,
-              stopLoss: 2.8,
-              takeProfit: Math.max(b.takeProfit || 0, 3.8),
-              useSmartDca: true,
-              dcaDipThreshold: 1.8,
-              maxDcaOrders: b.maxDcaOrders || 1,
-              timeStopMinutes: Math.max(b.timeStopMinutes || 0, 60),
-            };
-          }
-          return b;
+          return {
+            ...b,
+            stopLoss: Math.max(1.4, Math.min(2.0, b.stopLoss || 1.8)),
+            takeProfit: Math.max(3.0, Math.min(6.0, b.takeProfit || 3.5)),
+            useSmartDca: b.useSmartDca === true, // Anti-Martingale: false por padrão
+            autoBreakEven: b.autoBreakEven ?? true,
+            breakEvenTrigger: Math.max(1.4, b.breakEvenTrigger || 1.6),
+            breakEvenBuffer: Math.max(0.35, Math.min(0.80, b.breakEvenBuffer || 0.45)),
+            timeStopMinutes: Math.max(b.timeStopMinutes || 0, 60),
+          };
         });
         return migrated;
       }
@@ -481,7 +482,7 @@ export const createBotSlice: StateCreator<
       maxHoldingMinutes: botData.maxHoldingMinutes ?? 60,
       timeStopMinutes: botData.timeStopMinutes ?? 60,
       useBtcGatekeeper: botData.useBtcGatekeeper ?? true,
-      useSmartDca: botData.useSmartDca ?? true,
+      useSmartDca: botData.useSmartDca ?? false,
       maxDcaOrders: botData.maxDcaOrders ?? 1,
       dcaDipThreshold: botData.dcaDipThreshold ?? 1.8,
       dcaMultiplier: botData.dcaMultiplier ?? 1.0,
