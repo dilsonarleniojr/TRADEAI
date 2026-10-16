@@ -363,6 +363,7 @@ const botConsecutiveFailures = new Map<string, number>();
 const botSymbolLossCooldown = new Map<string, number>();
 const botConsecutiveLosses = new Map<string, number>();
 const symbolLossTimestamps = new Map<string, number[]>();
+const symbolTradeTimestamps = new Map<string, number[]>();
 const inFlightBuys = new Set<string>();
 const inFlightSells = new Set<string>();
 const partialRetryCooldown = new Map<string, number>();
@@ -1012,12 +1013,13 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       gainPercent <= beBuffer;
 
     // 🎯 ALVOS DINÂMICOS ADAPTATIVOS & PARABÓLICOS
-    // Stop Loss disciplinado: calibrado entre 1.0% e 1.6% (corte rápido de perdas)
-    const configuredStopLoss = pos.dynamicStopLoss || bot.stopLoss || 1.3;
-    const effectiveStopLoss = Math.min(1.6, Math.max(1.0, configuredStopLoss));
-    // Take Profit institucional: alvo mínimo de 2.4% para garantir assimetria R:R positiva (>= 1.8x Payoff)
-    const rawTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 2.5;
-    const effectiveTakeProfit = Math.max(2.4, Math.min(4.5, rawTakeProfit));
+    // Stop Loss disciplinado: calibrado com piso de 1.5% para evitar stop hunt e ruído de mercado (regra de ouro do diário de trades)
+    const configuredStopLoss = pos.dynamicStopLoss || bot.stopLoss || 2.0;
+    const effectiveStopLoss = Math.max(1.5, Math.min(3.2, configuredStopLoss));
+    // Take Profit institucional: garante assimetria R:R positiva (≥ 1.5x do Stop Loss e mínimo de 2.5%)
+    const rawTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 3.0;
+    const minTpByRiskReward = parseFloat((effectiveStopLoss * 1.5).toFixed(2));
+    const effectiveTakeProfit = Math.max(minTpByRiskReward, Math.max(2.5, Math.min(6.5, rawTakeProfit)));
 
     // 🚀 TRAILING TAKE-PROFIT DINÂMICO PARABÓLICO (Deixar o Lucro Correr em Altas Fortes)
     // Ao bater a meta de Take Profit (ex: +3.0% ou alvo ATR), o robô não vende na hora;
@@ -1085,14 +1087,14 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       if (!isNaN(entryMs)) {
         minutesOpen = Math.max(0, (Date.now() - entryMs) / 60000);
         if (minutesOpen >= timeStopMinutes) {
-          // Checagem se o lucro cobre taxas com folga: gainPercent >= +0.40%
-          const isProfitableAboveFees = gainPercent >= 0.40;
-          if (isProfitableAboveFees) {
-            // Atingiu o tempo base e está no lucro líquido cobrindo taxas: realiza e libera capital
+          // Checagem se o lucro é substancial (≥ 1.5% ou ≥ 60% do alvo TP) para não realizar lucros prematuros minúsculos
+          const isProfitableSubstantial = gainPercent >= Math.max(1.50, effectiveTakeProfit * 0.60);
+          if (isProfitableSubstantial) {
+            // Atingiu o tempo base com lucro representativo cobrindo com folga o risco assumido
             isTimeStop = true;
             isZeroLossTimeStop = true;
           }
-          // NUNCA liquidar a mercado no prejuízo ou no zero-a-zero por mero tempo em mercado Spot!
+          // NUNCA liquidar a mercado no prejuízo, zero-a-zero ou lucro minúsculo de centavos por mero tempo!
           // Deixar o trade buscar o Take Profit ou ser gerenciado pelo Stop Loss estrutural/DCA.
         }
       }
@@ -2976,37 +2978,55 @@ async function executeBotSell({
     store.setActiveExecutionReport(executionReport);
   }
 
-  // 🛡️ COOLDOWN UNIVERSAL PÓS-TRADE INSTITUCIONAL (Otimizado para performance contínua):
+  // 🛡️ COOLDOWN UNIVERSAL PÓS-TRADE INSTITUCIONAL (Otimizado para performance contínua & Anti-Overtrading):
   const isLoss = logType === "loss" || pnl < 0 || gainPercent < 0;
 
-  // 1. Quarentena por Par
+  // 1. Quarentena e Anti-Overtrading por Par (Mitigação do Diário de Trades)
   const now = Date.now();
+  const threeHoursAgo = now - 3 * 3600 * 1000;
   const sixHoursAgo = now - 6 * 3600 * 1000;
+
+  // Registra e rastreia histórico de todas as operações fechadas neste ativo
+  let recentSymbolTrades = (symbolTradeTimestamps.get(execSymbol) || []).filter((t) => t >= threeHoursAgo);
+  recentSymbolTrades.push(now);
+  symbolTradeTimestamps.set(execSymbol, recentSymbolTrades);
+
   let recentSymbolLosses = (symbolLossTimestamps.get(execSymbol) || []).filter((t) => t >= sixHoursAgo);
   
-  // Após lucro: apenas 20 segundos de buffer para absorção de ordens no book, permitindo reentrada rápida
-  let cooldownDuration = 20 * 1000;
+  // Após lucro: resfriamento técnico de 10 minutos (em vez de 20s) para permitir nova formação gráfica
+  let cooldownDuration = 10 * 60 * 1000;
   let isQuarantine = false;
+
+  // Se já operou o mesmo ativo 2 ou mais vezes nas últimas 3 horas: ativa proteção contra sobreexposição (Anti-Overtrading)
+  if (recentSymbolTrades.length >= 2) {
+    cooldownDuration = Math.max(cooldownDuration, 45 * 60 * 1000);
+    store.addBotLog({
+      message: `🛡️ [ANTI-OVERTRADING] Par ${execSymbol.replace("USDT", "")} atingiu ${recentSymbolTrades.length} operações em 3h. Resfriamento de 45m ativado para evitar sobreexposição e churn repetitivo.`,
+      type: "info",
+      botId: bot.id,
+      botName: bot.name,
+    });
+  }
 
   if (isLoss) {
     recentSymbolLosses.push(now);
     symbolLossTimestamps.set(execSymbol, recentSymbolLosses);
 
     if (recentSymbolLosses.length >= 2) {
-      // 🚨 QUARENTENA PREVENTIVA INSTITUCIONAL: 2 ou mais perdas recentes -> 60 minutos de resfriamento total
-      cooldownDuration = 60 * 60 * 1000;
+      // 🚨 QUARENTENA PREVENTIVA INSTITUCIONAL: 2 ou mais perdas recentes -> 90 minutos de resfriamento total
+      cooldownDuration = 90 * 60 * 1000;
       isQuarantine = true;
       store.addBotLog({
-        message: `🚨 [QUARENTENA PREVENTIVA] Par ${execSymbol.replace("USDT", "")} registrou ${recentSymbolLosses.length} perdas em 6h. Bloqueado por 60m para proteção rigorosa de capital (Anti-Churn).`,
+        message: `🚨 [QUARENTENA PREVENTIVA] Par ${execSymbol.replace("USDT", "")} registrou ${recentSymbolLosses.length} perdas em 6h. Bloqueado por 90m para proteção rigorosa de capital (Anti-Churn).`,
         type: "warning",
         botId: bot.id,
         botName: bot.name,
       });
     } else {
-      // Cooldown de 35 minutos após perda isolada para evitar "faca caindo" e churn imediato no par
-      cooldownDuration = 35 * 60 * 1000;
+      // Cooldown de 45 minutos após perda isolada para evitar "faca caindo" e churn imediato no par
+      cooldownDuration = 45 * 60 * 1000;
       store.addBotLog({
-        message: `⏳ [RESFRIAMENTO PÓS-STOP] Par ${execSymbol.replace("USDT", "")} em resfriamento técnico de 35m após stop para consolidação de suporte.`,
+        message: `⏳ [RESFRIAMENTO PÓS-STOP] Par ${execSymbol.replace("USDT", "")} em resfriamento técnico de 45m após stop para consolidação de suporte.`,
         type: "warning",
         botId: bot.id,
         botName: bot.name,

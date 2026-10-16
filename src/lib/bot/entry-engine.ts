@@ -379,6 +379,11 @@ export function evaluateStrategySignal(
         return { ok: false, detail: `IA: ${signal.action} com ${confPct.toFixed(0)}% de confiança (precisa de COMPRA ≥ ${minConf}%)` };
       }
 
+      // 🛡️ Mitigação de Confiança Cega em IA: O comitê quantitativo institucional NÃO pode vetar com SELL
+      if (analysis.committee === "SELL") {
+        return { ok: false, detail: `IA indica COMPRA (${confPct.toFixed(0)}%), mas Comitê Quantitativo indica VENDA — confluência ausente` };
+      }
+
       // Validação técnica complementar: exige confirmação de candle comprador ou sustentação na EMA9
       const closes = klines.map((k) => k.close);
       const ema9 = emaSeries(closes, 9);
@@ -389,7 +394,7 @@ export function evaluateStrategySignal(
         return { ok: false, detail: `IA indica COMPRA (${confPct.toFixed(0)}%), mas candle 1m em queda — aguardando candle comprador de confirmação` };
       }
 
-      return { ok: true, detail: `IA: COMPRA confirmada com ${confPct.toFixed(0)}% de confiança e price action em sustentação` };
+      return { ok: true, detail: `IA: COMPRA confirmada com ${confPct.toFixed(0)}% de confiança e confluência quantitativa` };
     }
 
     default:
