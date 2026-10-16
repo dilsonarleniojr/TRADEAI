@@ -60,13 +60,14 @@ interface BotRowData {
 }
 
 export function BotPnLRegistry() {
-  const { bots, trades, tradingMode, activateTopProfitableBots, toggleBotActive } = useCryptoStore(
+  const { bots, trades, tradingMode, activateTopProfitableBots, toggleBotActive, setOpenBinanceScannerModal } = useCryptoStore(
     useShallow((s) => ({
       bots: s.bots,
       trades: s.trades,
       tradingMode: s.tradingMode,
       activateTopProfitableBots: s.activateTopProfitableBots,
       toggleBotActive: s.toggleBotActive,
+      setOpenBinanceScannerModal: s.setOpenBinanceScannerModal,
     }))
   );
 
