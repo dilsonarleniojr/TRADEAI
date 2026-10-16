@@ -214,8 +214,9 @@ export function evaluateStrategySignal(
       const rsi = calculateRSI(closes, period);
       const limit = bot.buyThreshold || 35;
       const isOversold = rsi <= limit;
-      // Repique de sobrevenda: RSI próximo do piso com candle verde rompendo máxima anterior (confirmação de fundo)
+      // Repique de sobrevenda: exige candle verde OU rompimento de máxima anterior (confirmação obrigatória de reversão Anti-Faca Caindo)
       const isReversalCandle = last.close > last.open && (prevCandle ? last.close > prevCandle.high : true);
+      const isOversoldBounce = isOversold && (last.close >= last.open || isReversalCandle);
       const isRebound = rsi <= limit + 8 && isReversalCandle;
       // Suporte em tendência: exige tendência altista (fast > slow) e candle de alta sustentando acima da média rápida
       const fastP = bot.emaFast ?? DEFAULT_FAST;
@@ -226,16 +227,18 @@ export function evaluateStrategySignal(
       const slowNow = slow[slow.length - 1];
       const isTrendBullish = fastNow > slowNow;
       const isPullbackSupport = isTrendBullish && rsi >= 38 && rsi <= 62 && last.close > fastNow && last.close >= last.open;
-      const ok = isOversold || isRebound || isPullbackSupport;
+      const ok = isOversoldBounce || isRebound || isPullbackSupport;
       return {
         ok,
-        detail: isOversold
-          ? `RSI(${period}) ${rsi.toFixed(1)} em sobrevenda (≤ ${limit})`
-          : isRebound
-            ? `RSI(${period}) ${rsi.toFixed(1)} com repique altista confirmado`
-            : isPullbackSupport
-              ? `RSI(${period}) ${rsi.toFixed(1)} em suporte com EMA${fastP} > EMA${slowP}`
-              : `RSI(${period}) ${rsi.toFixed(1)} — aguarda sobrevenda (≤ ${limit}) ou repique em suporte`,
+        detail: isOversoldBounce
+          ? `RSI(${period}) ${rsi.toFixed(1)} com repique de sobrevenda confirmado (candle verde)`
+          : isOversold
+            ? `RSI(${period}) ${rsi.toFixed(1)} em sobrevenda (≤ ${limit}), aguardando candle comprador de confirmação (Anti-Faca Caindo)`
+            : isRebound
+              ? `RSI(${period}) ${rsi.toFixed(1)} com repique altista confirmado`
+              : isPullbackSupport
+                ? `RSI(${period}) ${rsi.toFixed(1)} em suporte com EMA${fastP} > EMA${slowP}`
+                : `RSI(${period}) ${rsi.toFixed(1)} — aguarda sobrevenda com confirmação ou repique em suporte`,
       };
     }
 
@@ -411,9 +414,9 @@ export function evaluateStrategySignal(
       const ema9 = emaSeries(closes, 9);
       const lastEma = ema9[ema9.length - 1];
       const lastCandle = klines[klines.length - 1];
-      const isGreenOrHolding = lastCandle.close >= lastCandle.open || lastCandle.close >= lastEma * 0.998;
-      if (!isGreenOrHolding) {
-        return { ok: false, detail: `IA indica COMPRA (${confPct.toFixed(0)}%), mas candle 1m em queda — aguardando candle comprador de confirmação` };
+      const isGreenOrRebound = lastCandle.close >= lastCandle.open || (prevCandle && lastCandle.close > prevCandle.close);
+      if (!isGreenOrRebound) {
+        return { ok: false, detail: `IA indica COMPRA (${confPct.toFixed(0)}%), mas candle 1m em queda — aguardando candle comprador de confirmação (Anti-Faca Caindo)` };
       }
 
       return { ok: true, detail: `IA: COMPRA confirmada com ${confPct.toFixed(0)}% de confiança e confluência quantitativa` };
@@ -536,12 +539,25 @@ export function evaluateEntry(
       const lastClose15 = closes15m[closes15m.length - 1];
 
       const isReversionOrGridStrategy = bot.strategy === "RSI" || bot.strategy === "MEAN_REVERSION" || bot.strategy === "GRID";
+      const lastCandle15m = klines15m[klines15m.length - 1];
+      const isGreen15m = lastCandle15m.close >= lastCandle15m.open;
+      const range15m = lastCandle15m.high - lastCandle15m.low;
+      const lowerWick15m = Math.min(lastCandle15m.open, lastCandle15m.close) - lastCandle15m.low;
+      const isHammer15m = range15m > 0 && (lowerWick15m / range15m) >= 0.35;
+      const hasReversalSupport15m = isGreen15m || isHammer15m;
+
       // Tendência 15m: altista (fast >= slow) ou suporte em consolidação lateral onde o preço sustenta sobre a média
       const isConsolidationSupport = fastNow15 >= slowNow15 * 0.998 && lastClose15 >= slowNow15 * 0.995;
-      const trend15mOk = isReversionOrGridStrategy ? true : (fastNow15 >= slowNow15 || isConsolidationSupport);
-      const priceAboveEma15m = isReversionOrGridStrategy
-        ? lastClose15 >= slowNow15 * 0.985 // tolerância ampliada de suporte para robôs de dip e grid
-        : lastClose15 >= slowNow15 * 0.992; // tolerância para pullback controlado
+      const isMacroUptrend = fastNow15 >= slowNow15 || isConsolidationSupport;
+
+      // 🛡️ FIM DA ISENÇÃO DE MACRO: Mesmo estratégias de dip/reversão DEVEM ter suporte confirmado ou repique comprador no 15m
+      const trend15mOk = isMacroUptrend
+        ? true
+        : isReversionOrGridStrategy && hasReversalSupport15m && lastClose15 >= slowNow15 * 0.975;
+
+      const priceAboveEma15m = isMacroUptrend
+        ? lastClose15 >= slowNow15 * 0.992 // tolerância para pullback controlado
+        : hasReversalSupport15m; // se em correção, exige rejeição de fundo compradora
 
       // Anti-Exaustão Macro: impede compra se o preço no 15m já estiver esticado > 2.8% acima da EMA rápida
       const distFromEma9Pct15m = fastNow15 > 0 ? ((lastClose15 - fastNow15) / fastNow15) * 100 : 0;
@@ -552,12 +568,14 @@ export function evaluateEntry(
         label: "Multi-Timeframe 15m",
         ok: is15mBullish,
         detail: !trend15mOk
-          ? `Tendência 15m em baixa (EMA9 < EMA21 no 15m) — aguardando alinhamento altista`
+          ? isReversionOrGridStrategy
+            ? `Tendência 15m em colapso (EMA9 < EMA21 no 15m) sem candle comprador/martelo de absorção (Anti-Faca Caindo)`
+            : `Tendência 15m em baixa (EMA9 < EMA21 no 15m) — aguardando alinhamento altista`
           : !priceAboveEma15m
             ? `Preço 15m abaixo da EMA21 ($${lastClose15.toFixed(4)} < $${slowNow15.toFixed(4)}) — aguardando sustentação`
             : is15mOverextended
               ? `Preço 15m esticado (+${distFromEma9Pct15m.toFixed(1)}% acima da EMA9 no 15m) — aguardando pullback macro (Anti-FOMO)`
-              : `Tendência 15m favorável (${isReversionOrGridStrategy ? "suporte para reversão/grid" : "EMA9 > EMA21 e preço sobre suporte"})`,
+              : `Tendência 15m favorável (${isMacroUptrend ? "EMA9 > EMA21 e preço sobre suporte" : "repique comprador com absorção de fundo no 15m"})`,
       });
     } else {
       const change24h = ticker.priceChangePercent ?? 0;
