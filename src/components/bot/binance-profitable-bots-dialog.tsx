@@ -134,6 +134,15 @@ export function BinanceProfitableBotsDialog({
 
   const handleCreateSingleBot = (rec: BinanceProfitableBotRecommendation) => {
     try {
+      if (existingSymbols.has(rec.symbol.trim().toUpperCase())) {
+        toast({
+          title: "Robô Já Existe na Frota",
+          description: `O par ${rec.symbol} já possui um robô configurado na sua frota. Não são permitidos robôs repetidos para o mesmo par.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
       const alloc = editedAllocations[rec.id] || defaultAllocation;
       const botId = addBot({
         name: rec.name,
@@ -180,13 +189,27 @@ export function BinanceProfitableBotsDialog({
 
   const handleCreateBatch = (candidatesToCreate: BinanceProfitableBotRecommendation[]) => {
     if (candidatesToCreate.length === 0) return;
+
+    const candidatesToActuallyCreate = candidatesToCreate.filter(
+      (r) => !existingSymbols.has(r.symbol.trim().toUpperCase())
+    );
+
+    if (candidatesToActuallyCreate.length === 0) {
+      toast({
+        title: "Nenhum Novo Robô para Adicionar",
+        description: "Todos os robôs selecionados já possuem configuração na sua frota. Não são permitidos robôs repetidos.",
+      });
+      return;
+    }
+
+    const skippedCount = candidatesToCreate.length - candidatesToActuallyCreate.length;
     setIsBatchCreating(true);
 
     try {
       let createdCount = 0;
       const newCreated = new Set(recentlyCreatedIds);
 
-      for (const rec of candidatesToCreate) {
+      for (const rec of candidatesToActuallyCreate) {
         const alloc = editedAllocations[rec.id] || defaultAllocation;
         const botId = addBot({
           name: rec.name,
@@ -220,7 +243,9 @@ export function BinanceProfitableBotsDialog({
 
       toast({
         title: activateImmediately ? `🚀 ${createdCount} Robôs Criados e Ativados!` : `✅ ${createdCount} Robôs Adicionados`,
-        description: `Os ${createdCount} robôs campeões da Binance foram integrados à sua frota com sucesso.`,
+        description: skippedCount > 0
+          ? `${createdCount} novos robôs adicionados à frota (${skippedCount} ignorados por já existirem).`
+          : `Os ${createdCount} robôs campeões da Binance foram integrados à sua frota com sucesso.`,
       });
     } catch (err: any) {
       toast({
@@ -243,20 +268,22 @@ export function BinanceProfitableBotsDialog({
     handleCreateBatch(selected);
   };
 
-  const toggleSelect = (id: string) => {
+  const toggleSelect = (rec: BinanceProfitableBotRecommendation) => {
+    if (existingSymbols.has(rec.symbol.trim().toUpperCase())) return;
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(rec.id)) next.delete(rec.id);
+      else next.add(rec.id);
       return next;
     });
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filtered.length) {
+    const selectable = filtered.filter((r) => !existingSymbols.has(r.symbol.trim().toUpperCase()));
+    if (selectedIds.size >= selectable.length && selectable.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filtered.map((r) => r.id)));
+      setSelectedIds(new Set(selectable.map((r) => r.id)));
     }
   };
 
@@ -443,7 +470,7 @@ export function BinanceProfitableBotsDialog({
             <div className="space-y-2.5">
               {filtered.map((rec) => {
                 const isSelected = selectedIds.has(rec.id);
-                const isAlreadyInFleet = existingSymbols.has(rec.symbol);
+                const isAlreadyInFleet = existingSymbols.has(rec.symbol.trim().toUpperCase());
                 const isRecentlyCreated = recentlyCreatedIds.has(rec.id);
                 const alloc = editedAllocations[rec.id] || defaultAllocation;
 
@@ -465,7 +492,8 @@ export function BinanceProfitableBotsDialog({
                       <div className="flex items-center gap-3 min-w-[260px]">
                         <Checkbox
                           checked={isSelected}
-                          onCheckedChange={() => toggleSelect(rec.id)}
+                          disabled={isAlreadyInFleet}
+                          onCheckedChange={() => toggleSelect(rec)}
                           className="shrink-0"
                         />
 
@@ -564,29 +592,40 @@ export function BinanceProfitableBotsDialog({
                           />
                         </div>
 
-                        <Button
-                          size="sm"
-                          onClick={() => handleCreateSingleBot(rec)}
-                          className={`h-8 px-3 text-xs font-bold cursor-pointer transition-all duration-200 ${
-                            isRecentlyCreated
-                              ? "bg-emerald-600/30 text-emerald-300 border border-emerald-500/40"
-                              : rec.rank === 1
-                              ? "bg-gradient-to-r from-amber-500 via-amber-600 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-slate-950 font-black shadow-md shadow-amber-500/20"
-                              : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs"
-                          }`}
-                        >
-                          {isRecentlyCreated ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 mr-1" />
-                              Criado
-                            </>
-                          ) : (
-                            <>
-                              <Plus className="w-3.5 h-3.5 mr-1" />
-                              Criar Robô
-                            </>
-                          )}
-                        </Button>
+                        {isAlreadyInFleet ? (
+                          <Button
+                            size="sm"
+                            disabled
+                            className="h-8 px-3 text-xs font-semibold bg-secondary/40 text-muted-foreground border border-border/40 cursor-not-allowed opacity-75"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5 mr-1 text-sky-400" />
+                            Já na Frota
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={() => handleCreateSingleBot(rec)}
+                            className={`h-8 px-3 text-xs font-bold cursor-pointer transition-all duration-200 ${
+                              isRecentlyCreated
+                                ? "bg-emerald-600/30 text-emerald-300 border border-emerald-500/40"
+                                : rec.rank === 1
+                                ? "bg-gradient-to-r from-amber-500 via-amber-600 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-slate-950 font-black shadow-md shadow-amber-500/20"
+                                : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs"
+                            }`}
+                          >
+                            {isRecentlyCreated ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 mr-1" />
+                                Criado
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="w-3.5 h-3.5 mr-1" />
+                                Criar Robô
+                              </>
+                            )}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -4,7 +4,8 @@
 // poderia operar no modo errado. Os que estavam ligados ficam na lista para retomar.
 
 import { create } from "zustand";
-import { useCryptoStore, deduplicateBots, type BotInstance } from "@/lib/store";
+import { useCryptoStore, type BotInstance } from "@/lib/store";
+import { deduplicateBots } from "@/lib/store/botSlice";
 
 const STORAGE_KEY = "tradeai_bots_v1";
 const SAVE_DEBOUNCE_MS = 800;

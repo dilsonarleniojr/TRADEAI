@@ -98,6 +98,18 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
   const [symbolSearch, setSymbolSearch] = useState("");
   const [symbolCategory, setSymbolCategory] = useState<"gainers" | "volume" | "dips" | "all">("gainers");
 
+  const existingSymbols = useMemo(() => {
+    return new Set((bots || []).map((b) => b.symbol.trim().toUpperCase()));
+  }, [bots]);
+
+  const isDuplicateSymbol = useMemo(() => {
+    const clean = symbol.trim().toUpperCase();
+    return (bots || []).some((b) => {
+      if (botToEdit && b.id === botToEdit.id) return false;
+      return b.symbol.trim().toUpperCase() === clean;
+    });
+  }, [bots, symbol, botToEdit]);
+
   const cryptoMetaMap = useMemo(() => {
     const map = new Map<string, (typeof CRYPTO_LIST)[0]>();
     for (const c of CRYPTO_LIST) {
@@ -438,6 +450,15 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       return;
     }
 
+    if (isDuplicateSymbol) {
+      toast({
+        title: "Robô Duplicado Não Permitido",
+        description: `Já existe um robô na sua frota configurado para o par ${symbol}. Para garantir a segurança operacional e evitar conflitos de ordem, cada par só pode ter 1 robô.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (botToEdit) {
       updateBot(botToEdit.id, {
         name,
@@ -700,46 +721,54 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
                       </Badge>
                     </button>
 
-                    {filteredCryptoList.map((c) => (
-                      <button
-                        type="button"
-                        key={c.symbol}
-                        onClick={() => {
-                          setSymbol(c.symbol);
-                          setSymbolSelectOpen(false);
-                          setSymbolSearch("");
-                        }}
-                        className={`w-full text-left px-2 py-1.5 text-xs rounded hover:bg-secondary/40 flex items-center justify-between transition-colors ${
-                          c.symbol === symbol ? "bg-crypto-cyan/15 text-crypto-cyan font-bold" : ""
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 truncate">
-                          <span className="font-bold">{c.short}</span>
-                          <span className="text-muted-foreground text-[10px] truncate">
-                            {c.name !== c.short ? `(${c.name})` : ""}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
-                          {c.price > 0 && (
-                            <span className="text-muted-foreground font-medium">
-                              ${formatPrice(c.price)}
+                    {filteredCryptoList.map((c) => {
+                      const isUsed = existingSymbols.has(c.symbol.toUpperCase()) && (!botToEdit || botToEdit.symbol.toUpperCase() !== c.symbol.toUpperCase());
+                      return (
+                        <button
+                          type="button"
+                          key={c.symbol}
+                          onClick={() => {
+                            setSymbol(c.symbol);
+                            setSymbolSelectOpen(false);
+                            setSymbolSearch("");
+                          }}
+                          className={`w-full text-left px-2 py-1.5 text-xs rounded hover:bg-secondary/40 flex items-center justify-between transition-colors ${
+                            c.symbol === symbol ? "bg-crypto-cyan/15 text-crypto-cyan font-bold" : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-bold">{c.short}</span>
+                            <span className="text-muted-foreground text-[10px] truncate">
+                              {c.name !== c.short ? `(${c.name})` : ""}
                             </span>
-                          )}
-                          <span
-                            className={cn(
-                              "text-[10px] font-bold px-1 rounded",
-                              c.change24h >= 0
-                                ? "text-emerald-400 bg-emerald-500/10"
-                                : "text-red-400 bg-red-500/10"
+                            {isUsed && (
+                              <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 border-amber-500/40 text-amber-300 font-normal">
+                                Na Frota
+                              </Badge>
                             )}
-                          >
-                            {c.change24h >= 0 ? "+" : ""}
-                            {c.change24h.toFixed(1)}%
-                          </span>
-                        </div>
-                      </button>
-                    ))}
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
+                            {c.price > 0 && (
+                              <span className="text-muted-foreground font-medium">
+                                ${formatPrice(c.price)}
+                              </span>
+                            )}
+                            <span
+                              className={cn(
+                                "text-[10px] font-bold px-1 rounded",
+                                c.change24h >= 0
+                                  ? "text-emerald-400 bg-emerald-500/10"
+                                  : "text-red-400 bg-red-500/10"
+                              )}
+                            >
+                              {c.change24h >= 0 ? "+" : ""}
+                              {c.change24h.toFixed(1)}%
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
                     {filteredCryptoList.length === 0 && (
                       <div className="p-3 text-center text-xs text-muted-foreground">
                         Nenhuma moeda encontrada
@@ -748,6 +777,15 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
                   </div>
                 </PopoverContent>
               </Popover>
+
+              {isDuplicateSymbol && (
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-[11px] mt-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                  <span>
+                    Já existe um robô na frota para <strong>{symbol}</strong>. Não é permitido criar robôs repetidos para o mesmo par.
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -1300,9 +1338,15 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
             <Button
               type="button"
               onClick={handleSave}
-              className="text-xs h-9 bg-gradient-to-r from-crypto-cyan to-blue-600 text-white font-semibold shadow-md cursor-pointer hover:opacity-95"
+              disabled={isDuplicateSymbol}
+              className={cn(
+                "text-xs h-9 font-semibold shadow-md transition-all",
+                isDuplicateSymbol
+                  ? "bg-secondary/40 text-muted-foreground border border-border/40 cursor-not-allowed opacity-60"
+                  : "bg-gradient-to-r from-crypto-cyan to-blue-600 text-white cursor-pointer hover:opacity-95"
+              )}
             >
-              {botToEdit ? "Salvar Alterações" : "Criar Robô"}
+              {isDuplicateSymbol ? "Par Já Existe na Frota" : (botToEdit ? "Salvar Alterações" : "Criar Robô")}
             </Button>
           </div>
         </DialogFooter>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useCryptoStore, type BotInstance, type BotStrategy } from "@/lib/store";
 import {
   Dialog,
@@ -84,15 +84,20 @@ export function AIBotRecommendationsDialog({
   onOpenChange,
   onCustomEdit,
 }: AIBotRecommendationsDialogProps) {
-  const { tickers, portfolio, tradingMode, addBot, toggleBotActive } = useCryptoStore(
+  const { tickers, portfolio, tradingMode, addBot, toggleBotActive, bots } = useCryptoStore(
     useShallow((s) => ({
       tickers: s.tickers,
       portfolio: s.portfolio,
       tradingMode: s.tradingMode,
       addBot: s.addBot,
       toggleBotActive: s.toggleBotActive,
+      bots: s.bots,
     }))
   );
+
+  const existingSymbols = useMemo(() => {
+    return new Set((bots || []).map((b) => b.symbol.trim().toUpperCase()));
+  }, [bots]);
 
   const { toast } = useToast();
   const [recommendations, setRecommendations] = useState<AIBotRecommendation[]>([]);
@@ -168,7 +173,15 @@ export function AIBotRecommendationsDialog({
     }
   };
 
-  const toggleSelect = (id: string) => {
+  const toggleSelect = (id: string, symbol?: string) => {
+    if (symbol && existingSymbols.has(symbol.trim().toUpperCase())) {
+      toast({
+        title: "Par já existente na frota",
+        description: `Já existe um robô ativo/cadastrado para ${symbol}. Não são permitidos robôs duplicados.`,
+        variant: "destructive",
+      });
+      return;
+    }
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -178,7 +191,9 @@ export function AIBotRecommendationsDialog({
   };
 
   const toggleSelectAll = (filteredItems: AIBotRecommendation[]) => {
-    const unaddedFiltered = filteredItems.filter((r) => !addedIds.has(r.id)).map((r) => r.id);
+    const unaddedFiltered = filteredItems
+      .filter((r) => !addedIds.has(r.id) && !existingSymbols.has(r.symbol.trim().toUpperCase()))
+      .map((r) => r.id);
     const allSelected = unaddedFiltered.length > 0 && unaddedFiltered.every((id) => selectedIds.has(id));
     if (allSelected) {
       setSelectedIds(new Set());
@@ -188,8 +203,20 @@ export function AIBotRecommendationsDialog({
   };
 
   const handleApplySelected = (activateImmediately: boolean, itemsToApply: AIBotRecommendation[]) => {
-    const targets = itemsToApply.filter((r) => selectedIds.has(r.id) && !addedIds.has(r.id));
-    if (targets.length === 0) return;
+    const rawTargets = itemsToApply.filter((r) => selectedIds.has(r.id) && !addedIds.has(r.id));
+    const targets = rawTargets.filter((r) => !existingSymbols.has(r.symbol.trim().toUpperCase()));
+    const skippedCount = rawTargets.length - targets.length;
+
+    if (targets.length === 0) {
+      if (skippedCount > 0) {
+        toast({
+          title: "Pares já existentes na frota",
+          description: "Os robôs selecionados já possuem instâncias na frota. Não são permitidos robôs duplicados para o mesmo par.",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
 
     setIsApplyingBatch(true);
     let count = 0;
@@ -227,7 +254,7 @@ export function AIBotRecommendationsDialog({
 
       toast({
         title: activateImmediately ? `🚀 ${count} Robôs IA Ativados!` : `✅ ${count} Robôs Adicionados à Frota`,
-        description: `${count} sugestões foram criadas com sucesso. O pop-up continua aberto para você conferir outras opções.`,
+        description: `${count} sugestões foram criadas com sucesso.${skippedCount > 0 ? ` (${skippedCount} ignorados pois já estão na frota)` : ""} O pop-up continua aberto para você conferir outras opções.`,
       });
     } catch (err: any) {
       toast({
@@ -241,6 +268,15 @@ export function AIBotRecommendationsDialog({
   };
 
   const handleApplyBot = (rec: AIBotRecommendation, activateImmediately: boolean) => {
+    if (existingSymbols.has(rec.symbol.trim().toUpperCase())) {
+      toast({
+        title: "Par já existente na frota",
+        description: `Já existe um robô cadastrado para o par ${rec.symbol}. Não são permitidos robôs duplicados.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setAddingId(rec.id);
     try {
       const finalAmount = editedAmounts[rec.id] !== undefined ? editedAmounts[rec.id] : rec.allocationAmount;
@@ -574,9 +610,9 @@ export function AIBotRecommendationsDialog({
                 <Checkbox
                   id="select-all-filtered"
                   checked={
-                    filtered.filter((r) => !addedIds.has(r.id)).length > 0 &&
+                    filtered.filter((r) => !addedIds.has(r.id) && !existingSymbols.has(r.symbol.trim().toUpperCase())).length > 0 &&
                     filtered
-                      .filter((r) => !addedIds.has(r.id))
+                      .filter((r) => !addedIds.has(r.id) && !existingSymbols.has(r.symbol.trim().toUpperCase()))
                       .every((r) => selectedIds.has(r.id))
                   }
                   onCheckedChange={() => toggleSelectAll(filtered)}
@@ -587,7 +623,7 @@ export function AIBotRecommendationsDialog({
                   className="text-xs font-semibold text-foreground/90 cursor-pointer select-none flex items-center gap-1.5"
                 >
                   <span>
-                    Selecionar todas ({filtered.filter((r) => !addedIds.has(r.id)).length} disponíveis)
+                    Selecionar todas ({filtered.filter((r) => !addedIds.has(r.id) && !existingSymbols.has(r.symbol.trim().toUpperCase())).length} disponíveis)
                   </span>
                 </label>
               </div>
@@ -673,17 +709,20 @@ export function AIBotRecommendationsDialog({
                 const isAdding = addingId === rec.id;
                 const isAdded = addedIds.has(rec.id);
                 const isSelected = selectedIds.has(rec.id);
+                const isAlreadyInFleet = existingSymbols.has(rec.symbol.trim().toUpperCase());
 
                 return (
                   <Card
                     key={rec.id}
                     className={cn(
                       "relative overflow-hidden bg-card/50 border transition-all duration-200 shadow-md group",
-                      isAdded
-                        ? "border-emerald-500/40 bg-emerald-950/10"
-                        : isSelected
-                          ? "border-cyan-500/60 bg-cyan-950/20 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
-                          : "border-white/[0.08]",
+                      isAlreadyInFleet
+                        ? "border-amber-500/30 bg-amber-950/10 opacity-80"
+                        : isAdded
+                          ? "border-emerald-500/40 bg-emerald-950/10"
+                          : isSelected
+                            ? "border-cyan-500/60 bg-cyan-950/20 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                            : "border-white/[0.08]",
                       getAiBorderAccent(rec.aiProvider)
                     )}
                   >
@@ -691,9 +730,11 @@ export function AIBotRecommendationsDialog({
                     <div
                       className={cn(
                         "absolute top-0 left-0 right-0 h-1",
-                        isAdded
-                          ? "bg-emerald-500"
-                          : "bg-gradient-to-r from-cyan-500 via-purple-500 to-emerald-400"
+                        isAlreadyInFleet
+                          ? "bg-amber-500/60"
+                          : isAdded
+                            ? "bg-emerald-500"
+                            : "bg-gradient-to-r from-cyan-500 via-purple-500 to-emerald-400"
                       )}
                     />
 
@@ -702,9 +743,9 @@ export function AIBotRecommendationsDialog({
                       <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] pb-2">
                         <div className="flex items-center gap-2">
                           <Checkbox
-                            checked={isSelected || isAdded}
-                            disabled={isAdded}
-                            onCheckedChange={() => toggleSelect(rec.id)}
+                            checked={isSelected || isAdded || isAlreadyInFleet}
+                            disabled={isAdded || isAlreadyInFleet}
+                            onCheckedChange={() => toggleSelect(rec.id, rec.symbol)}
                             className="border-white/30 data-[state=checked]:bg-cyan-500 data-[state=checked]:border-cyan-500 cursor-pointer"
                           />
                           {/* IA Badge Identificadora */}
@@ -725,7 +766,13 @@ export function AIBotRecommendationsDialog({
 
                         {/* Status / Time Horizon Pill */}
                         <div className="flex items-center gap-1.5">
-                          {isAdded && (
+                          {isAlreadyInFleet && (
+                            <Badge className="bg-amber-500/20 border-amber-500/40 text-amber-300 text-[10px] font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-amber-400" />
+                              Já na Frota
+                            </Badge>
+                          )}
+                          {isAdded && !isAlreadyInFleet && (
                             <Badge className="bg-emerald-500/20 border-emerald-500/40 text-emerald-300 text-[10px] font-bold flex items-center gap-1">
                               <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                               Já Adicionado
@@ -800,7 +847,7 @@ export function AIBotRecommendationsDialog({
                               min="10"
                               max={Math.max(100, portfolio.cashBalance)}
                               value={currentVal}
-                              disabled={isAdded}
+                              disabled={isAdded || isAlreadyInFleet}
                               onChange={(e) => handleAmountChange(rec.id, e.target.value)}
                               className="h-7 text-xs font-mono font-bold bg-white/[0.05] border-white/[0.1] text-emerald-400 px-2 w-24"
                             />
@@ -846,7 +893,12 @@ export function AIBotRecommendationsDialog({
 
                       {/* Action Buttons */}
                       <div className="flex items-center gap-2 pt-1">
-                        {isAdded ? (
+                        {isAlreadyInFleet ? (
+                          <div className="w-full h-8 flex items-center justify-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold">
+                            <CheckCircle2 className="w-4 h-4 text-amber-400" />
+                            <span>Já Existe Robô para {rec.symbol.replace("USDT", "")}</span>
+                          </div>
+                        ) : isAdded ? (
                           <div className="w-full h-8 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
                             <CheckCircle2 className="w-4 h-4" />
                             <span>Robô Adicionado à Frota ✓</span>
