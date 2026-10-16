@@ -64,7 +64,9 @@ export function BotBacktestDialog({
   const [trailingDistance, setTrailingDistance] = useState<number>(0.6);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isCalibrating, setIsCalibrating] = useState(false);
   const [result, setResult] = useState<BacktestResult | null>(null);
+  const [calibrationData, setCalibrationData] = useState<any | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -89,6 +91,7 @@ export function BotBacktestDialog({
           stopLoss,
           trailingStop,
           trailingStopDistance: trailingDistance,
+          mode: "simulate",
         }),
       });
 
@@ -110,6 +113,51 @@ export function BotBacktestDialog({
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCalibrateParameters = async () => {
+    setIsCalibrating(true);
+    try {
+      const res = await fetch("/api/bot/backtest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol,
+          interval: timeframe,
+          limit: candleCount,
+          allocationAmount: allocation,
+          mode: "calibrate",
+          targetStrategy: strategy,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && data.data?.bestCandidate) {
+        setCalibrationData(data.data);
+        const best = data.data.bestCandidate;
+        setTakeProfit(best.takeProfit);
+        setStopLoss(best.stopLoss);
+        setTrailingDistance(best.trailingStopDistance);
+        if (best.strategy) setStrategy(best.strategy);
+
+        toast({
+          title: "Calibração Grid Search Concluída! 🎯",
+          description: `Parâmetros ótimos aplicados: TP ${best.takeProfit}%, SL ${best.stopLoss}%, Chandelier ${best.trailingStopDistance}%. Sharpe: ${best.sharpeRatio.toFixed(2)}.`,
+        });
+        // Dispara simulação com os novos parâmetros
+        setTimeout(() => handleRunBacktest(), 300);
+      } else {
+        throw new Error(data.error || "Nenhuma configuração estatisticamente superior foi encontrada.");
+      }
+    } catch (err: any) {
+      toast({
+        title: "Falha na Calibração",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsCalibrating(false);
     }
   };
 
@@ -135,29 +183,74 @@ export function BotBacktestDialog({
               </div>
             </div>
 
-            <Button
-              size="sm"
-              onClick={handleRunBacktest}
-              disabled={isLoading}
-              className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 text-white font-bold h-8 text-xs shadow-md shadow-purple-500/20 cursor-pointer"
-            >
-              {isLoading ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                  Simulando...
-                </>
-              ) : (
-                <>
-                  <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
-                  Executar Backtest
-                </>
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCalibrateParameters}
+                disabled={isCalibrating || isLoading}
+                className="border-amber-500/40 text-amber-300 hover:bg-amber-500/15 font-bold h-8 text-xs shadow-sm bg-amber-500/10 cursor-pointer"
+                title="Testar grade de multiplicadores de ATR, Stop Loss e Take Profit para encontrar a configuração de maior Sharpe Ratio"
+              >
+                {isCalibrating ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin text-amber-400" />
+                    Otimizando...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 mr-1.5 text-amber-400" />
+                    Calibrar Grid Search
+                  </>
+                )}
+              </Button>
+
+              <Button
+                size="sm"
+                onClick={handleRunBacktest}
+                disabled={isLoading || isCalibrating}
+                className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 text-white font-bold h-8 text-xs shadow-md shadow-purple-500/20 cursor-pointer"
+              >
+                {isLoading ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    Simulando...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
+                    Executar Backtest
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </DialogHeader>
 
         {/* Content Body: Left Parameters + Right Results */}
         <div className="flex-1 overflow-y-auto space-y-4 py-3 pr-1">
+          {/* Banner de Calibração Recomendada */}
+          {calibrationData?.bestCandidate && (
+            <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-indigo-500/15 border border-amber-500/30 flex items-center justify-between text-xs animate-in fade-in">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-amber-300 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    Configuração Ótima Encontrada (Grid Search)
+                  </span>
+                  <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px] py-0 font-mono">
+                    Sharpe: {calibrationData.bestCandidate.sharpeRatio.toFixed(2)} | Profit Factor: {calibrationData.bestCandidate.profitFactor.toFixed(2)}
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground font-mono">
+                  Estratégia: <strong className="text-foreground">{calibrationData.bestCandidate.strategy}</strong> | Take Profit: <strong className="text-emerald-400">{calibrationData.bestCandidate.takeProfit}%</strong> | Stop Loss: <strong className="text-red-400">{calibrationData.bestCandidate.stopLoss}%</strong> | Chandelier: <strong className="text-cyan-400">{calibrationData.bestCandidate.trailingStopDistance}%</strong> | Max DD: <strong className="text-foreground">{calibrationData.bestCandidate.maxDrawdownPercent}%</strong>
+                </p>
+              </div>
+              <Badge variant="outline" className="border-amber-400/50 text-amber-300 bg-amber-500/10 text-[10px] px-2 py-1 font-mono">
+                Score: {calibrationData.bestCandidate.score}
+              </Badge>
+            </div>
+          )}
           {/* Controls Bar */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2.5 p-3 rounded-xl bg-white/[0.02] border border-white/[0.06] text-xs">
             <div className="space-y-1">

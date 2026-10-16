@@ -8,6 +8,7 @@ import { getOrderBookAnalysis, estimateDepthSlippage } from "@/lib/bot/order-boo
 import { getCostBasisForSymbol } from "./cost-basis";
 import { riskManager, RiskManager } from "./risk-manager";
 import { dispatchNotification } from "@/lib/notifications/notification-service";
+import { latencyTelemetry } from "./latency-telemetry";
 
 export interface MultiBotEngineCallbacks {
   onToast?: (toast: { title: string; description: string; variant?: "default" | "destructive" }) => void;
@@ -2963,6 +2964,7 @@ async function executeBotSell({
     };
 
   if (tradingMode === "live") {
+    const dispatchStart = typeof performance !== "undefined" ? performance.now() : Date.now();
     try {
       const res = await fetch("/api/trades", {
         method: "POST",
@@ -2971,6 +2973,9 @@ async function executeBotSell({
         },
         body: JSON.stringify(trade),
       });
+      const dispatchDuration = (typeof performance !== "undefined" ? performance.now() : Date.now()) - dispatchStart;
+      latencyTelemetry.recordDispatchOnly(execSymbol, dispatchDuration);
+
       const result = await res.json();
       if (!res.ok || !result.success) {
         // Se a posição na Binance for resíduo / inferior ao mínimo de $5 da Binance (MIN_NOTIONAL_DUST):

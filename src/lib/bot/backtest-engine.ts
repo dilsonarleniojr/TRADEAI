@@ -269,3 +269,90 @@ export function runBacktestSimulation(
     equityCurve,
   };
 }
+
+export interface CalibrationCandidate {
+  strategy: BotStrategy;
+  takeProfit: number;
+  stopLoss: number;
+  trailingStopDistance: number;
+  netProfitUsdt: number;
+  totalReturnPercent: number;
+  winRate: number;
+  profitFactor: number;
+  sharpeRatio: number;
+  sortinoRatio: number;
+  payoffRatio: number;
+  maxDrawdownPercent: number;
+  totalTrades: number;
+  score: number;
+}
+
+export function runGridSearchCalibration(
+  symbol: string,
+  candles: KlineData[],
+  initialCapital = 100,
+  targetStrategy?: BotStrategy
+): { bestCandidate: CalibrationCandidate | null; allCandidates: CalibrationCandidate[] } {
+  const candidateStrategies: BotStrategy[] = targetStrategy
+    ? [targetStrategy]
+    : ["VOLATILITY_BREAKOUT", "EMA_CROSSOVER", "MOMENTUM_RSI"];
+
+  const takeProfits = [2.5, 3.5, 5.0];
+  const stopLosses = [1.2, 1.5, 2.0];
+  const trailingDistances = [1.5, 2.0, 2.5];
+
+  const results: CalibrationCandidate[] = [];
+
+  for (const strategy of candidateStrategies) {
+    for (const tp of takeProfits) {
+      for (const sl of stopLosses) {
+        for (const tsd of trailingDistances) {
+          const sim = runBacktestSimulation(candles, {
+            symbol,
+            strategy,
+            allocationAmount: initialCapital,
+            takeProfit: tp,
+            stopLoss: sl,
+            trailingStop: true,
+            trailingStopDistance: tsd,
+          });
+
+          // Score ponderado de robustez institucional:
+          // Penaliza Max Drawdown acima de 3% e favorece Sharpe, Payoff e Profit Factor
+          const winRateBonus = (sim.metrics.winRate / 100) * 1.5;
+          const pfScore = Math.min(5, sim.metrics.profitFactor) * 1.2;
+          const sharpeScore = Math.max(-2, Math.min(5, sim.metrics.sharpeRatio)) * 1.5;
+          const payoffScore = Math.min(4, sim.metrics.payoffRatio) * 1.0;
+          const ddPenalty = sim.metrics.maxDrawdownPercent > 3.0 ? (sim.metrics.maxDrawdownPercent - 3.0) * 2.0 : 0;
+          const tradeCountPenalty = sim.totalTrades < 3 ? 5.0 : 0; // Exige amostra mínima
+
+          const score = parseFloat((sharpeScore + pfScore + payoffScore + winRateBonus - ddPenalty - tradeCountPenalty).toFixed(3));
+
+          results.push({
+            strategy,
+            takeProfit: tp,
+            stopLoss: sl,
+            trailingStopDistance: tsd,
+            netProfitUsdt: sim.netProfitUsdt,
+            totalReturnPercent: sim.totalReturnPercent,
+            winRate: sim.metrics.winRate,
+            profitFactor: sim.metrics.profitFactor,
+            sharpeRatio: sim.metrics.sharpeRatio,
+            sortinoRatio: sim.metrics.sortinoRatio,
+            payoffRatio: sim.metrics.payoffRatio,
+            maxDrawdownPercent: sim.metrics.maxDrawdownPercent,
+            totalTrades: sim.totalTrades,
+            score,
+          });
+        }
+      }
+    }
+  }
+
+  results.sort((a, b) => b.score - a.score);
+
+  return {
+    bestCandidate: results[0] || null,
+    allCandidates: results.slice(0, 10), // Top 10 melhores configurações
+  };
+}

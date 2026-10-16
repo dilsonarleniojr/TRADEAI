@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runBacktestSimulation, type BacktestParams } from "@/lib/bot/backtest-engine";
+import { runBacktestSimulation, runGridSearchCalibration, type BacktestParams } from "@/lib/bot/backtest-engine";
 import type { KlineData } from "@/lib/store";
 
 export async function POST(request: Request) {
@@ -8,6 +8,7 @@ export async function POST(request: Request) {
     const symbol = (body.symbol || "BTCUSDT").trim().toUpperCase();
     const interval = body.interval || "15m";
     const limit = Math.min(1000, Math.max(100, Number(body.limit || 500)));
+    const mode = body.mode || "simulate";
 
     const params: BacktestParams = {
       symbol,
@@ -48,11 +49,29 @@ export async function POST(request: Request) {
       volume: parseFloat(r[5]),
     }));
 
+    if (mode === "calibrate") {
+      const calibrationResult = runGridSearchCalibration(
+        symbol,
+        klines,
+        params.allocationAmount,
+        body.targetStrategy
+      );
+      return NextResponse.json({
+        success: true,
+        mode: "calibrate",
+        data: calibrationResult,
+        candlesCount: klines.length,
+        periodStart: klines[0].time,
+        periodEnd: klines[klines.length - 1].time,
+      });
+    }
+
     // 2. Executa a simulação de backtesting candle a candle
     const result = runBacktestSimulation(klines, params);
 
     return NextResponse.json({
       success: true,
+      mode: "simulate",
       data: result,
       candlesCount: klines.length,
       periodStart: klines[0].time,

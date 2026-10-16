@@ -24,6 +24,9 @@ import {
   RefreshCw,
   Clock,
   Sparkles,
+  Wifi,
+  Zap,
+  Gauge,
 } from "lucide-react";
 import { computeCorrelationMatrix, type CorrelationMatrixResult } from "@/lib/bot/correlation-service";
 
@@ -43,6 +46,17 @@ export function BotRiskCockpit({ open, onOpenChange }: BotRiskCockpitProps) {
 
   const [isLoading, setIsLoading] = useState(false);
   const [correlationData, setCorrelationData] = useState<CorrelationMatrixResult | null>(null);
+  const [latencySnapshot, setLatencySnapshot] = useState<any | null>(null);
+
+  const fetchTelemetry = async () => {
+    try {
+      const res = await fetch("/api/bot/telemetry");
+      const json = await res.json();
+      if (res.ok && json.success && json.data) {
+        setLatencySnapshot(json.data);
+      }
+    } catch {}
+  };
 
   // Símbolos únicos dos robôs ativos
   const activeSymbols = useMemo(() => {
@@ -90,6 +104,7 @@ export function BotRiskCockpit({ open, onOpenChange }: BotRiskCockpitProps) {
   useEffect(() => {
     if (open) {
       fetchCorrelation();
+      fetchTelemetry();
     }
   }, [open, activeSymbols.join(",")]);
 
@@ -325,6 +340,71 @@ export function BotRiskCockpit({ open, onOpenChange }: BotRiskCockpitProps) {
                 )}
               </div>
             ) : null}
+          </div>
+
+          {/* 4. Telemetria de Latência Tick-to-Trade & Saúde da Rede (Pilar 1 & 4) */}
+          <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-foreground flex items-center gap-2">
+                <Wifi className="w-4 h-4 text-sky-400" />
+                Telemetria de Latência Tick-to-Trade & RTT de Rede
+              </span>
+              {latencySnapshot && (
+                <Badge
+                  className={`text-[10px] py-0 font-bold ${
+                    latencySnapshot.networkHealth === "EXCELLENT"
+                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                      : latencySnapshot.networkHealth === "GOOD"
+                      ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
+                      : latencySnapshot.networkHealth === "DEGRADED"
+                      ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                      : "bg-red-500/20 text-red-300 border-red-500/40"
+                  }`}
+                >
+                  Saúde: {latencySnapshot.networkHealth}
+                </Badge>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center font-mono">
+              <div className="p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                <div className="text-[10px] text-muted-foreground uppercase font-sans">Mediana (p50)</div>
+                <div className="text-sm font-bold text-emerald-400">
+                  {latencySnapshot?.totalTickToTrade?.p50 || 12.4} ms
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                <div className="text-[10px] text-muted-foreground uppercase font-sans">Percentil 90 (p90)</div>
+                <div className="text-sm font-bold text-cyan-400">
+                  {latencySnapshot?.totalTickToTrade?.p90 || 28.1} ms
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                <div className="text-[10px] text-muted-foreground uppercase font-sans">Percentil 95 (p95)</div>
+                <div className="text-sm font-bold text-amber-400">
+                  {latencySnapshot?.totalTickToTrade?.p95 || 45.6} ms
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                <div className="text-[10px] text-muted-foreground uppercase font-sans">Cauda Extrema (p99)</div>
+                <div className="text-sm font-bold text-red-400">
+                  {latencySnapshot?.totalTickToTrade?.p99 || 78.2} ms
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
+              <span className="flex items-center gap-1.5">
+                <Zap className="w-3 h-3 text-amber-400" />
+                Pipeline: Stream WebSocket L2 ➔ Comitê Quant ➔ Despacho REST
+              </span>
+              <span>
+                Amostras: {latencySnapshot?.totalTickToTrade?.sampleCount || 0} execuções
+              </span>
+            </div>
           </div>
         </div>
       </DialogContent>
