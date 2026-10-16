@@ -49,4 +49,5 @@ RUN chmod +x /app/start.sh
 
 EXPOSE 3000 3001 3002
 
+ENTRYPOINT ["/bin/bash"]
 CMD ["/app/start.sh"]

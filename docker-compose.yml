@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: tradeai_app
     restart: always
+    entrypoint: ["/bin/bash", "/app/start.sh"]
     ports:
       - "3000:3000"
       - "3001:3001"
