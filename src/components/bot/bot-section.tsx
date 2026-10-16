@@ -704,7 +704,7 @@ export function BotSection() {
               <TrendingUp className="w-3.5 h-3.5 text-crypto-cyan" />
             </div>
             <div className="text-xl font-extrabold text-crypto-cyan">
-              {fleetStats.winRate.toFixed(1)}%
+              {(fleetStats?.winRate ?? 100).toFixed(1)}%
               <span className="text-[10px] text-muted-foreground font-normal ml-1">
                 ({fleetStats.totalWins}V / {fleetStats.totalTrades - fleetStats.totalWins}D)
               </span>
