@@ -1,5 +1,27 @@
 [
   {
+    "category": "BUG_FIX",
+    "title": "Correção Analítica do R:R Líquido (1.50x) no Take-Profit da Operação Direta",
+    "summary": "1) Causa Raiz: Ativos com ATR comprimido (0.8% a 1.2%) sofriam erosão desproporcional pelas taxas Maker de entrada e Taker de saída (0.20% total), fazendo o R:R líquido cair para 1.43x-1.44x e ser barrado pelo PilotTradeValidator (MIN_REWARD_RISK_RATIO = 1.50x); 2) Solução Matemática Analítica: Implementação do método estático PilotTradeValidator.calculateTargetTakeProfit() deduzindo o TP mínimo para garantir R:R líquido >= 1.80x mesmo sob atrito de comissões, aplicando quantizePriceUp para que o tickSize nunca reduza o ratio; 3) Defesa em Profundidade: Integração em MarketOpportunitySelector (evaluateCandidate e getFallbackOpportunity) e no DirectOperationManager como auto-cura antes do gate de risco; 4) Validação: 35 testes unitários passando em bun test e validação ao vivo na API REST /api/bot/direct-operation.",
+    "tags": [
+      "direct-operation-fix",
+      "reward-risk-ratio",
+      "take-profit-analytical-calibration",
+      "fee-erosion-immunity",
+      "ticksize-quantize-up"
+    ],
+    "details": {
+      "validatorPath": "src/lib/bot/pilot/pilot-trade-validator.ts",
+      "selectorPath": "src/lib/bot/pilot/market-opportunity-selector.ts",
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "mathPath": "src/lib/bot/pilot/precise-math.ts",
+      "targetNetRR": 1.80,
+      "minThreshold": 1.50
+    },
+    "id": "mem-1792255300000-direct-operation-rr-fix",
+    "timestamp": "2026-10-17T16:42:00.000Z"
+  },
+  {
     "category": "ARCHITECTURE_DECISION",
     "title": "Módulo de Operação Direta com IA (One-Click AI Trade) e Normalização Cambial Interbancária",
     "summary": "1) Interface & Gatilho Direto: Botão institucional com gradiente ciano/esmeralda no Header e no Terminal Pro do Dashboard disparando o DirectAiTradeModal; 2) Fluxo em 4 Etapas: Configuração (valor $11-$500 USD e tempo de 1 a 60 min), Scanning ao Vivo com feedback tático, Acompanhamento da Posição em Tempo Real com cronômetro regressivo e PnL flutuante, e Entrega do Lucro em Tear-Sheet com crédito automático no saldo da carteira; 3) Normalização Cambial e Cotações (CurrencyPairNormalizer): Implementação estrita do ranking interbancário ISO 4217 (EUR > GBP > AUD > NZD > USD > CAD > CHF > JPY), inversão cruzada precisa (Bid_std = 1/Ask_inv e Ask_std = 1/Bid_inv), preservação de pares cripto como UNCLASSIFIED e detecção de livros cruzados (crossed books); 4) Orquestração (DirectOperationManager): Integração de EnvironmentCleanupService, MarketOpportunitySelector e PilotTradeValidator para dimensionamento com PreciseMath e ordem LIMIT_MAKER Post-Only GTX; 5) Rotas REST: /api/bot/direct-operation e /api/bot/direct-operation/close com persistência em transação Prisma; 6) Cobertura de Testes: 12 novos testes automatizados em direct-operation-flow.test.ts (totalizando 35 testes verdes no repositório).",

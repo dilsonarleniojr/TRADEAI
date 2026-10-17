@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DirectOperationManager } from '@/lib/bot/pilot/direct-operation-manager';
+import { getBinanceCredentials } from '@/lib/binance-session';
+
+function sanitizeSession(session: any) {
+  if (!session) return session;
+  const { credentials, ...safe } = session;
+  return safe;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,17 +30,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const credentials = getBinanceCredentials(req);
+
     const { session, validation } = await DirectOperationManager.startOperation({
       amount: parsedAmount,
       durationMinutes: parsedDuration,
       strategy,
       mode: mode === 'live' ? 'live' : 'paper',
+      binanceCredentials: credentials,
     });
 
     return NextResponse.json({
       success: true,
       data: {
-        session,
+        session: sanitizeSession(session),
         validation,
       },
     });
@@ -61,7 +71,7 @@ export async function GET(req: NextRequest) {
     const session = await DirectOperationManager.pollSession(id);
     return NextResponse.json({
       success: true,
-      data: session,
+      data: sanitizeSession(session),
     });
   } catch (error: any) {
     console.error('[API /api/bot/direct-operation] Erro ao consultar sessão:', error);

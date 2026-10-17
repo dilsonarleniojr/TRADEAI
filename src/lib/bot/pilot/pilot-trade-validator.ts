@@ -66,10 +66,10 @@ export class PilotTradeValidator {
     filters?: SymbolFilters
   ): number {
     const cleanEntry = filters && filters.tickSize > 0 
-      ? PreciseMath.quantizePrice(entryPrice, filters.tickSize) 
+      ? PreciseMath.quantizePriceDown(entryPrice, filters.tickSize) 
       : entryPrice;
     const cleanSl = filters && filters.tickSize > 0 
-      ? PreciseMath.quantizePrice(stopLossPrice, filters.tickSize) 
+      ? PreciseMath.quantizePriceDown(stopLossPrice, filters.tickSize) 
       : stopLossPrice;
 
     const grossRisk = PreciseMath.subtract(cleanEntry, cleanSl);
@@ -86,8 +86,7 @@ export class PilotTradeValidator {
 
     if (filters && filters.tickSize > 0) {
       // Arredonda para cima (ceil) no tickSize para assegurar que R:R líquido nunca caia abaixo do alvo
-      const ticks = Math.ceil(rawTp / filters.tickSize);
-      return PreciseMath.round(ticks * filters.tickSize, 8);
+      return PreciseMath.quantizePriceUp(rawTp, filters.tickSize);
     }
 
     return PreciseMath.round(rawTp, 8);

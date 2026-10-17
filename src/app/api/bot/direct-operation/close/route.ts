@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DirectOperationManager } from '@/lib/bot/pilot/direct-operation-manager';
+import { getBinanceCredentials } from '@/lib/binance-session';
 import { db } from '@/lib/db';
+
+function sanitizeSession(session: any) {
+  if (!session) return session;
+  const { credentials, ...safe } = session;
+  return safe;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,10 +21,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const session = DirectOperationManager.closeOperation(
+    const credentials = getBinanceCredentials(req);
+
+    const session = await DirectOperationManager.closeOperation(
       id,
       reason || 'MANUAL_CLOSE',
-      exitPrice ? parseFloat(exitPrice) : undefined
+      exitPrice ? parseFloat(exitPrice) : undefined,
+      credentials
     );
 
     // Registro no banco Prisma com transação resiliente
@@ -54,7 +64,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: session,
+      data: sanitizeSession(session),
     });
   } catch (error: any) {
     console.error('[API /api/bot/direct-operation/close] Erro ao encerrar sessão:', error);

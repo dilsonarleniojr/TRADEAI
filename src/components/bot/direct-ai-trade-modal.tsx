@@ -182,9 +182,10 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
 
       setSession(json.data.session);
       setState("ACTIVE");
+      const orderTag = json.data.session.binanceOrderId ? ` (Ordem #${json.data.session.binanceOrderId})` : '';
       toast({
-        title: `🚀 Operação Iniciada: ${json.data.session.symbol}`,
-        description: `IA alocou $${json.data.session.notionalUsd} com alvo de Take-Profit em $${json.data.session.targetPrice}.`,
+        title: `🚀 Operação Iniciada: ${json.data.session.symbol}${orderTag}`,
+        description: `IA alocou $${json.data.session.notionalUsd} na Binance Spot com alvo em $${json.data.session.targetPrice}.`,
       });
     } catch (err: any) {
       toast({
@@ -474,11 +475,16 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                       {session.symbol.replace("USDT", "")}
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-white text-sm">{session.symbol}</span>
                         <Badge className="bg-emerald-500/20 text-emerald-400 border-none text-[10px] font-mono">
                           Score IA: {session.aiScore}/100
                         </Badge>
+                        {session.binanceOrderId && (
+                          <Badge variant="outline" className="bg-cyan-500/10 text-cyan-300 border-cyan-500/30 text-[10px] font-mono">
+                            Binance #{session.binanceOrderId}
+                          </Badge>
+                        )}
                       </div>
                       <span className="text-[11px] text-slate-400 font-mono">
                         Entrada: ${formatPrice(session.entryPrice)} | Nocional: ${session.notionalUsd}
@@ -633,6 +639,18 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                     <span>Taxas de Corretagem Deduzidas:</span>
                     <strong className="text-amber-400 font-mono">-${session.feeDeductedUsd ?? "0.02"} USD</strong>
                   </div>
+                  {session.binanceOrderId && (
+                    <div className="flex justify-between text-slate-400">
+                      <span>Ordem de Compra Binance:</span>
+                      <strong className="text-cyan-400 font-mono">#{session.binanceOrderId}</strong>
+                    </div>
+                  )}
+                  {session.closeBinanceOrderId && (
+                    <div className="flex justify-between text-slate-400">
+                      <span>Ordem de Venda Binance:</span>
+                      <strong className="text-cyan-400 font-mono">#{session.closeBinanceOrderId}</strong>
+                    </div>
+                  )}
                   <div className="flex justify-between text-slate-400">
                     <span>Motivo de Encerramento:</span>
                     <Badge variant="outline" className="text-[10px] border-white/[0.1] text-slate-300">

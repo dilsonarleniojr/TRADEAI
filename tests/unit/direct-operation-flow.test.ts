@@ -168,7 +168,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
       });
 
       // Simula encerramento por TAKE_PROFIT com preço favorável
-      const closedSession = DirectOperationManager.closeOperation(
+      const closedSession = await DirectOperationManager.closeOperation(
         session.id,
         "TARGET_REACHED",
         session.targetPrice
@@ -191,7 +191,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
         mode: "paper",
       });
 
-      const closed = DirectOperationManager.closeOperation(
+      const closed = await DirectOperationManager.closeOperation(
         session.id,
         "TIME_EXPIRED",
         session.entryPrice * 1.015 // Subiu 1.5% durante o período
@@ -206,9 +206,9 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
   });
 
   describe("3. Engenharia do Caos e Resiliência", () => {
-    it("deve lançar erro tratável ao tentar fechar ou consultar uma sessão inexistente", () => {
-      expect(() => {
-        DirectOperationManager.closeOperation("non-existent-id", "MANUAL_CLOSE");
+    it("deve lançar erro tratável ao tentar fechar ou consultar uma sessão inexistente", async () => {
+      expect(async () => {
+        await DirectOperationManager.closeOperation("non-existent-id", "MANUAL_CLOSE");
       }).toThrow();
 
       expect(async () => {
@@ -223,11 +223,23 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
         mode: "paper",
       });
 
-      DirectOperationManager.closeOperation(session.id, "MANUAL_CLOSE");
+      await DirectOperationManager.closeOperation(session.id, "MANUAL_CLOSE");
       const polled = await DirectOperationManager.pollSession(session.id);
 
       expect(polled.status).toBe("CLOSED");
       DirectOperationManager.clearSession(session.id);
     });
+
+    it("deve barrar modo live se chaves de API da Binance não forem fornecidas", async () => {
+      expect(async () => {
+        await DirectOperationManager.startOperation({
+          amount: 25.0,
+          durationMinutes: 5,
+          mode: "live",
+          binanceCredentials: { apiKey: "", apiSecret: "" },
+        });
+      }).toThrow();
+    });
   });
 });
+

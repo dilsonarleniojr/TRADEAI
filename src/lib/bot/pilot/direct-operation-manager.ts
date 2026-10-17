@@ -4,6 +4,7 @@ import { PilotTradeValidator, ValidationResult } from './pilot-trade-validator';
 import { EnvironmentCleanupService } from './environment-cleanup-service';
 import { CurrencyPairNormalizer } from './currency-pair-normalizer';
 import { PreciseMath } from './precise-math';
+import { PilotOrderExecutor, BinanceCredentials } from './pilot-order-executor';
 
 export interface DirectOperationSession {
   id: string;
@@ -32,6 +33,11 @@ export interface DirectOperationSession {
   realizedPnlPercent?: number;
   feeDeductedUsd?: number;
   rationale: string;
+  binanceOrderId?: string;
+  binanceClientOrderId?: string;
+  closeBinanceOrderId?: string;
+  executedQuantity?: number;
+  credentials?: BinanceCredentials;
 }
 
 // Armazenamento em memória de sessões ativas
@@ -46,8 +52,9 @@ export class DirectOperationManager {
     durationMinutes: number;
     strategy?: string;
     mode?: 'live' | 'paper';
+    binanceCredentials?: BinanceCredentials;
   }): Promise<{ session: DirectOperationSession; validation: ValidationResult }> {
-    const { amount, durationMinutes, mode = 'paper' } = params;
+    const { amount, durationMinutes, mode = 'paper', binanceCredentials } = params;
 
     // 1. Validação estrita de valor de investimento
     if (!Number.isFinite(amount) || amount < 11.00) {
@@ -110,6 +117,38 @@ export class DirectOperationManager {
       throw new Error(`[DirectOperationManager] Falha na validação de risco: ${validation.rejectionReason}`);
     }
 
+    let finalEntryPrice = entryPrice;
+    let finalQty = quantizedQty;
+    let finalNotional = notionalUsd;
+    let binanceOrderId: string | undefined;
+    let binanceClientOrderId: string | undefined;
+    let executedQty: number | undefined;
+
+    // 9. Se for modo REAL (live), executa a compra a mercado imediatamente na Binance Spot
+    if (mode === 'live') {
+      if (!binanceCredentials || !binanceCredentials.apiKey || !binanceCredentials.apiSecret) {
+        throw new Error('Chaves da API da Binance não encontradas ou inválidas para o modo Real.');
+      }
+
+      const orderExecutor = PilotOrderExecutor.getInstance();
+      const liveBuyResult = await orderExecutor.executeLiveBuy({
+        symbol: opportunity.symbol,
+        notionalUsd,
+        suggestedQty: quantizedQty,
+        filters,
+        credentials: binanceCredentials,
+      });
+
+      binanceOrderId = String(liveBuyResult.orderId);
+      binanceClientOrderId = liveBuyResult.clientOrderId;
+      executedQty = liveBuyResult.executedQty;
+      finalQty = liveBuyResult.executedQty > 0 ? liveBuyResult.executedQty : quantizedQty;
+      if (liveBuyResult.avgPrice > 0) {
+        finalEntryPrice = liveBuyResult.avgPrice;
+        finalNotional = PreciseMath.roundDown(finalQty * finalEntryPrice, 2);
+      }
+    }
+
     const sessionId = `direct-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const now = Date.now();
     const durationMs = durationMinutes * 60 * 1000;
@@ -119,24 +158,28 @@ export class DirectOperationManager {
       symbol: opportunity.symbol,
       baseCurrency: normalized.baseCurrency,
       quoteCurrency: normalized.quoteCurrency,
-      investedAmountUsd: notionalUsd,
+      investedAmountUsd: finalNotional,
       durationMinutes,
       startTime: now,
       endTime: now + durationMs,
-      entryPrice,
+      entryPrice: finalEntryPrice,
       targetPrice: opportunity.signal.takeProfit,
       stopLossPrice: opportunity.signal.stopLoss,
-      quantity: quantizedQty,
-      notionalUsd,
+      quantity: finalQty,
+      notionalUsd: finalNotional,
       riskUsd: validation.order.riskAmountUsd,
       rewardRiskRatio: validation.order.netRewardRiskRatio,
       aiScore: opportunity.score,
       mode,
       status: 'ACTIVE',
-      currentPrice: entryPrice,
+      currentPrice: finalEntryPrice,
       unrealizedPnlUsd: 0,
       unrealizedPnlPercent: 0,
       rationale: `Oportunidade selecionada pela IA (Score: ${opportunity.score}/100) com base em spread compresso (${(opportunity.marketData.spreadPct * 100).toFixed(3)}%) e ADX direcional (${opportunity.technicalMetrics.adx?.toFixed(1) || 'N/A'}).`,
+      binanceOrderId,
+      binanceClientOrderId,
+      executedQuantity: executedQty,
+      credentials: binanceCredentials,
     };
 
     activeSessions.set(sessionId, session);
@@ -177,7 +220,7 @@ export class DirectOperationManager {
 
     // Cálculo de PnL flutuante
     const priceDiff = latestPrice - session.entryPrice;
-    const grossPnl = priceDiff * session.quantity;
+    const grossPnl = priceDiff * (session.executedQuantity || session.quantity);
     const pnlPercent = (priceDiff / session.entryPrice) * 100;
 
     session.unrealizedPnlUsd = PreciseMath.roundDown(grossPnl, 2);
@@ -188,42 +231,75 @@ export class DirectOperationManager {
     // Verificação de condições de encerramento automático:
     // 1. Take Profit atingido
     if (latestPrice >= session.targetPrice) {
-      return this.closeOperation(sessionId, 'TARGET_REACHED', latestPrice);
+      return await this.closeOperation(sessionId, 'TARGET_REACHED', latestPrice);
     }
 
     // 2. Stop Loss atingido
     if (latestPrice <= session.stopLossPrice) {
-      return this.closeOperation(sessionId, 'STOP_LOSS', latestPrice);
+      return await this.closeOperation(sessionId, 'STOP_LOSS', latestPrice);
     }
 
     // 3. Tempo esgotado
     if (now >= session.endTime) {
-      return this.closeOperation(sessionId, 'TIME_EXPIRED', latestPrice);
+      return await this.closeOperation(sessionId, 'TIME_EXPIRED', latestPrice);
     }
 
     return session;
   }
 
   /**
-   * Encerra a operação direta, calcula o lucro líquido e entrega o resultado final
+   * Encerra a operação direta, liquida na Binance (se live) e entrega o resultado final
    */
-  public static closeOperation(
+  public static async closeOperation(
     sessionId: string,
     reason: 'TIME_EXPIRED' | 'TARGET_REACHED' | 'STOP_LOSS' | 'MANUAL_CLOSE',
-    explicitExitPrice?: number
-  ): DirectOperationSession {
+    explicitExitPrice?: number,
+    overrideCredentials?: BinanceCredentials
+  ): Promise<DirectOperationSession> {
     const session = activeSessions.get(sessionId);
     if (!session) {
       throw new Error(`Sessão de operação ${sessionId} não encontrada.`);
     }
 
-    const exitPrice = explicitExitPrice ?? session.currentPrice;
+    if (session.status === 'CLOSED') {
+      return session;
+    }
+
+    let exitPrice = explicitExitPrice ?? session.currentPrice;
+    let closeBinanceOrderId: string | undefined;
+
+    // Se a sessão foi aberta no modo LIVE, executa a VENDA da posição na Binance Spot
+    if (session.mode === 'live') {
+      const creds = overrideCredentials || session.credentials;
+      if (!creds || !creds.apiKey || !creds.apiSecret) {
+        throw new Error('Chaves da API da Binance não encontradas para liquidação da ordem real.');
+      }
+
+      const metadataService = ExchangeMetadataService.getInstance();
+      const filters = await metadataService.getSymbolFilters(session.symbol);
+      const orderExecutor = PilotOrderExecutor.getInstance();
+
+      const liveSellResult = await orderExecutor.executeLiveSell({
+        symbol: session.symbol,
+        baseAsset: session.baseCurrency,
+        quantity: session.executedQuantity || session.quantity,
+        filters,
+        credentials: creds,
+      });
+
+      closeBinanceOrderId = String(liveSellResult.orderId);
+      if (liveSellResult.avgPrice > 0) {
+        exitPrice = liveSellResult.avgPrice;
+      }
+    }
+
+    const effectiveQty = session.executedQuantity || session.quantity;
     const priceDiff = exitPrice - session.entryPrice;
-    const grossPnl = priceDiff * session.quantity;
+    const grossPnl = priceDiff * effectiveQty;
 
     // Dedução realista de taxas Maker (entrada) + Taker (saída a mercado de encerramento)
     const entryFee = session.notionalUsd * 0.001;
-    const exitNotional = session.quantity * exitPrice;
+    const exitNotional = effectiveQty * exitPrice;
     const exitFee = exitNotional * 0.001;
     const totalFees = entryFee + exitFee;
 
@@ -233,6 +309,7 @@ export class DirectOperationManager {
     session.status = 'CLOSED';
     session.closeReason = reason;
     session.currentPrice = exitPrice;
+    session.closeBinanceOrderId = closeBinanceOrderId;
     session.realizedPnlUsd = PreciseMath.roundDown(netPnl, 2);
     session.realizedPnlPercent = PreciseMath.roundDown(netPercent, 2);
     session.feeDeductedUsd = PreciseMath.roundDown(totalFees, 2);
