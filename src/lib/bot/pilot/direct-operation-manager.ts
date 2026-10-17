@@ -90,8 +90,9 @@ export class DirectOperationManager {
     strategy?: string;
     mode?: 'live' | 'paper';
     binanceCredentials?: BinanceCredentials;
+    overrideSymbol?: string;
   }): Promise<{ session: DirectOperationSession; validation: ValidationResult }> {
-    const { amount, durationMinutes, strategy = 'AUTO', mode = 'paper', binanceCredentials } = params;
+    const { amount, durationMinutes, strategy = 'AUTO', mode = 'paper', binanceCredentials, overrideSymbol } = params;
 
     // 1. Validação estrita de valor de investimento
     if (!Number.isFinite(amount) || amount < 11.00) {
@@ -112,7 +113,8 @@ export class DirectOperationManager {
       amount,
       "https://api.binance.com",
       strategy,
-      cooldownSymbols
+      cooldownSymbols,
+      overrideSymbol
     );
 
     // Registra o símbolo selecionado para que a próxima operação priorize outro ativo

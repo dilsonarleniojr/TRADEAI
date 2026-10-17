@@ -1,6 +1,48 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Radar de Moedas em Tempo Real na Tela Inicial (CONFIG), Override de Ativo e Tratamento Amigável de Saldo Spot",
+    "summary": "1) Moedas no Radar na Tela Inicial: Criação do endpoint /api/bot/direct-operation/radar e integração direta no DirectAiTradeModal na etapa CONFIG, permitindo que o usuário veja imediatamente os Top 3 ativos ranqueados (ex: INJ 95.9 pts, DOGE 94.0 pts, BTC 86.1 pts), suas variações 24h, estratégia e selo de rotação antes de disparar a ordem; 2) Seleção Manual / Override de Ativo: O usuário pode clicar diretamente no card de qualquer uma das moedas do Top 3 para fixá-la na operação, ou deixar a IA decidir automaticamente; 3) Seletor Interativo de Modo Real / Simulado: Adicionado alternador direto no cabeçalho do modal entre 'Real Spot' e 'Simulado Paper'; 4) Tratamento Amigável de Saldo Spot: Quando a API da Binance retorna erro -2010 (saldo insuficiente), o modal não fecha ou reseta silenciosamente; ele exibe um banner explicativo com botão de 1 clique 'Executar em Modo Simulado (Paper) Agora' para testar a entrega de lucro sem interrupção.",
+    "tags": [
+      "live-radar-endpoint",
+      "config-screen-top3",
+      "symbol-override",
+      "mode-toggle-real-paper",
+      "friendly-balance-error-recovery"
+    ],
+    "details": {
+      "radarEndpoint": "src/app/api/bot/direct-operation/radar/route.ts",
+      "modalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "selectorPath": "src/lib/bot/pilot/market-opportunity-selector.ts",
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts"
+    },
+    "id": "mem-1792263800000-live-radar-config-screen",
+    "timestamp": "2026-10-17T19:08:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Rotação Automática com Cooldown (30 min), Expansão do Universo de Varredura e Cockpit Top 3 no Modal",
+    "summary": "1) Rotação Automática de Ativos (Cooldown 30 min): Histórico em memória de símbolos operados recentemente no DirectOperationManager aplicando penalidade de 25 pontos em findBestOpportunity, garantindo rotação automática e diversificação contínua (ex: HYPE -> INJ -> BTC -> ZEC); 2) Expansão do Universo de Varredura: Redução de MIN_24H_VOLUME_USD para $10M e MAX_SPREAD_PERCENT para 0.08%, mesclando os top 25 ativos por volume com os top 15 de maior momentum positivo 24h em um pool de 35 a 40 moedas líquidas; 3) Rebalanceamento de Pesos: Peso máximo de volume bruto reduzido de 25 para 15 pontos, aumentando para até 75 pontos a relevância dos setups técnicos (RSI, ADX, ATR, rompimentos); 4) Cockpit de Ranking Top 3 na UI: Exibição no modal DirectAiTradeModal das 3 melhores oportunidades no radar da IA, indicando o ativo escolhido, as alternativas com seus scores e o badge de rotação ativa; 5) Validação: 43 testes unitários aprovados em bun test (100% de sucesso) e Docker reconstruído e testado ao vivo.",
+    "tags": [
+      "asset-rotation",
+      "cooldown-history",
+      "expanded-universe-scanner",
+      "top3-cockpit-modal",
+      "rebalanced-opportunity-score",
+      "diversification"
+    ],
+    "details": {
+      "selectorPath": "src/lib/bot/pilot/market-opportunity-selector.ts",
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "modalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "cooldownDurationMs": 1800000,
+      "totalPassingTests": 43
+    },
+    "id": "mem-1792263300000-asset-rotation-top3-cockpit",
+    "timestamp": "2026-10-17T18:54:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Seleção Autônoma de Critério (Modo AUTO) & Radar Sniper de Entrada Ótima na Operação Direta",
     "summary": "1) Modo AUTO com Seleção Autônoma da Estratégia: A IA analisa em tempo real os indicadores quantitativos (RSI, EMAs 9/21, ADX, ATR, rompimentos de resistência e suporte) e seleciona dinamicamente a melhor estratégia entre MOMENTUM_BREAKOUT, MEAN_REVERSION e VOLATILITY_EXPANSION sem forçar o usuário a adivinhar; 2) Radar Sniper com Entrada Condicional (WAITING_TRIGGER): A IA não despacha ordem a mercado cega no segundo 0; ela calcula o gatilho ótimo (PULLBACK_EMA, BREAKOUT_RESISTANCE, OVERSOLD_BOUNCE ou IMMEDIATE se delta <= 0.08%), armando um radar em memória sem enviar ordem ou travar capital na Binance Spot; 3) Proteção de Capital e Trava de Idempotência: Durante o status WAITING_TRIGGER, 100% dos fundos permanecem intocados na carteira e o cancelamento é instantâneo e livre de taxas; ao atingir o preço de gatilho, a trava atômica isExecutingTrigger impede double-buy e executa a entrada; 4) Ações Rápidas no Cockpit do Radar: O usuário pode forçar entrada a mercado imediata (/api/bot/direct-operation/force-entry) ou cancelar o radar sem qualquer penalidade de taxa (/api/bot/direct-operation via DELETE); 5) Validação e Testes: 40 testes unitários passando em bun test e tipagem estrita TypeScript validada.",
     "tags": [

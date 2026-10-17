@@ -36,6 +36,8 @@ import {
   Radio,
   Crosshair,
   Ban,
+  Flame,
+  AlertTriangle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -105,10 +107,55 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
   const [isClosing, setIsClosing] = useState<boolean>(false);
   const [isActionPending, setIsActionPending] = useState<boolean>(false);
 
+  // Estados de Radar de Moedas em Tempo Real e Gestão de Execução
+  const [radarData, setRadarData] = useState<any | null>(null);
+  const [isRadarLoading, setIsRadarLoading] = useState<boolean>(false);
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+  const [operationMode, setOperationMode] = useState<"live" | "paper">(
+    tradingMode === "live" && !binanceTestnet ? "live" : "paper"
+  );
+
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const isReal = tradingMode === "live" && !binanceTestnet;
+  const isReal = operationMode === "live" && !binanceTestnet;
+
+  // Carrega o radar de moedas da IA em tempo real
+  const fetchRadar = async (strat: string) => {
+    setIsRadarLoading(true);
+    try {
+      const res = await fetch(`/api/bot/direct-operation/radar?strategy=${strat}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          setRadarData(json.data);
+          // Se não há símbolo selecionado manualmente, adota o líder #1 do radar
+          if (!selectedSymbol && json.data.selected?.symbol) {
+            setSelectedSymbol(json.data.selected.symbol);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[DirectTradeModal] Erro ao carregar radar:", e);
+    } finally {
+      setIsRadarLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (open && state === "CONFIG") {
+      fetchRadar(strategy);
+    }
+  }, [open, strategy]);
+
+  // Sincroniza modo padrão quando modal abre
+  useEffect(() => {
+    if (open) {
+      setOperationMode(tradingMode === "live" && !binanceTestnet ? "live" : "paper");
+      setBalanceError(null);
+    }
+  }, [open, tradingMode, binanceTestnet]);
 
   // Limpeza de timers ao desmontar ou fechar
   useEffect(() => {
@@ -192,7 +239,9 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
     }
   }, [state, session?.id, session?.endTime]);
 
-  const handleStartOperation = async () => {
+  const handleStartOperation = async (targetModeOverride?: "live" | "paper") => {
+    setBalanceError(null);
+    const effectiveMode = targetModeOverride || operationMode;
     setState("SCANNING");
     setScanStep("Sincronizando relógio com a Binance e resetando travas...");
 
@@ -210,7 +259,8 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
           amount,
           durationMinutes,
           strategy,
-          mode: tradingMode,
+          mode: effectiveMode,
+          overrideSymbol: selectedSymbol || undefined,
         }),
       });
 
@@ -242,11 +292,21 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
         });
       }
     } catch (err: any) {
-      toast({
-        title: "Erro na Operação Direta",
-        description: err.message,
-        variant: "destructive",
-      });
+      console.error("[DirectTradeModal] Erro ao iniciar operação:", err);
+      const msg = err.message || "Erro desconhecido ao processar operação direta.";
+      if (
+        msg.includes("Saldo") ||
+        msg.includes("-2010") ||
+        msg.includes("insuficiente")
+      ) {
+        setBalanceError(msg);
+      } else {
+        toast({
+          title: "Erro na Operação Direta",
+          description: msg,
+          variant: "destructive",
+        });
+      }
       setState("CONFIG");
     }
   };
@@ -383,18 +443,42 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
               </div>
             </div>
 
-            <Badge
-              variant="outline"
-              className={cn(
-                "text-[10px] font-mono px-2 py-0.5 rounded-full border",
-                isReal
-                  ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
-                  : "bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
-              )}
-            >
-              <span className={cn("w-1.5 h-1.5 rounded-full mr-1.5", isReal ? "bg-rose-500" : "bg-cyan-400")} />
-              {isReal ? "Binance Spot Real" : "Simulado Paper"}
-            </Badge>
+            <div className="flex items-center gap-1 bg-white/[0.04] p-0.5 rounded-lg border border-white/[0.08]">
+              <button
+                type="button"
+                onClick={() => {
+                  setOperationMode("live");
+                  setBalanceError(null);
+                }}
+                className={cn(
+                  "px-2 py-0.5 rounded-md text-[10px] font-mono font-bold transition-all flex items-center gap-1 cursor-pointer",
+                  operationMode === "live"
+                    ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-[0_0_8px_rgba(244,63,94,0.3)]"
+                    : "text-slate-400 hover:text-white"
+                )}
+                title="Executar ordens reais na sua conta Binance Spot"
+              >
+                <span className={cn("w-1.5 h-1.5 rounded-full", operationMode === "live" ? "bg-rose-400 animate-pulse" : "bg-slate-500")} />
+                Real Spot
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOperationMode("paper");
+                  setBalanceError(null);
+                }}
+                className={cn(
+                  "px-2 py-0.5 rounded-md text-[10px] font-mono font-bold transition-all flex items-center gap-1 cursor-pointer",
+                  operationMode === "paper"
+                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_8px_rgba(6,182,212,0.3)]"
+                    : "text-slate-400 hover:text-white"
+                )}
+                title="Executar em modo simulado com cotações reais e entrega de lucro sem risco"
+              >
+                <span className={cn("w-1.5 h-1.5 rounded-full", operationMode === "paper" ? "bg-cyan-400" : "bg-slate-500")} />
+                Simulado
+              </button>
+            </div>
           </div>
         </div>
 
@@ -536,9 +620,140 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   </div>
                 </div>
 
+                {/* 4. Moedas no Radar da IA Agora (Top 3 Oportunidades) */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400/30" />
+                      Moedas no Radar da IA Agora (Top 3)
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      {radarData?.isCooldownApplied && (
+                        <Badge variant="outline" className="text-[9px] bg-cyan-500/10 text-cyan-300 border-cyan-500/30 font-mono py-0">
+                          <RefreshCw className="w-2.5 h-2.5 mr-1 animate-spin" style={{ animationDuration: '4s' }} />
+                          Rotação Ativa
+                        </Badge>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => fetchRadar(strategy)}
+                        disabled={isRadarLoading}
+                        className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <RefreshCw className={cn("w-3 h-3", isRadarLoading && "animate-spin")} />
+                        Atualizar
+                      </button>
+                    </div>
+                  </div>
+
+                  {isRadarLoading && !radarData ? (
+                    <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.08] flex items-center justify-center gap-2 text-xs text-slate-400 font-mono">
+                      <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+                      <span>Varrendo 40 pares Binance Spot em tempo real...</span>
+                    </div>
+                  ) : radarData?.topRanked && radarData.topRanked.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {radarData.topRanked.slice(0, 3).map((item: any, idx: number) => {
+                        const isChosen = selectedSymbol === item.symbol;
+                        const isLeader = idx === 0;
+                        return (
+                          <button
+                            key={item.symbol}
+                            type="button"
+                            onClick={() => setSelectedSymbol(item.symbol)}
+                            className={cn(
+                              "p-2.5 rounded-xl border text-left transition-all relative overflow-hidden cursor-pointer",
+                              isChosen
+                                ? "bg-gradient-to-b from-cyan-950/50 via-emerald-950/20 to-slate-900/60 border-cyan-400/70 shadow-[0_0_15px_rgba(6,182,212,0.25)] ring-1 ring-cyan-400/40"
+                                : "bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.12]"
+                            )}
+                          >
+                            {isLeader && (
+                              <span className="absolute top-1.5 right-1.5 text-[8px] font-bold px-1.5 py-0.2 rounded-full bg-cyan-400/20 text-cyan-300 border border-cyan-400/40 uppercase tracking-wider">
+                                #1 IA
+                              </span>
+                            )}
+                            <div className="flex items-center gap-1 mb-1">
+                              <span className="text-xs font-bold font-mono text-white">
+                                {item.symbol.replace("USDT", "")}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">/USDT</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] font-mono">
+                              <span className={item.priceChange24hPct >= 0 ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+                                {item.priceChange24hPct >= 0 ? "+" : ""}{item.priceChange24hPct?.toFixed(1) ?? "0.0"}%
+                              </span>
+                              <span className={cn(
+                                "text-[9px] font-bold px-1 rounded",
+                                isChosen ? "bg-cyan-500/20 text-cyan-300" : "bg-white/[0.05] text-slate-400"
+                              )}>
+                                {item.score} pts
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between mt-1 text-[9px] font-mono">
+                              <span className="text-slate-400 truncate max-w-[60px]">
+                                {item.strategy}
+                              </span>
+                              {isChosen && (
+                                <span className="text-[8px] font-bold text-cyan-400 uppercase tracking-wider">
+                                  ✓ Ativo
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.08] text-center text-xs text-slate-400">
+                      Varrendo oportunidades de mercado...
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono px-0.5">
+                    <span>Ativo alvo: <strong className="text-white">{selectedSymbol ? selectedSymbol.replace("USDT", "") : "IA Decide"}</strong></span>
+                    <span className="text-slate-500">*Clique na moeda para fixar</span>
+                  </div>
+                </div>
+
+                {/* Alerta Amigável se houver Erro de Saldo Spot */}
+                {balanceError && (
+                  <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/40 space-y-2.5 text-left animate-in fade-in duration-300">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                      <div className="text-xs text-amber-200">
+                        <strong className="text-white block mb-0.5 font-bold">Saldo Insuficiente na Carteira Spot da Binance</strong>
+                        {balanceError}
+                      </div>
+                    </div>
+                    <div className="pt-2 border-t border-amber-500/20 flex items-center justify-between flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        type="button"
+                        onClick={() => {
+                          setBalanceError(null);
+                          setOperationMode("paper");
+                          handleStartOperation("paper");
+                        }}
+                        className="h-8 text-xs bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-black font-bold rounded-lg cursor-pointer shadow-[0_0_12px_rgba(6,182,212,0.3)]"
+                      >
+                        <Zap className="w-3.5 h-3.5 mr-1 fill-current" />
+                        Executar em Modo Simulado (Paper) Agora
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => setBalanceError(null)}
+                        className="text-[11px] text-slate-400 hover:text-white transition-colors cursor-pointer"
+                      >
+                        Dispensar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Botão de Disparo */}
                 <Button
-                  onClick={handleStartOperation}
+                  onClick={() => handleStartOperation()}
                   disabled={amount < 11}
                   className="w-full h-11 bg-gradient-to-r from-cyan-500 via-teal-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-black font-bold text-sm tracking-wide shadow-[0_0_20px_rgba(6,182,212,0.4)] rounded-xl transition-all cursor-pointer"
                 >

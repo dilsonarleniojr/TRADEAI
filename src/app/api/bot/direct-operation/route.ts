@@ -11,7 +11,7 @@ function sanitizeSession(session: any) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { amount, durationMinutes, strategy, mode } = body;
+    const { amount, durationMinutes, strategy, mode, overrideSymbol } = body;
 
     const parsedAmount = parseFloat(amount);
     const parsedDuration = parseInt(durationMinutes, 10);
@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
       strategy: strategy || 'AUTO',
       mode: mode === 'live' ? 'live' : 'paper',
       binanceCredentials: credentials,
+      overrideSymbol: typeof overrideSymbol === 'string' && overrideSymbol.trim() ? overrideSymbol.trim() : undefined,
     });
 
     return NextResponse.json({

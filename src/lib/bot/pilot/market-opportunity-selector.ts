@@ -410,7 +410,8 @@ export class MarketOpportunitySelector {
     currentBalance = 70.0,
     baseUrl = "https://api.binance.com",
     strategy: StrategyType | string = "AUTO",
-    cooldownSymbols: string[] = []
+    cooldownSymbols: string[] = [],
+    overrideSymbol?: string
   ): Promise<EvaluatedOpportunity> {
     const candidates = await this.fetchCandidateTickers(baseUrl);
     // Avalia até 35 ativos qualificados (ampla cobertura de mercado)
@@ -458,8 +459,9 @@ export class MarketOpportunitySelector {
       isCooldownApplied: item.isCooldownApplied,
     }));
 
-    evaluatedList[0].topRanked = topRanked;
-    return evaluatedList[0];
+    const chosen = (overrideSymbol && evaluatedList.find((e) => e.symbol === overrideSymbol)) || evaluatedList[0];
+    chosen.topRanked = topRanked;
+    return chosen;
   }
 
   /**
