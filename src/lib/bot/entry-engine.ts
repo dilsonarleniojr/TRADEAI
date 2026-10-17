@@ -354,10 +354,27 @@ export function evaluateStrategySignal(
     case "MEAN_REVERSION": {
       const boll = calculateBollinger(closes, 20, 2);
       if (!boll) return { ok: false, detail: "poucos candles para Bollinger" };
-      const inBuyZone = boll.percentB <= 0.25 || last.close <= boll.lower * 1.01;
+      // 🛡️ Filtro Rigoroso de Reversão à Média Institucional:
+      // Exige estritamente percentB <= 0.20 (preço no fundo da banda de Bollinger)
+      // E rejeição compradora (candle verde ou martelo de absorção)
+      // E RSI em sobrevenda ou repique inicial (RSI <= 42)
+      const candleRange = last.high - last.low;
+      const lowerWick = Math.min(last.open, last.close) - last.low;
+      const isHammer = candleRange > 0 && (lowerWick / candleRange) >= 0.30;
+      const isGreenCandle = last.close >= last.open;
+      const hasSupportRejection = isGreenCandle || isHammer;
+      const isRsiFavorable = analysis.rsi <= 42;
+      const inBuyZone = boll.percentB <= 0.20 && hasSupportRejection && isRsiFavorable;
+
       return {
         ok: inBuyZone,
-        detail: `posição na banda ${(boll.percentB * 100).toFixed(0)}% — zona inferior de compra (≤ 25%)`,
+        detail: !inBuyZone
+          ? boll.percentB > 0.20
+            ? `preço fora do fundo da banda (${(boll.percentB * 100).toFixed(0)}% > 20% — bloqueado para não comprar no topo/meio)`
+            : !isRsiFavorable
+            ? `RSI ${analysis.rsi.toFixed(0)} muito alto para reversão à média (precisa ≤ 42)`
+            : `fundo atingido (${(boll.percentB * 100).toFixed(0)}%), aguardando candle comprador de absorção`
+          : `reversão confirmada no fundo da banda (${(boll.percentB * 100).toFixed(0)}% ≤ 20%) com rejeição compradora e RSI ${analysis.rsi.toFixed(0)}`,
       };
     }
 
@@ -726,13 +743,13 @@ export function evaluateEntry(
     // Stop adaptativo estrito conforme Guardrail Institucional (piso 1.1% e teto 1.35% para proteger capital contra perdas acentuadas)
     const atrSl = parseFloat((relATRPercent * 1.2).toFixed(1));
     suggestedSl = Math.max(1.10, Math.min(1.35, Math.min(bot.stopLoss || 1.25, atrSl || 1.25)));
-    // Alvo adaptativo institucional garantindo Payoff bruto >= 1.85x a 2.5x (entre 2.2% e 4.8%)
-    const targetWithPayoff = parseFloat((suggestedSl * 2.0).toFixed(1));
-    const dynamicAtrTp = parseFloat((relATRPercent * 2.0).toFixed(1));
-    suggestedTp = Math.max(2.2, Math.min(4.8, Math.max(bot.takeProfit || 2.8, targetWithPayoff, dynamicAtrTp)));
+    // Alvo adaptativo institucional garantindo Payoff bruto >= 2.5x a 4.0x (entre 3.2% e 5.5%)
+    const targetWithPayoff = parseFloat((suggestedSl * 2.5).toFixed(1));
+    const dynamicAtrTp = parseFloat((relATRPercent * 2.2).toFixed(1));
+    suggestedTp = Math.max(3.2, Math.min(5.5, Math.max(bot.takeProfit || 3.5, targetWithPayoff, dynamicAtrTp)));
   } else {
     suggestedSl = Math.max(1.10, Math.min(1.35, bot.stopLoss || 1.25));
-    suggestedTp = Math.max(2.2, Math.min(4.8, bot.takeProfit || 2.8));
+    suggestedTp = Math.max(3.2, Math.min(5.5, bot.takeProfit || 3.5));
   }
 
   // Potencial de ganho líquido do trade (Take Profit alvo deduzido das taxas operacionais e slippage)

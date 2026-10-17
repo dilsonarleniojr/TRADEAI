@@ -1194,11 +1194,11 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
 
     // 🛡️ ESCADA DINÂMICA DE LUCROS EM 3 ESTÁGIOS (Institucional Profit Escalator)
     // ESTÁGIO 1: BREAK-EVEN AUTOMÁTICO (Risco Zero Institucional)
-    // Sobe o stop para Break-Even quando o ativo atingir valorização saudável (≥ +1.10% a +1.20%)
+    // Sobe o stop para Break-Even apenas após valorização expressiva (≥ +1.80%), evitando ser ejetado no ruído
     const isAutoBreakEvenEnabled = bot.autoBreakEven ?? true;
     const isUsePartialTp = bot.usePartialTp ?? false; // Opção A: Foco em lucro integral
-    const beTrigger = Math.max(0.85, Math.min(1.20, bot.breakEvenTrigger ?? 1.10));
-    const beBuffer = Math.max(0.25, Math.min(0.40, bot.breakEvenBuffer ?? 0.28));
+    const beTrigger = Math.max(1.80, bot.breakEvenTrigger ?? 1.80);
+    const beBuffer = Math.max(0.35, Math.min(0.55, bot.breakEvenBuffer ?? 0.38));
     const breakEvenPrice = pos.entryPrice * (1 + beBuffer / 100);
     const positionNotional = pos.quantity * currentPrice!;
     const partialRatio = (bot.partialTpPercent ?? 30) / 100;
@@ -1206,7 +1206,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     const estimatedRemainingNotional = positionNotional * (1 - partialRatio);
     const canUsePartialTp = isUsePartialTp && (estimatedSellNotional >= 5.20) && (estimatedRemainingNotional >= 5.20);
 
-    // Sobe o stop para Break-Even apenas quando o ativo atingir valorização saudável (≥ +1.10%)
+    // Sobe o stop para Break-Even apenas quando o ativo atingir valorização saudável (≥ +1.80%)
     // ou se parcial já tiver sido concluída
     const isBreakEvenNowArmed = Boolean(
       pos.isBreakEvenArmed ||
@@ -1214,13 +1214,13 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       (isAutoBreakEvenEnabled && peakGain >= beTrigger)
     );
 
-    // ESTÁGIO 2: PISO DE LUCRO GARANTIDO (Lock-in ≥ +1.20% quando o pico atingir ≥ +2.20%)
-    // Impede que trades que valorizaram mais de +2.20% devolvam o lucro até o mero zero-a-zero (+0.28%)
+    // ESTÁGIO 2: PISO DE LUCRO GARANTIDO (Lock-in ≥ +1.50% quando o pico atingir ≥ +2.60%)
+    // Impede que trades que valorizaram mais de +2.60% devolvam o lucro até o mero zero-a-zero (+0.38%)
     const isProfitFloorNowArmed = Boolean(
       pos.isProfitFloorArmed ||
-      peakGain >= 2.20
+      peakGain >= 2.60
     );
-    const profitFloorBuffer = 1.20; // 1.20% líquido garantido no bolso
+    const profitFloorBuffer = 1.50; // 1.50% líquido garantido no bolso
     const isProfitFloorTriggered =
       isProfitFloorNowArmed &&
       gainPercent <= profitFloorBuffer;
@@ -1236,10 +1236,10 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     // Stop Loss disciplinado: calibrado com teto estrito de 1.35% para proteger a banca (Guardrail Institucional)
     const configuredStopLoss = pos.dynamicStopLoss || bot.stopLoss || 1.25;
     const effectiveStopLoss = Math.max(1.10, Math.min(1.35, configuredStopLoss));
-    // Take Profit institucional: garante assimetria R:R positiva (≥ 1.85x a 2.5x do Stop Loss e mínimo de 2.2%)
-    const rawTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 3.2;
-    const minTpByRiskReward = parseFloat((effectiveStopLoss * 1.85).toFixed(2));
-    const effectiveTakeProfit = Math.max(minTpByRiskReward, Math.max(2.2, Math.min(6.5, rawTakeProfit)));
+    // Take Profit institucional: garante assimetria R:R positiva (≥ 2.5x a 4.0x do Stop Loss e mínimo de 3.2%)
+    const rawTakeProfit = pos.dynamicTakeProfit || bot.takeProfit || 3.5;
+    const minTpByRiskReward = parseFloat((effectiveStopLoss * 2.5).toFixed(2));
+    const effectiveTakeProfit = Math.max(minTpByRiskReward, Math.max(3.2, Math.min(6.5, rawTakeProfit)));
 
     // ESTÁGIO 3: TRAILING TAKE-PROFIT DINÂMICO PARABÓLICO (Deixar o Lucro Correr em Altas Fortes)
     // Ao bater a meta de Take Profit (ex: +3.2% ou alvo ATR), o robô não vende na hora;
@@ -1543,9 +1543,9 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     }
 
     // 🛡️ ANTI-MARTINGALE / FIM DO DCA CEGO (Guardrail Institucional 7):
-    // Desativado por padrão. Jamais dobrar posição em ativo em queda sem intervenção deliberada do operador.
-    const isSmartDcaEnabled = bot.useSmartDca === true;
-    const maxDca = bot.maxDcaOrders ?? 1;
+    // Bloqueio estrito de recompras duplicadas: ordem única por trade para proteger a banca
+    const isSmartDcaEnabled = false; // 100% bloqueado contra recompras duplicadas no mesmo par
+    const maxDca = 0;
     const currentDcaCount = pos.dcaCount ?? 0;
     const dcaDip = bot.dcaDipThreshold ?? 1.8; // ex: -1.8% de recuo em suporte
 
@@ -1820,12 +1820,17 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         return;
       }
 
-      // Identifica moedas já sob custódia de QUALQUER robô da frota para evitar duplicidade absoluta
-      const heldSymbols = new Set(
-        store.bots
-          .filter((b) => b.position && b.position.quantity > 0)
-          .map((b) => b.position!.symbol)
-      );
+      // Identifica moedas já sob custódia de QUALQUER robô da frota ou na carteira Binance para evitar duplicidade absoluta
+      const portfolioHeld = Array.isArray(store.portfolio?.positions)
+        ? store.portfolio.positions
+            .filter((p) => p && p.quantity > 0 && p.marketValue > 1.0)
+            .map((p) => p.symbol)
+        : [];
+      const botHeld = store.bots
+        .filter((b) => b.position && b.position.quantity > 0)
+        .map((b) => b.position!.symbol);
+
+      const heldSymbols = new Set([...botHeld, ...portfolioHeld]);
 
       // Filtra moedas alocadas, com compra em andamento por outro robô ou em cooldown pós-trade
       const availableCandidates = candidates.filter((cand) => {
@@ -1908,9 +1913,10 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         } catch {}
 
         const maxSafeCash = Math.max(0, cash * 0.95);
-        const maxCap = (bot.allocationAmount && bot.allocationAmount > 0)
-          ? Math.min(maxSafeCash, bot.allocationAmount)
-          : Math.min(maxSafeCash, cash > 90.0 ? cash * 0.45 : cash * 0.85);
+        // Calibrado para a banca real (~$150 USD total, ~$108 livre):
+        // Garante ordens entre $18 e $25 USDT (gerando lucros reais de +$0.70 a +$1.50 por trade)
+        const calibratedCap = Math.max(18.0, Math.min(25.0, bot.allocationAmount || 22.0));
+        const maxCap = Math.min(maxSafeCash, calibratedCap);
 
         // Stop Loss projetado para dimensionamento fracionário de risco (≤ 1.0% do saldo)
         const slPct = (decision.suggestedSl || bot.stopLoss || 1.3) / 100;
@@ -2022,11 +2028,14 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
   // ==========================================================
   // BRANCH 2B: SINGLE-SYMBOL BOT TRADICIONAL
   // ==========================================================
-  // 🛡️ Trava de Exclusividade Global: Evita que dois robôs comprem o mesmo par simultaneamente
+  // 🛡️ Trava de Exclusividade Global: Evita que dois robôs comprem o mesmo par ou que recompre ativo já sob custódia
+  const isHeldInPortfolio = Array.isArray(store.portfolio?.positions) &&
+    store.portfolio.positions.some((p) => p && p.quantity > 0 && p.marketValue > 1.0 && p.symbol === symbol);
   const isHeldByAnyBot =
     inFlightBuys.has(symbol) ||
+    isHeldInPortfolio ||
     store.bots.some(
-      (b) => b.id !== bot.id && b.position && b.position.quantity > 0 && b.position.symbol === symbol
+      (b) => b.position && b.position.quantity > 0 && b.position.symbol === symbol
     );
   if (isHeldByAnyBot) {
     const prevHistory = Array.isArray(bot.stats.proximityHistory) ? bot.stats.proximityHistory : [];
@@ -2118,11 +2127,11 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       return;
     }
 
-    // Gestão de Risco por Ordem: Tamanho de posição calculado por Risco Fracionário (≤ 1.0% do saldo)
+    // Gestão de Risco por Ordem: Tamanho calibrado para banca real (~$150 USD total, ~$108 livre)
+    // Aloca entre $18 e $25 USDT por trade para retornos reais e consistentes
     const maxSafeCash = Math.max(0, cash * 0.95);
-    const maxCap = (bot.allocationAmount && bot.allocationAmount > 0)
-      ? Math.min(maxSafeCash, bot.allocationAmount)
-      : Math.min(maxSafeCash, cash > 90.0 ? cash * 0.45 : cash * 0.85);
+    const calibratedCap = Math.max(18.0, Math.min(25.0, bot.allocationAmount || 22.0));
+    const maxCap = Math.min(maxSafeCash, calibratedCap);
 
     const slPct = (decision.suggestedSl || bot.stopLoss || 1.3) / 100;
     const stopLossPrice = currentPrice * (1 - slPct);

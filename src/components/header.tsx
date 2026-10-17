@@ -1,7 +1,7 @@
 "use client";
 
 import { useCryptoStore } from "@/lib/store";
-import { Activity, Wifi, WifiOff, Loader2, Moon, Sun, Settings, Trash2, RefreshCw, Power, Wallet, KeyRound, Brain } from "lucide-react";
+import { Activity, Wifi, WifiOff, Loader2, Moon, Sun, Settings, Trash2, RefreshCw, Power, Wallet, KeyRound, Brain, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
@@ -12,6 +12,7 @@ import { CryptoSelector } from "./header/crypto-selector";
 import { GlobalCommandSearch } from "./header/global-command-search";
 import { ApiSettingsDialog } from "./header/api-settings-dialog";
 import { AiSettingsDialog } from "./header/ai-settings-dialog";
+import { DirectAiTradeModal } from "@/components/bot/direct-ai-trade-modal";
 import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
@@ -89,6 +90,7 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
   const [apiDialogOpen, setApiDialogOpen] = useState(false);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [confirmLiveOpen, setConfirmLiveOpen] = useState(false);
+  const [directTradeModalOpen, setDirectTradeModalOpen] = useState(false);
   const [aiInfo, setAiInfo] = useState<{ provider: string; model: string; configured: boolean } | null>(null);
 
   useEffect(() => {
@@ -216,6 +218,20 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
             <GlobalCommandSearch compactOnly />
           </div>
 
+          {/* Botão de Operação Direta com IA */}
+          {mounted && (
+            <Button
+              size="sm"
+              onClick={() => setDirectTradeModalOpen(true)}
+              className="h-7.5 gap-1.5 px-2.5 bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-black font-extrabold text-[11px] tracking-wide shadow-[0_0_12px_rgba(6,182,212,0.35)] rounded-lg cursor-pointer shrink-0 transition-transform active:scale-95"
+              title="Iniciar Operação Direta com IA"
+            >
+              <Zap className="w-3.5 h-3.5 fill-current text-black" />
+              <span className="hidden sm:inline">Operação Direta IA</span>
+              <span className="sm:hidden">Direto</span>
+            </Button>
+          )}
+
           {/* Saldo da Conta */}
           <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/[0.03] border border-white/[0.07] shadow-sm shrink-0">
             <Wallet className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
@@ -338,6 +354,14 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
                 setApiDialogOpen(open);
                 setOpenApiSettingsModal(open);
               }}
+            />
+          )}
+
+          {/* Modal de Operação Direta com IA */}
+          {mounted && (
+            <DirectAiTradeModal
+              open={directTradeModalOpen}
+              onOpenChange={setDirectTradeModalOpen}
             />
           )}
 

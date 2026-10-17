@@ -36,8 +36,8 @@ import { StatCards } from "@/components/dashboard/stat-cards";
 import { WidgetBoundary } from "@/components/dashboard/widget-boundary";
 import { DataFreshnessBanner } from "@/components/dashboard/data-freshness-banner";
 
-// Market components
 import { MarketHighlights } from "@/components/dashboard/market-highlights";
+import { DirectAiTradeModal } from "@/components/bot/direct-ai-trade-modal";
 
 // AI & Signals components
 import { AIEntries } from "@/components/dashboard/ai-entries";
@@ -148,6 +148,7 @@ export function DashboardGrid() {
   const [preset, setPreset] = useState<Preset>("trader");
   const [aiPreset, setAiPreset] = useState<{ ids: string[]; reason: string; source: string } | null>(null);
   const [aiPresetLoading, setAiPresetLoading] = useState(false);
+  const [directTradeOpen, setDirectTradeOpen] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
@@ -379,6 +380,16 @@ export function DashboardGrid() {
         </div>
 
         <div className="flex items-center gap-2 ml-auto">
+          <Button
+            size="sm"
+            onClick={() => setDirectTradeOpen(true)}
+            className="h-7 px-2.5 text-xs text-black font-extrabold bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 gap-1.5 cursor-pointer rounded-lg shadow-[0_0_12px_rgba(6,182,212,0.3)] transition-all font-mono"
+            title="Abrir Operação Direta com IA"
+          >
+            <Zap className="w-3.5 h-3.5 fill-current text-black" />
+            <span className="font-bold">Operação Direta IA</span>
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -685,6 +696,12 @@ export function DashboardGrid() {
           </div>
         </div>
       )}
+
+      {/* Modal de Operação Direta com IA */}
+      <DirectAiTradeModal
+        open={directTradeOpen}
+        onOpenChange={setDirectTradeOpen}
+      />
     </div>
   );
 }

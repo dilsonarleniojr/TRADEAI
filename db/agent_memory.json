@@ -1,6 +1,122 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Módulo de Operação Direta com IA (One-Click AI Trade) e Normalização Cambial Interbancária",
+    "summary": "1) Interface & Gatilho Direto: Botão institucional com gradiente ciano/esmeralda no Header e no Terminal Pro do Dashboard disparando o DirectAiTradeModal; 2) Fluxo em 4 Etapas: Configuração (valor $11-$500 USD e tempo de 1 a 60 min), Scanning ao Vivo com feedback tático, Acompanhamento da Posição em Tempo Real com cronômetro regressivo e PnL flutuante, e Entrega do Lucro em Tear-Sheet com crédito automático no saldo da carteira; 3) Normalização Cambial e Cotações (CurrencyPairNormalizer): Implementação estrita do ranking interbancário ISO 4217 (EUR > GBP > AUD > NZD > USD > CAD > CHF > JPY), inversão cruzada precisa (Bid_std = 1/Ask_inv e Ask_std = 1/Bid_inv), preservação de pares cripto como UNCLASSIFIED e detecção de livros cruzados (crossed books); 4) Orquestração (DirectOperationManager): Integração de EnvironmentCleanupService, MarketOpportunitySelector e PilotTradeValidator para dimensionamento com PreciseMath e ordem LIMIT_MAKER Post-Only GTX; 5) Rotas REST: /api/bot/direct-operation e /api/bot/direct-operation/close com persistência em transação Prisma; 6) Cobertura de Testes: 12 novos testes automatizados em direct-operation-flow.test.ts (totalizando 35 testes verdes no repositório).",
+    "tags": [
+      "one-click-direct-trade",
+      "direct-ai-trade-modal",
+      "currency-pair-quoting-convention-normalization",
+      "chaos-engineering",
+      "profit-delivery-tearsheet",
+      "direct-operation-manager",
+      "realtime-pnl-tracking"
+    ],
+    "details": {
+      "modalComponent": "src/components/bot/direct-ai-trade-modal.tsx",
+      "headerIntegration": "src/components/header.tsx",
+      "dashboardIntegration": "src/components/dashboard/dashboard-grid.tsx",
+      "normalizerPath": "src/lib/bot/pilot/currency-pair-normalizer.ts",
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "apiRoutes": [
+        "src/app/api/bot/direct-operation/route.ts",
+        "src/app/api/bot/direct-operation/close/route.ts"
+      ],
+      "testPath": "tests/unit/direct-operation-flow.test.ts",
+      "totalPassingTests": 35
+    },
+    "id": "mem-1792182000000-direct-ai-trade-operation",
+    "timestamp": "2026-10-16T18:36:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Seletor Inteligente de Oportunidades de Mercado (MarketOpportunitySelector) com Heurística Quantitativa e ATR Dinâmico",
+    "summary": "1) Triagem e Microestrutura: Varredura contínua de tickers 24h e bookTicker na Binance, exigindo Volume 24h >= $20M USD e Spread Bid-Ask ultracompresso <= 0.05% para garantir execução imediata como Maker sem derrapagem; 2) Faixa Áurea de Volatilidade para Banca de $70 USD: relativeATR delimitado entre 0.8% e 2.5%, descartando moedas sem amplitude para cobrir taxas (< 0.8%) e moedas excessivamente voláteis (> 2.5%) cujo stop técnico violaria o teto de perda máxima de $1.40 USD (2.0%); 3) Filtro Anti-Choppy: Descarte sumário de ativos com ADX < 20 ou em consolidação cega sem momentum; 4) Calibração Dinâmica de SL e TP por ATR: Entrada passiva em bestBid (LIMIT_MAKER Post-Only GTX), Stop-Loss em 1.2x ATR e Take-Profit em 2.3x ATR, garantindo assimetria R:R líquido >= 1.60x após desconto de comissões Maker/Taker; 5) Scoring Multidimensional: Ponderação de liquidez (35%), tendência institucional (35%), volatilidade adequada (30%) e penalização de spread; 6) Testes e Validação: 5 testes unitários em market-opportunity-selector.test.ts e integração em run_pilot_validation.ts (totalizando 23 testes unitários com 100% de sucesso).",
+    "tags": [
+      "market-opportunity-selector",
+      "dynamic-atr-calibration",
+      "microstructure-spread-filter",
+      "anti-choppy-adx",
+      "70usd-pilot-production",
+      "quantitative-scoring",
+      "limit-maker-post-only"
+    ],
+    "details": {
+      "selectorPath": "src/lib/bot/pilot/market-opportunity-selector.ts",
+      "testPath": "tests/unit/market-opportunity-selector.test.ts",
+      "scriptPath": "scripts/run_pilot_validation.ts",
+      "minVolume24h": 20000000,
+      "maxSpreadPct": 0.0005,
+      "atrRange": "0.8% - 2.5%",
+      "slMultiplier": "1.2x ATR",
+      "tpMultiplier": "2.3x ATR",
+      "totalUnitTestsPassing": 23
+    },
+    "id": "mem-1792173000000-market-opportunity-selector-atr",
+    "timestamp": "2026-10-16T17:44:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Módulo de Orquestração e Execução de Teste Piloto em Produção Real (Banca $70.00 USD)",
+    "summary": "1) EnvironmentCleanupService: Fase 0 obrigatória com sincronização monotônica de relógio (GET /api/v3/time) para afastar erro -1021 recvWindow, cancelamento de ordens abertas (DELETE /api/v3/openOrders), auditoria de resíduos em carteira e reset de travas de memória estabelecendo linha de base em $70.00 USD; 2) PreciseMath: Aritmética decimal de precisão e quantização estrita para baixo (RoundingMode.DOWN) eliminando tipos float/double binários para stepSize e tickSize da exchange; 3) ExchangeMetadataService: Ingestão, caching e normalização em tempo real de exchangeInfo (LOT_SIZE, PRICE_FILTER, MIN_NOTIONAL); 4) PilotTradeValidator: Validação pura aplicando Single Active Position Policy (máximo 1 trade ativo para evitar -2010), nocional de segurança entre $11.00 e $15.00 USD, teto de risco teórico <= 2.0% ($1.40 USD) e R:R líquido >= 1:1.5 com despacho prioritário LIMIT_MAKER Post-Only (GTX); 5) PilotRiskCircuitBreaker: Gerenciamento atômico/thread-safe com Kill Switch diário de 5.0% ($3.50 USD com hibernação de 24h) e freio de perdas consecutivas (>= 3 perdas acionam 60 min de cooldown); 6) Suite de Testes e Caos: 12 testes unitários em pilot-production-harness.test.ts e script executável run_pilot_validation.ts com 100% de sucesso.",
+    "tags": [
+      "pilot-production-harness",
+      "70usd-capital-allocation",
+      "environment-cleanup-service",
+      "precise-math-truncation",
+      "exchange-metadata-service",
+      "single-active-position-policy",
+      "pilot-trade-validator",
+      "pilot-circuit-breaker",
+      "chaos-engineering"
+    ],
+    "details": {
+      "baselineCapitalUsd": 70.0,
+      "maxRiskPerTradeUsd": 1.40,
+      "maxDailyDrawdownUsd": 3.50,
+      "notionalRangeUsd": "11.00 - 15.00",
+      "orderType": "LIMIT_MAKER (Post-Only GTX)",
+      "filesCreated": [
+        "src/lib/bot/pilot/precise-math.ts",
+        "src/lib/bot/pilot/exchange-metadata-service.ts",
+        "src/lib/bot/pilot/environment-cleanup-service.ts",
+        "src/lib/bot/pilot/pilot-trade-validator.ts",
+        "src/lib/bot/pilot/pilot-circuit-breaker.ts",
+        "scripts/run_pilot_validation.ts",
+        "tests/unit/pilot-production-harness.test.ts"
+      ],
+      "testCoverage": "12 tests passing (100%)"
+    },
+    "id": "mem-1792172000000-pilot-production-70usd-harness",
+    "timestamp": "2026-10-16T17:35:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Calibração Institucional para Lucro Real (Banca ~$153 USD), Correção de Mean Reversion e Anti-Martingale Mandatória",
+    "summary": "1) Diagnóstico da Banca Real: Identificado saldo real na Binance de ~$153.53 USDT (com 107.94 USDT livres e 52.30 APTUSDT em custódia). O valor anterior de 10.000 USDT era apenas saldo fictício de paper trading; 2) Sizing Calibrado: Ajustada a alocação por ordem para $18 - $25 USDT (permitindo até 4 posições simultâneas), gerando lucros reais de +$0.70 a +$1.50 por trade em vez de míseros centavos ($0.01 a $0.05); 3) Correção Crítica de MEAN_REVERSION: Eliminado o bug em entry-engine.ts onde 'last.close <= boll.lower * 1.01' disparava compra no topo/meio das Bollinger Bands com percentB de 60%-78%. Substituído por exigência de percentB <= 0.20, RSI <= 42 e confirmação por candle verde/martelo de absorção; 4) Calibração da Escada de Lucro: Break-Even elevado para disparar apenas com pico >= +1.80% (buffer de +0.38%), evitando ser ejetado no ruído natural de 1m (+0.3%), permitindo que o trade alcance o Take Profit base (+3.2% a +5.5%) com Trailing Parabólico; 5) Anti-Martingale e Bloqueio Duplo: useSmartDca desativado por padrão (maxDcaOrders = 0) e verificação ativa da carteira real da Binance para proibir sumariamente recompras duplicadas do mesmo par (como as 3 compras de APT).",
+    "tags": [
+      "real-capital-sizing-153usd",
+      "mean-reversion-percentb-fix",
+      "break-even-noise-protection",
+      "anti-martingale-enforcement",
+      "duplicate-pair-lock",
+      "profit-maximization"
+    ],
+    "details": {
+      "realBalanceUSDT": 153.53,
+      "freeCashUSDT": 107.94,
+      "orderAllocation": "18.00 - 25.00 USDT",
+      "breakEvenTrigger": ">= 1.80%",
+      "breakEvenBuffer": "+0.38%",
+      "takeProfitRange": "+3.2% to +5.5%",
+      "meanReversionFilter": "percentB <= 0.20 & RSI <= 42 & bullishReversal",
+      "duplicateBlock": "wallet holdings + active bots checking"
+    },
+    "id": "mem-1792168300000-real-profit-calibration-and-mean-reversion-fix",
+    "timestamp": "2026-10-16T16:32:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Maximização de Lucros, Escada em 3 Estágios, Quarentena de Sangria e Kelly para Campeões",
     "summary": "1) Quarentena Automática e Corte Imediato de Sangria: Implementada trava proativa em multi-bot-engine.ts e botSlice.ts para pausar robôs sem posição aberta com PnL < -0.10 e perdas > vitórias (DOGE, APT, NEAR, FET), impedindo drenagem de banca; 2) Escada Dinâmica de Lucro em 3 Estágios: Estágio 1 Break-Even Automático (+1.10% pico travando +0.28% cobrindo taxas), Estágio 2 Piso de Lucro Garantido (pico >= +2.20% trava no mínimo +1.20% líquido no bolso), e Estágio 3 Trailing Take-Profit Parabólico com aperto dinâmico em altas fortes; 3) Portão de Expectativa Matemática Positiva (EV Gate): Avaliação mandatória pré-ordem deduzindo taxas de corretagem Maker/Taker e slippage, exigindo EV >= +0.40% e R:R >= 1.85x; 4) Concentração de Capital Kelly: Alocação elevada para 25 USDT nos Top Performers com 100% Win Rate (SUI, AVAX, FIL, LINK, PUMP) respeitando o teto de 5% NAV por ativo; 5) Preservação de Posições Abertas: O motor nunca encerra precocemente robôs com posições em andamento, permitindo que as metas da escada sejam executadas com disciplina institucional.",
     "tags": [
