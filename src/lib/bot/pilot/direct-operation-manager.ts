@@ -1,4 +1,4 @@
-import { MarketOpportunitySelector, EvaluatedOpportunity } from './market-opportunity-selector';
+import { MarketOpportunitySelector, EvaluatedOpportunity, TriggerCondition, RankedOpportunitySummary } from './market-opportunity-selector';
 import { ExchangeMetadataService, SymbolFilters } from './exchange-metadata-service';
 import { PilotTradeValidator, ValidationResult } from './pilot-trade-validator';
 import { EnvironmentCleanupService } from './environment-cleanup-service';
@@ -24,8 +24,8 @@ export interface DirectOperationSession {
   rewardRiskRatio: number;
   aiScore: number;
   mode: 'live' | 'paper';
-  status: 'ACTIVE' | 'CLOSED';
-  closeReason?: 'TIME_EXPIRED' | 'TARGET_REACHED' | 'STOP_LOSS' | 'MANUAL_CLOSE';
+  status: 'WAITING_TRIGGER' | 'ACTIVE' | 'CLOSED' | 'CANCELLED';
+  closeReason?: 'TIME_EXPIRED' | 'TARGET_REACHED' | 'STOP_LOSS' | 'MANUAL_CLOSE' | 'TRIGGER_EXPIRED' | 'RADAR_CANCELLED';
   currentPrice: number;
   unrealizedPnlUsd: number;
   unrealizedPnlPercent: number;
@@ -38,12 +38,49 @@ export interface DirectOperationSession {
   closeBinanceOrderId?: string;
   executedQuantity?: number;
   credentials?: BinanceCredentials;
+  triggerCondition?: TriggerCondition;
+  strategyChosen?: string;
+  targetEntryPrice?: number;
+  radarExpiresAt?: number;
+  isExecutingTrigger?: boolean;
+  topRanked?: RankedOpportunitySummary[];
+  isCooldownApplied?: boolean;
 }
 
 // Armazenamento em memória de sessões ativas
 const activeSessions = new Map<string, DirectOperationSession>();
 
 export class DirectOperationManager {
+  // Histórico em memória de símbolos operados recentemente para rotação de ativos
+  private static recentSymbolsHistory: { symbol: string; timestamp: number }[] = [];
+
+  /**
+   * Recupera os símbolos operados dentro da janela de cooldown (padrão 30 minutos)
+   */
+  public static getCooldownSymbols(cooldownMs = 30 * 60 * 1000): string[] {
+    const cutoff = Date.now() - cooldownMs;
+    return this.recentSymbolsHistory
+      .filter((h) => h.timestamp > cutoff)
+      .map((h) => h.symbol);
+  }
+
+  /**
+   * Registra um símbolo no histórico de rotação recente
+   */
+  public static recordSymbolExecution(symbol: string): void {
+    this.recentSymbolsHistory = [
+      { symbol, timestamp: Date.now() },
+      ...this.recentSymbolsHistory.filter((h) => h.symbol !== symbol),
+    ].slice(0, 20);
+  }
+
+  /**
+   * Limpa histórico de cooldown (útil para testes ou reset manual)
+   */
+  public static clearCooldownHistory(): void {
+    this.recentSymbolsHistory = [];
+  }
+
   /**
    * Inicia uma nova Operação Direta com IA
    */
@@ -54,7 +91,7 @@ export class DirectOperationManager {
     mode?: 'live' | 'paper';
     binanceCredentials?: BinanceCredentials;
   }): Promise<{ session: DirectOperationSession; validation: ValidationResult }> {
-    const { amount, durationMinutes, mode = 'paper', binanceCredentials } = params;
+    const { amount, durationMinutes, strategy = 'AUTO', mode = 'paper', binanceCredentials } = params;
 
     // 1. Validação estrita de valor de investimento
     if (!Number.isFinite(amount) || amount < 11.00) {
@@ -68,9 +105,18 @@ export class DirectOperationManager {
     const cleanupService = EnvironmentCleanupService.getInstance();
     await cleanupService.syncServerTime();
 
-    // 3. Seleção inteligente do melhor ativo via IA / microestrutura
+    // 3. Seleção inteligente do melhor ativo com rotação automática (Cooldown de 30 min)
+    const cooldownSymbols = DirectOperationManager.getCooldownSymbols();
     const selector = MarketOpportunitySelector.getInstance();
-    const opportunity: EvaluatedOpportunity = await selector.findBestOpportunity(amount);
+    const opportunity: EvaluatedOpportunity = await selector.findBestOpportunity(
+      amount,
+      "https://api.binance.com",
+      strategy,
+      cooldownSymbols
+    );
+
+    // Registra o símbolo selecionado para que a próxima operação priorize outro ativo
+    DirectOperationManager.recordSymbolExecution(opportunity.symbol);
 
     // 4. Normalização de convenção de cotação cambial/cripto (ISO 4217 / Interbank)
     const normalized = CurrencyPairNormalizer.normalizeQuote({
@@ -117,6 +163,14 @@ export class DirectOperationManager {
       throw new Error(`[DirectOperationManager] Falha na validação de risco: ${validation.rejectionReason}`);
     }
 
+    // Validação mandatória de credenciais para modo real antes de qualquer agendamento ou execução
+    if (mode === 'live') {
+      if (!binanceCredentials || !binanceCredentials.apiKey || !binanceCredentials.apiSecret) {
+        throw new Error('Chaves da API da Binance não encontradas ou inválidas para o modo Real.');
+      }
+    }
+
+    const isImmediate = opportunity.triggerCondition.type === 'IMMEDIATE';
     let finalEntryPrice = entryPrice;
     let finalQty = quantizedQty;
     let finalNotional = notionalUsd;
@@ -124,19 +178,15 @@ export class DirectOperationManager {
     let binanceClientOrderId: string | undefined;
     let executedQty: number | undefined;
 
-    // 9. Se for modo REAL (live), executa a compra a mercado imediatamente na Binance Spot
-    if (mode === 'live') {
-      if (!binanceCredentials || !binanceCredentials.apiKey || !binanceCredentials.apiSecret) {
-        throw new Error('Chaves da API da Binance não encontradas ou inválidas para o modo Real.');
-      }
-
+    // 9. Se for modo REAL (live) e o gatilho for IMEDIATO, executa a compra a mercado agora na Binance Spot
+    if (mode === 'live' && isImmediate) {
       const orderExecutor = PilotOrderExecutor.getInstance();
       const liveBuyResult = await orderExecutor.executeLiveBuy({
         symbol: opportunity.symbol,
         notionalUsd,
         suggestedQty: quantizedQty,
         filters,
-        credentials: binanceCredentials,
+        credentials: binanceCredentials!,
       });
 
       binanceOrderId = String(liveBuyResult.orderId);
@@ -152,6 +202,7 @@ export class DirectOperationManager {
     const sessionId = `direct-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const now = Date.now();
     const durationMs = durationMinutes * 60 * 1000;
+    const radarExpiresAt = now + (opportunity.triggerCondition.expirationMinutes * 60 * 1000);
 
     const session: DirectOperationSession = {
       id: sessionId,
@@ -160,8 +211,8 @@ export class DirectOperationManager {
       quoteCurrency: normalized.quoteCurrency,
       investedAmountUsd: finalNotional,
       durationMinutes,
-      startTime: now,
-      endTime: now + durationMs,
+      startTime: isImmediate ? now : 0,
+      endTime: isImmediate ? now + durationMs : 0,
       entryPrice: finalEntryPrice,
       targetPrice: opportunity.signal.takeProfit,
       stopLossPrice: opportunity.signal.stopLoss,
@@ -171,19 +222,141 @@ export class DirectOperationManager {
       rewardRiskRatio: validation.order.netRewardRiskRatio,
       aiScore: opportunity.score,
       mode,
-      status: 'ACTIVE',
-      currentPrice: finalEntryPrice,
+      status: isImmediate ? 'ACTIVE' : 'WAITING_TRIGGER',
+      currentPrice: opportunity.marketData.lastPrice,
       unrealizedPnlUsd: 0,
       unrealizedPnlPercent: 0,
-      rationale: `Oportunidade selecionada pela IA (Score: ${opportunity.score}/100) com base em spread compresso (${(opportunity.marketData.spreadPct * 100).toFixed(3)}%) e ADX direcional (${opportunity.technicalMetrics.adx?.toFixed(1) || 'N/A'}).`,
+      rationale: `Oportunidade selecionada pela IA (${opportunity.effectiveStrategy}) com Score ${opportunity.score}/100. ${opportunity.triggerCondition.conditionDescription}`,
       binanceOrderId,
       binanceClientOrderId,
       executedQuantity: executedQty,
       credentials: binanceCredentials,
+      triggerCondition: opportunity.triggerCondition,
+      strategyChosen: opportunity.effectiveStrategy,
+      targetEntryPrice: opportunity.triggerCondition.targetPrice,
+      radarExpiresAt,
+      isExecutingTrigger: false,
+      topRanked: opportunity.topRanked,
+      isCooldownApplied: opportunity.isCooldownApplied,
     };
 
     activeSessions.set(sessionId, session);
     return { session, validation };
+  }
+
+  /**
+   * Ativa a ordem de compra quando o gatilho ótimo for atingido ou forçado pelo usuário
+   */
+  public static async activateWaitingSession(
+    sessionId: string,
+    currentPrice?: number,
+    force = false
+  ): Promise<DirectOperationSession> {
+    const session = activeSessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Sessão ${sessionId} não encontrada.`);
+    }
+
+    if (session.status !== 'WAITING_TRIGGER') {
+      return session;
+    }
+
+    // Trava de concorrência atômica para evitar double-buy
+    if (session.isExecutingTrigger) {
+      return session;
+    }
+    session.isExecutingTrigger = true;
+
+    try {
+      const metadataService = ExchangeMetadataService.getInstance();
+      const filters = await metadataService.getSymbolFilters(session.symbol);
+
+      let effectiveEntryPrice = currentPrice ?? session.currentPrice;
+      let finalQty = session.quantity;
+      let finalNotional = session.notionalUsd;
+      let binanceOrderId = session.binanceOrderId;
+      let binanceClientOrderId = session.binanceClientOrderId;
+      let executedQty = session.executedQuantity;
+
+      // Se for modo REAL (live), despacha a compra a mercado agora na Binance Spot
+      if (session.mode === 'live') {
+        if (!session.credentials || !session.credentials.apiKey || !session.credentials.apiSecret) {
+          throw new Error('Credenciais da Binance não disponíveis para executar disparo real.');
+        }
+
+        const orderExecutor = PilotOrderExecutor.getInstance();
+        const liveBuyResult = await orderExecutor.executeLiveBuy({
+          symbol: session.symbol,
+          notionalUsd: session.notionalUsd,
+          suggestedQty: session.quantity,
+          filters,
+          credentials: session.credentials,
+        });
+
+        binanceOrderId = String(liveBuyResult.orderId);
+        binanceClientOrderId = liveBuyResult.clientOrderId;
+        executedQty = liveBuyResult.executedQty;
+        finalQty = liveBuyResult.executedQty > 0 ? liveBuyResult.executedQty : session.quantity;
+        if (liveBuyResult.avgPrice > 0) {
+          effectiveEntryPrice = liveBuyResult.avgPrice;
+          finalNotional = PreciseMath.roundDown(finalQty * effectiveEntryPrice, 2);
+        }
+      }
+
+      const now = Date.now();
+      const durationMs = session.durationMinutes * 60 * 1000;
+
+      session.status = 'ACTIVE';
+      session.entryPrice = effectiveEntryPrice;
+      session.currentPrice = effectiveEntryPrice;
+      session.quantity = finalQty;
+      session.notionalUsd = finalNotional;
+      session.executedQuantity = executedQty;
+      session.binanceOrderId = binanceOrderId;
+      session.binanceClientOrderId = binanceClientOrderId;
+      session.startTime = now;
+      session.endTime = now + durationMs;
+      session.isExecutingTrigger = false;
+
+      return session;
+    } catch (err: any) {
+      session.isExecutingTrigger = false;
+      throw err;
+    }
+  }
+
+  /**
+   * Força a entrada imediata ignorando a espera pelo gatilho
+   */
+  public static async forceEntry(sessionId: string): Promise<DirectOperationSession> {
+    const session = activeSessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Sessão ${sessionId} não encontrada.`);
+    }
+    if (session.status !== 'WAITING_TRIGGER') {
+      return session;
+    }
+    return await this.activateWaitingSession(sessionId, session.currentPrice, true);
+  }
+
+  /**
+   * Cancela a espera no radar sem realizar nenhum trade
+   */
+  public static cancelRadar(sessionId: string): DirectOperationSession {
+    const session = activeSessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Sessão ${sessionId} não encontrada.`);
+    }
+    if (session.status !== 'WAITING_TRIGGER') {
+      return session;
+    }
+    session.status = 'CANCELLED';
+    session.closeReason = 'RADAR_CANCELLED';
+    session.unrealizedPnlUsd = 0;
+    session.unrealizedPnlPercent = 0;
+    session.realizedPnlUsd = 0;
+    session.realizedPnlPercent = 0;
+    return session;
   }
 
   /**
@@ -195,12 +368,12 @@ export class DirectOperationManager {
       throw new Error(`Sessão de operação ${sessionId} não encontrada.`);
     }
 
-    if (session.status === 'CLOSED') {
+    if (session.status === 'CLOSED' || session.status === 'CANCELLED') {
       return session;
     }
 
     // Consultar preço em tempo real na Binance
-    let latestPrice = session.entryPrice;
+    let latestPrice = session.currentPrice;
     try {
       const res = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${session.symbol}`, {
         cache: 'no-store',
@@ -212,13 +385,49 @@ export class DirectOperationManager {
         if (Number.isFinite(p) && p > 0) latestPrice = p;
       }
     } catch {
-      // Em caso de instabilidade pontual de rede, usa o último preço registrado
       latestPrice = session.currentPrice;
     }
 
     session.currentPrice = latestPrice;
 
-    // Cálculo de PnL flutuante
+    // Se estiver aguardando gatilho ótimo (Radar Sniper)
+    if (session.status === 'WAITING_TRIGGER') {
+      const trigger = session.triggerCondition;
+      const target = trigger?.targetPrice ?? session.targetEntryPrice ?? session.entryPrice;
+      const distPct = Math.abs(latestPrice - target) / latestPrice * 100;
+      if (session.triggerCondition) {
+        session.triggerCondition.distanceToTriggerPct = PreciseMath.roundDown(distPct, 2);
+      }
+
+      // 1. Radar expirado
+      if (session.radarExpiresAt && Date.now() >= session.radarExpiresAt) {
+        session.status = 'CLOSED';
+        session.closeReason = 'TRIGGER_EXPIRED';
+        session.realizedPnlUsd = 0;
+        session.realizedPnlPercent = 0;
+        session.unrealizedPnlUsd = 0;
+        session.unrealizedPnlPercent = 0;
+        return session;
+      }
+
+      // 2. Avaliação da condição de disparo
+      let shouldTrigger = false;
+      if (trigger?.triggerDirection === 'LESS_THAN_OR_EQUAL' && latestPrice <= target) {
+        shouldTrigger = true;
+      } else if (trigger?.triggerDirection === 'GREATER_THAN_OR_EQUAL' && latestPrice >= target) {
+        shouldTrigger = true;
+      } else if (trigger?.triggerDirection === 'NOW') {
+        shouldTrigger = true;
+      }
+
+      if (shouldTrigger) {
+        return await this.activateWaitingSession(sessionId, latestPrice);
+      }
+
+      return session;
+    }
+
+    // Cálculo de PnL flutuante para status ACTIVE
     const priceDiff = latestPrice - session.entryPrice;
     const grossPnl = priceDiff * (session.executedQuantity || session.quantity);
     const pnlPercent = (priceDiff / session.entryPrice) * 100;
@@ -261,8 +470,22 @@ export class DirectOperationManager {
       throw new Error(`Sessão de operação ${sessionId} não encontrada.`);
     }
 
-    if (session.status === 'CLOSED') {
+    if (session.status === 'CLOSED' || session.status === 'CANCELLED') {
       return session;
+    }
+
+    if (session.status === 'WAITING_TRIGGER') {
+      if (reason === 'MANUAL_CLOSE') {
+        session.status = 'CLOSED';
+        session.closeReason = 'MANUAL_CLOSE';
+        session.unrealizedPnlUsd = 0;
+        session.unrealizedPnlPercent = 0;
+        session.realizedPnlUsd = 0;
+        session.realizedPnlPercent = 0;
+        return session;
+      }
+      // Se for encerramento de alvo/tempo em teste/simulação, ativa a sessão mantendo o entryPrice planejado
+      await this.activateWaitingSession(sessionId, session.entryPrice);
     }
 
     let exitPrice = explicitExitPrice ?? session.currentPrice;

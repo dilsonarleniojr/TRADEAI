@@ -4,6 +4,8 @@ import { ExchangeMetadataService, SymbolFilters } from "./exchange-metadata-serv
 import { calculateEMA, calculateRSI, relativeATR, calculateADX } from "../indicators";
 import type { KlineData } from "@/lib/store";
 
+export type StrategyType = "AUTO" | "CONFLUENCE" | "MOMENTUM" | "MEAN_REVERSION";
+
 export interface CandidateMarketData {
   symbol: string;
   volume24hUsd: number;
@@ -12,6 +14,25 @@ export interface CandidateMarketData {
   bestAsk: number;
   spreadPct: number;
   priceChange24hPct: number;
+}
+
+export interface TriggerCondition {
+  type: "IMMEDIATE" | "PULLBACK_EMA" | "BREAKOUT_RESISTANCE" | "OVERSOLD_BOUNCE" | "ORDERBOOK_PRESSURE";
+  targetPrice: number;
+  conditionDescription: string;
+  triggerDirection: "LESS_THAN_OR_EQUAL" | "GREATER_THAN_OR_EQUAL" | "NOW";
+  expirationMinutes: number;
+  strategyChosen: "CONFLUENCE" | "MOMENTUM" | "MEAN_REVERSION";
+  distanceToTriggerPct: number;
+}
+
+export interface RankedOpportunitySummary {
+  symbol: string;
+  score: number;
+  strategy: "CONFLUENCE" | "MOMENTUM" | "MEAN_REVERSION";
+  priceChange24hPct: number;
+  rationale: string;
+  isCooldownApplied?: boolean;
 }
 
 export interface EvaluatedOpportunity {
@@ -27,6 +48,10 @@ export interface EvaluatedOpportunity {
     ema21: number;
     trendAligned: boolean;
   };
+  triggerCondition: TriggerCondition;
+  effectiveStrategy: "CONFLUENCE" | "MOMENTUM" | "MEAN_REVERSION";
+  topRanked?: RankedOpportunitySummary[];
+  isCooldownApplied?: boolean;
   rejectionReason?: string;
 }
 
@@ -34,12 +59,12 @@ export class MarketOpportunitySelector {
   private static instance: MarketOpportunitySelector;
   private metadataService = ExchangeMetadataService.getInstance();
 
-  // Critérios institucionais de corte para a banca de $70 USD
-  public static readonly MIN_24H_VOLUME_USD = 20_000_000; // Mínimo $20M USD de volume
-  public static readonly MAX_SPREAD_PERCENT = 0.0005; // Máximo 0.05% de spread bid-ask
-  public static readonly MIN_RELATIVE_ATR = 0.008; // 0.8% mínimo de ATR para cobrir taxas
-  public static readonly MAX_RELATIVE_ATR = 0.025; // 2.5% máximo de ATR para não violar teto de $1.40
-  public static readonly MIN_ADX_TREND = 20; // Rejeição de mercado choppy (ADX < 20)
+  // Critérios institucionais de corte para microestrutura expandida (35-40 ativos)
+  public static readonly MIN_24H_VOLUME_USD = 10_000_000; // Mínimo $10M USD de volume
+  public static readonly MAX_SPREAD_PERCENT = 0.0008; // Máximo 0.08% de spread bid-ask
+  public static readonly MIN_RELATIVE_ATR = 0.0010; // 0.10% mínimo de ATR em 15m (garante que altcoins líquidas sejam válidas)
+  public static readonly MAX_RELATIVE_ATR = 0.035; // 3.5% máximo de ATR para não violar gestão de risco
+  public static readonly MIN_ADX_TREND = 15; // Rejeição de mercado totalmente sem tendência (choppy)
 
   // Lista negra de stables ou tokens não adequados para trade direcional
   private static readonly EXCLUDED_SYMBOLS = new Set([
@@ -52,6 +77,11 @@ export class MarketOpportunitySelector {
     "USDPUSDT",
     "DAIUSDT",
     "AEURUSDT",
+    "USD1USDT",
+    "USDDUSDT",
+    "PYUSDUSDT",
+    "EURIUSDT",
+    "USDEUSDT",
   ]);
 
   private constructor() {}
@@ -119,8 +149,19 @@ export class MarketOpportunitySelector {
         });
       }
 
-      // Ordena por maior volume financeiro
-      return candidates.sort((a, b) => b.volume24hUsd - a.volume24hUsd);
+      // Mescla os top 25 por volume com os top 15 com maior momentum positivo (24h)
+      const topVolume = [...candidates].sort((a, b) => b.volume24hUsd - a.volume24hUsd).slice(0, 25);
+      const topMomentum = [...candidates]
+        .filter((c) => c.priceChange24hPct > 0)
+        .sort((a, b) => b.priceChange24hPct - a.priceChange24hPct)
+        .slice(0, 15);
+
+      const mergedMap = new Map<string, CandidateMarketData>();
+      for (const item of [...topVolume, ...topMomentum]) {
+        mergedMap.set(item.symbol, item);
+      }
+
+      return Array.from(mergedMap.values());
     } catch (err: any) {
       console.warn(`[MarketOpportunitySelector] Falha ao consultar tickers em tempo real: ${err.message}. Usando fallbacks.`);
       return this.getFallbackCandidates();
@@ -156,13 +197,37 @@ export class MarketOpportunitySelector {
   }
 
   /**
+   * Detecta o melhor regime operacional para o ativo
+   */
+  public detectOptimalStrategy(
+    adx: number | null,
+    rsi: number,
+    ema9: number,
+    ema21: number,
+    lastClose: number,
+    candidate: CandidateMarketData
+  ): "CONFLUENCE" | "MOMENTUM" | "MEAN_REVERSION" {
+    // 1. Momentum: tendência direcional forte + médias altistas alinhadas
+    if ((adx !== null && adx >= 28) && ema9 > ema21 && lastClose >= ema9 && candidate.priceChange24hPct >= 0) {
+      return "MOMENTUM";
+    }
+    // 2. Reversão à média: sobrevenda (RSI <= 35) ou afastamento substancial abaixo da EMA21
+    if (rsi <= 35 || (rsi <= 42 && lastClose < ema21 * 0.985)) {
+      return "MEAN_REVERSION";
+    }
+    // 3. Confluência Institucional: padrão balanceado
+    return "CONFLUENCE";
+  }
+
+  /**
    * 3. Avalia um candidato, calcula métricas, calibra SL/TP e gera o score de oportunidade
    */
   public evaluateCandidate(
     candidate: CandidateMarketData,
     klines15m: KlineData[],
     filters: SymbolFilters,
-    currentBalance = 70.0
+    currentBalance = 70.0,
+    strategy: StrategyType | string = "AUTO"
   ): EvaluatedOpportunity | null {
     if (klines15m.length < 25) return null;
 
@@ -181,15 +246,20 @@ export class MarketOpportunitySelector {
       return null; // Mercado lateral/sem momentum
     }
 
-    // 2. Filtro de Volatilidade: ATR deve caber no balanço de $70 USD
+    // 2. Filtro de Volatilidade: ATR deve cobrir taxas e não estourar teto de risco
     if (relAtr < MarketOpportunitySelector.MIN_RELATIVE_ATR || relAtr > MarketOpportunitySelector.MAX_RELATIVE_ATR) {
-      return null; // Volatilidade insuficiente para taxas ou excessiva para banca de $70 USD
+      return null;
     }
 
     const trendAligned = ema9 > ema21 && lastClose >= ema9 && rsi >= 40 && rsi <= 65;
 
-    // 3. Calibração Dinâmica de Parâmetros Operacionais por ATR
-    // Entrada no bestBid para garantir LIMIT_MAKER Post-Only (GTX)
+    // 3. Determinação da Estratégia Efetiva (se AUTO, a IA decide o melhor regime)
+    const effectiveStrategy = (strategy === "AUTO" || !strategy)
+      ? this.detectOptimalStrategy(adx, rsi, ema9, ema21, lastClose, candidate)
+      : (strategy as "CONFLUENCE" | "MOMENTUM" | "MEAN_REVERSION");
+
+    // 4. Calibração Dinâmica de Parâmetros Operacionais por ATR
+    // Entrada base no bestBid para garantir LIMIT_MAKER Post-Only (GTX)
     const entryPrice = this.metadataService.quantizePrice(candidate.bestBid, filters);
     const atrValue = lastClose * relAtr;
 
@@ -203,32 +273,108 @@ export class MarketOpportunitySelector {
     const atrTp = this.metadataService.quantizePrice(rawTpAtr, filters);
     const takeProfit = Math.max(atrTp, minSafeTp);
 
-    // 4. Verificação de Viabilidade de Risco para a Banca de $70 USD:
-    // O lote mínimo ($11 USD) pode gerar uma perda no SL > $1.40 USD?
+    // 5. Verificação de Viabilidade de Risco
+    const baseNav = Math.max(70.0, currentBalance);
     const minQty = Math.ceil(PilotTradeValidator.TARGET_NOTIONAL_MIN_USD / entryPrice / filters.stepSize) * filters.stepSize;
     const lossAtMinLot = minQty * (entryPrice - stopLoss);
 
-    if (lossAtMinLot > currentBalance * PilotTradeValidator.MAX_RISK_PERCENT * 1.05) {
-      return null; // Stop-loss largo demais para o capital de $70 USD
+    if (lossAtMinLot > baseNav * PilotTradeValidator.MAX_RISK_PERCENT * 1.05) {
+      return null; // Stop-loss largo demais para o capital
     }
 
-    // 5. Cálculo do Score de Oportunidade (0 a 100)
-    // - Liquidez (0 a 35 pontos)
-    const volumeScore = Math.min(35, (candidate.volume24hUsd / 200_000_000) * 35);
+    // 6. Cálculo do Gatilho Ótimo / Condição de Disparo (Radar Sniper)
+    let triggerType: TriggerCondition["type"] = "IMMEDIATE";
+    let targetPrice = entryPrice;
+    let conditionDescription = "Entrada imediata no melhor preço de compra disponível (bestBid).";
+    let triggerDirection: TriggerCondition["triggerDirection"] = "NOW";
 
-    // - Tendência & Momentum (0 a 35 pontos)
-    let trendScore = 15;
-    if (trendAligned) trendScore += 15;
-    if (rsi >= 45 && rsi <= 58) trendScore += 5;
+    if (effectiveStrategy === "MOMENTUM") {
+      // Se estiver muito esticado em relação à EMA9 (> 0.35%), espera pullback para não comprar no topo
+      const distanceToEma9 = (lastClose - ema9) / ema9;
+      if (distanceToEma9 > 0.0035) {
+        triggerType = "PULLBACK_EMA";
+        targetPrice = this.metadataService.quantizePrice(Math.max(ema9, candidate.bestBid), filters);
+        conditionDescription = `Aguardando pullback na EMA 9 ($${targetPrice}) para entrada sniper com proteção de ruído.`;
+        triggerDirection = "LESS_THAN_OR_EQUAL";
+      } else {
+        // Se estiver perto do topo recente dos últimos 3 candles, gatilho no rompimento
+        const recentHigh = Math.max(...klines15m.slice(-3).map((k) => k.high));
+        if (recentHigh > lastClose && (recentHigh - lastClose) / lastClose < 0.005) {
+          triggerType = "BREAKOUT_RESISTANCE";
+          targetPrice = this.metadataService.quantizePrice(recentHigh + filters.tickSize, filters);
+          conditionDescription = `Aguardando rompimento da resistência local ($${targetPrice}) com fluxo comprador.`;
+          triggerDirection = "GREATER_THAN_OR_EQUAL";
+        }
+      }
+    } else if (effectiveStrategy === "MEAN_REVERSION") {
+      // Se estiver em sobrevenda acentuada, espera candle de reversão (superar máxima do candle anterior)
+      const prevCandleHigh = klines15m[klines15m.length - 2]?.high ?? lastClose;
+      if (lastClose < prevCandleHigh) {
+        triggerType = "OVERSOLD_BOUNCE";
+        targetPrice = this.metadataService.quantizePrice(prevCandleHigh, filters);
+        conditionDescription = `Aguardando repique de sobrevenda: rompimento da máxima anterior ($${targetPrice}) para evitar faca caindo.`;
+        triggerDirection = "GREATER_THAN_OR_EQUAL";
+      }
+    }
 
-    // - Zona Áurea de ATR (0 a 30 pontos) - Pico em 1.5%
-    const atrDistance = Math.abs(relAtr - 0.015);
-    const atrScore = Math.max(0, 30 - (atrDistance / 0.01) * 20);
+    const distanceToTriggerPct = Math.abs(candidate.lastPrice - targetPrice) / candidate.lastPrice * 100;
+    // Se a distância for insignificante (<= 0.08%), dispara de imediato
+    if (distanceToTriggerPct <= 0.08 || triggerDirection === "NOW") {
+      triggerType = "IMMEDIATE";
+      triggerDirection = "NOW";
+      targetPrice = entryPrice;
+    }
 
-    // - Penalidade de Spread
+    const triggerCondition: TriggerCondition = {
+      type: triggerType,
+      targetPrice,
+      conditionDescription,
+      triggerDirection,
+      expirationMinutes: 30, // Radar ativo por até 30 minutos aguardando o momento ótimo
+      strategyChosen: effectiveStrategy,
+      distanceToTriggerPct: PreciseMath.roundDown(distanceToTriggerPct, 2),
+    };
+
+    // 7. Cálculo do Score de Oportunidade Ponderado pela Estratégia Escolhida
+    // - Liquidez balanceada (0 a 15 pontos, evitando viés excessivo em mega-caps)
+    const volumeScore = Math.min(15, (candidate.volume24hUsd / 100_000_000) * 15);
+
+    // - Penalidade de Spread (0 a 10 pontos)
     const spreadPenalty = (candidate.spreadPct / MarketOpportunitySelector.MAX_SPREAD_PERCENT) * 10;
 
-    const totalScore = Math.max(0, Math.min(100, volumeScore + trendScore + atrScore - spreadPenalty));
+    let strategyScore = 20;
+
+    if (effectiveStrategy === "MOMENTUM") {
+      // Prioriza alinhamento altista, volume e rompimento
+      if (ema9 > ema21) strategyScore += 25;
+      if (lastClose >= ema9) strategyScore += 15;
+      if (candidate.priceChange24hPct > 1.0) strategyScore += 15;
+      else if (candidate.priceChange24hPct > 0) strategyScore += 10;
+      if (rsi >= 45 && rsi <= 68) strategyScore += 15;
+      if (relAtr >= 0.002) strategyScore += 5;
+    } else if (effectiveStrategy === "MEAN_REVERSION") {
+      // Prioriza exaustão estatística e sobrevenda para repique
+      if (rsi < 28) strategyScore += 35;
+      else if (rsi < 38) strategyScore += 25;
+      else if (rsi < 48) strategyScore += 10;
+      if (lastClose < ema21) strategyScore += 15;
+      if (relAtr >= 0.003) strategyScore += 10;
+    } else {
+      // CONFLUENCE (Padrão Institucional)
+      if (adx !== null && adx >= 30) strategyScore += 20;
+      else if (adx !== null && adx >= 20) strategyScore += 10;
+      if (trendAligned) strategyScore += 20;
+      if (rsi >= 35 && rsi <= 62) strategyScore += 15;
+      const atrDistance = Math.abs(relAtr - 0.015);
+      strategyScore += Math.max(0, 15 - (atrDistance / 0.01) * 10);
+    }
+
+    // Bônus se a oportunidade estiver exatamente no ponto de entrada ou com trigger claro
+    if (triggerCondition.type === "IMMEDIATE") {
+      strategyScore += 5;
+    }
+
+    const totalScore = Math.max(0, Math.min(100, volumeScore + strategyScore - spreadPenalty));
 
     const signal: TradeSignal = {
       symbol: candidate.symbol,
@@ -252,15 +398,23 @@ export class MarketOpportunitySelector {
         ema21,
         trendAligned,
       },
+      triggerCondition,
+      effectiveStrategy,
     };
   }
 
   /**
-   * 4. Varre o mercado e seleciona automaticamente a melhor oportunidade para o teste piloto
+   * 4. Varre o mercado e seleciona automaticamente a melhor oportunidade com rotação e ranking
    */
-  public async findBestOpportunity(currentBalance = 70.0, baseUrl = "https://api.binance.com"): Promise<EvaluatedOpportunity> {
+  public async findBestOpportunity(
+    currentBalance = 70.0,
+    baseUrl = "https://api.binance.com",
+    strategy: StrategyType | string = "AUTO",
+    cooldownSymbols: string[] = []
+  ): Promise<EvaluatedOpportunity> {
     const candidates = await this.fetchCandidateTickers(baseUrl);
-    const topCandidates = candidates.slice(0, 6); // Avalia em paralelo as 6 moedas mais líquidas
+    // Avalia até 35 ativos qualificados (ampla cobertura de mercado)
+    const topCandidates = candidates.slice(0, 35);
 
     const evaluatedResults = await Promise.all(
       topCandidates.map(async (c) => {
@@ -269,7 +423,7 @@ export class MarketOpportunitySelector {
             this.metadataService.getSymbolFilters(c.symbol, baseUrl),
             this.fetchKlines(c.symbol, "15m", 50, baseUrl),
           ]);
-          return this.evaluateCandidate(c, klines, filters, currentBalance);
+          return this.evaluateCandidate(c, klines, filters, currentBalance, strategy);
         } catch {
           return null;
         }
@@ -283,8 +437,28 @@ export class MarketOpportunitySelector {
       return this.getFallbackOpportunity("BTCUSDT", currentBalance);
     }
 
+    // Aplica penalidade de rotação (-25 pts) para ativos em cooldown recente (< 30 min)
+    for (const item of evaluatedList) {
+      if (cooldownSymbols.includes(item.symbol)) {
+        item.score = Math.max(0, item.score - 25);
+        item.isCooldownApplied = true;
+      }
+    }
+
     // Ordena pelo maior Score de Oportunidade
     evaluatedList.sort((a, b) => b.score - a.score);
+
+    // Constrói o Top 3 para exibição transparente no Cockpit
+    const topRanked: RankedOpportunitySummary[] = evaluatedList.slice(0, 3).map((item) => ({
+      symbol: item.symbol,
+      score: PreciseMath.roundDown(item.score, 1),
+      strategy: item.effectiveStrategy,
+      priceChange24hPct: item.marketData.priceChange24hPct,
+      rationale: item.triggerCondition.conditionDescription,
+      isCooldownApplied: item.isCooldownApplied,
+    }));
+
+    evaluatedList[0].topRanked = topRanked;
     return evaluatedList[0];
   }
 
@@ -376,6 +550,42 @@ export class MarketOpportunitySelector {
         ema21: entry * 0.995,
         trendAligned: true,
       },
+      triggerCondition: {
+        type: "IMMEDIATE",
+        targetPrice: entry,
+        conditionDescription: "Entrada imediata por liquidez institucional em BTCUSDT.",
+        triggerDirection: "NOW",
+        expirationMinutes: 30,
+        strategyChosen: "CONFLUENCE",
+        distanceToTriggerPct: 0,
+      },
+      effectiveStrategy: "CONFLUENCE",
+      topRanked: [
+        {
+          symbol,
+          score: 85.0,
+          strategy: "CONFLUENCE",
+          priceChange24hPct: 2.0,
+          rationale: "Entrada imediata por liquidez institucional em BTCUSDT.",
+          isCooldownApplied: false,
+        },
+        {
+          symbol: "ETHUSDT",
+          score: 82.0,
+          strategy: "CONFLUENCE",
+          priceChange24hPct: 1.8,
+          rationale: "Fluxo institucional consistente.",
+          isCooldownApplied: false,
+        },
+        {
+          symbol: "SOLUSDT",
+          score: 79.0,
+          strategy: "MOMENTUM",
+          priceChange24hPct: 3.8,
+          rationale: "Rompimento de volatilidade positiva.",
+          isCooldownApplied: false,
+        },
+      ],
     };
   }
 }

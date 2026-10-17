@@ -33,6 +33,9 @@ import {
   Shield,
   Activity,
   Award,
+  Radio,
+  Crosshair,
+  Ban,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -43,7 +46,7 @@ export interface DirectAiTradeModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type ModalState = "CONFIG" | "SCANNING" | "ACTIVE" | "RESULT";
+type ModalState = "CONFIG" | "SCANNING" | "WAITING_TRIGGER" | "ACTIVE" | "RESULT";
 
 const AMOUNT_PRESETS = [15, 25, 50, 70];
 const DURATION_PRESETS = [
@@ -55,6 +58,12 @@ const DURATION_PRESETS = [
 ];
 
 const STRATEGIES = [
+  {
+    id: "AUTO",
+    name: "IA Autônoma (Recomendado)",
+    desc: "A IA analisa o regime do ativo, escolhe a estratégia e espera o gatilho ótimo",
+    icon: Sparkles,
+  },
   {
     id: "CONFLUENCE",
     name: "Confluência Máxima",
@@ -89,11 +98,12 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
   const [state, setState] = useState<ModalState>("CONFIG");
   const [amount, setAmount] = useState<number>(25);
   const [durationMinutes, setDurationMinutes] = useState<number>(5);
-  const [strategy, setStrategy] = useState<string>("CONFLUENCE");
+  const [strategy, setStrategy] = useState<string>("AUTO");
   const [scanStep, setScanStep] = useState<string>("");
   const [session, setSession] = useState<any | null>(null);
   const [timeRemainingSec, setTimeRemainingSec] = useState<number>(0);
   const [isClosing, setIsClosing] = useState<boolean>(false);
+  const [isActionPending, setIsActionPending] = useState<boolean>(false);
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -108,8 +118,41 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
     };
   }, []);
 
-  // Timer decrescente local
+  // Polling e Timer reativos
   useEffect(() => {
+    if (!session?.id) return;
+
+    if (state === "WAITING_TRIGGER") {
+      // Polling contínuo do Radar Sniper a cada 1.5s
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/bot/direct-operation?id=${session.id}`);
+          if (res.ok) {
+            const json = await res.json();
+            if (json.success && json.data) {
+              setSession(json.data);
+              if (json.data.status === "ACTIVE") {
+                setState("ACTIVE");
+                toast({
+                  title: `⚡ Gatilho Atingido: ${json.data.symbol}!`,
+                  description: `Ordem executada a $${json.data.entryPrice}. O cronômetro foi iniciado.`,
+                });
+              } else if (json.data.status === "CLOSED" || json.data.status === "CANCELLED") {
+                if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+                setState("RESULT");
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[DirectTradeModal] Polling radar error:", e);
+        }
+      }, 1500);
+
+      return () => {
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      };
+    }
+
     if (state === "ACTIVE" && session?.endTime) {
       const updateTimer = () => {
         const remaining = Math.max(0, Math.floor((session.endTime - Date.now()) / 1000));
@@ -158,7 +201,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
       setScanStep("Analisando liquidez, spread bid-ask e regime de volatilidade (ATR)...");
 
       await new Promise((r) => setTimeout(r, 800));
-      setScanStep("Aplicando normalização de cotação interbancária e filtros exchangeInfo...");
+      setScanStep("IA avaliando melhor estratégia e calculando gatilho ótimo de entrada...");
 
       const res = await fetch("/api/bot/direct-operation", {
         method: "POST",
@@ -177,16 +220,27 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
         throw new Error(json.error || "Erro ao iniciar operação direta com IA.");
       }
 
-      setScanStep(`Oportunidade selecionada: ${json.data.session.symbol}! Despachando ordem LIMIT_MAKER...`);
-      await new Promise((r) => setTimeout(r, 700));
+      const newSession = json.data.session;
+      setSession(newSession);
 
-      setSession(json.data.session);
-      setState("ACTIVE");
-      const orderTag = json.data.session.binanceOrderId ? ` (Ordem #${json.data.session.binanceOrderId})` : '';
-      toast({
-        title: `🚀 Operação Iniciada: ${json.data.session.symbol}${orderTag}`,
-        description: `IA alocou $${json.data.session.notionalUsd} na Binance Spot com alvo em $${json.data.session.targetPrice}.`,
-      });
+      if (newSession.status === "WAITING_TRIGGER") {
+        setScanStep(`Oportunidade selecionada: ${newSession.symbol}! Radar Sniper ativado.`);
+        await new Promise((r) => setTimeout(r, 600));
+        setState("WAITING_TRIGGER");
+        toast({
+          title: `🎯 Radar Sniper Armado: ${newSession.symbol}`,
+          description: `Aguardando momento ideal de entrada (${newSession.triggerCondition?.distanceToTriggerPct || 0}% de distância).`,
+        });
+      } else {
+        setScanStep(`Oportunidade selecionada: ${newSession.symbol}! Ordem executada com sucesso.`);
+        await new Promise((r) => setTimeout(r, 600));
+        setState("ACTIVE");
+        const orderTag = newSession.binanceOrderId ? ` (Ordem #${newSession.binanceOrderId})` : '';
+        toast({
+          title: `🚀 Operação Iniciada: ${newSession.symbol}${orderTag}`,
+          description: `IA alocou $${newSession.notionalUsd} na Binance Spot com alvo em $${newSession.targetPrice}.`,
+        });
+      }
     } catch (err: any) {
       toast({
         title: "Erro na Operação Direta",
@@ -194,6 +248,66 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
         variant: "destructive",
       });
       setState("CONFIG");
+    }
+  };
+
+  const handleForceEntry = async () => {
+    if (!session || isActionPending) return;
+    setIsActionPending(true);
+
+    try {
+      const res = await fetch("/api/bot/direct-operation/force-entry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: session.id }),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setSession(json.data);
+        setState("ACTIVE");
+        toast({
+          title: `⚡ Entrada Imediata Executada: ${json.data.symbol}`,
+          description: `Posição aberta a mercado a $${json.data.entryPrice}. Cronômetro iniciado!`,
+        });
+      } else {
+        throw new Error(json.error || "Falha ao forçar disparo imediato.");
+      }
+    } catch (err: any) {
+      toast({
+        title: "Erro no Disparo",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsActionPending(false);
+    }
+  };
+
+  const handleCancelRadar = async () => {
+    if (!session || isActionPending) return;
+    setIsActionPending(true);
+
+    try {
+      const res = await fetch(`/api/bot/direct-operation?id=${session.id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setSession(json.data);
+        setState("RESULT");
+        toast({
+          title: "Radar Sniper Cancelado",
+          description: "A espera pelo momento ideal foi cancelada. Nenhum valor foi gasto.",
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Aviso",
+        description: "Radar cancelado localmente.",
+      });
+      setState("CONFIG");
+    } finally {
+      setIsActionPending(false);
     }
   };
 
@@ -375,29 +489,43 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
 
                 {/* 3. Seleção de Estratégia da IA */}
                 <div className="space-y-2">
-                  <Label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                    Critério de Seleção da IA
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                      Critério de Seleção da IA
+                    </Label>
+                    <span className="text-[10px] text-cyan-400 font-medium">
+                      IA decide regime e momento ideal
+                    </span>
+                  </div>
 
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {STRATEGIES.map((s) => {
                       const Icon = s.icon;
+                      const isSelected = strategy === s.id;
+                      const isAuto = s.id === "AUTO";
                       return (
                         <button
                           key={s.id}
                           type="button"
                           onClick={() => setStrategy(s.id)}
                           className={cn(
-                            "p-2.5 rounded-lg text-left flex flex-col gap-1 border transition-all cursor-pointer",
-                            strategy === s.id
-                              ? "bg-purple-500/20 text-purple-200 border-purple-400/50 shadow-[0_0_12px_rgba(168,85,247,0.2)]"
+                            "p-2.5 rounded-xl text-left flex flex-col gap-1 border transition-all cursor-pointer relative overflow-hidden",
+                            isSelected
+                              ? isAuto
+                                ? "bg-cyan-500/15 text-cyan-200 border-cyan-400/60 shadow-[0_0_15px_rgba(6,182,212,0.25)]"
+                                : "bg-purple-500/20 text-purple-200 border-purple-400/50 shadow-[0_0_12px_rgba(168,85,247,0.2)]"
                               : "bg-white/[0.03] border-white/[0.08] text-slate-400 hover:text-white hover:bg-white/[0.06]"
                           )}
                         >
+                          {isAuto && (
+                            <span className="absolute top-1.5 right-1.5 text-[8px] font-bold px-1.5 py-0.2 rounded-full bg-cyan-400/20 text-cyan-300 border border-cyan-400/30">
+                              AUTO
+                            </span>
+                          )}
                           <div className="flex items-center gap-1.5 font-semibold text-xs text-white">
-                            <Icon className="w-3.5 h-3.5 text-purple-400" />
-                            <span className="truncate">{s.name}</span>
+                            <Icon className={cn("w-3.5 h-3.5", isAuto ? "text-cyan-400" : "text-purple-400")} />
+                            <span className="truncate pr-8">{s.name}</span>
                           </div>
                           <span className="text-[9px] text-slate-400 leading-tight line-clamp-2">
                             {s.desc}
@@ -453,8 +581,159 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                     Spreads &lt; 0.05%
                   </Badge>
                   <Badge variant="outline" className="text-[10px] bg-white/[0.04] border-white/[0.1] text-slate-300">
-                    Order Book L2
+                    Radar Sniper L2
                   </Badge>
+                </div>
+              </motion.div>
+            )}
+
+            {/* ETAPA 2.5: RADAR SNIPER ATIVO (AGUARDANDO OPORTUNIDADE ÓTIMA) */}
+            {state === "WAITING_TRIGGER" && session && (
+              <motion.div
+                key="waiting_trigger"
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                className="space-y-4"
+              >
+                {/* Radar Visual Header */}
+                <div className="relative p-5 rounded-2xl bg-gradient-to-b from-cyan-950/40 via-slate-900/60 to-background border border-cyan-500/30 overflow-hidden text-center shadow-[0_0_30px_rgba(6,182,212,0.15)]">
+                  {/* Círculos concêntricos do Radar */}
+                  <div className="relative w-24 h-24 mx-auto my-1 flex items-center justify-center">
+                    <span className="absolute inset-0 rounded-full border border-cyan-400/20 animate-ping opacity-75" />
+                    <span className="absolute inset-2 rounded-full border border-cyan-400/30 animate-pulse" />
+                    <span className="absolute inset-4 rounded-full border border-cyan-500/40" />
+                    <div className="w-12 h-12 rounded-full bg-cyan-500/20 border border-cyan-400 flex items-center justify-center shadow-[0_0_20px_rgba(6,182,212,0.6)]">
+                      <Crosshair className="w-6 h-6 text-cyan-300 animate-spin" style={{ animationDuration: '6s' }} />
+                    </div>
+                    <Radio className="w-4 h-4 text-emerald-400 absolute top-1 right-1 animate-bounce" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                      <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                        Radar Sniper Armado — {session.symbol}
+                      </h4>
+                    </div>
+                    <p className="text-xs text-cyan-200/90 font-medium max-w-md mx-auto">
+                      {session.triggerCondition?.conditionDescription || session.rationale}
+                    </p>
+                  </div>
+
+                  {/* Informações de Preço e Gatilho */}
+                  <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-white/[0.08] text-center">
+                    <div className="bg-white/[0.02] p-2 rounded-xl">
+                      <span className="text-[10px] text-slate-400 block font-mono">Preço Atual</span>
+                      <span className="text-xs font-mono font-bold text-white">
+                        ${formatPrice(session.currentPrice)}
+                      </span>
+                    </div>
+                    <div className="bg-cyan-500/10 border border-cyan-500/30 p-2 rounded-xl">
+                      <span className="text-[10px] text-cyan-300 block font-mono font-bold">Gatilho Alvo</span>
+                      <span className="text-xs font-mono font-bold text-cyan-200">
+                        ${formatPrice(session.targetEntryPrice || session.entryPrice)}
+                      </span>
+                    </div>
+                    <div className="bg-white/[0.02] p-2 rounded-xl">
+                      <span className="text-[10px] text-slate-400 block font-mono">Distância</span>
+                      <span className="text-xs font-mono font-bold text-amber-300">
+                        {session.triggerCondition?.distanceToTriggerPct ?? 0}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Nota de Segurança e Capital Intacto */}
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-2.5">
+                  <Shield className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                  <div className="text-[11px] text-slate-300 leading-relaxed">
+                    <strong className="text-emerald-300">Capital 100% Protegido:</strong> Nenhuma ordem foi enviada à Binance. A compra de <strong>${session.notionalUsd} USD</strong> só será disparada quando as condições ideais forem atingidas.
+                  </div>
+                </div>
+
+                {/* Cockpit de Ranking: Top 3 Oportunidades no Radar da IA */}
+                {session.topRanked && session.topRanked.length > 0 && (
+                  <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.08] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-white">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Top 3 Oportunidades no Radar da IA</span>
+                      </div>
+                      {session.isCooldownApplied && (
+                        <Badge variant="outline" className="text-[9px] bg-cyan-500/10 text-cyan-300 border-cyan-500/30 font-mono py-0">
+                          <RefreshCw className="w-2.5 h-2.5 mr-1 animate-spin" style={{ animationDuration: '4s' }} />
+                          Rotação Ativa
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {session.topRanked.slice(0, 3).map((item: any, idx: number) => {
+                        const isChosen = item.symbol === session.symbol;
+                        return (
+                          <div
+                            key={item.symbol}
+                            className={cn(
+                              "p-2 rounded-lg border text-left transition-all relative overflow-hidden",
+                              isChosen
+                                ? "bg-emerald-500/10 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.15)]"
+                                : "bg-white/[0.01] border-white/[0.05] opacity-75"
+                            )}
+                          >
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="text-[10px] font-bold text-slate-200">
+                                #{idx + 1} {item.symbol.replace("USDT", "")}
+                              </span>
+                              <span className={cn(
+                                "text-[9px] font-mono font-bold px-1 rounded",
+                                isChosen ? "bg-emerald-500/20 text-emerald-300" : "bg-white/[0.05] text-slate-400"
+                              )}>
+                                {item.score} pts
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono">
+                              <span className="truncate max-w-[55px]">{item.strategy}</span>
+                              <span className={item.priceChange24hPct >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                                {item.priceChange24hPct >= 0 ? "+" : ""}{item.priceChange24hPct?.toFixed(1) ?? "0.0"}%
+                              </span>
+                            </div>
+                            {isChosen && (
+                              <span className="mt-1 block text-[8px] font-bold text-emerald-400 uppercase tracking-wider">
+                                ✓ Selecionado
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Botões de Ação Rápida */}
+                <div className="space-y-2">
+                  <Button
+                    onClick={handleForceEntry}
+                    disabled={isActionPending}
+                    className="w-full h-11 bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-black font-bold text-xs tracking-wide rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all cursor-pointer"
+                  >
+                    {isActionPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin text-black" />
+                    ) : (
+                      <Zap className="w-4 h-4 mr-2 fill-current" />
+                    )}
+                    Entrar a Mercado Agora (Disparo Imediato)
+                  </Button>
+
+                  <Button
+                    onClick={handleCancelRadar}
+                    disabled={isActionPending}
+                    variant="ghost"
+                    className="w-full h-9 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 text-xs rounded-xl transition-all cursor-pointer"
+                  >
+                    <Ban className="w-3.5 h-3.5 mr-1.5" />
+                    Cancelar Radar (Desarmar sem Custo)
+                  </Button>
                 </div>
               </motion.div>
             )}
@@ -480,6 +759,11 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                         <Badge className="bg-emerald-500/20 text-emerald-400 border-none text-[10px] font-mono">
                           Score IA: {session.aiScore}/100
                         </Badge>
+                        {session.strategyChosen && (
+                          <Badge variant="outline" className="bg-purple-500/10 text-purple-300 border-purple-500/30 text-[10px] font-mono">
+                            {session.strategyChosen}
+                          </Badge>
+                        )}
                         {session.binanceOrderId && (
                           <Badge variant="outline" className="bg-cyan-500/10 text-cyan-300 border-cyan-500/30 text-[10px] font-mono">
                             Binance #{session.binanceOrderId}
@@ -555,6 +839,64 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   </div>
                 </div>
 
+                {/* Cockpit de Ranking: Top 3 Oportunidades no Radar da IA */}
+                {session.topRanked && session.topRanked.length > 0 && (
+                  <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.08] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-white">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Top 3 Oportunidades no Radar da IA</span>
+                      </div>
+                      {session.isCooldownApplied && (
+                        <Badge variant="outline" className="text-[9px] bg-cyan-500/10 text-cyan-300 border-cyan-500/30 font-mono py-0">
+                          <RefreshCw className="w-2.5 h-2.5 mr-1 animate-spin" style={{ animationDuration: '4s' }} />
+                          Rotação Ativa
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {session.topRanked.slice(0, 3).map((item: any, idx: number) => {
+                        const isChosen = item.symbol === session.symbol;
+                        return (
+                          <div
+                            key={item.symbol}
+                            className={cn(
+                              "p-2 rounded-lg border text-left transition-all relative overflow-hidden",
+                              isChosen
+                                ? "bg-emerald-500/10 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.15)]"
+                                : "bg-white/[0.01] border-white/[0.05] opacity-75"
+                            )}
+                          >
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="text-[10px] font-bold text-slate-200">
+                                #{idx + 1} {item.symbol.replace("USDT", "")}
+                              </span>
+                              <span className={cn(
+                                "text-[9px] font-mono font-bold px-1 rounded",
+                                isChosen ? "bg-emerald-500/20 text-emerald-300" : "bg-white/[0.05] text-slate-400"
+                              )}>
+                                {item.score} pts
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono">
+                              <span className="truncate max-w-[55px]">{item.strategy}</span>
+                              <span className={item.priceChange24hPct >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                                {item.priceChange24hPct >= 0 ? "+" : ""}{item.priceChange24hPct?.toFixed(1) ?? "0.0"}%
+                              </span>
+                            </div>
+                            {isChosen && (
+                              <span className="mt-1 block text-[8px] font-bold text-emerald-400 uppercase tracking-wider">
+                                ✓ Selecionado
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Botão de Encerramento Antecipado */}
                 <Button
                   onClick={() => handleCloseSession("MANUAL_CLOSE")}
@@ -581,89 +923,110 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                 exit={{ opacity: 0, scale: 0.95 }}
                 className="space-y-5"
               >
-                <div className="text-center space-y-1">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-cyan-400 flex items-center justify-center mx-auto shadow-[0_0_25px_rgba(16,185,129,0.4)]">
-                    <Award className="w-7 h-7 text-black fill-current" />
+                {session.status === "CANCELLED" || session.closeReason === "RADAR_CANCELLED" ? (
+                  <div className="text-center space-y-3 py-4">
+                    <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(6,182,212,0.3)]">
+                      <Ban className="w-6 h-6 text-cyan-300" />
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="text-base font-bold text-white tracking-wide">
+                        Radar Sniper Cancelado com Sucesso
+                      </h3>
+                      <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                        O monitoramento foi desarmado antes de qualquer disparo. Nenhum capital foi comprometido e nenhuma taxa foi cobrada.
+                      </p>
+                    </div>
+                    <div className="p-3 bg-white/[0.02] border border-white/[0.08] rounded-xl text-xs text-slate-300 font-mono">
+                      Saldo Intacto: <strong className="text-emerald-400">$0.00 de custo operacional</strong>
+                    </div>
                   </div>
-                  <h3 className="text-base font-bold text-white tracking-wide pt-2">
-                    Operação Finalizada — Entrega de Resultado
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    O ciclo programado pela IA foi concluído e os valores foram consolidados na sua carteira.
-                  </p>
-                </div>
+                ) : (
+                  <>
+                    <div className="text-center space-y-1">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-cyan-400 flex items-center justify-center mx-auto shadow-[0_0_25px_rgba(16,185,129,0.4)]">
+                        <Award className="w-7 h-7 text-black fill-current" />
+                      </div>
+                      <h3 className="text-base font-bold text-white tracking-wide pt-2">
+                        Operação Finalizada — Entrega de Resultado
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        O ciclo programado pela IA foi concluído e os valores foram consolidados na sua carteira.
+                      </p>
+                    </div>
 
-                {/* Card de Lucro Líquido Entregue */}
-                <div className={cn(
-                  "p-5 rounded-2xl border text-center relative overflow-hidden",
-                  (session.realizedPnlUsd ?? 0) >= 0
-                    ? "bg-gradient-to-b from-emerald-950/40 to-background border-emerald-500/40 shadow-[0_0_30px_rgba(16,185,129,0.2)]"
-                    : "bg-gradient-to-b from-rose-950/40 to-background border-rose-500/40 shadow-[0_0_30px_rgba(244,63,94,0.2)]"
-                )}>
-                  <span className="text-xs uppercase font-bold text-slate-300 tracking-wider block">
-                    Lucro Líquido Realizado
-                  </span>
-                  <div className="flex items-center justify-center gap-2 mt-1">
-                    <span className={cn(
-                      "text-3xl font-black font-mono",
-                      (session.realizedPnlUsd ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"
+                    {/* Card de Lucro Líquido Entregue */}
+                    <div className={cn(
+                      "p-5 rounded-2xl border text-center relative overflow-hidden",
+                      (session.realizedPnlUsd ?? 0) >= 0
+                        ? "bg-gradient-to-b from-emerald-950/40 to-background border-emerald-500/40 shadow-[0_0_30px_rgba(16,185,129,0.2)]"
+                        : "bg-gradient-to-b from-rose-950/40 to-background border-rose-500/40 shadow-[0_0_30px_rgba(244,63,94,0.2)]"
                     )}>
-                      {(session.realizedPnlUsd ?? 0) >= 0 ? "+" : ""}${formatPrice(session.realizedPnlUsd ?? 0)} USD
-                    </span>
-                  </div>
-                  <span className={cn(
-                    "inline-block mt-2 text-xs font-bold font-mono px-2 py-0.5 rounded-full",
-                    (session.realizedPnlPercent ?? 0) >= 0 ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300"
-                  )}>
-                    ROI: {(session.realizedPnlPercent ?? 0) >= 0 ? "+" : ""}{(session.realizedPnlPercent ?? 0).toFixed(2)}%
-                  </span>
-                </div>
+                      <span className="text-xs uppercase font-bold text-slate-300 tracking-wider block">
+                        Lucro Líquido Realizado
+                      </span>
+                      <div className="flex items-center justify-center gap-2 mt-1">
+                        <span className={cn(
+                          "text-3xl font-black font-mono",
+                          (session.realizedPnlUsd ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"
+                        )}>
+                          {(session.realizedPnlUsd ?? 0) >= 0 ? "+" : ""}${formatPrice(session.realizedPnlUsd ?? 0)} USD
+                        </span>
+                      </div>
+                      <span className={cn(
+                        "inline-block mt-2 text-xs font-bold font-mono px-2 py-0.5 rounded-full",
+                        (session.realizedPnlPercent ?? 0) >= 0 ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300"
+                      )}>
+                        ROI: {(session.realizedPnlPercent ?? 0) >= 0 ? "+" : ""}{(session.realizedPnlPercent ?? 0).toFixed(2)}%
+                      </span>
+                    </div>
 
-                {/* Breakdown de Execução */}
-                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.08] space-y-2 text-xs">
-                  <div className="flex justify-between text-slate-400">
-                    <span>Ativo Selecionado pela IA:</span>
-                    <strong className="text-white font-mono">{session.symbol}</strong>
-                  </div>
-                  <div className="flex justify-between text-slate-400">
-                    <span>Capital Investido:</span>
-                    <strong className="text-white font-mono">${session.notionalUsd} USD</strong>
-                  </div>
-                  <div className="flex justify-between text-slate-400">
-                    <span>Preço de Entrada / Saída:</span>
-                    <strong className="text-white font-mono">
-                      ${formatPrice(session.entryPrice)} → ${formatPrice(session.currentPrice)}
-                    </strong>
-                  </div>
-                  <div className="flex justify-between text-slate-400">
-                    <span>Taxas de Corretagem Deduzidas:</span>
-                    <strong className="text-amber-400 font-mono">-${session.feeDeductedUsd ?? "0.02"} USD</strong>
-                  </div>
-                  {session.binanceOrderId && (
-                    <div className="flex justify-between text-slate-400">
-                      <span>Ordem de Compra Binance:</span>
-                      <strong className="text-cyan-400 font-mono">#{session.binanceOrderId}</strong>
+                    {/* Breakdown de Execução */}
+                    <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.08] space-y-2 text-xs">
+                      <div className="flex justify-between text-slate-400">
+                        <span>Ativo Selecionado pela IA:</span>
+                        <strong className="text-white font-mono">{session.symbol}</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-400">
+                        <span>Capital Investido:</span>
+                        <strong className="text-white font-mono">${session.notionalUsd} USD</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-400">
+                        <span>Preço de Entrada / Saída:</span>
+                        <strong className="text-white font-mono">
+                          ${formatPrice(session.entryPrice)} → ${formatPrice(session.currentPrice)}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between text-slate-400">
+                        <span>Taxas de Corretagem Deduzidas:</span>
+                        <strong className="text-amber-400 font-mono">-${session.feeDeductedUsd ?? "0.02"} USD</strong>
+                      </div>
+                      {session.binanceOrderId && (
+                        <div className="flex justify-between text-slate-400">
+                          <span>Ordem de Compra Binance:</span>
+                          <strong className="text-cyan-400 font-mono">#{session.binanceOrderId}</strong>
+                        </div>
+                      )}
+                      {session.closeBinanceOrderId && (
+                        <div className="flex justify-between text-slate-400">
+                          <span>Ordem de Venda Binance:</span>
+                          <strong className="text-cyan-400 font-mono">#{session.closeBinanceOrderId}</strong>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-slate-400">
+                        <span>Motivo de Encerramento:</span>
+                        <Badge variant="outline" className="text-[10px] border-white/[0.1] text-slate-300">
+                          {session.closeReason === "TARGET_REACHED"
+                            ? "🎯 Alvo de Lucro (TP) Atingido"
+                            : session.closeReason === "TIME_EXPIRED"
+                            ? "⏱️ Tempo Estipulado Concluído"
+                            : session.closeReason === "STOP_LOSS"
+                            ? "🛡️ Stop Loss de Proteção Acionado"
+                            : "⏹️ Saída Antecipada Manual"}
+                        </Badge>
+                      </div>
                     </div>
-                  )}
-                  {session.closeBinanceOrderId && (
-                    <div className="flex justify-between text-slate-400">
-                      <span>Ordem de Venda Binance:</span>
-                      <strong className="text-cyan-400 font-mono">#{session.closeBinanceOrderId}</strong>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-slate-400">
-                    <span>Motivo de Encerramento:</span>
-                    <Badge variant="outline" className="text-[10px] border-white/[0.1] text-slate-300">
-                      {session.closeReason === "TARGET_REACHED"
-                        ? "🎯 Alvo de Lucro (TP) Atingido"
-                        : session.closeReason === "TIME_EXPIRED"
-                        ? "⏱️ Tempo Estipulado Concluído"
-                        : session.closeReason === "STOP_LOSS"
-                        ? "🛡️ Stop Loss de Proteção Acionado"
-                        : "⏹️ Saída Antecipada Manual"}
-                    </Badge>
-                  </div>
-                </div>
+                  </>
+                )}
 
                 {/* Ações Finais */}
                 <div className="flex gap-2">

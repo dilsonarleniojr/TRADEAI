@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     const { session, validation } = await DirectOperationManager.startOperation({
       amount: parsedAmount,
       durationMinutes: parsedDuration,
-      strategy,
+      strategy: strategy || 'AUTO',
       mode: mode === 'live' ? 'live' : 'paper',
       binanceCredentials: credentials,
     });
@@ -78,6 +78,32 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       { success: false, error: error.message || 'Erro ao consultar status da operação.' },
       { status: 404 }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: 'Parâmetro id da sessão é obrigatório.' },
+        { status: 400 }
+      );
+    }
+
+    const session = DirectOperationManager.cancelRadar(id);
+    return NextResponse.json({
+      success: true,
+      data: sanitizeSession(session),
+    });
+  } catch (error: any) {
+    console.error('[API /api/bot/direct-operation] Erro ao cancelar radar:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'Erro ao cancelar espera no radar.' },
+      { status: 500 }
     );
   }
 }

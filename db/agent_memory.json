@@ -1,5 +1,29 @@
 [
   {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Seleção Autônoma de Critério (Modo AUTO) & Radar Sniper de Entrada Ótima na Operação Direta",
+    "summary": "1) Modo AUTO com Seleção Autônoma da Estratégia: A IA analisa em tempo real os indicadores quantitativos (RSI, EMAs 9/21, ADX, ATR, rompimentos de resistência e suporte) e seleciona dinamicamente a melhor estratégia entre MOMENTUM_BREAKOUT, MEAN_REVERSION e VOLATILITY_EXPANSION sem forçar o usuário a adivinhar; 2) Radar Sniper com Entrada Condicional (WAITING_TRIGGER): A IA não despacha ordem a mercado cega no segundo 0; ela calcula o gatilho ótimo (PULLBACK_EMA, BREAKOUT_RESISTANCE, OVERSOLD_BOUNCE ou IMMEDIATE se delta <= 0.08%), armando um radar em memória sem enviar ordem ou travar capital na Binance Spot; 3) Proteção de Capital e Trava de Idempotência: Durante o status WAITING_TRIGGER, 100% dos fundos permanecem intocados na carteira e o cancelamento é instantâneo e livre de taxas; ao atingir o preço de gatilho, a trava atômica isExecutingTrigger impede double-buy e executa a entrada; 4) Ações Rápidas no Cockpit do Radar: O usuário pode forçar entrada a mercado imediata (/api/bot/direct-operation/force-entry) ou cancelar o radar sem qualquer penalidade de taxa (/api/bot/direct-operation via DELETE); 5) Validação e Testes: 40 testes unitários passando em bun test e tipagem estrita TypeScript validada.",
+    "tags": [
+      "auto-strategy-selection",
+      "sniper-radar",
+      "waiting-trigger",
+      "opportunistic-entry",
+      "zero-capital-risk-radar",
+      "force-entry-action",
+      "cancel-radar-action"
+    ],
+    "details": {
+      "selectorPath": "src/lib/bot/pilot/market-opportunity-selector.ts",
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "modalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "forceEntryApiPath": "src/app/api/bot/direct-operation/force-entry/route.ts",
+      "directOperationApiPath": "src/app/api/bot/direct-operation/route.ts",
+      "totalPassingTests": 40
+    },
+    "id": "mem-1792257000000-auto-strategy-sniper-radar",
+    "timestamp": "2026-10-17T17:45:00.000Z"
+  },
+  {
     "category": "BUG_FIX",
     "title": "Correção Analítica do R:R Líquido (1.50x) no Take-Profit da Operação Direta",
     "summary": "1) Causa Raiz: Ativos com ATR comprimido (0.8% a 1.2%) sofriam erosão desproporcional pelas taxas Maker de entrada e Taker de saída (0.20% total), fazendo o R:R líquido cair para 1.43x-1.44x e ser barrado pelo PilotTradeValidator (MIN_REWARD_RISK_RATIO = 1.50x); 2) Solução Matemática Analítica: Implementação do método estático PilotTradeValidator.calculateTargetTakeProfit() deduzindo o TP mínimo para garantir R:R líquido >= 1.80x mesmo sob atrito de comissões, aplicando quantizePriceUp para que o tickSize nunca reduza o ratio; 3) Defesa em Profundidade: Integração em MarketOpportunitySelector (evaluateCandidate e getFallbackOpportunity) e no DirectOperationManager como auto-cura antes do gate de risco; 4) Validação: 35 testes unitários passando em bun test e validação ao vivo na API REST /api/bot/direct-operation.",

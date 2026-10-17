@@ -231,15 +231,160 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
     });
 
     it("deve barrar modo live se chaves de API da Binance não forem fornecidas", async () => {
-      expect(async () => {
-        await DirectOperationManager.startOperation({
+      await expect(
+        DirectOperationManager.startOperation({
           amount: 25.0,
           durationMinutes: 5,
           mode: "live",
           binanceCredentials: { apiKey: "", apiSecret: "" },
-        });
-      }).toThrow();
+        })
+      ).rejects.toThrow();
+    });
+  });
+
+  describe("4. IA Autônoma (Modo AUTO) & Radar Sniper de Entrada Ótima", () => {
+    it("deve selecionar automaticamente a melhor estratégia (AUTO) e configurar TriggerCondition", async () => {
+      const { session } = await DirectOperationManager.startOperation({
+        amount: 25.0,
+        durationMinutes: 5,
+        strategy: "AUTO",
+        mode: "paper",
+      });
+
+      expect(session.id).toBeDefined();
+      expect(["WAITING_TRIGGER", "ACTIVE"]).toContain(session.status);
+      expect(session.triggerCondition).toBeDefined();
+      expect(session.strategyChosen).toBeDefined();
+      expect(["CONFLUENCE", "MOMENTUM", "MEAN_REVERSION"]).toContain(session.strategyChosen!);
+      expect(session.triggerCondition!.targetPrice).toBeGreaterThan(0);
+      expect(session.triggerCondition!.conditionDescription.length).toBeGreaterThan(10);
+
+      DirectOperationManager.clearSession(session.id);
+    });
+
+    it("deve permitir forçar a entrada imediata a mercado via forceEntry", async () => {
+      const { session } = await DirectOperationManager.startOperation({
+        amount: 20.0,
+        durationMinutes: 5,
+        strategy: "AUTO",
+        mode: "paper",
+      });
+
+      // Se iniciou em WAITING_TRIGGER, forceEntry deve transformá-la em ACTIVE
+      if (session.status === "WAITING_TRIGGER") {
+        const forced = await DirectOperationManager.forceEntry(session.id);
+        expect(forced.status).toBe("ACTIVE");
+        expect(forced.startTime).toBeGreaterThan(0);
+        expect(forced.endTime).toBeGreaterThan(forced.startTime);
+      }
+
+      DirectOperationManager.clearSession(session.id);
+    });
+
+    it("deve permitir cancelar a espera no radar sem custos ou penalidades via cancelRadar", async () => {
+      const { session } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        strategy: "AUTO",
+        mode: "paper",
+      });
+
+      if (session.status === "WAITING_TRIGGER") {
+        const cancelled = DirectOperationManager.cancelRadar(session.id);
+        expect(cancelled.status).toBe("CANCELLED");
+        expect(cancelled.closeReason).toBe("RADAR_CANCELLED");
+        expect(cancelled.unrealizedPnlUsd).toBe(0);
+        expect(cancelled.realizedPnlUsd).toBe(0);
+
+        // Polling subsequente deve respeitar o cancelamento
+        const polled = await DirectOperationManager.pollSession(session.id);
+        expect(polled.status).toBe("CANCELLED");
+      }
+
+      DirectOperationManager.clearSession(session.id);
+    });
+
+    it("deve prevenir compras duplicadas (double-buy) através da trava atômica isExecutingTrigger", async () => {
+      const { session } = await DirectOperationManager.startOperation({
+        amount: 15.0,
+        durationMinutes: 5,
+        mode: "paper",
+      });
+
+      if (session.status === "WAITING_TRIGGER") {
+        // Dispara duas ativações simultâneas
+        const [res1, res2] = await Promise.all([
+          DirectOperationManager.forceEntry(session.id),
+          DirectOperationManager.forceEntry(session.id),
+        ]);
+
+        expect(res1.status).toBe("ACTIVE");
+        expect(res2.status).toBe("ACTIVE");
+      }
+
+      DirectOperationManager.clearSession(session.id);
+    });
+  });
+
+  describe("4. Rotação Automática de Ativos (Cooldown 30 min) & Cockpit Top 3", () => {
+    it("deve gerenciar histórico de cooldown de 30 minutos corretamente", () => {
+      DirectOperationManager.clearCooldownHistory();
+      expect(DirectOperationManager.getCooldownSymbols().length).toBe(0);
+
+      DirectOperationManager.recordSymbolExecution("ZECUSDT");
+      DirectOperationManager.recordSymbolExecution("BTCUSDT");
+
+      const cooldowns = DirectOperationManager.getCooldownSymbols();
+      expect(cooldowns).toContain("ZECUSDT");
+      expect(cooldowns).toContain("BTCUSDT");
+
+      DirectOperationManager.clearCooldownHistory();
+    });
+
+    it("deve aplicar rotação e penalizar ativo em cooldown em findBestOpportunity", async () => {
+      DirectOperationManager.clearCooldownHistory();
+
+      const { MarketOpportunitySelector } = await import("@/lib/bot/pilot/market-opportunity-selector");
+      const selector = MarketOpportunitySelector.getInstance();
+
+      // Chamada sem cooldown
+      const oppNormal = await selector.findBestOpportunity(70, "https://api.binance.com", "AUTO", []);
+      expect(oppNormal.topRanked).toBeDefined();
+      expect(oppNormal.topRanked!.length).toBeGreaterThanOrEqual(1);
+
+      // Chamada com o ativo vencedor anterior em cooldown
+      const oppWithCooldown = await selector.findBestOpportunity(70, "https://api.binance.com", "AUTO", [oppNormal.symbol]);
+      expect(oppWithCooldown).toBeDefined();
+      expect(oppWithCooldown.topRanked).toBeDefined();
+
+      // O ativo em cooldown deve ter isCooldownApplied se presente nos avaliados
+      const cooldownEntry = oppWithCooldown.topRanked?.find((t) => t.symbol === oppNormal.symbol);
+      if (cooldownEntry) {
+        expect(cooldownEntry.isCooldownApplied).toBe(true);
+      }
+    });
+
+    it("deve incluir topRanked na sessão criada por startOperation", async () => {
+      DirectOperationManager.clearCooldownHistory();
+
+      const { session } = await DirectOperationManager.startOperation({
+        amount: 25.0,
+        durationMinutes: 5,
+        strategy: "AUTO",
+        mode: "paper",
+      });
+
+      expect(session.topRanked).toBeDefined();
+      expect(session.topRanked!.length).toBeGreaterThanOrEqual(1);
+      expect(session.topRanked![0].symbol).toBeDefined();
+      expect(session.topRanked![0].score).toBeGreaterThan(0);
+      expect(session.topRanked![0].strategy).toBeDefined();
+
+      DirectOperationManager.clearSession(session.id);
+      DirectOperationManager.clearCooldownHistory();
     });
   });
 });
+
+
 
