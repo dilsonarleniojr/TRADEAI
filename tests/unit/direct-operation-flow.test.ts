@@ -739,7 +739,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
 
     it("deve gerar auto-reflexão pós-trade da IA com métricas MFE/MAE no encerramento da operação", async () => {
       const { session: created } = await DirectOperationManager.startOperation({
-        amount: 15.0,
+        amount: 30.0,
         durationMinutes: 5,
         strategy: "AUTO",
         mode: "paper",
@@ -822,6 +822,65 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
       expect(recalibration.tp2Multiplier).toBe(2.0);
       expect(recalibration.averageExitEfficiency).toBe(78.0);
       expect(recalibration.reason).toContain("Multiplicador padrão TP2 2.0x mantido");
+    });
+
+    it("deve acionar o Trailing Stop Agressivo (+0.60%) quando a operação registrar MAE inicial <= -0.60% antes do TP1", async () => {
+      const { session: created } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        strategy: "AUTO",
+        mode: "paper",
+      });
+
+      const session = created.status === "WAITING_TRIGGER"
+        ? await DirectOperationManager.forceEntry(created.id)
+        : created;
+
+      // Garante margem do Stop Loss inicial para registrar a excursão adversa sem violar o stop
+      session.stopLossPrice = session.entryPrice * 0.98;
+
+      // 1. Simula estresse inicial com recuo severo: MAE de -0.65% (<= -0.60%)
+      await DirectOperationManager.processPriceTick(session.id, session.entryPrice * 0.9935);
+
+      // 2. Preço se recupera e atinge o Alvo TP1
+      const afterTp1 = await DirectOperationManager.processPriceTick(session.id, session.tp1Price!);
+
+      expect(afterTp1.isTp1Taken).toBe(true);
+      expect(afterTp1.breakEvenProtected).toBe(true);
+      expect(afterTp1.isAggressiveBreakEvenActive).toBe(true);
+      expect(afterTp1.breakEvenOffsetPct).toBe(0.60);
+      expect(afterTp1.initialMaeAtTp1Pct).toBeLessThanOrEqual(-0.60);
+      expect(afterTp1.trailingStopPrice).toBeGreaterThan(session.entryPrice);
+
+      DirectOperationManager.clearSession(session.id);
+    });
+
+    it("deve manter o Break-Even padrão (+0.35%) quando o movimento for limpo com MAE > -0.60% antes do TP1", async () => {
+      const { session: created } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        strategy: "AUTO",
+        mode: "paper",
+      });
+
+      const session = created.status === "WAITING_TRIGGER"
+        ? await DirectOperationManager.forceEntry(created.id)
+        : created;
+
+      // 1. Simula recuo superficial limpo: MAE de apenas -0.2% (> -0.60%)
+      await DirectOperationManager.processPriceTick(session.id, session.entryPrice * 0.998);
+
+      // 2. Preço atinge o Alvo TP1
+      const afterTp1 = await DirectOperationManager.processPriceTick(session.id, session.tp1Price!);
+
+      expect(afterTp1.isTp1Taken).toBe(true);
+      expect(afterTp1.breakEvenProtected).toBe(true);
+      expect(afterTp1.isAggressiveBreakEvenActive).toBe(false);
+      expect(afterTp1.breakEvenOffsetPct).toBe(0.35);
+      expect(afterTp1.initialMaeAtTp1Pct).toBeGreaterThan(-0.60);
+      expect(afterTp1.trailingStopPrice).toBeGreaterThan(session.entryPrice);
+
+      DirectOperationManager.clearSession(session.id);
     });
   });
 });

@@ -88,6 +88,11 @@ export interface DirectOperationSession {
   priceHistory?: { price: number; timestamp: number }[];
   postTradeJournal?: TradeJournalEntry;
   targetRecalibration?: TargetRecalibrationState;
+
+  // Trailing Stop Agressivo com Base em MAE Residual
+  isAggressiveBreakEvenActive?: boolean;
+  breakEvenOffsetPct?: number;
+  initialMaeAtTp1Pct?: number;
 }
 
 export interface TradeJournalEntry {
@@ -754,18 +759,33 @@ export class DirectOperationManager {
           session.partialRealizedPnlUsd = (session.partialRealizedPnlUsd || 0) + partialNetPnl;
           session.quantity = PreciseMath.roundDown(session.quantity - tp1Qty, 8);
 
-          // Break-Even Blindado (+0.35% cobrindo taxas da Binance Spot e slippage, garantindo margem abaixo do preço atual)
-          const targetBreakEven = PreciseMath.roundDown(session.entryPrice * 1.0035, 6);
+          // Trailing Stop Agressivo com Base em MAE Residual:
+          // Se o ativo sofreu excursão adversa inicial acentuada (MAE <= -0.60%), eleva para +0.60% para proteger contra nova retração à zona de estresse.
+          // Se o movimento foi limpo (MAE > -0.60%), mantém o Break-Even padrão de +0.35%.
+          const lowest = session.lowestPriceReached || session.entryPrice;
+          const maeAtTp1 = ((lowest - session.entryPrice) / session.entryPrice) * 100;
+          session.initialMaeAtTp1Pct = PreciseMath.roundDown(maeAtTp1, 2);
+
+          const isAggressive = maeAtTp1 <= -0.60;
+          const breakEvenMultiplier = isAggressive ? 1.0060 : 1.0035;
+          const offsetPct = isAggressive ? 0.60 : 0.35;
+
+          const targetBreakEven = PreciseMath.roundDown(session.entryPrice * breakEvenMultiplier, 6);
           const breakEvenPrice = targetBreakEven < latestPrice
             ? targetBreakEven
             : PreciseMath.roundDown(session.entryPrice + (latestPrice - session.entryPrice) * 0.5, 6);
+
           session.stopLossPrice = breakEvenPrice;
           session.breakEvenProtected = true;
           session.trailingStopPrice = breakEvenPrice;
+          session.isAggressiveBreakEvenActive = isAggressive;
+          session.breakEvenOffsetPct = offsetPct;
 
-          TelegramNotifier.notify(
-            `🎯 [${session.symbol}] TP1 Executado! 33% liquidado a $${latestPrice} (+${partialNetPnl} USD). Stop Loss blindado no Break-Even ($${breakEvenPrice}).`
-          );
+          const notificationMsg = isAggressive
+            ? `🎯 [${session.symbol}] TP1 Executado! 33% liquidado a $${latestPrice} (+${partialNetPnl} USD). Trailing Stop Elevado AGRESSIVAMENTE (+0.60%) devido a MAE Residual de ${maeAtTp1.toFixed(2)}% ($${breakEvenPrice}).`
+            : `🎯 [${session.symbol}] TP1 Executado! 33% liquidado a $${latestPrice} (+${partialNetPnl} USD). Stop Loss blindado no Break-Even padrão (+0.35%) a $${breakEvenPrice}.`;
+
+          TelegramNotifier.notify(notificationMsg);
         }
       }
 

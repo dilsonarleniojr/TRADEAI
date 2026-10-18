@@ -1,6 +1,29 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Trailing Stop Agressivo com Base em MAE Residual: Elevação Proporcional do Break-Even (+0.35% -> +0.60%) para Mitigação de Risco de Retração pós-Estresse Inicial",
+    "summary": "1) Trailing Stop Agressivo por MAE Residual: O sistema audita atômica e continuamente o lowestPriceReached durante a vida da sessão ativa. Ao atingir o Alvo TP1 (33% liquidado), a IA computa a excursão adversa inicial suportada: maeAtTp1 = ((lowest - entryPrice) / entryPrice) * 100. Se maeAtTp1 <= -0.60% (indicando que a zona de suporte imediata foi estressada), o Break-Even protegido é elevado agressivamente para +0.60% (em vez de +0.35%), garantindo que qualquer tentativa subsequente de recuo encerre a posição com ganho líquido consolidado antes do retorno à zona de dor; 2) Preservação do Break-Even Padrão para Movimentos Limpos: Se a operação expandiu com folga (maeAtTp1 > -0.60%, ex: -0.2%), o Break-Even protegido padrão de +0.35% é mantido, conferindo espaço ao runner para capturar a tendência; 3) Visualização no Cockpit UI & Alertas: Quando o Break-Even Agressivo é ativado, o modal de operação direta exibe '🛡️ Break-Even Agressivo (+0.60%): (MAE -X.XX%)' com destaque âmbar pulsante e disparo de notificação no Telegram contextualizando a medida preventiva; 4) Validação Rigorosa: 40 testes unitários passando em bun test (186 asserções, 100% de sucesso), 0 erros no TypeScript e container atualizado.",
+    "tags": [
+      "aggressive-trailing-stop",
+      "mae-residual-risk-mitigation",
+      "break-even-elevation",
+      "triple-target-ladder",
+      "tp1-risk-lock",
+      "stress-zone-protection",
+      "institutional-cockpit"
+    ],
+    "details": {
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "modalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "testSuitePath": "tests/unit/direct-operation-flow.test.ts",
+      "totalPassingTests": 40,
+      "totalAssertions": 186
+    },
+    "id": "mem-1792281000000-aggressive-trailing-stop-mae",
+    "timestamp": "2026-10-18T03:05:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Mecanismo de Recalibração Heurística de Alvos (Adaptive Target Recalibrator): Contração Automática de ATR de TP2 (2.0x -> 1.7x) baseada em Eficiência de Saída (< 50%) e MFE Recorrente (> +2.0%) do Diário de Bordo",
     "summary": "1) Recalibração Heurística Contínua (calculateHeuristicTargetRecalibration): O sistema inspeciona as últimas 10 operações registradas no diário de bordo (db/trade_journal.json). Se a Eficiência Média de Saída for inferior a 50% e houver MFE recorrente > +2.0% (evidenciando que o ativo alcançou picos expressivos antes de recuar e devolver o ganho), o multiplicador de ATR do TP2 da Escada Tripla de Alvos é contraído automaticamente de 2.0x para 1.7x; 2) Antecipação de Lucro no Topo da Volatilidade: A contração para 1.7x aproxima a realização dos segundos 33% da posição, capturando o lucro máximo antes de reversões intradiárias e melhorando a taxa de conversão líquida; 3) Exposição no Radar & Cockpit UI: O estado da recalibração (isRecalibrated, tp2Multiplier, sampleSize, avgEfficiencyPct, recurrentHighMfeCount, reason) é exposto na resposta da API /radar e na sessão ativa, acionando um badge âmbar comemorativo no topo do modal e estilização destacada 'TP2 (1.7x 🎯)' com tooltip explicativo; 4) Validação Rigorosa: 38 testes unitários passando em bun test (174 asserções, 100% de sucesso), 0 erros no TypeScript e integração completa com o container de produção.",
     "tags": [

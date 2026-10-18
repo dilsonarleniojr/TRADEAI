@@ -1567,10 +1567,23 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   {/* Linha de Proteção Dinâmica */}
                   <div className="mt-2 pt-2 border-t border-white/[0.04] flex items-center justify-between text-[10px] font-mono px-1">
                     <span className="text-slate-400 flex items-center gap-1">
-                      <Shield className="w-3 h-3 text-emerald-400" />
-                      {session.trailingStopPrice ? "Trailing Stop Ativo:" : session.breakEvenProtected ? "Break-Even Protegido:" : "Stop Loss Inicial:"}
+                      <Shield className={cn("w-3 h-3", (session as any).isAggressiveBreakEvenActive ? "text-amber-400 animate-pulse" : "text-emerald-400")} />
+                      {(session as any).isAggressiveBreakEvenActive ? (
+                        <span className="text-amber-300 font-semibold flex items-center gap-1">
+                          Break-Even Agressivo (+0.60% 🛡️):
+                          <span className="text-[9px] text-amber-400/80 font-normal">
+                            (MAE {(session as any).initialMaeAtTp1Pct ?? -0.6}%)
+                          </span>
+                        </span>
+                      ) : session.trailingStopPrice ? (
+                        "Trailing Stop Ativo:"
+                      ) : session.breakEvenProtected ? (
+                        "Break-Even Protegido (+0.35%):"
+                      ) : (
+                        "Stop Loss Inicial:"
+                      )}
                     </span>
-                    <span className={cn("font-bold", session.breakEvenProtected ? "text-emerald-300" : "text-rose-300")}>
+                    <span className={cn("font-bold", (session as any).isAggressiveBreakEvenActive ? "text-amber-300 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]" : session.breakEvenProtected ? "text-emerald-300" : "text-rose-300")}>
                       ${formatPrice(session.trailingStopPrice || session.stopLossPrice)}
                     </span>
                   </div>
