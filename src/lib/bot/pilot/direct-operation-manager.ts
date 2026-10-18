@@ -61,6 +61,7 @@ export interface DirectOperationSession {
   breakEvenProtected?: boolean;
   trailingStopPrice?: number;
   highestPriceReached?: number;
+  lowestPriceReached?: number;
 
   // Fase 2 & 3: IA Thought Stream & Microestrutura L2
   aiThoughtStream?: AiThoughtStep[];
@@ -84,7 +85,39 @@ export interface DirectOperationSession {
   volatilitySizingUsd?: number;
   executionLatencyMs?: number;
   priceHistory?: { price: number; timestamp: number }[];
+  postTradeJournal?: TradeJournalEntry;
 }
+
+export interface TradeJournalEntry {
+  id: string;
+  sessionId: string;
+  symbol: string;
+  mode: 'live' | 'paper';
+  entryPrice: number;
+  exitPrice: number;
+  notionalUsd: number;
+  realizedPnlUsd: number;
+  realizedPnlPercent: number;
+  feeDeductedUsd: number;
+  durationSeconds: number;
+  closeReason: string;
+  strategy?: string;
+  marketRegime?: string;
+  // Métricas de Excursão Institucionais
+  mfePrice: number;
+  mfePercent: number;
+  maePrice: number;
+  maePercent: number;
+  exitEfficiencyPct: number;
+  // Reflexão da IA e classificação
+  aiReflection: string;
+  rating: 'OPTIMAL' | 'ACCEPTABLE' | 'SUBOPTIMAL' | 'DEFENSIVE_EXIT';
+  lessonsLearned: string[];
+  timestamp: number;
+}
+
+// Armazenamento em memória do Diário de Trades
+const tradeJournalMemory: TradeJournalEntry[] = [];
 
 // Armazenamento em memória de sessões ativas
 const activeSessions = new Map<string, DirectOperationSession>();
@@ -678,8 +711,9 @@ export class DirectOperationManager {
 
     // Status ACTIVE
     if (session.status === 'ACTIVE') {
-      // 1. Registra nova máxima alcançada pela operação
+      // 1. Registra nova máxima e mínima alcançada pela operação (para métricas de MFE/MAE)
       session.highestPriceReached = Math.max(session.highestPriceReached || session.entryPrice, latestPrice);
+      session.lowestPriceReached = Math.min(session.lowestPriceReached || session.entryPrice, latestPrice);
 
       const metadataService = ExchangeMetadataService.getInstance();
       const filters = await metadataService.getSymbolFilters(session.symbol);
@@ -901,6 +935,10 @@ export class DirectOperationManager {
     session.unrealizedPnlUsd = 0;
     session.unrealizedPnlPercent = 0;
 
+    // Gera auto-avaliação pós-trade da IA (Post-Trade Reflection) e salva no diário
+    const journalEntry = this.generatePostTradeReflection(session);
+    session.postTradeJournal = journalEntry;
+
     // Notificação de Encerramento Telegram
     TelegramNotifier.notify(
       `🏁 [TradeAI] Operação Encerrada: ${session.symbol}\n` +
@@ -909,6 +947,128 @@ export class DirectOperationManager {
     );
 
     return session;
+  }
+
+  /**
+   * Gera a auto-reflexão pós-trade analítica da IA (Post-Trade Reflection & Journaling)
+   */
+  public static generatePostTradeReflection(session: DirectOperationSession): TradeJournalEntry {
+    const entryPrice = session.entryPrice;
+    const exitPrice = session.currentPrice;
+    const highest = Math.max(session.highestPriceReached || entryPrice, exitPrice, entryPrice);
+    const lowest = Math.min(session.lowestPriceReached || entryPrice, exitPrice, entryPrice);
+
+    const mfePrice = highest;
+    const mfePercent = entryPrice > 0 ? PreciseMath.roundDown(((highest - entryPrice) / entryPrice) * 100, 2) : 0;
+    const maePrice = lowest;
+    const maePercent = entryPrice > 0 ? PreciseMath.roundDown(((lowest - entryPrice) / entryPrice) * 100, 2) : 0;
+
+    const realizedPct = session.realizedPnlPercent || 0;
+    let exitEfficiency = 0;
+    if (mfePercent > 0) {
+      exitEfficiency = PreciseMath.roundDown(Math.min(100, Math.max(0, (realizedPct / mfePercent) * 100)), 1);
+    } else if (realizedPct >= 0) {
+      exitEfficiency = 100;
+    }
+
+    let rating: 'OPTIMAL' | 'ACCEPTABLE' | 'SUBOPTIMAL' | 'DEFENSIVE_EXIT' = 'ACCEPTABLE';
+    if (realizedPct >= 1.5 || exitEfficiency >= 80) {
+      rating = 'OPTIMAL';
+    } else if (session.closeReason === 'STOP_LOSS' || realizedPct < 0) {
+      rating = 'DEFENSIVE_EXIT';
+    } else if (exitEfficiency < 40) {
+      rating = 'SUBOPTIMAL';
+    }
+
+    const durationSeconds = Math.max(1, Math.round((Date.now() - session.startTime) / 1000));
+    const lessons: string[] = [];
+
+    if (session.isTp1Taken && session.isTp2Taken) {
+      lessons.push('Escada de 3 alvos executada com maestria: 66% embolsado nos primeiros picos.');
+    } else if (session.isTp1Taken) {
+      lessons.push('Parcial 1 executada com sucesso e stop preservado no Break-Even (+0.35%).');
+    }
+
+    if (maePercent < -1.5) {
+      lessons.push(`Drawdown flutuante MAE atingiu ${maePercent}%; considerar entrada em pullback mais profundo.`);
+    } else {
+      lessons.push('Excelente timing sniper: o ativo não recuou significativamente abaixo da entrada.');
+    }
+
+    if (exitEfficiency >= 75) {
+      lessons.push(`Alta taxa de captura de lucro (${exitEfficiency}% do MFE máximo).`);
+    } else {
+      lessons.push(`O ativo expandiu até +${mfePercent}% antes da saída final; avaliar trailing stop mais folgado.`);
+    }
+
+    const aiReflection =
+      `Operação encerrada via ${session.closeReason || 'MANUAL_CLOSE'} em ${durationSeconds}s. ` +
+      `Resultado líquido: ${realizedPct > 0 ? '+' : ''}${realizedPct}% ($${session.realizedPnlUsd || 0} USD). ` +
+      `MFE (Pico Favorável): +${mfePercent}% | MAE (Retração Suportada): ${maePercent}%. ` +
+      `Eficiência de captura de topo: ${exitEfficiency}%. Classificação: ${rating}.`;
+
+    const entry: TradeJournalEntry = {
+      id: `journal-${session.id}`,
+      sessionId: session.id,
+      symbol: session.symbol,
+      mode: session.mode,
+      entryPrice,
+      exitPrice,
+      notionalUsd: session.notionalUsd,
+      realizedPnlUsd: session.realizedPnlUsd || 0,
+      realizedPnlPercent: realizedPct,
+      feeDeductedUsd: session.feeDeductedUsd || 0,
+      durationSeconds,
+      closeReason: session.closeReason || 'MANUAL_CLOSE',
+      strategy: session.strategyChosen,
+      marketRegime: session.marketRegime,
+      mfePrice,
+      mfePercent,
+      maePrice,
+      maePercent,
+      exitEfficiencyPct: exitEfficiency,
+      aiReflection,
+      rating,
+      lessonsLearned: lessons,
+      timestamp: Date.now(),
+    };
+
+    this.addJournalEntry(entry);
+    return entry;
+  }
+
+  public static addJournalEntry(entry: TradeJournalEntry) {
+    tradeJournalMemory.unshift(entry);
+    if (tradeJournalMemory.length > 50) {
+      tradeJournalMemory.pop();
+    }
+
+    try {
+      import("fs").then((fs) => {
+        import("path").then((path) => {
+          const filePath = path.join(process.cwd(), "db", "trade_journal.json");
+          fs.writeFileSync(filePath, JSON.stringify(tradeJournalMemory, null, 2), "utf-8");
+        });
+      }).catch(() => {});
+    } catch {}
+  }
+
+  public static getTradeJournal(): TradeJournalEntry[] {
+    if (tradeJournalMemory.length === 0) {
+      try {
+        const fs = require("fs");
+        const path = require("path");
+        const filePath = path.join(process.cwd(), "db", "trade_journal.json");
+        if (fs.existsSync(filePath)) {
+          const content = fs.readFileSync(filePath, "utf-8");
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed)) {
+            tradeJournalMemory.push(...parsed);
+          }
+        }
+      } catch {}
+    }
+    return tradeJournalMemory;
   }
 
   /**

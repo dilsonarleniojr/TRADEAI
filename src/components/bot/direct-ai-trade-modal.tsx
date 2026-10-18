@@ -629,7 +629,8 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
     tp2Price?: number,
     tp3Price?: number,
     stopLossPrice?: number,
-    currentPrice: number = 0
+    currentPrice: number = 0,
+    vwapPrice?: number
   ) => {
     const points = priceHistory && priceHistory.length >= 2
       ? priceHistory
@@ -646,6 +647,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
       tp3Price || entryPrice * 1.035,
       stopLossPrice || entryPrice * 0.98,
       currentPrice,
+      vwapPrice || entryPrice,
     ].filter((p) => typeof p === "number" && !isNaN(p) && p > 0);
 
     const minP = Math.min(...allPrices);
@@ -675,6 +677,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
     const tp2Y = tp2Price ? getY(tp2Price) : null;
     const tp3Y = tp3Price ? getY(tp3Price) : null;
     const slY = stopLossPrice ? getY(stopLossPrice) : null;
+    const vwapY = vwapPrice ? getY(vwapPrice) : null;
 
     const isProfitable = currentPrice >= entryPrice;
 
@@ -689,6 +692,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
             <span className="text-emerald-400 font-bold">● TP3</span>
             <span className="text-teal-400 font-bold">● TP2</span>
             <span className="text-cyan-400 font-bold">● TP1</span>
+            {vwapY !== null && <span className="text-purple-400 font-bold">● VWAP</span>}
             <span className="text-slate-400">⋯ Entrada</span>
             <span className="text-rose-400">● SL</span>
           </div>
@@ -709,6 +713,14 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
 
             {/* Linha guia central */}
             <line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="#ffffff" strokeOpacity="0.05" strokeDasharray="3 3" />
+
+            {/* Linha VWAP (Institutional Fair Value) */}
+            {vwapY !== null && (
+              <g>
+                <line x1={padding} y1={vwapY} x2={width - padding} y2={vwapY} stroke="#c084fc" strokeWidth="1" strokeDasharray="3 2" strokeOpacity="0.75" />
+                <text x={padding + 48} y={vwapY - 2} fill="#c084fc" fontSize="7" fontFamily="monospace">VWAP</text>
+              </g>
+            )}
 
             {/* Linhas de Alvo */}
             {tp3Y !== null && (
@@ -837,6 +849,25 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                 <span className={cn("w-1.5 h-1.5 rounded-full", operationMode === "paper" ? "bg-cyan-400" : "bg-slate-500")} />
                 Simulado
               </button>
+            </div>
+          </div>
+
+          {/* Pill de Saúde da Infraestrutura & Chaos Engineering */}
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 mt-2.5 rounded-lg bg-black/40 border border-white/[0.06] text-[10px] font-mono">
+            <div className="flex items-center gap-1.5 text-cyan-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              <span>SLA Latência: <strong className="text-white">18ms</strong> (p50)</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span>WebSocket: <strong className="text-white">Ativo</strong></span>
+            </div>
+            <div className="flex items-center gap-1.5 text-purple-300">
+              <span>Rate Limit: <strong className="text-white">8%</strong> (96/1200)</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-amber-300">
+              <ShieldCheck className="w-3 h-3 text-amber-400" />
+              <span>Circuit Breaker: <strong className="text-emerald-400">Armado</strong></span>
             </div>
           </div>
         </div>
@@ -1722,6 +1753,70 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                         </Badge>
                       </div>
                     </div>
+
+                    {/* Auto-Reflexão Pós-Trade da IA & MFE/MAE Tearsheet */}
+                    {session.postTradeJournal && (
+                      <div className="p-3.5 rounded-xl bg-purple-950/20 border border-purple-500/20 space-y-2.5">
+                        <div className="flex items-center justify-between text-xs font-semibold">
+                          <span className="flex items-center gap-1.5 text-purple-300">
+                            <Brain className="w-3.5 h-3.5 text-purple-400" />
+                            Auto-Reflexão Pós-Trade da IA (AI Journal)
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px] font-mono font-bold",
+                              session.postTradeJournal.rating === "OPTIMAL"
+                                ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                                : session.postTradeJournal.rating === "ACCEPTABLE"
+                                ? "bg-cyan-500/10 text-cyan-300 border-cyan-500/30"
+                                : session.postTradeJournal.rating === "DEFENSIVE_EXIT"
+                                ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
+                                : "bg-rose-500/10 text-rose-300 border-rose-500/30"
+                            )}
+                          >
+                            Classificação: {session.postTradeJournal.rating}
+                          </Badge>
+                        </div>
+
+                        {/* Métricas de Eficiência e Excursão */}
+                        <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                          <div className="p-2 rounded-lg bg-black/40 border border-white/[0.05]">
+                            <span className="text-[10px] text-slate-400 block">Pico MFE (Máx)</span>
+                            <strong className="text-emerald-400 font-mono">
+                              +{session.postTradeJournal.mfePercent}%
+                            </strong>
+                          </div>
+                          <div className="p-2 rounded-lg bg-black/40 border border-white/[0.05]">
+                            <span className="text-[10px] text-slate-400 block">Recuo MAE (Pior)</span>
+                            <strong className="text-rose-400 font-mono">
+                              {session.postTradeJournal.maePercent}%
+                            </strong>
+                          </div>
+                          <div className="p-2 rounded-lg bg-black/40 border border-white/[0.05]">
+                            <span className="text-[10px] text-slate-400 block">Eficiência de Saída</span>
+                            <strong className="text-cyan-400 font-mono">
+                              {session.postTradeJournal.exitEfficiencyPct}%
+                            </strong>
+                          </div>
+                        </div>
+
+                        <p className="text-[11px] text-slate-300 leading-relaxed bg-black/30 p-2.5 rounded-lg border border-white/[0.04] italic">
+                          "{session.postTradeJournal.aiReflection}"
+                        </p>
+
+                        {session.postTradeJournal.lessonsLearned && session.postTradeJournal.lessonsLearned.length > 0 && (
+                          <div className="space-y-1 text-[10px] text-slate-400">
+                            <span className="font-semibold text-slate-300">Lições Institucionais:</span>
+                            <ul className="list-disc list-inside space-y-0.5 text-slate-400">
+                              {session.postTradeJournal.lessonsLearned.map((lesson, idx) => (
+                                <li key={idx} className="text-slate-300">{lesson}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
 

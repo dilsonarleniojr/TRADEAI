@@ -92,6 +92,32 @@ export interface TripleTargetLadder {
   tp3Price: number; // Alvo Tendência (34%)
 }
 
+export interface VwapBandsResult {
+  vwap: number;
+  upperBand1: number;
+  upperBand2: number;
+  lowerBand1: number;
+  lowerBand2: number;
+  standardDeviation: number;
+  positionContext: "OVERSOLD_VALUE_ZONE" | "FAIR_VALUE" | "OVERBOUGHT_PREMIUM_ZONE";
+}
+
+export interface ChandelierExitResult {
+  chandelierStop: number;
+  highestPrice: number;
+  atrMultiplier: number;
+  distancePct: number;
+}
+
+export interface FractionalKellyResult {
+  kellyPercent: number;
+  fractionalMultiplier: number;
+  effectiveKellyPercent: number;
+  suggestedRiskUsd: number;
+  suggestedNotionalUsd: number;
+  rationale: string;
+}
+
 export interface EvaluatedOpportunity {
   symbol: string;
   score: number;
@@ -118,6 +144,9 @@ export interface EvaluatedOpportunity {
   sentimentFilter?: SentimentFilterResult; // Alias
   volatilitySizing?: VolatilitySizingResult;
   tripleTargetLadder?: TripleTargetLadder;
+  vwapBands?: VwapBandsResult;
+  chandelierExit?: ChandelierExitResult;
+  fractionalKelly?: FractionalKellyResult;
   timestamp?: number;
   rejectionReason?: string;
 }
@@ -442,6 +471,130 @@ export class MarketOpportunitySelector {
   }
 
   /**
+   * Cálculo de Bandas de VWAP Intradiária & Dispersão Estatística (Institutional Fair Value)
+   */
+  public calculateIntradayVwapBands(
+    klines: KlineData[],
+    currentPrice: number
+  ): VwapBandsResult {
+    if (!klines || klines.length === 0) {
+      return {
+        vwap: currentPrice,
+        upperBand1: currentPrice * 1.008,
+        upperBand2: currentPrice * 1.016,
+        lowerBand1: currentPrice * 0.992,
+        lowerBand2: currentPrice * 0.984,
+        standardDeviation: currentPrice * 0.008,
+        positionContext: "FAIR_VALUE",
+      };
+    }
+
+    let cumVol = 0;
+    let cumTypicalVol = 0;
+
+    const typicalPrices: number[] = [];
+    const volumes: number[] = [];
+
+    for (const k of klines) {
+      const tp = (k.high + k.low + k.close) / 3;
+      const vol = Math.max(0.0001, k.volume);
+      typicalPrices.push(tp);
+      volumes.push(vol);
+      cumVol += vol;
+      cumTypicalVol += tp * vol;
+    }
+
+    const vwap = cumVol > 0 ? cumTypicalVol / cumVol : currentPrice;
+
+    // Cálculo da variância ponderada por volume
+    let cumVarianceVol = 0;
+    for (let i = 0; i < typicalPrices.length; i++) {
+      const diff = typicalPrices[i] - vwap;
+      cumVarianceVol += volumes[i] * diff * diff;
+    }
+
+    const variance = cumVol > 0 ? cumVarianceVol / cumVol : 0;
+    const stdDev = Math.sqrt(variance);
+
+    const upperBand1 = vwap + stdDev;
+    const upperBand2 = vwap + 2 * stdDev;
+    const lowerBand1 = vwap - stdDev;
+    const lowerBand2 = vwap - 2 * stdDev;
+
+    let positionContext: "OVERSOLD_VALUE_ZONE" | "FAIR_VALUE" | "OVERBOUGHT_PREMIUM_ZONE" = "FAIR_VALUE";
+    if (currentPrice <= lowerBand2) {
+      positionContext = "OVERSOLD_VALUE_ZONE";
+    } else if (currentPrice >= upperBand2) {
+      positionContext = "OVERBOUGHT_PREMIUM_ZONE";
+    }
+
+    return {
+      vwap: PreciseMath.roundDown(vwap, 4),
+      upperBand1: PreciseMath.roundDown(upperBand1, 4),
+      upperBand2: PreciseMath.roundDown(upperBand2, 4),
+      lowerBand1: PreciseMath.roundDown(lowerBand1, 4),
+      lowerBand2: PreciseMath.roundDown(lowerBand2, 4),
+      standardDeviation: PreciseMath.roundDown(stdDev, 4),
+      positionContext,
+    };
+  }
+
+  /**
+   * Cálculo de Saída Adaptativa Chandelier Volatility Exit
+   */
+  public calculateChandelierExit(
+    highestPrice: number,
+    atr: number,
+    multiplier = 2.0
+  ): ChandelierExitResult {
+    const chandelierStop = Math.max(0.000001, highestPrice - atr * multiplier);
+    const distancePct = highestPrice > 0 ? (highestPrice - chandelierStop) / highestPrice : 0;
+
+    return {
+      chandelierStop: PreciseMath.roundDown(chandelierStop, 4),
+      highestPrice: PreciseMath.roundDown(highestPrice, 4),
+      atrMultiplier: multiplier,
+      distancePct: PreciseMath.roundDown(distancePct * 100, 2),
+    };
+  }
+
+  /**
+   * Dimensionamento de Posição via Kelly Fracionário (Fractional Kelly)
+   */
+  public calculateFractionalKellySizing(
+    winRate = 0.65,
+    winLossRatio = 1.8,
+    capitalUsd = 70.0,
+    fractionalMultiplier = 0.25
+  ): FractionalKellyResult {
+    // Fórmula de Kelly: K = p - (1 - p) / b
+    const p = Math.max(0.01, Math.min(0.99, winRate));
+    const b = Math.max(0.1, winLossRatio);
+    const fullKelly = p - (1 - p) / b;
+
+    const safeKelly = Math.max(0.02, Math.min(0.40, fullKelly));
+    const effectiveKelly = safeKelly * fractionalMultiplier;
+
+    // Teto de risco institucional estrito (2.0% da banca = $1.40 USD)
+    const maxRiskCapUsd = capitalUsd * 0.02;
+    const suggestedRiskUsd = PreciseMath.roundDown(Math.min(maxRiskCapUsd, capitalUsd * effectiveKelly), 2);
+
+    // Converte risco em nocional com stop médio de 1.5%
+    const estimatedStopPct = 0.015;
+    let suggestedNotionalUsd = suggestedRiskUsd / estimatedStopPct;
+    suggestedNotionalUsd = Math.max(12.0, Math.min(35.0, suggestedNotionalUsd));
+
+    return {
+      kellyPercent: PreciseMath.roundDown(fullKelly * 100, 1),
+      fractionalMultiplier,
+      effectiveKellyPercent: PreciseMath.roundDown(effectiveKelly * 100, 2),
+      suggestedRiskUsd,
+      suggestedNotionalUsd: PreciseMath.roundDown(suggestedNotionalUsd, 2),
+      rationale: `Kelly Fracionário (${(fractionalMultiplier * 100).toFixed(0)}% de ${(fullKelly * 100).toFixed(1)}% full): Nocional $${suggestedNotionalUsd.toFixed(2)} USD com risco protegido em $${suggestedRiskUsd.toFixed(2)} USD`,
+    };
+  }
+
+  /**
    * 3. Avalia um candidato, calcula métricas, calibra SL/TP e gera o score de oportunidade
    */
   public evaluateCandidate(
@@ -612,6 +765,9 @@ export class MarketOpportunitySelector {
     const sentimentResult = this.evaluateSentimentAndNewsShock(candidate.symbol);
     const volatilitySizing = this.calculateVolatilityTargetedSizing(entryPrice, stopLoss, 25.0, currentBalance);
     const tripleTargetLadder = this.calculateTripleTargetLadder(entryPrice, stopLoss, relAtr, filters);
+    const vwapBands = this.calculateIntradayVwapBands(klines15m, candidate.lastPrice);
+    const chandelierExit = this.calculateChandelierExit(candidate.lastPrice, candidate.lastPrice * relAtr, 2.0);
+    const fractionalKelly = this.calculateFractionalKellySizing(0.65, 1.80, currentBalance, 0.25);
 
     return {
       symbol: candidate.symbol,
@@ -638,6 +794,9 @@ export class MarketOpportunitySelector {
         recommendedAllocationUsd: volatilitySizing.suggestedNotionalUsd,
       },
       tripleTargetLadder,
+      vwapBands,
+      chandelierExit,
+      fractionalKelly,
       timestamp: Date.now(),
     };
   }
@@ -1045,6 +1204,29 @@ export class MarketOpportunitySelector {
         tp1Price: entry * 1.018,
         tp2Price: entry * 1.030,
         tp3Price: takeProfit,
+      },
+      vwapBands: {
+        vwap: entry,
+        upperBand1: entry * 1.008,
+        upperBand2: entry * 1.016,
+        lowerBand1: entry * 0.992,
+        lowerBand2: entry * 0.984,
+        standardDeviation: entry * 0.008,
+        positionContext: "FAIR_VALUE",
+      },
+      chandelierExit: {
+        chandelierStop: entry * 0.982,
+        highestPrice: entry,
+        atrMultiplier: 2.0,
+        distancePct: 1.8,
+      },
+      fractionalKelly: {
+        kellyPercent: 45.0,
+        fractionalMultiplier: 0.25,
+        effectiveKellyPercent: 11.25,
+        suggestedRiskUsd: 1.40,
+        suggestedNotionalUsd: 25.0,
+        rationale: "Kelly Fracionário (25% de 45.0% full): Nocional $25.00 USD com risco protegido em $1.40 USD",
       },
       timestamp: Date.now(),
     };

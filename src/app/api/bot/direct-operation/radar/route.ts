@@ -41,6 +41,9 @@ export async function GET(req: NextRequest) {
           sentimentFilter: bestOpportunity.sentimentFilter,
           volatilitySizing: bestOpportunity.volatilitySizing,
           tripleTargetLadder: bestOpportunity.tripleTargetLadder,
+          vwapBands: bestOpportunity.vwapBands,
+          chandelierExit: bestOpportunity.chandelierExit,
+          fractionalKelly: bestOpportunity.fractionalKelly,
         },
         topRanked: bestOpportunity.topRanked || [],
         cooldownSymbols,
@@ -52,6 +55,9 @@ export async function GET(req: NextRequest) {
         sentimentFilter: bestOpportunity.sentimentFilter,
         volatilitySizing: bestOpportunity.volatilitySizing,
         tripleTargetLadder: bestOpportunity.tripleTargetLadder,
+        vwapBands: bestOpportunity.vwapBands,
+        chandelierExit: bestOpportunity.chandelierExit,
+        fractionalKelly: bestOpportunity.fractionalKelly,
       },
     });
   } catch (error: any) {
