@@ -5,6 +5,7 @@ import {
   RankedOpportunitySummary,
   AiThoughtStep,
   OrderFlowMetrics,
+  TargetRecalibrationState,
 } from './market-opportunity-selector';
 import { ExchangeMetadataService, SymbolFilters } from './exchange-metadata-service';
 import { PilotTradeValidator, ValidationResult } from './pilot-trade-validator';
@@ -86,6 +87,7 @@ export interface DirectOperationSession {
   executionLatencyMs?: number;
   priceHistory?: { price: number; timestamp: number }[];
   postTradeJournal?: TradeJournalEntry;
+  targetRecalibration?: TargetRecalibrationState;
 }
 
 export interface TradeJournalEntry {
@@ -451,6 +453,7 @@ export class DirectOperationManager {
       volatilitySizingUsd: opportunity.volatilitySizing?.recommendedAllocationUsd,
       executionLatencyMs: latencyAudit.latencyMs,
       priceHistory: [{ price: finalEntryPrice, timestamp: now }],
+      targetRecalibration: opportunity.targetRecalibration,
     };
 
     activeSessions.set(sessionId, session);
@@ -751,8 +754,11 @@ export class DirectOperationManager {
           session.partialRealizedPnlUsd = (session.partialRealizedPnlUsd || 0) + partialNetPnl;
           session.quantity = PreciseMath.roundDown(session.quantity - tp1Qty, 8);
 
-          // Break-Even Blindado (+0.35% cobrindo taxas da Binance Spot e slippage)
-          const breakEvenPrice = PreciseMath.roundDown(session.entryPrice * 1.0035, 6);
+          // Break-Even Blindado (+0.35% cobrindo taxas da Binance Spot e slippage, garantindo margem abaixo do preço atual)
+          const targetBreakEven = PreciseMath.roundDown(session.entryPrice * 1.0035, 6);
+          const breakEvenPrice = targetBreakEven < latestPrice
+            ? targetBreakEven
+            : PreciseMath.roundDown(session.entryPrice + (latestPrice - session.entryPrice) * 0.5, 6);
           session.stopLossPrice = breakEvenPrice;
           session.breakEvenProtected = true;
           session.trailingStopPrice = breakEvenPrice;

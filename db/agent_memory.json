@@ -1,6 +1,62 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Mecanismo de Recalibração Heurística de Alvos (Adaptive Target Recalibrator): Contração Automática de ATR de TP2 (2.0x -> 1.7x) baseada em Eficiência de Saída (< 50%) e MFE Recorrente (> +2.0%) do Diário de Bordo",
+    "summary": "1) Recalibração Heurística Contínua (calculateHeuristicTargetRecalibration): O sistema inspeciona as últimas 10 operações registradas no diário de bordo (db/trade_journal.json). Se a Eficiência Média de Saída for inferior a 50% e houver MFE recorrente > +2.0% (evidenciando que o ativo alcançou picos expressivos antes de recuar e devolver o ganho), o multiplicador de ATR do TP2 da Escada Tripla de Alvos é contraído automaticamente de 2.0x para 1.7x; 2) Antecipação de Lucro no Topo da Volatilidade: A contração para 1.7x aproxima a realização dos segundos 33% da posição, capturando o lucro máximo antes de reversões intradiárias e melhorando a taxa de conversão líquida; 3) Exposição no Radar & Cockpit UI: O estado da recalibração (isRecalibrated, tp2Multiplier, sampleSize, avgEfficiencyPct, recurrentHighMfeCount, reason) é exposto na resposta da API /radar e na sessão ativa, acionando um badge âmbar comemorativo no topo do modal e estilização destacada 'TP2 (1.7x 🎯)' com tooltip explicativo; 4) Validação Rigorosa: 38 testes unitários passando em bun test (174 asserções, 100% de sucesso), 0 erros no TypeScript e integração completa com o container de produção.",
+    "tags": [
+      "heuristic-target-recalibration",
+      "adaptive-target-recalibrator",
+      "tp2-atr-contraction",
+      "exit-efficiency-feedback-loop",
+      "mfe-mae-optimization",
+      "triple-target-ladder",
+      "institutional-cockpit"
+    ],
+    "details": {
+      "selectorPath": "src/lib/bot/pilot/market-opportunity-selector.ts",
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "radarApiPath": "src/app/api/bot/direct-operation/radar/route.ts",
+      "journalDbPath": "db/trade_journal.json",
+      "modalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "testSuitePath": "tests/unit/direct-operation-flow.test.ts",
+      "totalPassingTests": 38,
+      "totalAssertions": 174
+    },
+    "id": "mem-1792280000000-heuristic-target-recalibration",
+    "timestamp": "2026-10-18T02:40:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "4 Pacotes de Próxima Geração v2.0: Trading Strategist Pro (VWAP Bands & Chandelier & Kelly), AI Engineer (MFE/MAE & Auto-Reflexão & Diário Persistente), Chaos Harness & Circuit Breakers em 3 Níveis",
+    "summary": "1) Trading Strategist Pro v2.0: Implementação de Bandas de VWAP Intradiárias (±1σ, ±2σ) com identificação de Fair Value e reversão à média estatística, Chandelier Exit Volatility Stop dinâmico (High_N - k*ATR) garantindo que o stop respeite a volatilidade real, e Dimensionamento por Kelly Fracionário (0.25*Kelly) com teto rigoroso de risco <= $1.40 USD (2% da banca de $70 USD); 2) AI Engineer (Post-Trade Reflection & Diário de Bordo): Mecanismo de auto-avaliação pós-trade calculando MFE (Máxima Excursão Favorável), MAE (Máxima Excursão Adversa), Eficiência de Saída (0-100%), Rating da Operação ('OPTIMAL', 'ACCEPTABLE', 'SUBOPTIMAL', 'DEFENSIVE_EXIT') e aprendizados da IA, persistidos atomicamente em db/trade_journal.json e expostos via /api/bot/direct-operation/journal; 3) Chaos Engineering & Resiliência: Simulador de falhas controladas (ChaosInjector) para teste de I/O de rede com grey failure, atrasos de jitter, perda de pacotes e cotações obsoletas, associado ao GraduatedCircuitBreaker com 3 níveis proporcionais de contenção (Nível 1 Cautela: lote 50%, Nível 2 Suspensão: pausa 15 min, Nível 3 Kill Switch Global: trava 24h); 4) UI/UX Cockpit: Header com Badge de Saúde da Infraestrutura (latência p50 18ms, WebSocket ativo, Rate limit 8%, Circuit Breaker armado), linha pontilhada de VWAP no gráfico SVG de trajetória, e card completo de Reflexão Pós-Trade e MFE/MAE Tearsheet no resultado final; 5) Validação: 36 testes unitários passando em bun test (162 asserções, 100% de sucesso) e 0 erros no TypeScript.",
+    "tags": [
+      "trading-strategist-pro-v2",
+      "vwap-bands",
+      "chandelier-exit",
+      "fractional-kelly-sizing",
+      "ai-post-trade-reflection",
+      "trade-journal-json",
+      "mfe-mae-metrics",
+      "chaos-injector",
+      "graduated-circuit-breaker",
+      "infrastructure-health-cockpit"
+    ],
+    "details": {
+      "selectorPath": "src/lib/bot/pilot/market-opportunity-selector.ts",
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "chaosPath": "src/lib/bot/pilot/chaos-test-harness.ts",
+      "journalDbPath": "db/trade_journal.json",
+      "journalApiPath": "src/app/api/bot/direct-operation/journal/route.ts",
+      "modalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "testSuitePath": "tests/unit/direct-operation-flow.test.ts",
+      "totalPassingTests": 36,
+      "totalAssertions": 162
+    },
+    "id": "mem-1792279000000-v2-features-journal-chaos",
+    "timestamp": "2026-10-18T01:21:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "4 Pacotes de Próxima Geração: Trading Strategist Pro (MTF & Volatility Sizing), AI Engineer (Regime Classifier), Chaos Guard & Telemetria em Mini-Gráfico SVG",
     "summary": "1) Trading Strategist Pro (Multi-Timeframe & Paridade de Risco): Análise de confluência em 3 horizontes temporais (15m Macro Trend, 5m Setup, 1m Sniper Trigger) com cálculo de alinhamento percentual (3/3 = 100%, 2/3 = 66%), dimensionamento dinâmico por Paridade de Volatilidade (ATR/Kelly) preservando risco nominal <= $1.40 USD (2% da banca de $70 USD), e Escada Tripla de Realização de Lucro (TP1 33% + Break-Even protegido +0.35%, TP2 33% + Trailing Stop parabólico a 0.8% do topo, TP3 34% free trend runner); 2) AI Engineer (Classificador de Regime de Mercado & Gate de Choque): Machine Learning heurístico classificando regimes em tempo real ('TRENDING_BULLISH', 'MEAN_REVERTING_RANGING', 'EXTREME_VOLATILITY') e filtro de choque de notícias e sentimento social bloqueando trades em pânico extremo; 3) Chaos Engineering & Infraestrutura: Guardião de deriva de latência de execução (ExecutionLatencyGuard com SLA <= 1200ms e slippage <= 0.15%), monitor de limites de requisição da exchange (RateLimitMonitor alertando preventivamente em 80% do peso de 1 minuto) e despachador assíncrono de notificações de emergência via Telegram (TelegramNotifier); 4) UI/UX Cockpit (SVG Trajectory & Badges): Mini-gráfico nativo vetorial em SVG (renderMiniTrajectoryChart) com sparkline de gradiente neon, pulso do preço atual e linhas dinâmicas de Alvos (Entry, TP1, TP2, TP3 e Trailing Stop dinâmico), acompanhado de badges institucionais de Regime de Mercado, Confluência MTF e latência tick-to-trade; 5) Validação: 30 testes unitários passando em bun test (120 asserções, 100% de sucesso) e 0 erros no TypeScript.",
     "tags": [

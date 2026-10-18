@@ -118,6 +118,15 @@ export interface FractionalKellyResult {
   rationale: string;
 }
 
+export interface TargetRecalibrationState {
+  isRecalibrated: boolean;
+  tp2Multiplier: number;
+  averageExitEfficiency: number;
+  recurrentHighMfeCount: number;
+  sampleSize: number;
+  reason: string;
+}
+
 export interface EvaluatedOpportunity {
   symbol: string;
   score: number;
@@ -147,6 +156,7 @@ export interface EvaluatedOpportunity {
   vwapBands?: VwapBandsResult;
   chandelierExit?: ChandelierExitResult;
   fractionalKelly?: FractionalKellyResult;
+  targetRecalibration?: TargetRecalibrationState;
   timestamp?: number;
   rejectionReason?: string;
 }
@@ -447,15 +457,17 @@ export class MarketOpportunitySelector {
     entryPrice: number,
     stopLoss: number,
     relAtr: number,
-    filters: SymbolFilters
+    filters: SymbolFilters,
+    customTp2Multiplier = 2.0
   ): TripleTargetLadder {
     const atrVal = entryPrice * relAtr;
-    // TP1: 33% conservador rápido (+1.2x ATR)
+    // TP1: 33% conservador rápido (+1.2x ATR, com piso mínimo de 0.6% acima do break-even de 0.35%)
+    const minTp1 = this.metadataService.quantizePrice(entryPrice * 1.006, filters);
     const tp1Raw = entryPrice + atrVal * 1.2;
-    const tp1 = this.metadataService.quantizePrice(tp1Raw, filters);
+    const tp1 = Math.max(this.metadataService.quantizePrice(tp1Raw, filters), minTp1);
 
-    // TP2: 33% estrutural médio (+2.0x ATR)
-    const tp2Raw = entryPrice + atrVal * 2.0;
+    // TP2: 33% estrutural médio (multiplicador adaptativo: 2.0x padrão ou 1.7x contraído pela recalibração heurística)
+    const tp2Raw = entryPrice + atrVal * customTp2Multiplier;
     const tp2 = this.metadataService.quantizePrice(tp2Raw, filters);
 
     // TP3: 34% expansão de tendência (+2.8x ATR)
@@ -591,6 +603,73 @@ export class MarketOpportunitySelector {
       suggestedRiskUsd,
       suggestedNotionalUsd: PreciseMath.roundDown(suggestedNotionalUsd, 2),
       rationale: `Kelly Fracionário (${(fractionalMultiplier * 100).toFixed(0)}% de ${(fullKelly * 100).toFixed(1)}% full): Nocional $${suggestedNotionalUsd.toFixed(2)} USD com risco protegido em $${suggestedRiskUsd.toFixed(2)} USD`,
+    };
+  }
+
+  /**
+   * Mecanismo de Recalibração Heurística de Alvos (Adaptive Target Recalibrator)
+   * Se a Eficiência de Saída média das últimas 10 operações for < 50% com MFE recorrente > +2.0%,
+   * a IA contrai automaticamente o multiplicador de ATR do TP2 de 2.0x para 1.7x para antecipar
+   * a captura de lucros no pico de volatilidade antes do recuo.
+   */
+  public calculateHeuristicTargetRecalibration(customJournals?: any[]): TargetRecalibrationState {
+    let journals: any[] = customJournals || [];
+
+    if (!customJournals || customJournals.length === 0) {
+      try {
+        const fs = require("fs");
+        const path = require("path");
+        const filePath = path.join(process.cwd(), "db", "trade_journal.json");
+        if (fs.existsSync(filePath)) {
+          const content = fs.readFileSync(filePath, "utf-8");
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed)) {
+            journals = parsed;
+          }
+        }
+      } catch {}
+    }
+
+    const sample = journals.slice(0, 10);
+    const sampleSize = sample.length;
+
+    if (sampleSize < 2) {
+      return {
+        isRecalibrated: false,
+        tp2Multiplier: 2.0,
+        averageExitEfficiency: 100,
+        recurrentHighMfeCount: 0,
+        sampleSize,
+        reason: "Amostra insuficiente no diário de trades (< 2 operações). Multiplicador padrão TP2 2.0x mantido.",
+      };
+    }
+
+    const totalEfficiency = sample.reduce((acc, curr) => acc + (Number(curr.exitEfficiencyPct) || 100), 0);
+    const averageExitEfficiency = PreciseMath.roundDown(totalEfficiency / sampleSize, 1);
+
+    // Identifica trades com MFE alto (>= 2.0%), sinalizando potencial expressivo desperdiçado
+    const recurrentHighMfeCount = sample.filter((entry) => (Number(entry.mfePercent) || 0) >= 2.0).length;
+    const highMfeRatio = recurrentHighMfeCount / sampleSize;
+
+    // Regra heurística: Eficiência média < 50% e MFE recorrente >= 2.0% (pelo menos 30% da amostra ou >= 2 trades)
+    if (averageExitEfficiency < 50 && (recurrentHighMfeCount >= 2 || highMfeRatio >= 0.3)) {
+      return {
+        isRecalibrated: true,
+        tp2Multiplier: 1.7,
+        averageExitEfficiency,
+        recurrentHighMfeCount,
+        sampleSize,
+        reason: `Eficiência de saída média baixa (${averageExitEfficiency}%) com MFE recorrente > +2.0% (${recurrentHighMfeCount}/${sampleSize} trades). Multiplicador TP2 contraído de 2.0x para 1.7x para antecipar realização no topo de volatilidade.`,
+      };
+    }
+
+    return {
+      isRecalibrated: false,
+      tp2Multiplier: 2.0,
+      averageExitEfficiency,
+      recurrentHighMfeCount,
+      sampleSize,
+      reason: `Eficiência de saída saudável (${averageExitEfficiency}%). Multiplicador padrão TP2 2.0x mantido.`,
     };
   }
 
@@ -764,7 +843,8 @@ export class MarketOpportunitySelector {
     const multiTimeframe = this.analyzeMultiTimeframeConfluence(candidate.symbol, klines15m);
     const sentimentResult = this.evaluateSentimentAndNewsShock(candidate.symbol);
     const volatilitySizing = this.calculateVolatilityTargetedSizing(entryPrice, stopLoss, 25.0, currentBalance);
-    const tripleTargetLadder = this.calculateTripleTargetLadder(entryPrice, stopLoss, relAtr, filters);
+    const targetRecalibration = this.calculateHeuristicTargetRecalibration();
+    const tripleTargetLadder = this.calculateTripleTargetLadder(entryPrice, stopLoss, relAtr, filters, targetRecalibration.tp2Multiplier);
     const vwapBands = this.calculateIntradayVwapBands(klines15m, candidate.lastPrice);
     const chandelierExit = this.calculateChandelierExit(candidate.lastPrice, candidate.lastPrice * relAtr, 2.0);
     const fractionalKelly = this.calculateFractionalKellySizing(0.65, 1.80, currentBalance, 0.25);
@@ -797,6 +877,7 @@ export class MarketOpportunitySelector {
       vwapBands,
       chandelierExit,
       fractionalKelly,
+      targetRecalibration,
       timestamp: Date.now(),
     };
   }
@@ -1227,6 +1308,14 @@ export class MarketOpportunitySelector {
         suggestedRiskUsd: 1.40,
         suggestedNotionalUsd: 25.0,
         rationale: "Kelly Fracionário (25% de 45.0% full): Nocional $25.00 USD com risco protegido em $1.40 USD",
+      },
+      targetRecalibration: {
+        isRecalibrated: false,
+        tp2Multiplier: 2.0,
+        averageExitEfficiency: 100,
+        recurrentHighMfeCount: 0,
+        sampleSize: 0,
+        reason: "Modo fallback simulado. Multiplicador padrão TP2 2.0x mantido.",
       },
       timestamp: Date.now(),
     };

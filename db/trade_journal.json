@@ -1,1 +1,30 @@
-[]
+[
+  {
+    "id": "journal-direct-1792291161387-6m2h7",
+    "sessionId": "direct-1792291161387-6m2h7",
+    "symbol": "NEARUSDT",
+    "mode": "paper",
+    "entryPrice": 4.968,
+    "exitPrice": 5.101,
+    "notionalUsd": 24.84,
+    "realizedPnlUsd": 0.63,
+    "realizedPnlPercent": 2.57,
+    "feeDeductedUsd": 0.05,
+    "durationSeconds": 1,
+    "closeReason": "TARGET_REACHED",
+    "strategy": "CONFLUENCE",
+    "marketRegime": "TRENDING_BULLISH",
+    "mfePrice": 5.101,
+    "mfePercent": 2.67,
+    "maePrice": 4.968,
+    "maePercent": 0,
+    "exitEfficiencyPct": 96.2,
+    "aiReflection": "Operação encerrada via TARGET_REACHED em 1s. Resultado líquido: +2.57% ($0.63 USD). MFE (Pico Favorável): +2.67% | MAE (Retração Suportada): 0%. Eficiência de captura de topo: 96.2%. Classificação: OPTIMAL.",
+    "rating": "OPTIMAL",
+    "lessonsLearned": [
+      "Excelente timing sniper: o ativo não recuou significativamente abaixo da entrada.",
+      "Alta taxa de captura de lucro (96.2% do MFE máximo)."
+    ],
+    "timestamp": 1792291161388
+  }
+]

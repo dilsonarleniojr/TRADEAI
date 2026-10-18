@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
           vwapBands: bestOpportunity.vwapBands,
           chandelierExit: bestOpportunity.chandelierExit,
           fractionalKelly: bestOpportunity.fractionalKelly,
+          targetRecalibration: bestOpportunity.targetRecalibration,
         },
         topRanked: bestOpportunity.topRanked || [],
         cooldownSymbols,
@@ -58,6 +59,7 @@ export async function GET(req: NextRequest) {
         vwapBands: bestOpportunity.vwapBands,
         chandelierExit: bestOpportunity.chandelierExit,
         fractionalKelly: bestOpportunity.fractionalKelly,
+        targetRecalibration: bestOpportunity.targetRecalibration,
       },
     });
   } catch (error: any) {

@@ -1113,7 +1113,22 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   </div>
                 </div>
 
-                {/* 5. Raciocínio da IA & Order Flow L2 em Tempo Real */}
+                {/* 5. Calibração Heurística de Alvos Ativa */}
+                {radarData?.selected?.targetRecalibration?.isRecalibrated && (
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-start gap-2 text-left">
+                    <Sparkles className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                    <div className="text-[11px] text-amber-200">
+                      <strong className="text-amber-300 font-semibold block">
+                        🎯 Recalibração Heurística de Alvos Ativa
+                      </strong>
+                      <span className="text-slate-300">
+                        {radarData.selected.targetRecalibration.reason}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 6. Raciocínio da IA & Order Flow L2 em Tempo Real */}
                 {radarData?.selected?.aiThoughtStream && renderThoughtStreamCard(radarData.selected.aiThoughtStream)}
                 {radarData?.selected?.orderFlowMetrics && renderOrderFlowCard(radarData.selected.orderFlowMetrics)}
 
@@ -1520,11 +1535,24 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                         ${formatPrice(session.tp1Price || session.partialTargetPrice || session.targetPrice)}
                       </span>
                     </div>
-                    <div className={cn("p-1.5 rounded-lg border", session.isTp2Taken ? "bg-teal-500/15 border-teal-500/30" : "bg-white/[0.02] border-white/[0.05]")}>
-                      <span className="text-[9px] text-teal-400 block truncate flex items-center gap-0.5">
-                        TP2 (33%) {session.isTp2Taken && "✓"}
+                    <div className={cn(
+                      "p-1.5 rounded-lg border",
+                      session.isTp2Taken
+                        ? "bg-teal-500/15 border-teal-500/30"
+                        : session.targetRecalibration?.isRecalibrated
+                        ? "bg-amber-500/10 border-amber-500/30"
+                        : "bg-white/[0.02] border-white/[0.05]"
+                    )}>
+                      <span className={cn(
+                        "text-[9px] block truncate flex items-center gap-0.5",
+                        session.targetRecalibration?.isRecalibrated ? "text-amber-400 font-semibold" : "text-teal-400"
+                      )} title={session.targetRecalibration?.reason}>
+                        TP2 ({session.targetRecalibration?.isRecalibrated ? "1.7x 🎯" : "33%"}) {session.isTp2Taken && "✓"}
                       </span>
-                      <span className="text-xs font-mono font-bold text-teal-300">
+                      <span className={cn(
+                        "text-xs font-mono font-bold",
+                        session.targetRecalibration?.isRecalibrated ? "text-amber-300" : "text-teal-300"
+                      )}>
                         ${formatPrice(session.tp2Price || session.targetPrice * 0.99)}
                       </span>
                     </div>
