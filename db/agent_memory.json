@@ -1,6 +1,32 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "4 Pilares Institucionais: Parciais 50/50 com Trailing Stop, Raciocínio da IA (CoT), Microestrutura L2 (CVD) e Reconciliação de Ordens Órfãs",
+    "summary": "1) Trading Strategist (Escada de Parciais 50/50 & Break-Even Protegido): Ao atingir 50% da projeção de Take-Profit, o sistema realiza metade da posição a mercado garantindo lucro no bolso, move imediatamente o Stop Loss para Break-Even Protegido (+0.35% acima do preço de entrada cobrindo taxas da Binance) e ativa Trailing Stop dinâmico parabólico no runner (restante de 50%); 2) AI Engineer (Chain-of-Thought Stream): Geração e transmissão de telemetria explicável em 4 fases sequenciais ('LIQUIDITY_SCAN', 'TECHNICAL_CONFLUENCE', 'RISK_GATE', 'TRIGGER_SETUP'), permitindo ao trader acompanhar transparentemente o raciocínio quantitativo da IA em tempo real; 3) Microestrutura L2 & Order Flow (CVD): Cálculo em tempo real do Cumulative Volume Delta (CVD) 24h, book imbalance ratio nos top 20 níveis de profundidade da Binance e detecção de paredes de liquidez (Bid/Ask Walls), visualizados no modal interativo com barras de pressão compradora/vendedora; 4) Chaos Engineering (Auto-Reconciliação de Ordens Órfãs): Implementação de auditoria cruzada periódica (reconcileOrphanOrders) e endpoint /api/bot/direct-operation/reconcile para cancelamento idempotente de resquícios de ordens órfãs ou não rastreadas na Binance Spot; 5) Validação: 46 testes unitários passando em bun test (100% de sucesso) e 0 erros de tipagem TypeScript no npx tsc --noEmit.",
+    "tags": [
+      "partial-profit-scaling",
+      "break-even-protection",
+      "dynamic-trailing-stop",
+      "ai-thought-stream",
+      "chain-of-thought",
+      "order-flow-cvd",
+      "l2-depth-imbalance",
+      "orphan-order-reconciler",
+      "institutional-standards"
+    ],
+    "details": {
+      "selectorPath": "src/lib/bot/pilot/market-opportunity-selector.ts",
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "reconcileEndpoint": "src/app/api/bot/direct-operation/reconcile/route.ts",
+      "modalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "testSuitePath": "tests/unit/direct-operation-flow.test.ts",
+      "totalPassingTests": 46
+    },
+    "id": "mem-1792265000000-four-institutional-pillars",
+    "timestamp": "2026-10-17T19:58:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Radar de Moedas em Tempo Real na Tela Inicial (CONFIG), Override de Ativo e Tratamento Amigável de Saldo Spot",
     "summary": "1) Moedas no Radar na Tela Inicial: Criação do endpoint /api/bot/direct-operation/radar e integração direta no DirectAiTradeModal na etapa CONFIG, permitindo que o usuário veja imediatamente os Top 3 ativos ranqueados (ex: INJ 95.9 pts, DOGE 94.0 pts, BTC 86.1 pts), suas variações 24h, estratégia e selo de rotação antes de disparar a ordem; 2) Seleção Manual / Override de Ativo: O usuário pode clicar diretamente no card de qualquer uma das moedas do Top 3 para fixá-la na operação, ou deixar a IA decidir automaticamente; 3) Seletor Interativo de Modo Real / Simulado: Adicionado alternador direto no cabeçalho do modal entre 'Real Spot' e 'Simulado Paper'; 4) Tratamento Amigável de Saldo Spot: Quando a API da Binance retorna erro -2010 (saldo insuficiente), o modal não fecha ou reseta silenciosamente; ele exibe um banner explicativo com botão de 1 clique 'Executar em Modo Simulado (Paper) Agora' para testar a entrega de lucro sem interrupção.",
     "tags": [

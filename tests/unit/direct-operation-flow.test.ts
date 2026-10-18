@@ -306,7 +306,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
 
     it("deve prevenir compras duplicadas (double-buy) através da trava atômica isExecutingTrigger", async () => {
       const { session } = await DirectOperationManager.startOperation({
-        amount: 15.0,
+        amount: 25.0,
         durationMinutes: 5,
         mode: "paper",
       });
@@ -382,6 +382,68 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
 
       DirectOperationManager.clearSession(session.id);
       DirectOperationManager.clearCooldownHistory();
+    });
+  });
+
+  describe("5. Escada de Parciais 50/50 & Trailing Stop Parabólico (Trading Strategist)", () => {
+    it("deve inicializar metas de parcial, trailingStop e highestPrice na sessão ativa", async () => {
+      const { session } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        mode: "paper",
+      });
+
+      expect(session.partialTargetPrice).toBeDefined();
+      expect(session.partialTargetPrice!).toBeGreaterThan(session.entryPrice);
+      expect(session.partialTargetPrice!).toBeLessThan(session.targetPrice);
+      expect(session.highestPriceReached).toBe(session.entryPrice);
+      expect(session.isPartialProfitTaken).toBe(false);
+
+      DirectOperationManager.clearSession(session.id);
+    });
+
+    it("deve executar parcial de 50%, embolsar lucro e mover o stop para break-even protegido (+0.35%)", async () => {
+      const { session } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        mode: "paper",
+      });
+
+      const initialQty = session.quantity;
+      const partialTarget = session.partialTargetPrice!;
+
+      // Simula tick de preço atingindo a meta parcial
+      const updated = await DirectOperationManager.processPriceTick(session.id, partialTarget);
+
+      expect(updated.isPartialProfitTaken).toBe(true);
+      expect(updated.breakEvenProtected).toBe(true);
+      expect(updated.partialQuantityExecuted).toBeGreaterThan(0);
+      expect(updated.partialRealizedPnlUsd).toBeGreaterThan(0);
+      expect(updated.quantity).toBeLessThan(initialQty);
+      expect(updated.stopLossPrice).toBeGreaterThan(session.entryPrice); // Break-even + margem de taxas
+      expect(updated.trailingStopPrice).toBe(updated.stopLossPrice);
+
+      DirectOperationManager.clearSession(session.id);
+    });
+
+    it("deve elevar o trailing stop dinamicamente quando o ativo expande ganhos no runner", async () => {
+      const { session } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        mode: "paper",
+      });
+
+      // 1. Atinge parcial
+      await DirectOperationManager.processPriceTick(session.id, session.partialTargetPrice!);
+
+      // 2. Preço dispara ainda mais (+4% acima da entrada)
+      const higherPrice = session.entryPrice * 1.04;
+      const runnerState = await DirectOperationManager.processPriceTick(session.id, higherPrice);
+
+      expect(runnerState.highestPriceReached).toBe(higherPrice);
+      expect(runnerState.trailingStopPrice).toBeGreaterThan(session.entryPrice * 1.0035);
+
+      DirectOperationManager.clearSession(session.id);
     });
   });
 });

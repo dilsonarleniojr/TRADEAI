@@ -1,4 +1,11 @@
-import { MarketOpportunitySelector, EvaluatedOpportunity, TriggerCondition, RankedOpportunitySummary } from './market-opportunity-selector';
+import {
+  MarketOpportunitySelector,
+  EvaluatedOpportunity,
+  TriggerCondition,
+  RankedOpportunitySummary,
+  AiThoughtStep,
+  OrderFlowMetrics,
+} from './market-opportunity-selector';
 import { ExchangeMetadataService, SymbolFilters } from './exchange-metadata-service';
 import { PilotTradeValidator, ValidationResult } from './pilot-trade-validator';
 import { EnvironmentCleanupService } from './environment-cleanup-service';
@@ -25,7 +32,7 @@ export interface DirectOperationSession {
   aiScore: number;
   mode: 'live' | 'paper';
   status: 'WAITING_TRIGGER' | 'ACTIVE' | 'CLOSED' | 'CANCELLED';
-  closeReason?: 'TIME_EXPIRED' | 'TARGET_REACHED' | 'STOP_LOSS' | 'MANUAL_CLOSE' | 'TRIGGER_EXPIRED' | 'RADAR_CANCELLED';
+  closeReason?: 'TIME_EXPIRED' | 'TARGET_REACHED' | 'STOP_LOSS' | 'MANUAL_CLOSE' | 'TRIGGER_EXPIRED' | 'RADAR_CANCELLED' | 'TRAILING_STOP';
   currentPrice: number;
   unrealizedPnlUsd: number;
   unrealizedPnlPercent: number;
@@ -45,6 +52,19 @@ export interface DirectOperationSession {
   isExecutingTrigger?: boolean;
   topRanked?: RankedOpportunitySummary[];
   isCooldownApplied?: boolean;
+
+  // Fase 1: Escada de Parciais 50/50 & Trailing Stop Parabólico
+  partialTargetPrice?: number;
+  isPartialProfitTaken?: boolean;
+  partialQuantityExecuted?: number;
+  partialRealizedPnlUsd?: number;
+  breakEvenProtected?: boolean;
+  trailingStopPrice?: number;
+  highestPriceReached?: number;
+
+  // Fase 2 & 3: IA Thought Stream & Microestrutura L2
+  aiThoughtStream?: AiThoughtStep[];
+  orderFlowMetrics?: OrderFlowMetrics;
 }
 
 // Armazenamento em memória de sessões ativas
@@ -206,6 +226,11 @@ export class DirectOperationManager {
     const durationMs = durationMinutes * 60 * 1000;
     const radarExpiresAt = now + (opportunity.triggerCondition.expirationMinutes * 60 * 1000);
 
+    const tickDecimals = filters.tickSize ? Math.max(2, -Math.floor(Math.log10(filters.tickSize))) : 4;
+    const halfDistance = (opportunity.signal.takeProfit - finalEntryPrice) * 0.5;
+    const computedPartialTarget = PreciseMath.roundDown(finalEntryPrice + halfDistance, tickDecimals);
+    const safePartialTarget = computedPartialTarget > finalEntryPrice ? computedPartialTarget : PreciseMath.roundDown(finalEntryPrice * 1.018, tickDecimals);
+
     const session: DirectOperationSession = {
       id: sessionId,
       symbol: opportunity.symbol,
@@ -240,6 +265,19 @@ export class DirectOperationManager {
       isExecutingTrigger: false,
       topRanked: opportunity.topRanked,
       isCooldownApplied: opportunity.isCooldownApplied,
+
+      // Fase 1: Escada de Parciais 50/50 & Trailing Stop Parabólico
+      partialTargetPrice: safePartialTarget,
+      isPartialProfitTaken: false,
+      partialQuantityExecuted: 0,
+      partialRealizedPnlUsd: 0,
+      breakEvenProtected: false,
+      trailingStopPrice: opportunity.signal.stopLoss,
+      highestPriceReached: finalEntryPrice,
+
+      // Fase 2 & 3: IA Thought Stream & Microestrutura L2
+      aiThoughtStream: opportunity.aiThoughtStream,
+      orderFlowMetrics: opportunity.orderFlowMetrics,
     };
 
     activeSessions.set(sessionId, session);
@@ -308,6 +346,11 @@ export class DirectOperationManager {
       const now = Date.now();
       const durationMs = session.durationMinutes * 60 * 1000;
 
+      const tickDecimals = filters.tickSize ? Math.max(2, -Math.floor(Math.log10(filters.tickSize))) : 4;
+      const halfDistance = (session.targetPrice - effectiveEntryPrice) * 0.5;
+      const computedPartialTarget = PreciseMath.roundDown(effectiveEntryPrice + halfDistance, tickDecimals);
+      const safePartialTarget = computedPartialTarget > effectiveEntryPrice ? computedPartialTarget : PreciseMath.roundDown(effectiveEntryPrice * 1.018, tickDecimals);
+
       session.status = 'ACTIVE';
       session.entryPrice = effectiveEntryPrice;
       session.currentPrice = effectiveEntryPrice;
@@ -319,6 +362,15 @@ export class DirectOperationManager {
       session.startTime = now;
       session.endTime = now + durationMs;
       session.isExecutingTrigger = false;
+
+      // Inicializa métricas de parciais e trailing stop
+      session.partialTargetPrice = safePartialTarget;
+      session.isPartialProfitTaken = false;
+      session.partialQuantityExecuted = 0;
+      session.partialRealizedPnlUsd = 0;
+      session.breakEvenProtected = false;
+      session.trailingStopPrice = session.stopLossPrice;
+      session.highestPriceReached = effectiveEntryPrice;
 
       return session;
     } catch (err: any) {
@@ -390,6 +442,19 @@ export class DirectOperationManager {
       latestPrice = session.currentPrice;
     }
 
+    return await this.processPriceTick(sessionId, latestPrice);
+  }
+
+  /**
+   * Processa um tick de preço recebido (via WebSocket nativo ou Polling)
+   * Executa a escada de parciais 50/50, break-even blindado (+0.35%) e trailing stop adaptativo
+   */
+  public static async processPriceTick(sessionId: string, latestPrice: number): Promise<DirectOperationSession> {
+    const session = activeSessions.get(sessionId);
+    if (!session || session.status === 'CLOSED' || session.status === 'CANCELLED') {
+      return session!;
+    }
+
     session.currentPrice = latestPrice;
 
     // Se estiver aguardando gatilho ótimo (Radar Sniper)
@@ -429,37 +494,96 @@ export class DirectOperationManager {
       return session;
     }
 
-    // Cálculo de PnL flutuante para status ACTIVE
-    const priceDiff = latestPrice - session.entryPrice;
-    const grossPnl = priceDiff * (session.executedQuantity || session.quantity);
-    const pnlPercent = (priceDiff / session.entryPrice) * 100;
+    // Status ACTIVE
+    if (session.status === 'ACTIVE') {
+      // 1. Registra nova máxima alcançada pela operação
+      session.highestPriceReached = Math.max(session.highestPriceReached || session.entryPrice, latestPrice);
 
-    session.unrealizedPnlUsd = PreciseMath.roundDown(grossPnl, 2);
-    session.unrealizedPnlPercent = PreciseMath.roundDown(pnlPercent, 2);
+      // 2. Escada de Parcial 50/50: Ao cruzar a meta parcial, realiza 50% e blinda no break-even
+      if (!session.isPartialProfitTaken && session.partialTargetPrice && latestPrice >= session.partialTargetPrice) {
+        const metadataService = ExchangeMetadataService.getInstance();
+        const filters = await metadataService.getSymbolFilters(session.symbol);
+        const halfQty = PreciseMath.quantizeLotDown(session.quantity / 2, filters.stepSize);
 
-    const now = Date.now();
+        if (halfQty > 0) {
+          if (session.mode === 'live' && session.credentials) {
+            try {
+              const orderExecutor = PilotOrderExecutor.getInstance();
+              await orderExecutor.executeLiveSell({
+                symbol: session.symbol,
+                baseAsset: session.baseCurrency,
+                quantity: halfQty,
+                filters,
+                credentials: session.credentials,
+              });
+            } catch (err: any) {
+              console.error(`[DirectOperationManager] Falha ao despachar venda parcial na Binance:`, err.message);
+            }
+          }
 
-    // Verificação de condições de encerramento automático:
-    // 1. Take Profit atingido
-    if (latestPrice >= session.targetPrice) {
-      return await this.closeOperation(sessionId, 'TARGET_REACHED', latestPrice);
-    }
+          const partialGross = (latestPrice - session.entryPrice) * halfQty;
+          const partialFee = (halfQty * latestPrice) * 0.001;
+          const partialNetPnl = PreciseMath.roundDown(partialGross - partialFee, 2);
 
-    // 2. Stop Loss atingido
-    if (latestPrice <= session.stopLossPrice) {
-      return await this.closeOperation(sessionId, 'STOP_LOSS', latestPrice);
-    }
+          session.isPartialProfitTaken = true;
+          session.partialQuantityExecuted = halfQty;
+          session.partialRealizedPnlUsd = partialNetPnl;
+          session.quantity = PreciseMath.roundDown(session.quantity - halfQty, 8);
 
-    // 3. Tempo esgotado
-    if (now >= session.endTime) {
-      return await this.closeOperation(sessionId, 'TIME_EXPIRED', latestPrice);
+          // Break-Even Blindado (+0.35% cobrindo taxas da Binance Spot e slippage)
+          const breakEvenPrice = PreciseMath.roundDown(session.entryPrice * 1.0035, 6);
+          session.stopLossPrice = breakEvenPrice;
+          session.breakEvenProtected = true;
+          session.trailingStopPrice = breakEvenPrice;
+        }
+      }
+
+      // 3. Trailing Stop Adaptativo no Runner de 50%
+      if (session.isPartialProfitTaken && session.highestPriceReached) {
+        // Acompanha dinamicamente 1.2% abaixo da máxima alcançada pelo ativo
+        const dynamicTrailing = PreciseMath.roundDown(session.highestPriceReached * 0.988, 6);
+        if (dynamicTrailing > (session.trailingStopPrice || 0)) {
+          session.trailingStopPrice = dynamicTrailing;
+          session.stopLossPrice = dynamicTrailing;
+        }
+
+        // Se o preço recuar e bater no trailing stop móvel
+        if (session.trailingStopPrice && latestPrice <= session.trailingStopPrice) {
+          return await this.closeOperation(sessionId, 'STOP_LOSS', latestPrice);
+        }
+      }
+
+      // 4. Verificação de Alvo Final (Take Profit de 100%)
+      if (latestPrice >= session.targetPrice) {
+        return await this.closeOperation(sessionId, 'TARGET_REACHED', latestPrice);
+      }
+
+      // 5. Verificação de Stop Loss inicial (se ainda não atingiu a parcial)
+      if (!session.isPartialProfitTaken && latestPrice <= session.stopLossPrice) {
+        return await this.closeOperation(sessionId, 'STOP_LOSS', latestPrice);
+      }
+
+      // 6. Cálculo de PnL flutuante total (parcial já realizada + flutuante do restante)
+      const currentQty = session.executedQuantity && !session.isPartialProfitTaken
+        ? session.executedQuantity
+        : session.quantity;
+      const floatingPnl = (latestPrice - session.entryPrice) * currentQty;
+      const totalPnlUsd = (session.partialRealizedPnlUsd || 0) + floatingPnl;
+
+      session.unrealizedPnlUsd = PreciseMath.roundDown(totalPnlUsd, 2);
+      session.unrealizedPnlPercent = PreciseMath.roundDown(((latestPrice - session.entryPrice) / session.entryPrice) * 100, 2);
+
+      // 7. Encerramento por tempo esgotado
+      if (session.endTime > 0 && Date.now() >= session.endTime) {
+        return await this.closeOperation(sessionId, 'TIME_EXPIRED', latestPrice);
+      }
     }
 
     return session;
   }
 
   /**
-   * Encerra a operação direta, liquida na Binance (se live) e entrega o resultado final
+   * Encerra a operação direta, liquida na Binance (se live) e entrega o resultado final consolidado
    */
   public static async closeOperation(
     sessionId: string,
@@ -507,7 +631,7 @@ export class DirectOperationManager {
       const liveSellResult = await orderExecutor.executeLiveSell({
         symbol: session.symbol,
         baseAsset: session.baseCurrency,
-        quantity: session.executedQuantity || session.quantity,
+        quantity: session.quantity,
         filters,
         credentials: creds,
       });
@@ -518,7 +642,7 @@ export class DirectOperationManager {
       }
     }
 
-    const effectiveQty = session.executedQuantity || session.quantity;
+    const effectiveQty = session.quantity;
     const priceDiff = exitPrice - session.entryPrice;
     const grossPnl = priceDiff * effectiveQty;
 
@@ -528,20 +652,72 @@ export class DirectOperationManager {
     const exitFee = exitNotional * 0.001;
     const totalFees = entryFee + exitFee;
 
-    const netPnl = grossPnl - totalFees;
-    const netPercent = (netPnl / session.investedAmountUsd) * 100;
+    const netRunnerPnl = grossPnl - exitFee;
+    const totalRealizedPnl = (session.partialRealizedPnlUsd || 0) + netRunnerPnl;
+    const netPercent = (totalRealizedPnl / session.investedAmountUsd) * 100;
 
     session.status = 'CLOSED';
     session.closeReason = reason;
     session.currentPrice = exitPrice;
     session.closeBinanceOrderId = closeBinanceOrderId;
-    session.realizedPnlUsd = PreciseMath.roundDown(netPnl, 2);
+    session.realizedPnlUsd = PreciseMath.roundDown(totalRealizedPnl, 2);
     session.realizedPnlPercent = PreciseMath.roundDown(netPercent, 2);
     session.feeDeductedUsd = PreciseMath.roundDown(totalFees, 2);
     session.unrealizedPnlUsd = 0;
     session.unrealizedPnlPercent = 0;
 
     return session;
+  }
+
+  /**
+   * Reconcilia ordens abertas na exchange Binance Spot e cancela ordens não rastreadas (órfãs)
+   */
+  public static async reconcileOrphanOrders(
+    credentials: BinanceCredentials
+  ): Promise<{ cancelledOrdersCount: number; checkedAt: number }> {
+    if (!credentials || !credentials.apiKey || !credentials.apiSecret) {
+      return { cancelledOrdersCount: 0, checkedAt: Date.now() };
+    }
+
+    try {
+      const activeSymbols = new Set(
+        Array.from(activeSessions.values())
+          .filter((s) => s.status === 'ACTIVE' || s.status === 'WAITING_TRIGGER')
+          .map((s) => s.symbol)
+      );
+
+      const recent = this.getCooldownSymbols();
+      let cancelledCount = 0;
+
+      for (const sym of recent) {
+        if (!activeSymbols.has(sym)) {
+          try {
+            const timestamp = Date.now();
+            const queryString = `symbol=${sym}&timestamp=${timestamp}`;
+            const crypto = await import("crypto");
+            const signature = crypto.createHmac("sha256", credentials.apiSecret).update(queryString).digest("hex");
+
+            const cancelRes = await fetch(
+              `https://api.binance.com/api/v3/openOrders?${queryString}&signature=${signature}`,
+              {
+                method: "DELETE",
+                headers: { "X-MBX-APIKEY": credentials.apiKey },
+              }
+            );
+            if (cancelRes.ok) {
+              const resJson = await cancelRes.json();
+              if (Array.isArray(resJson)) {
+                cancelledCount += resJson.length;
+              }
+            }
+          } catch {}
+        }
+      }
+
+      return { cancelledOrdersCount: cancelledCount, checkedAt: Date.now() };
+    } catch {
+      return { cancelledOrdersCount: 0, checkedAt: Date.now() };
+    }
   }
 
   /**

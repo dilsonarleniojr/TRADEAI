@@ -38,6 +38,11 @@ import {
   Ban,
   Flame,
   AlertTriangle,
+  Brain,
+  BarChart3,
+  ChevronDown,
+  ChevronUp,
+  ShieldCheck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -115,6 +120,8 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
   const [operationMode, setOperationMode] = useState<"live" | "paper">(
     tradingMode === "live" && !binanceTestnet ? "live" : "paper"
   );
+  const [isThoughtStreamOpen, setIsThoughtStreamOpen] = useState<boolean>(false);
+  const [isOrderFlowOpen, setIsOrderFlowOpen] = useState<boolean>(false);
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -422,6 +429,148 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
   const totalDurationSec = (session?.durationMinutes ?? durationMinutes) * 60;
   const progressPercent = totalDurationSec > 0 ? ((totalDurationSec - timeRemainingSec) / totalDurationSec) * 100 : 0;
 
+  const renderThoughtStreamCard = (thoughts?: any[]) => {
+    if (!thoughts || thoughts.length === 0) return null;
+    return (
+      <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] overflow-hidden transition-all">
+        <button
+          type="button"
+          onClick={() => setIsThoughtStreamOpen(!isThoughtStreamOpen)}
+          className="w-full p-2.5 flex items-center justify-between text-left hover:bg-white/[0.04] transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-md bg-purple-500/20 border border-purple-400/40 flex items-center justify-center">
+              <Brain className="w-3 h-3 text-purple-300" />
+            </div>
+            <span className="text-xs font-semibold text-white">
+              🧠 Raciocínio da IA ao Vivo (Chain of Thought)
+            </span>
+            <Badge variant="outline" className="text-[9px] bg-purple-500/10 text-purple-300 border-purple-500/30 font-mono py-0">
+              {thoughts.length} Fases
+            </Badge>
+          </div>
+          <div className="text-slate-400">
+            {isThoughtStreamOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </div>
+        </button>
+
+        {isThoughtStreamOpen && (
+          <div className="px-3 pb-3 pt-1 border-t border-white/[0.06] space-y-2 text-xs">
+            {thoughts.map((step: any, index: number) => {
+              const phaseBadge =
+                step.phase === "LIQUIDITY_SCAN"
+                  ? { label: "Varredura L2", color: "text-cyan-300 bg-cyan-500/10 border-cyan-500/30" }
+                  : step.phase === "TECHNICAL_CONFLUENCE"
+                  ? { label: "Confluência", color: "text-emerald-300 bg-emerald-500/10 border-emerald-500/30" }
+                  : step.phase === "RISK_GATE"
+                  ? { label: "Trava de Risco", color: "text-amber-300 bg-amber-500/10 border-amber-500/30" }
+                  : { label: "Gatilho Sniper", color: "text-purple-300 bg-purple-500/10 border-purple-500/30" };
+
+              return (
+                <div key={step.id || index} className="p-2 rounded-lg bg-black/30 border border-white/[0.05] space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 inline-block" />
+                      {step.title}
+                    </span>
+                    <Badge variant="outline" className={cn("text-[8px] font-mono py-0", phaseBadge.color)}>
+                      {phaseBadge.label}
+                    </Badge>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-mono leading-relaxed pl-3">
+                    {step.description}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderOrderFlowCard = (orderFlow?: any) => {
+    if (!orderFlow) return null;
+    const bidPct = Math.round((orderFlow.bookImbalanceRatio ?? 0.5) * 100);
+    const askPct = 100 - bidPct;
+    const isBuyBias = orderFlow.cvdAggressionBias === "BUY_PRESSURE";
+    const isSellBias = orderFlow.cvdAggressionBias === "SELL_PRESSURE";
+
+    return (
+      <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] overflow-hidden transition-all">
+        <button
+          type="button"
+          onClick={() => setIsOrderFlowOpen(!isOrderFlowOpen)}
+          className="w-full p-2.5 flex items-center justify-between text-left hover:bg-white/[0.04] transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-md bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center">
+              <BarChart3 className="w-3 h-3 text-cyan-300" />
+            </div>
+            <span className="text-xs font-semibold text-white">
+              Microestrutura L2 & Order Flow (CVD)
+            </span>
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-[9px] font-mono py-0",
+                isBuyBias
+                  ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                  : isSellBias
+                  ? "bg-rose-500/10 text-rose-300 border-rose-500/30"
+                  : "bg-slate-500/10 text-slate-300 border-slate-500/30"
+              )}
+            >
+              {isBuyBias ? "Fluxo Comprador" : isSellBias ? "Fluxo Vendedor" : "Neutro"}
+            </Badge>
+          </div>
+          <div className="text-slate-400">
+            {isOrderFlowOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </div>
+        </button>
+
+        {isOrderFlowOpen && (
+          <div className="px-3 pb-3 pt-1 border-t border-white/[0.06] space-y-2.5 text-xs">
+            {/* Barra de Imbalance Top 20 */}
+            <div>
+              <div className="flex justify-between text-[10px] text-slate-400 font-mono mb-1">
+                <span className="text-emerald-400 font-bold">Bids: {bidPct}%</span>
+                <span className="text-slate-500">Pressão Livro L2 (Top 20)</span>
+                <span className="text-rose-400 font-bold">Asks: {askPct}%</span>
+              </div>
+              <div className="h-2 rounded-full overflow-hidden flex bg-white/[0.05]">
+                <div style={{ width: `${bidPct}%` }} className="bg-emerald-500 transition-all duration-500" />
+                <div style={{ width: `${askPct}%` }} className="bg-rose-500 transition-all duration-500" />
+              </div>
+            </div>
+
+            {/* CVD Delta e Paredes */}
+            <div className="grid grid-cols-3 gap-2 pt-1 font-mono text-[10px]">
+              <div className="p-1.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                <span className="text-slate-400 block text-[9px]">CVD 24h</span>
+                <span className={cn("font-bold text-[11px]", orderFlow.cvdDeltaPct >= 0 ? "text-emerald-300" : "text-rose-300")}>
+                  {orderFlow.cvdDeltaPct >= 0 ? "+" : ""}{orderFlow.cvdDeltaPct?.toFixed(2) ?? "0.00"}%
+                </span>
+              </div>
+              <div className="p-1.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                <span className="text-emerald-400 block text-[9px]">Parede Compra</span>
+                <span className="font-bold text-slate-200">
+                  {orderFlow.bidWallPrice ? `$${formatPrice(orderFlow.bidWallPrice)}` : "Dinâmica"}
+                </span>
+              </div>
+              <div className="p-1.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                <span className="text-rose-400 block text-[9px]">Parede Venda</span>
+                <span className="font-bold text-slate-200">
+                  {orderFlow.askWallPrice ? `$${formatPrice(orderFlow.askWallPrice)}` : "Dinâmica"}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[540px] bg-[#090d14]/95 backdrop-blur-2xl border border-white/[0.1] text-foreground p-0 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] rounded-2xl">
@@ -716,6 +865,10 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   </div>
                 </div>
 
+                {/* 5. Raciocínio da IA & Order Flow L2 em Tempo Real */}
+                {radarData?.selected?.aiThoughtStream && renderThoughtStreamCard(radarData.selected.aiThoughtStream)}
+                {radarData?.selected?.orderFlowMetrics && renderOrderFlowCard(radarData.selected.orderFlowMetrics)}
+
                 {/* Alerta Amigável se houver Erro de Saldo Spot */}
                 {balanceError && (
                   <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/40 space-y-2.5 text-left animate-in fade-in duration-300">
@@ -925,6 +1078,10 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   </div>
                 )}
 
+                {/* Raciocínio da IA & Order Flow L2 em Tempo Real */}
+                {session.aiThoughtStream && renderThoughtStreamCard(session.aiThoughtStream)}
+                {session.orderFlowMetrics && renderOrderFlowCard(session.orderFlowMetrics)}
+
                 {/* Botões de Ação Rápida */}
                 <div className="space-y-2">
                   <Button
@@ -1008,6 +1165,31 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   <Progress value={progressPercent} className="h-1.5 bg-white/[0.06]" />
                 </div>
 
+                {/* Banner de Parcial 50% Concluída & Break-Even Protegido */}
+                {session.isPartialProfitTaken && (
+                  <div className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/60 via-amber-950/40 to-slate-900 border border-emerald-400/40 space-y-1.5 shadow-[0_0_20px_rgba(16,185,129,0.2)] animate-in fade-in duration-300">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-lg bg-emerald-400/20 border border-emerald-400/40 flex items-center justify-center">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+                        </div>
+                        <span className="text-xs font-bold text-white tracking-wide">
+                          🎉 Parcial de 50% Garantida no Bolso!
+                        </span>
+                      </div>
+                      <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-mono text-[10px]">
+                        +${formatPrice(session.partialRealizedPnlUsd ?? 0)} USD
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[11px] text-emerald-200/90 pl-8">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>
+                        Stop movido para <strong>Break-Even Protegido</strong> (${formatPrice(session.stopLossPrice)}). Risco zero na operação!
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Card de PnL em Tempo Real */}
                 <div className={cn(
                   "p-4 rounded-xl border text-center transition-all duration-300",
@@ -1038,21 +1220,38 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-white/[0.06] text-left">
-                    <div>
-                      <span className="text-[9px] text-slate-400 block">Preço Atual</span>
+                  {/* Grid de 4 Marcos: Preço Atual, Parcial 50%, Alvo Final e Proteção */}
+                  <div className="grid grid-cols-4 gap-1.5 mt-3 pt-3 border-t border-white/[0.06] text-left">
+                    <div className="bg-white/[0.02] p-1.5 rounded-lg">
+                      <span className="text-[9px] text-slate-400 block truncate">Preço Atual</span>
                       <span className="text-xs font-mono font-bold text-white">${formatPrice(session.currentPrice)}</span>
                     </div>
-                    <div>
-                      <span className="text-[9px] text-emerald-400 block">Alvo (TP)</span>
-                      <span className="text-xs font-mono font-bold text-emerald-300">${formatPrice(session.targetPrice)}</span>
+                    <div className={cn("p-1.5 rounded-lg border", session.isPartialProfitTaken ? "bg-emerald-500/15 border-emerald-500/30" : "bg-white/[0.02] border-white/[0.05]")}>
+                      <span className="text-[9px] text-emerald-400 block truncate flex items-center gap-0.5">
+                        Alvo 50% {session.isPartialProfitTaken && "✓"}
+                      </span>
+                      <span className="text-xs font-mono font-bold text-emerald-300">
+                        ${formatPrice(session.partialTargetPrice || session.targetPrice)}
+                      </span>
                     </div>
-                    <div>
-                      <span className="text-[9px] text-rose-400 block">Proteção (SL)</span>
-                      <span className="text-xs font-mono font-bold text-rose-300">${formatPrice(session.stopLossPrice)}</span>
+                    <div className="bg-white/[0.02] p-1.5 rounded-lg border border-white/[0.05]">
+                      <span className="text-[9px] text-cyan-400 block truncate">Alvo Final</span>
+                      <span className="text-xs font-mono font-bold text-cyan-300">${formatPrice(session.targetPrice)}</span>
+                    </div>
+                    <div className={cn("p-1.5 rounded-lg border", session.breakEvenProtected ? "bg-emerald-500/10 border-emerald-500/30" : "bg-white/[0.02] border-white/[0.05]")}>
+                      <span className="text-[9px] text-rose-400 block truncate">
+                        {session.trailingStopPrice ? "Trailing" : session.breakEvenProtected ? "Break-Even" : "Stop Loss"}
+                      </span>
+                      <span className={cn("text-xs font-mono font-bold", session.breakEvenProtected ? "text-emerald-300" : "text-rose-300")}>
+                        ${formatPrice(session.trailingStopPrice || session.stopLossPrice)}
+                      </span>
                     </div>
                   </div>
                 </div>
+
+                {/* Raciocínio da IA & Order Flow L2 em Tempo Real na Operação Ativa */}
+                {session.aiThoughtStream && renderThoughtStreamCard(session.aiThoughtStream)}
+                {session.orderFlowMetrics && renderOrderFlowCard(session.orderFlowMetrics)}
 
                 {/* Cockpit de Ranking: Top 3 Oportunidades no Radar da IA */}
                 {session.topRanked && session.topRanked.length > 0 && (
@@ -1211,6 +1410,14 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                           ${formatPrice(session.entryPrice)} → ${formatPrice(session.currentPrice)}
                         </strong>
                       </div>
+                      {session.isPartialProfitTaken && (
+                        <div className="flex justify-between text-slate-400">
+                          <span>Parcial de 50% Garantida:</span>
+                          <strong className="text-emerald-400 font-mono">
+                            +${formatPrice(session.partialRealizedPnlUsd ?? 0)} USD (Garantido no Bolso)
+                          </strong>
+                        </div>
+                      )}
                       <div className="flex justify-between text-slate-400">
                         <span>Taxas de Corretagem Deduzidas:</span>
                         <strong className="text-amber-400 font-mono">-${session.feeDeductedUsd ?? "0.02"} USD</strong>

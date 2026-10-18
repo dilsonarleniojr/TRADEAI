@@ -34,10 +34,14 @@ export async function GET(req: NextRequest) {
           targetEntryPrice: bestOpportunity.triggerCondition.targetPrice,
           triggerCondition: bestOpportunity.triggerCondition,
           isCooldownApplied: bestOpportunity.isCooldownApplied,
+          aiThoughtStream: bestOpportunity.aiThoughtStream,
+          orderFlowMetrics: bestOpportunity.orderFlowMetrics,
         },
         topRanked: bestOpportunity.topRanked || [],
         cooldownSymbols,
         isCooldownApplied: bestOpportunity.isCooldownApplied,
+        aiThoughtStream: bestOpportunity.aiThoughtStream,
+        orderFlowMetrics: bestOpportunity.orderFlowMetrics,
       },
     });
   } catch (error: any) {
