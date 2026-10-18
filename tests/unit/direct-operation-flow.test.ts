@@ -446,6 +446,154 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
       DirectOperationManager.clearSession(session.id);
     });
   });
+
+  describe("6. Pilares de Próxima Geração: Trading Strategist Pro, AI Engineer, Chaos & Infra", () => {
+    it("deve classificar regimes de mercado (TRENDING_BULLISH, MEAN_REVERTING_RANGING, EXTREME_VOLATILITY)", () => {
+      const { MarketOpportunitySelector } = require("@/lib/bot/pilot/market-opportunity-selector");
+      const selector = MarketOpportunitySelector.getInstance();
+
+      const dummyKlines = Array.from({ length: 30 }, (_, i) => ({
+        openTime: i * 900000,
+        open: 100 + i * 0.5,
+        high: 101 + i * 0.5,
+        low: 99.5 + i * 0.5,
+        close: 100.8 + i * 0.5,
+        volume: 1000,
+        closeTime: (i + 1) * 900000,
+      }));
+
+      // Regime Tendência Forte
+      const bullRegime = selector.classifyMarketRegime(dummyKlines, 32, 0.015, 58);
+      expect(bullRegime.regime).toBe("TRENDING_BULLISH");
+      expect(bullRegime.confidence).toBeGreaterThanOrEqual(70);
+
+      // Regime Lateral / Exaustão
+      const rangeRegime = selector.classifyMarketRegime(dummyKlines, 16, 0.012, 30);
+      expect(rangeRegime.regime).toBe("MEAN_REVERTING_RANGING");
+
+      // Regime Volatilidade Extrema
+      const volRegime = selector.classifyMarketRegime(dummyKlines, 25, 0.035, 50);
+      expect(volRegime.regime).toBe("EXTREME_VOLATILITY");
+    });
+
+    it("deve calcular confluência multi-timeframe (15m, 5m, 1m) com pontuação percentual", () => {
+      const { MarketOpportunitySelector } = require("@/lib/bot/pilot/market-opportunity-selector");
+      const selector = MarketOpportunitySelector.getInstance();
+
+      const klines = Array.from({ length: 30 }, (_, i) => ({
+        openTime: i * 900000,
+        open: 50 + i * 0.2,
+        high: 50.5 + i * 0.2,
+        low: 49.8 + i * 0.2,
+        close: 50.3 + i * 0.2,
+        volume: 500,
+        closeTime: (i + 1) * 900000,
+      }));
+
+      const mtf = selector.analyzeMultiTimeframeConfluence("BTCUSDT", klines);
+      expect(mtf.macroTrend15m).toBeDefined();
+      expect(mtf.setupTrend5m).toBeDefined();
+      expect(mtf.triggerSniper1m).toBeDefined();
+      expect(mtf.confluenceScore).toBeGreaterThanOrEqual(0);
+      expect(mtf.confluenceScore).toBeLessThanOrEqual(100);
+      expect(mtf.summary).toContain("Macro 15m");
+    });
+
+    it("deve calibrar dimensionamento por paridade de volatilidade (Kelly/ATR Parity <= $1.40 USD)", () => {
+      const { MarketOpportunitySelector } = require("@/lib/bot/pilot/market-opportunity-selector");
+      const selector = MarketOpportunitySelector.getInstance();
+
+      // Ativo calmo (SL de 1.0%)
+      const sizingLowVol = selector.calculateVolatilityTargetedSizing(100.0, 99.0, 25.0, 70.0);
+      expect(sizingLowVol.riskAmountUsd).toBeLessThanOrEqual(1.40);
+      expect(sizingLowVol.suggestedNotionalUsd).toBeGreaterThanOrEqual(11.0);
+
+      // Ativo de alta volatilidade (SL de 2.0%)
+      const sizingHighVol = selector.calculateVolatilityTargetedSizing(100.0, 98.0, 25.0, 70.0);
+      expect(sizingHighVol.riskAmountUsd).toBeLessThanOrEqual(1.40);
+      expect(sizingHighVol.volatilityScale).toBeLessThan(sizingLowVol.volatilityScale);
+    });
+
+    it("deve estruturar a escada de 3 alvos (TP1 33%, TP2 33%, TP3 34%) respeitando tickSize", () => {
+      const { MarketOpportunitySelector } = require("@/lib/bot/pilot/market-opportunity-selector");
+      const selector = MarketOpportunitySelector.getInstance();
+
+      const filters = {
+        symbol: "BTCUSDT",
+        minQty: 0.00001,
+        maxQty: 9000,
+        stepSize: 0.00001,
+        minPrice: 0.01,
+        maxPrice: 1000000,
+        tickSize: 0.01,
+        minNotional: 5.0,
+        baseAsset: "BTC",
+        quoteAsset: "USDT",
+        status: "TRADING",
+      };
+
+      const ladder = selector.calculateTripleTargetLadder(60000.0, 59000.0, 0.015, filters);
+      expect(ladder.tp1Price).toBeGreaterThan(60000.0);
+      expect(ladder.tp2Price).toBeGreaterThan(ladder.tp1Price);
+      expect(ladder.tp3Price).toBeGreaterThan(ladder.tp2Price);
+    });
+
+    it("deve executar a escada tripla de realização de lucros (TP1 -> TP2 -> TP3) na sessão ativa", async () => {
+      const { session } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        mode: "paper",
+      });
+
+      expect(session.tp1Price).toBeDefined();
+      expect(session.tp2Price).toBeDefined();
+      expect(session.tp3Price).toBeDefined();
+      expect(session.priceHistory).toBeDefined();
+      expect(session.priceHistory!.length).toBeGreaterThanOrEqual(1);
+
+      // 1. Tick atinge TP1: realiza 33% e blinda no Break-Even
+      const afterTp1 = await DirectOperationManager.processPriceTick(session.id, session.tp1Price!);
+      expect(afterTp1.isTp1Taken).toBe(true);
+      expect(afterTp1.breakEvenProtected).toBe(true);
+      expect(afterTp1.tp1QuantityExecuted).toBeGreaterThan(0);
+      expect(afterTp1.tp1RealizedPnlUsd).toBeGreaterThan(0);
+
+      // 2. Tick atinge TP2: realiza mais 33% e aperta o Trailing Stop (0.8% da máxima)
+      const afterTp2 = await DirectOperationManager.processPriceTick(session.id, session.tp2Price!);
+      expect(afterTp2.isTp2Taken).toBe(true);
+      expect(afterTp2.tp2QuantityExecuted).toBeGreaterThan(0);
+      expect(afterTp2.trailingStopPrice).toBeGreaterThan(session.entryPrice);
+      expect(afterTp2.trailingStopPrice).toBeCloseTo(session.entryPrice * 1.0035, 3);
+
+      DirectOperationManager.clearSession(session.id);
+    });
+
+    it("deve auditar latência de execução e slippage drift via ExecutionLatencyGuard", () => {
+      const { ExecutionLatencyGuard } = require("@/lib/bot/pilot/direct-operation-manager");
+
+      // Execução saudável (< 1200ms e < 0.15% slippage)
+      const healthy = ExecutionLatencyGuard.auditExecution(1000, 1400, 100.0, 100.05);
+      expect(healthy.latencyMs).toBe(400);
+      expect(healthy.isWithinSla).toBe(true);
+      expect(healthy.warning).toBeUndefined();
+
+      // Execução com grey failure (latência de 1800ms)
+      const degraded = ExecutionLatencyGuard.auditExecution(1000, 2800, 100.0, 100.05);
+      expect(degraded.latencyMs).toBe(1800);
+      expect(degraded.isWithinSla).toBe(false);
+      expect(degraded.warning).toContain("Latência de execução elevada");
+    });
+
+    it("deve monitorar o peso de rate limits da exchange via RateLimitMonitor", () => {
+      const { RateLimitMonitor } = require("@/lib/bot/pilot/direct-operation-manager");
+
+      RateLimitMonitor.recordRequest(5);
+      const status = RateLimitMonitor.getRateLimitStatus();
+      expect(status.usedWeight1m).toBeGreaterThanOrEqual(5);
+      expect(typeof status.usageRatio).toBe("number");
+      expect(typeof status.shouldThrottle).toBe("boolean");
+    });
+  });
 });
 
 

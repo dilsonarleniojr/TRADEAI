@@ -571,6 +571,216 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
     );
   };
 
+  const renderRegimeBadges = (
+    regime?: string,
+    mtf?: any,
+    sizing?: any,
+    latencyMs?: number
+  ) => {
+    if (!regime && !mtf && !sizing && !latencyMs) return null;
+
+    const isBull = regime === "TRENDING_BULLISH";
+    const isRange = regime === "MEAN_REVERTING_RANGING";
+
+    return (
+      <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-between flex-wrap gap-2 text-[10px] font-mono shadow-sm">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {regime && (
+            <span
+              className={cn(
+                "px-2 py-0.5 rounded-md font-bold uppercase tracking-wider border",
+                isBull
+                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                  : isRange
+                  ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
+                  : "bg-amber-500/15 text-amber-300 border-amber-500/30"
+              )}
+            >
+              {isBull ? "🔥 " : isRange ? "⚡ " : "⚠️ "}
+              {regime.replace(/_/g, " ")}
+            </span>
+          )}
+
+          {mtf?.summary && (
+            <span className="px-2 py-0.5 rounded-md bg-purple-500/15 text-purple-300 border border-purple-500/30 font-semibold">
+              MTF: {mtf.summary}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 text-slate-400">
+          {sizing?.recommendedAllocationUsd && (
+            <span>Parity: <strong className="text-white">${sizing.recommendedAllocationUsd}</strong></span>
+          )}
+          {latencyMs !== undefined && latencyMs > 0 && (
+            <span className="text-cyan-400 font-bold bg-cyan-500/10 px-1.5 py-0.5 rounded border border-cyan-500/20">
+              ⚡ {latencyMs}ms
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderMiniTrajectoryChart = (
+    priceHistory?: { price: number; timestamp: number }[],
+    entryPrice: number = 0,
+    tp1Price?: number,
+    tp2Price?: number,
+    tp3Price?: number,
+    stopLossPrice?: number,
+    currentPrice: number = 0
+  ) => {
+    const points = priceHistory && priceHistory.length >= 2
+      ? priceHistory
+      : [
+          { price: entryPrice || currentPrice, timestamp: Date.now() - 30000 },
+          { price: currentPrice || entryPrice, timestamp: Date.now() },
+        ];
+
+    const allPrices = [
+      ...points.map((p) => p.price),
+      entryPrice,
+      tp1Price || entryPrice * 1.015,
+      tp2Price || entryPrice * 1.025,
+      tp3Price || entryPrice * 1.035,
+      stopLossPrice || entryPrice * 0.98,
+      currentPrice,
+    ].filter((p) => typeof p === "number" && !isNaN(p) && p > 0);
+
+    const minP = Math.min(...allPrices);
+    const maxP = Math.max(...allPrices);
+    const range = maxP - minP || 1;
+
+    const width = 360;
+    const height = 90;
+    const padding = 14;
+
+    const getY = (val: number) => {
+      return height - padding - ((val - minP) / range) * (height - padding * 2);
+    };
+
+    const getX = (idx: number, total: number) => {
+      if (total <= 1) return width / 2;
+      return padding + (idx / (total - 1)) * (width - padding * 2);
+    };
+
+    const pathData = points
+      .map((pt, i) => `${i === 0 ? "M" : "L"} ${getX(i, points.length).toFixed(1)} ${getY(pt.price).toFixed(1)}`)
+      .join(" ");
+
+    const entryY = getY(entryPrice);
+    const currentY = getY(currentPrice);
+    const tp1Y = tp1Price ? getY(tp1Price) : null;
+    const tp2Y = tp2Price ? getY(tp2Price) : null;
+    const tp3Y = tp3Price ? getY(tp3Price) : null;
+    const slY = stopLossPrice ? getY(stopLossPrice) : null;
+
+    const isProfitable = currentPrice >= entryPrice;
+
+    return (
+      <div className="p-3 rounded-xl bg-slate-950/70 border border-white/[0.08] relative overflow-hidden backdrop-blur-md space-y-1.5 shadow-inner">
+        <div className="flex items-center justify-between text-[10px] font-mono">
+          <div className="flex items-center gap-1.5">
+            <Activity className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            <span className="font-bold text-slate-200">Trajetória e Alvos Dinâmicos (SVG)</span>
+          </div>
+          <div className="flex items-center gap-2 text-[9px]">
+            <span className="text-emerald-400 font-bold">● TP3</span>
+            <span className="text-teal-400 font-bold">● TP2</span>
+            <span className="text-cyan-400 font-bold">● TP1</span>
+            <span className="text-slate-400">⋯ Entrada</span>
+            <span className="text-rose-400">● SL</span>
+          </div>
+        </div>
+
+        <div className="w-full relative h-[90px] overflow-hidden rounded-lg bg-black/40 border border-white/[0.04]">
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            className="w-full h-full overflow-visible"
+            preserveAspectRatio="none"
+          >
+            <defs>
+              <linearGradient id="chartGradientDirect" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={isProfitable ? "#10b981" : "#f43f5e"} stopOpacity="0.35" />
+                <stop offset="100%" stopColor={isProfitable ? "#10b981" : "#f43f5e"} stopOpacity="0.0" />
+              </linearGradient>
+            </defs>
+
+            {/* Linha guia central */}
+            <line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="#ffffff" strokeOpacity="0.05" strokeDasharray="3 3" />
+
+            {/* Linhas de Alvo */}
+            {tp3Y !== null && (
+              <g>
+                <line x1={padding} y1={tp3Y} x2={width - padding} y2={tp3Y} stroke="#10b981" strokeWidth="1" strokeDasharray="2 2" strokeOpacity="0.7" />
+                <text x={width - padding} y={tp3Y - 2} fill="#10b981" fontSize="7" textAnchor="end" fontFamily="monospace">TP3</text>
+              </g>
+            )}
+            {tp2Y !== null && (
+              <g>
+                <line x1={padding} y1={tp2Y} x2={width - padding} y2={tp2Y} stroke="#14b8a6" strokeWidth="1" strokeDasharray="2 2" strokeOpacity="0.7" />
+                <text x={width - padding} y={tp2Y - 2} fill="#14b8a6" fontSize="7" textAnchor="end" fontFamily="monospace">TP2</text>
+              </g>
+            )}
+            {tp1Y !== null && (
+              <g>
+                <line x1={padding} y1={tp1Y} x2={width - padding} y2={tp1Y} stroke="#06b6d4" strokeWidth="1" strokeDasharray="2 2" strokeOpacity="0.7" />
+                <text x={width - padding} y={tp1Y - 2} fill="#06b6d4" fontSize="7" textAnchor="end" fontFamily="monospace">TP1</text>
+              </g>
+            )}
+
+            {/* Linha de Entrada */}
+            <line x1={padding} y1={entryY} x2={width - padding} y2={entryY} stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" strokeOpacity="0.5" />
+            <text x={padding + 2} y={entryY - 2} fill="#94a3b8" fontSize="7" fontFamily="monospace">Entrada</text>
+
+            {/* Linha de Stop Loss */}
+            {slY !== null && (
+              <g>
+                <line x1={padding} y1={slY} x2={width - padding} y2={slY} stroke="#f43f5e" strokeWidth="1" strokeDasharray="2 2" strokeOpacity="0.7" />
+                <text x={width - padding} y={slY + 8} fill="#f43f5e" fontSize="7" textAnchor="end" fontFamily="monospace">SL</text>
+              </g>
+            )}
+
+            {/* Área sombreada */}
+            <path
+              d={`${pathData} L ${getX(points.length - 1, points.length).toFixed(1)} ${height - padding} L ${getX(0, points.length).toFixed(1)} ${height - padding} Z`}
+              fill="url(#chartGradientDirect)"
+            />
+
+            {/* Linha da trajetória */}
+            <path
+              d={pathData}
+              fill="none"
+              stroke={isProfitable ? "#34d399" : "#fb7185"}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+
+            {/* Ponto do Preço Atual */}
+            <circle
+              cx={getX(points.length - 1, points.length)}
+              cy={currentY}
+              r="3.5"
+              fill={isProfitable ? "#10b981" : "#f43f5e"}
+              className="animate-pulse"
+            />
+            <circle
+              cx={getX(points.length - 1, points.length)}
+              cy={currentY}
+              r="6"
+              fill="none"
+              stroke={isProfitable ? "#10b981" : "#f43f5e"}
+              strokeWidth="1"
+              opacity="0.5"
+            />
+          </svg>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[540px] bg-[#090d14]/95 backdrop-blur-2xl border border-white/[0.1] text-foreground p-0 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] rounded-2xl">
@@ -768,6 +978,13 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                     })}
                   </div>
                 </div>
+
+                {/* Badges de Regime de Mercado & Confluência MTF */}
+                {renderRegimeBadges(
+                  radarData?.selected?.marketRegime?.regime || radarData?.marketRegime?.regime,
+                  radarData?.selected?.multiTimeframe || radarData?.multiTimeframe,
+                  radarData?.selected?.volatilitySizing || radarData?.volatilitySizing
+                )}
 
                 {/* 4. Moedas no Radar da IA Agora (Top 3 Oportunidades) */}
                 <div className="space-y-2.5">
@@ -1012,6 +1229,14 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   </div>
                 </div>
 
+                {/* Badges de Regime de Mercado & Confluência MTF */}
+                {renderRegimeBadges(
+                  session.marketRegime,
+                  session.multiTimeframeSummary ? { summary: session.multiTimeframeSummary } : undefined,
+                  session.volatilitySizingUsd ? { recommendedAllocationUsd: session.volatilitySizingUsd } : undefined,
+                  session.executionLatencyMs
+                )}
+
                 {/* Nota de Segurança e Capital Intacto */}
                 <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-2.5">
                   <Shield className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
@@ -1156,6 +1381,14 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   </div>
                 </div>
 
+                {/* Badges de Regime, Confluência MTF & Telemetria */}
+                {renderRegimeBadges(
+                  session.marketRegime,
+                  session.multiTimeframeSummary ? { summary: session.multiTimeframeSummary } : undefined,
+                  session.volatilitySizingUsd ? { recommendedAllocationUsd: session.volatilitySizingUsd } : undefined,
+                  session.executionLatencyMs
+                )}
+
                 {/* Barra de Progresso Temporal */}
                 <div className="space-y-1">
                   <div className="flex justify-between text-[10px] text-slate-400 font-mono">
@@ -1165,8 +1398,30 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   <Progress value={progressPercent} className="h-1.5 bg-white/[0.06]" />
                 </div>
 
-                {/* Banner de Parcial 50% Concluída & Break-Even Protegido */}
-                {session.isPartialProfitTaken && (
+                {/* Banner de Parcial Concluída: TP2 (66%) ou TP1 (33%) */}
+                {session.isTp2Taken ? (
+                  <div className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/70 via-teal-950/50 to-slate-900 border border-teal-400/50 space-y-1.5 shadow-[0_0_20px_rgba(20,184,166,0.25)] animate-in fade-in duration-300">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-lg bg-teal-400/20 border border-teal-400/40 flex items-center justify-center">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-teal-300" />
+                        </div>
+                        <span className="text-xs font-bold text-white tracking-wide">
+                          🚀 Parciais de 66% (TP1 + TP2) Garantidas no Bolso!
+                        </span>
+                      </div>
+                      <Badge className="bg-teal-500/20 text-teal-300 border-teal-500/40 font-mono text-[10px]">
+                        +${formatPrice(session.partialRealizedPnlUsd ?? 0)} USD
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[11px] text-teal-200/90 pl-8">
+                      <ShieldCheck className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                      <span>
+                        Trailing Stop apertado a 0.8% da máxima (${formatPrice(session.trailingStopPrice || session.stopLossPrice)}). Lucro travado no topo!
+                      </span>
+                    </div>
+                  </div>
+                ) : session.isTp1Taken ? (
                   <div className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/60 via-amber-950/40 to-slate-900 border border-emerald-400/40 space-y-1.5 shadow-[0_0_20px_rgba(16,185,129,0.2)] animate-in fade-in duration-300">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -1174,11 +1429,11 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
                         </div>
                         <span className="text-xs font-bold text-white tracking-wide">
-                          🎉 Parcial de 50% Garantida no Bolso!
+                          🎉 Parcial de 33% (TP1) Garantida no Bolso!
                         </span>
                       </div>
                       <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-mono text-[10px]">
-                        +${formatPrice(session.partialRealizedPnlUsd ?? 0)} USD
+                        +${formatPrice(session.tp1RealizedPnlUsd || session.partialRealizedPnlUsd || 0)} USD
                       </Badge>
                     </div>
                     <div className="flex items-center gap-1.5 text-[11px] text-emerald-200/90 pl-8">
@@ -1188,7 +1443,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                       </span>
                     </div>
                   </div>
-                )}
+                ) : null}
 
                 {/* Card de PnL em Tempo Real */}
                 <div className={cn(
@@ -1220,38 +1475,58 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                     </span>
                   </div>
 
-                  {/* Grid de 4 Marcos: Preço Atual, Parcial 50%, Alvo Final e Proteção */}
+                  {/* Grid de 4 Marcos: Preço Atual, TP1 (33%), TP2 (33%), TP3 Runner */}
                   <div className="grid grid-cols-4 gap-1.5 mt-3 pt-3 border-t border-white/[0.06] text-left">
                     <div className="bg-white/[0.02] p-1.5 rounded-lg">
                       <span className="text-[9px] text-slate-400 block truncate">Preço Atual</span>
                       <span className="text-xs font-mono font-bold text-white">${formatPrice(session.currentPrice)}</span>
                     </div>
-                    <div className={cn("p-1.5 rounded-lg border", session.isPartialProfitTaken ? "bg-emerald-500/15 border-emerald-500/30" : "bg-white/[0.02] border-white/[0.05]")}>
+                    <div className={cn("p-1.5 rounded-lg border", session.isTp1Taken ? "bg-emerald-500/15 border-emerald-500/30" : "bg-white/[0.02] border-white/[0.05]")}>
                       <span className="text-[9px] text-emerald-400 block truncate flex items-center gap-0.5">
-                        Alvo 50% {session.isPartialProfitTaken && "✓"}
+                        TP1 (33%) {session.isTp1Taken && "✓"}
                       </span>
                       <span className="text-xs font-mono font-bold text-emerald-300">
-                        ${formatPrice(session.partialTargetPrice || session.targetPrice)}
+                        ${formatPrice(session.tp1Price || session.partialTargetPrice || session.targetPrice)}
+                      </span>
+                    </div>
+                    <div className={cn("p-1.5 rounded-lg border", session.isTp2Taken ? "bg-teal-500/15 border-teal-500/30" : "bg-white/[0.02] border-white/[0.05]")}>
+                      <span className="text-[9px] text-teal-400 block truncate flex items-center gap-0.5">
+                        TP2 (33%) {session.isTp2Taken && "✓"}
+                      </span>
+                      <span className="text-xs font-mono font-bold text-teal-300">
+                        ${formatPrice(session.tp2Price || session.targetPrice * 0.99)}
                       </span>
                     </div>
                     <div className="bg-white/[0.02] p-1.5 rounded-lg border border-white/[0.05]">
-                      <span className="text-[9px] text-cyan-400 block truncate">Alvo Final</span>
-                      <span className="text-xs font-mono font-bold text-cyan-300">${formatPrice(session.targetPrice)}</span>
-                    </div>
-                    <div className={cn("p-1.5 rounded-lg border", session.breakEvenProtected ? "bg-emerald-500/10 border-emerald-500/30" : "bg-white/[0.02] border-white/[0.05]")}>
-                      <span className="text-[9px] text-rose-400 block truncate">
-                        {session.trailingStopPrice ? "Trailing" : session.breakEvenProtected ? "Break-Even" : "Stop Loss"}
-                      </span>
-                      <span className={cn("text-xs font-mono font-bold", session.breakEvenProtected ? "text-emerald-300" : "text-rose-300")}>
-                        ${formatPrice(session.trailingStopPrice || session.stopLossPrice)}
+                      <span className="text-[9px] text-cyan-400 block truncate">TP3 Runner</span>
+                      <span className="text-xs font-mono font-bold text-cyan-300">
+                        ${formatPrice(session.tp3Price || session.targetPrice)}
                       </span>
                     </div>
                   </div>
+
+                  {/* Linha de Proteção Dinâmica */}
+                  <div className="mt-2 pt-2 border-t border-white/[0.04] flex items-center justify-between text-[10px] font-mono px-1">
+                    <span className="text-slate-400 flex items-center gap-1">
+                      <Shield className="w-3 h-3 text-emerald-400" />
+                      {session.trailingStopPrice ? "Trailing Stop Ativo:" : session.breakEvenProtected ? "Break-Even Protegido:" : "Stop Loss Inicial:"}
+                    </span>
+                    <span className={cn("font-bold", session.breakEvenProtected ? "text-emerald-300" : "text-rose-300")}>
+                      ${formatPrice(session.trailingStopPrice || session.stopLossPrice)}
+                    </span>
+                  </div>
                 </div>
 
-                {/* Raciocínio da IA & Order Flow L2 em Tempo Real na Operação Ativa */}
-                {session.aiThoughtStream && renderThoughtStreamCard(session.aiThoughtStream)}
-                {session.orderFlowMetrics && renderOrderFlowCard(session.orderFlowMetrics)}
+                {/* Mini-Gráfico SVG de Trajetória e Alvos Dinâmicos */}
+                {renderMiniTrajectoryChart(
+                  session.priceHistory,
+                  session.entryPrice,
+                  session.tp1Price || session.partialTargetPrice,
+                  session.tp2Price,
+                  session.tp3Price || session.targetPrice,
+                  session.trailingStopPrice || session.stopLossPrice,
+                  session.currentPrice
+                )}
 
                 {/* Cockpit de Ranking: Top 3 Oportunidades no Radar da IA */}
                 {session.topRanked && session.topRanked.length > 0 && (

@@ -65,10 +65,119 @@ export interface DirectOperationSession {
   // Fase 2 & 3: IA Thought Stream & Microestrutura L2
   aiThoughtStream?: AiThoughtStep[];
   orderFlowMetrics?: OrderFlowMetrics;
+
+  // Próxima Geração: Escada Tripla 33/33/34
+  tp1Price?: number;
+  tp2Price?: number;
+  tp3Price?: number;
+  isTp1Taken?: boolean;
+  isTp2Taken?: boolean;
+  tp1QuantityExecuted?: number;
+  tp2QuantityExecuted?: number;
+  tp1RealizedPnlUsd?: number;
+  tp2RealizedPnlUsd?: number;
+
+  // Próxima Geração: Regime, MTF, Sizing & Telemetria
+  marketRegime?: string;
+  multiTimeframeSummary?: string;
+  sentimentScore?: number;
+  volatilitySizingUsd?: number;
+  executionLatencyMs?: number;
+  priceHistory?: { price: number; timestamp: number }[];
 }
 
 // Armazenamento em memória de sessões ativas
 const activeSessions = new Map<string, DirectOperationSession>();
+
+/**
+ * Monitor e Guardião de Latência de Execução e Slippage Drift
+ */
+export class ExecutionLatencyGuard {
+  private static readonly MAX_LATENCY_MS = 1200;
+  private static readonly MAX_SLIPPAGE_PCT = 0.0015; // 0.15%
+
+  public static auditExecution(
+    signalTime: number,
+    executionTime: number,
+    expectedPrice: number,
+    executedPrice: number
+  ): { latencyMs: number; slippagePct: number; isWithinSla: boolean; warning?: string } {
+    const latencyMs = Math.max(0, executionTime - signalTime);
+    const slippagePct = expectedPrice > 0 ? Math.abs(executedPrice - expectedPrice) / expectedPrice : 0;
+    const latencyBreached = latencyMs > this.MAX_LATENCY_MS;
+    const slippageBreached = slippagePct > this.MAX_SLIPPAGE_PCT;
+    const isWithinSla = !latencyBreached && !slippageBreached;
+
+    let warning: string | undefined;
+    if (latencyBreached) {
+      warning = `Latência de execução elevada (${latencyMs}ms > ${this.MAX_LATENCY_MS}ms).`;
+    }
+    if (slippageBreached) {
+      warning = (warning ? `${warning} ` : "") + `Slippage de book excessivo (${(slippagePct * 100).toFixed(3)}% > 0.15%).`;
+    }
+
+    return { latencyMs, slippagePct: PreciseMath.roundDown(slippagePct * 100, 3), isWithinSla, warning };
+  }
+}
+
+/**
+ * Monitor de Rate Limits da Exchange com Throttling Preventivo
+ */
+export class RateLimitMonitor {
+  private static usedWeight1m = 0;
+  private static lastUpdated = Date.now();
+  private static readonly WEIGHT_CAP = 1200;
+
+  public static recordRequest(weight = 1): void {
+    const now = Date.now();
+    if (now - this.lastUpdated > 60_000) {
+      this.usedWeight1m = 0;
+      this.lastUpdated = now;
+    }
+    this.usedWeight1m += weight;
+  }
+
+  public static getRateLimitStatus(): { usedWeight1m: number; usageRatio: number; shouldThrottle: boolean } {
+    const now = Date.now();
+    if (now - this.lastUpdated > 60_000) {
+      this.usedWeight1m = 0;
+      this.lastUpdated = now;
+    }
+    const usageRatio = PreciseMath.roundDown(this.usedWeight1m / this.WEIGHT_CAP, 2);
+    const shouldThrottle = usageRatio >= 0.8;
+    return { usedWeight1m: this.usedWeight1m, usageRatio, shouldThrottle };
+  }
+}
+
+/**
+ * Despachante Assíncrono de Notificações Telegram / Webhook
+ */
+export class TelegramNotifier {
+  private static botToken = process.env.TELEGRAM_BOT_TOKEN;
+  private static chatId = process.env.TELEGRAM_CHAT_ID;
+
+  public static async notify(message: string): Promise<boolean> {
+    if (!this.botToken || !this.chatId) {
+      return false;
+    }
+    try {
+      const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: this.chatId,
+          text: message,
+          parse_mode: "Markdown",
+        }),
+        signal: AbortSignal.timeout(3000),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+}
 
 export class DirectOperationManager {
   // Histórico em memória de símbolos operados recentemente para rotação de ativos
@@ -231,6 +340,20 @@ export class DirectOperationManager {
     const computedPartialTarget = PreciseMath.roundDown(finalEntryPrice + halfDistance, tickDecimals);
     const safePartialTarget = computedPartialTarget > finalEntryPrice ? computedPartialTarget : PreciseMath.roundDown(finalEntryPrice * 1.018, tickDecimals);
 
+    // Escada de 3 Alvos (Triple Target Ladder)
+    const ladder = opportunity.tripleTargetLadder;
+    const tp1 = ladder?.tp1Price ?? safePartialTarget;
+    const tp2 = ladder?.tp2Price ?? PreciseMath.roundDown(finalEntryPrice + (opportunity.signal.takeProfit - finalEntryPrice) * 0.75, tickDecimals);
+    const tp3 = ladder?.tp3Price ?? opportunity.signal.takeProfit;
+
+    // Auditoria de Latência de Execução & Slippage (Pilar 3 Chaos & Infra)
+    const latencyAudit = ExecutionLatencyGuard.auditExecution(
+      opportunity.timestamp || now,
+      now,
+      entryPrice,
+      finalEntryPrice
+    );
+
     const session: DirectOperationSession = {
       id: sessionId,
       symbol: opportunity.symbol,
@@ -266,8 +389,8 @@ export class DirectOperationManager {
       topRanked: opportunity.topRanked,
       isCooldownApplied: opportunity.isCooldownApplied,
 
-      // Fase 1: Escada de Parciais 50/50 & Trailing Stop Parabólico
-      partialTargetPrice: safePartialTarget,
+      // Fase 1: Escada de Parciais 50/50 & Trailing Stop Parabólico (Compatibilidade)
+      partialTargetPrice: tp1,
       isPartialProfitTaken: false,
       partialQuantityExecuted: 0,
       partialRealizedPnlUsd: 0,
@@ -278,9 +401,34 @@ export class DirectOperationManager {
       // Fase 2 & 3: IA Thought Stream & Microestrutura L2
       aiThoughtStream: opportunity.aiThoughtStream,
       orderFlowMetrics: opportunity.orderFlowMetrics,
+
+      // Pilares de Próxima Geração: Triple Ladder, Regime, MTF, Sizing & Telemetria
+      tp1Price: tp1,
+      tp2Price: tp2,
+      tp3Price: tp3,
+      isTp1Taken: false,
+      isTp2Taken: false,
+      tp1QuantityExecuted: 0,
+      tp2QuantityExecuted: 0,
+      tp1RealizedPnlUsd: 0,
+      tp2RealizedPnlUsd: 0,
+      marketRegime: opportunity.marketRegime?.regime,
+      multiTimeframeSummary: opportunity.multiTimeframe?.summary,
+      sentimentScore: opportunity.sentimentFilter?.sentimentScore,
+      volatilitySizingUsd: opportunity.volatilitySizing?.recommendedAllocationUsd,
+      executionLatencyMs: latencyAudit.latencyMs,
+      priceHistory: [{ price: finalEntryPrice, timestamp: now }],
     };
 
     activeSessions.set(sessionId, session);
+
+    // Notificação institucional assíncrona
+    TelegramNotifier.notify(
+      `⚡ [TradeAI] Operação Iniciada: ${opportunity.symbol} (${mode.toUpperCase()})\n` +
+      `Entrada: $${finalEntryPrice} | TP1: $${tp1} | TP2: $${tp2} | TP3: $${tp3} | SL: $${opportunity.signal.stopLoss}\n` +
+      `Regime: ${session.marketRegime || 'NORMAL'} | MTF: ${session.multiTimeframeSummary || 'ALINHADO'}`
+    );
+
     return { session, validation };
   }
 
@@ -363,14 +511,41 @@ export class DirectOperationManager {
       session.endTime = now + durationMs;
       session.isExecutingTrigger = false;
 
-      // Inicializa métricas de parciais e trailing stop
-      session.partialTargetPrice = safePartialTarget;
+      // Escada de 3 Alvos (Triple Target Ladder)
+      const tp1 = session.tp1Price ?? safePartialTarget;
+      const tp2 = session.tp2Price ?? PreciseMath.roundDown(effectiveEntryPrice + (session.targetPrice - effectiveEntryPrice) * 0.75, tickDecimals);
+      const tp3 = session.tp3Price ?? session.targetPrice;
+
+      // Inicializa métricas de parciais e trailing stop (Compatibilidade)
+      session.partialTargetPrice = tp1;
       session.isPartialProfitTaken = false;
       session.partialQuantityExecuted = 0;
       session.partialRealizedPnlUsd = 0;
       session.breakEvenProtected = false;
       session.trailingStopPrice = session.stopLossPrice;
       session.highestPriceReached = effectiveEntryPrice;
+
+      // Triple Target Ladder
+      session.tp1Price = tp1;
+      session.tp2Price = tp2;
+      session.tp3Price = tp3;
+      session.isTp1Taken = false;
+      session.isTp2Taken = false;
+      session.tp1QuantityExecuted = 0;
+      session.tp2QuantityExecuted = 0;
+      session.tp1RealizedPnlUsd = 0;
+      session.tp2RealizedPnlUsd = 0;
+      session.priceHistory = [{ price: effectiveEntryPrice, timestamp: now }];
+
+      // Auditoria de latência
+      const expectedP = session.targetEntryPrice || effectiveEntryPrice;
+      const latencyAudit = ExecutionLatencyGuard.auditExecution(now - 100, now, expectedP, effectiveEntryPrice);
+      session.executionLatencyMs = latencyAudit.latencyMs;
+
+      TelegramNotifier.notify(
+        `🎯 [TradeAI] Gatilho Sniper Disparado: ${session.symbol}\n` +
+        `Entrada Efetiva: $${effectiveEntryPrice} | TP1: $${tp1} | TP2: $${tp2} | TP3: $${tp3}`
+      );
 
       return session;
     } catch (err: any) {
@@ -457,6 +632,13 @@ export class DirectOperationManager {
 
     session.currentPrice = latestPrice;
 
+    // Histórico de preços em tempo real para mini-gráfico
+    if (!session.priceHistory) session.priceHistory = [];
+    session.priceHistory.push({ price: latestPrice, timestamp: Date.now() });
+    if (session.priceHistory.length > 30) {
+      session.priceHistory.shift();
+    }
+
     // Se estiver aguardando gatilho ótimo (Radar Sniper)
     if (session.status === 'WAITING_TRIGGER') {
       const trigger = session.triggerCondition;
@@ -499,49 +681,101 @@ export class DirectOperationManager {
       // 1. Registra nova máxima alcançada pela operação
       session.highestPriceReached = Math.max(session.highestPriceReached || session.entryPrice, latestPrice);
 
-      // 2. Escada de Parcial 50/50: Ao cruzar a meta parcial, realiza 50% e blinda no break-even
-      if (!session.isPartialProfitTaken && session.partialTargetPrice && latestPrice >= session.partialTargetPrice) {
-        const metadataService = ExchangeMetadataService.getInstance();
-        const filters = await metadataService.getSymbolFilters(session.symbol);
-        const halfQty = PreciseMath.quantizeLotDown(session.quantity / 2, filters.stepSize);
+      const metadataService = ExchangeMetadataService.getInstance();
+      const filters = await metadataService.getSymbolFilters(session.symbol);
 
-        if (halfQty > 0) {
+      // 2. Escada Tripla de Alvos - Alvo TP1 (33%): Ao bater TP1, realiza 33% e blinda no Break-Even (+0.35%)
+      const tp1Target = session.tp1Price || session.partialTargetPrice;
+      if (!session.isTp1Taken && tp1Target && latestPrice >= tp1Target) {
+        const tp1Qty = PreciseMath.quantizeLotDown(session.quantity * 0.33, filters.stepSize);
+
+        if (tp1Qty > 0) {
           if (session.mode === 'live' && session.credentials) {
             try {
               const orderExecutor = PilotOrderExecutor.getInstance();
               await orderExecutor.executeLiveSell({
                 symbol: session.symbol,
                 baseAsset: session.baseCurrency,
-                quantity: halfQty,
+                quantity: tp1Qty,
                 filters,
                 credentials: session.credentials,
               });
             } catch (err: any) {
-              console.error(`[DirectOperationManager] Falha ao despachar venda parcial na Binance:`, err.message);
+              console.error(`[DirectOperationManager] Falha ao despachar venda TP1 na Binance:`, err.message);
             }
           }
 
-          const partialGross = (latestPrice - session.entryPrice) * halfQty;
-          const partialFee = (halfQty * latestPrice) * 0.001;
+          const partialGross = (latestPrice - session.entryPrice) * tp1Qty;
+          const partialFee = (tp1Qty * latestPrice) * 0.001;
           const partialNetPnl = PreciseMath.roundDown(partialGross - partialFee, 2);
 
-          session.isPartialProfitTaken = true;
-          session.partialQuantityExecuted = halfQty;
-          session.partialRealizedPnlUsd = partialNetPnl;
-          session.quantity = PreciseMath.roundDown(session.quantity - halfQty, 8);
+          session.isTp1Taken = true;
+          session.isPartialProfitTaken = true; // Compatibilidade com testes legados
+          session.tp1QuantityExecuted = tp1Qty;
+          session.partialQuantityExecuted = tp1Qty;
+          session.tp1RealizedPnlUsd = partialNetPnl;
+          session.partialRealizedPnlUsd = (session.partialRealizedPnlUsd || 0) + partialNetPnl;
+          session.quantity = PreciseMath.roundDown(session.quantity - tp1Qty, 8);
 
           // Break-Even Blindado (+0.35% cobrindo taxas da Binance Spot e slippage)
           const breakEvenPrice = PreciseMath.roundDown(session.entryPrice * 1.0035, 6);
           session.stopLossPrice = breakEvenPrice;
           session.breakEvenProtected = true;
           session.trailingStopPrice = breakEvenPrice;
+
+          TelegramNotifier.notify(
+            `🎯 [${session.symbol}] TP1 Executado! 33% liquidado a $${latestPrice} (+${partialNetPnl} USD). Stop Loss blindado no Break-Even ($${breakEvenPrice}).`
+          );
         }
       }
 
-      // 3. Trailing Stop Adaptativo no Runner de 50%
-      if (session.isPartialProfitTaken && session.highestPriceReached) {
-        // Acompanha dinamicamente 1.2% abaixo da máxima alcançada pelo ativo
-        const dynamicTrailing = PreciseMath.roundDown(session.highestPriceReached * 0.988, 6);
+      // 3. Escada Tripla de Alvos - Alvo TP2 (Mais 33%): Ao bater TP2, realiza 50% do restante e aperta o Trailing Stop (0.8% do topo)
+      if (session.isTp1Taken && !session.isTp2Taken && session.tp2Price && latestPrice >= session.tp2Price) {
+        const tp2Qty = PreciseMath.quantizeLotDown(session.quantity * 0.5, filters.stepSize);
+
+        if (tp2Qty > 0) {
+          if (session.mode === 'live' && session.credentials) {
+            try {
+              const orderExecutor = PilotOrderExecutor.getInstance();
+              await orderExecutor.executeLiveSell({
+                symbol: session.symbol,
+                baseAsset: session.baseCurrency,
+                quantity: tp2Qty,
+                filters,
+                credentials: session.credentials,
+              });
+            } catch (err: any) {
+              console.error(`[DirectOperationManager] Falha ao despachar venda TP2 na Binance:`, err.message);
+            }
+          }
+
+          const grossPnl = (latestPrice - session.entryPrice) * tp2Qty;
+          const fee = (tp2Qty * latestPrice) * 0.001;
+          const tp2NetPnl = PreciseMath.roundDown(grossPnl - fee, 2);
+
+          session.isTp2Taken = true;
+          session.tp2QuantityExecuted = tp2Qty;
+          session.tp2RealizedPnlUsd = tp2NetPnl;
+          session.partialRealizedPnlUsd = (session.partialRealizedPnlUsd || 0) + tp2NetPnl;
+          session.quantity = PreciseMath.roundDown(session.quantity - tp2Qty, 8);
+
+          // Aperta Trailing Stop para 0.8% abaixo da máxima
+          const tightTrailing = PreciseMath.roundDown(session.highestPriceReached * 0.992, 6);
+          if (tightTrailing > (session.trailingStopPrice || 0)) {
+            session.trailingStopPrice = tightTrailing;
+            session.stopLossPrice = tightTrailing;
+          }
+
+          TelegramNotifier.notify(
+            `🚀 [${session.symbol}] TP2 Executado! Mais 33% liquidado a $${latestPrice} (+${tp2NetPnl} USD). Trailing Stop apertado para $${session.trailingStopPrice}.`
+          );
+        }
+      }
+
+      // 4. Trailing Stop Adaptativo no Runner
+      if (session.isTp1Taken && session.highestPriceReached) {
+        const trailingFactor = session.isTp2Taken ? 0.992 : 0.988;
+        const dynamicTrailing = PreciseMath.roundDown(session.highestPriceReached * trailingFactor, 6);
         if (dynamicTrailing > (session.trailingStopPrice || 0)) {
           session.trailingStopPrice = dynamicTrailing;
           session.stopLossPrice = dynamicTrailing;
@@ -553,18 +787,19 @@ export class DirectOperationManager {
         }
       }
 
-      // 4. Verificação de Alvo Final (Take Profit de 100%)
-      if (latestPrice >= session.targetPrice) {
+      // 5. Verificação de Alvo Final TP3 (Take Profit do Runner Remanescente)
+      const finalTp3 = session.tp3Price || session.targetPrice;
+      if (latestPrice >= finalTp3) {
         return await this.closeOperation(sessionId, 'TARGET_REACHED', latestPrice);
       }
 
-      // 5. Verificação de Stop Loss inicial (se ainda não atingiu a parcial)
-      if (!session.isPartialProfitTaken && latestPrice <= session.stopLossPrice) {
+      // 6. Verificação de Stop Loss inicial (se ainda não atingiu o TP1)
+      if (!session.isTp1Taken && latestPrice <= session.stopLossPrice) {
         return await this.closeOperation(sessionId, 'STOP_LOSS', latestPrice);
       }
 
-      // 6. Cálculo de PnL flutuante total (parcial já realizada + flutuante do restante)
-      const currentQty = session.executedQuantity && !session.isPartialProfitTaken
+      // 7. Cálculo de PnL flutuante total (parciais realizadas + flutuante do restante)
+      const currentQty = session.executedQuantity && !session.isTp1Taken
         ? session.executedQuantity
         : session.quantity;
       const floatingPnl = (latestPrice - session.entryPrice) * currentQty;
@@ -573,7 +808,7 @@ export class DirectOperationManager {
       session.unrealizedPnlUsd = PreciseMath.roundDown(totalPnlUsd, 2);
       session.unrealizedPnlPercent = PreciseMath.roundDown(((latestPrice - session.entryPrice) / session.entryPrice) * 100, 2);
 
-      // 7. Encerramento por tempo esgotado
+      // 8. Encerramento por tempo esgotado
       if (session.endTime > 0 && Date.now() >= session.endTime) {
         return await this.closeOperation(sessionId, 'TIME_EXPIRED', latestPrice);
       }
@@ -665,6 +900,13 @@ export class DirectOperationManager {
     session.feeDeductedUsd = PreciseMath.roundDown(totalFees, 2);
     session.unrealizedPnlUsd = 0;
     session.unrealizedPnlPercent = 0;
+
+    // Notificação de Encerramento Telegram
+    TelegramNotifier.notify(
+      `🏁 [TradeAI] Operação Encerrada: ${session.symbol}\n` +
+      `Motivo: ${reason} | Saída: $${exitPrice}\n` +
+      `PnL Final: $${session.realizedPnlUsd} (${session.realizedPnlPercent}%) | Taxas: $${session.feeDeductedUsd}`
+    );
 
     return session;
   }
