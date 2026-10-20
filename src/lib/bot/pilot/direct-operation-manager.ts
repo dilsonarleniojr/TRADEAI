@@ -13,6 +13,7 @@ import { EnvironmentCleanupService } from './environment-cleanup-service';
 import { CurrencyPairNormalizer } from './currency-pair-normalizer';
 import { PreciseMath } from './precise-math';
 import { PilotOrderExecutor, BinanceCredentials } from './pilot-order-executor';
+import { getOrderBookAnalysis } from '@/lib/bot/order-book-cache';
 
 export interface DirectOperationSession {
   id: string;
@@ -93,6 +94,12 @@ export interface DirectOperationSession {
   isAggressiveBreakEvenActive?: boolean;
   breakEvenOffsetPct?: number;
   initialMaeAtTp1Pct?: number;
+
+  // Exclusão Temporária de Liquidez Residual em Livros Assimétricos (Order Book Skew Gate)
+  isSkewGateActive?: boolean;
+  orderBookSkewRatio?: number;
+  tp1LiquidationPct?: number;
+  injectedOrderBookRatio?: number;
 }
 
 export interface TradeJournalEntry {
@@ -121,6 +128,9 @@ export interface TradeJournalEntry {
   rating: 'OPTIMAL' | 'ACCEPTABLE' | 'SUBOPTIMAL' | 'DEFENSIVE_EXIT';
   lessonsLearned: string[];
   timestamp: number;
+  // Order Book Skew Gate
+  isSkewGateActive?: boolean;
+  orderBookSkewRatio?: number;
 }
 
 // Armazenamento em memória do Diário de Trades
@@ -222,6 +232,20 @@ export class TelegramNotifier {
 export class DirectOperationManager {
   // Histórico em memória de símbolos operados recentemente para rotação de ativos
   private static recentSymbolsHistory: { symbol: string; timestamp: number }[] = [];
+
+  // Mock determinístico de Order Book Ratio para testes unitários e simulação de caos
+  private static mockOrderBookRatios = new Map<string, number>();
+
+  /**
+   * Configura ou limpa a razão mock Bid/Ask Depth para testes e simulação de caos
+   */
+  public static setMockOrderBookRatio(symbol: string, ratio: number | null): void {
+    if (ratio === null) {
+      this.mockOrderBookRatios.delete(symbol);
+    } else {
+      this.mockOrderBookRatios.set(symbol, ratio);
+    }
+  }
 
   /**
    * Recupera os símbolos operados dentro da janela de cooldown (padrão 30 minutos)
@@ -726,10 +750,34 @@ export class DirectOperationManager {
       const metadataService = ExchangeMetadataService.getInstance();
       const filters = await metadataService.getSymbolFilters(session.symbol);
 
-      // 2. Escada Tripla de Alvos - Alvo TP1 (33%): Ao bater TP1, realiza 33% e blinda no Break-Even (+0.35%)
+      // 2. Escada Tripla de Alvos - Alvo TP1 (33% padrão ou 50% via Skew Gate):
+      // Se no momento de bater TP1 o livro L2 apresentar razão Bid/Ask Depth <= 0.40 (pressão vendedora súbita),
+      // a IA encerra imediatamente 50% em vez de 33% para mitigar absorção passiva antes do pull-back.
       const tp1Target = session.tp1Price || session.partialTargetPrice;
       if (!session.isTp1Taken && tp1Target && latestPrice >= tp1Target) {
-        const tp1Qty = PreciseMath.quantizeLotDown(session.quantity * 0.33, filters.stepSize);
+        // Avaliação de Microestrutura L2: Order Book Skew Gate
+        let bidAskDepthRatio = 1.0;
+        try {
+          if (session.injectedOrderBookRatio !== undefined) {
+            bidAskDepthRatio = session.injectedOrderBookRatio;
+          } else if (this.mockOrderBookRatios.has(session.symbol)) {
+            bidAskDepthRatio = this.mockOrderBookRatios.get(session.symbol)!;
+          } else {
+            const ob = await getOrderBookAnalysis(session.symbol);
+            if (ob && ob.askVolume > 0) {
+              bidAskDepthRatio = PreciseMath.roundDown(ob.bidVolume / ob.askVolume, 2);
+            }
+          }
+        } catch (err: any) {
+          console.warn(`[DirectOperationManager] Falha não-bloqueante ao consultar Order Book Skew em TP1: ${err.message}. Mantendo fallback 33%.`);
+          bidAskDepthRatio = 1.0;
+        }
+
+        const isSkewGateActive = bidAskDepthRatio <= 0.40;
+        const liquidationPct = isSkewGateActive ? 0.50 : 0.33;
+        const tp1PctNumber = isSkewGateActive ? 50 : 33;
+
+        const tp1Qty = PreciseMath.quantizeLotDown(session.quantity * liquidationPct, filters.stepSize);
 
         if (tp1Qty > 0) {
           if (session.mode === 'live' && session.credentials) {
@@ -758,6 +806,9 @@ export class DirectOperationManager {
           session.tp1RealizedPnlUsd = partialNetPnl;
           session.partialRealizedPnlUsd = (session.partialRealizedPnlUsd || 0) + partialNetPnl;
           session.quantity = PreciseMath.roundDown(session.quantity - tp1Qty, 8);
+          session.isSkewGateActive = isSkewGateActive;
+          session.orderBookSkewRatio = bidAskDepthRatio;
+          session.tp1LiquidationPct = tp1PctNumber;
 
           // Trailing Stop Agressivo com Base em MAE Residual:
           // Se o ativo sofreu excursão adversa inicial acentuada (MAE <= -0.60%), eleva para +0.60% para proteger contra nova retração à zona de estresse.
@@ -781,11 +832,15 @@ export class DirectOperationManager {
           session.isAggressiveBreakEvenActive = isAggressive;
           session.breakEvenOffsetPct = offsetPct;
 
-          const notificationMsg = isAggressive
-            ? `🎯 [${session.symbol}] TP1 Executado! 33% liquidado a $${latestPrice} (+${partialNetPnl} USD). Trailing Stop Elevado AGRESSIVAMENTE (+0.60%) devido a MAE Residual de ${maeAtTp1.toFixed(2)}% ($${breakEvenPrice}).`
-            : `🎯 [${session.symbol}] TP1 Executado! 33% liquidado a $${latestPrice} (+${partialNetPnl} USD). Stop Loss blindado no Break-Even padrão (+0.35%) a $${breakEvenPrice}.`;
+          const skewPrefix = isSkewGateActive
+            ? `⚡ [${session.symbol}] TP1 Executado com SKEW GATE ATIVO! 50% liquidado a $${latestPrice} (+${partialNetPnl} USD) devido a desbalanceamento crítico L2 (Bid/Ask Depth: ${bidAskDepthRatio.toFixed(2)} <= 0.40). Proteção ativada contra absorção passiva.`
+            : `🎯 [${session.symbol}] TP1 Executado! 33% liquidado a $${latestPrice} (+${partialNetPnl} USD).`;
 
-          TelegramNotifier.notify(notificationMsg);
+          const trailingSuffix = isAggressive
+            ? ` Trailing Stop Elevado AGRESSIVAMENTE (+0.60%) devido a MAE Residual de ${maeAtTp1.toFixed(2)}% ($${breakEvenPrice}).`
+            : ` Stop Loss blindado no Break-Even padrão (+0.35%) a $${breakEvenPrice}.`;
+
+          TelegramNotifier.notify(skewPrefix + trailingSuffix);
         }
       }
 
@@ -1012,7 +1067,11 @@ export class DirectOperationManager {
     if (session.isTp1Taken && session.isTp2Taken) {
       lessons.push('Escada de 3 alvos executada com maestria: 66% embolsado nos primeiros picos.');
     } else if (session.isTp1Taken) {
-      lessons.push('Parcial 1 executada com sucesso e stop preservado no Break-Even (+0.35%).');
+      lessons.push('Parcial 1 executada com sucesso e stop preservado no Break-Even.');
+    }
+
+    if (session.isSkewGateActive) {
+      lessons.push(`Order Book Skew Gate ativado em TP1 (Bid/Ask ${session.orderBookSkewRatio?.toFixed(2) ?? '0.40'} <= 0.40): 50% liquidado preventivamente contra absorção passiva.`);
     }
 
     if (maePercent < -1.5) {
@@ -1057,6 +1116,8 @@ export class DirectOperationManager {
       rating,
       lessonsLearned: lessons,
       timestamp: Date.now(),
+      isSkewGateActive: session.isSkewGateActive,
+      orderBookSkewRatio: session.orderBookSkewRatio,
     };
 
     this.addJournalEntry(entry);

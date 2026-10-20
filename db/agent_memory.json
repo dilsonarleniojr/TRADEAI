@@ -1,6 +1,30 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Exclusão Temporária de Liquidez Residual em Livros Assimétricos (Order Book Skew Gate): Liquidação Acelerada de 50% em TP1 sob Razão Bid/Ask Depth <= 0.40 para Mitigação de Absorção Passiva",
+    "summary": "1) Order Book Skew Gate no Disparo de TP1: No instante exato em que o preço atinge o Alvo TP1 (latestPrice >= tp1Price), o sistema realiza auditoria em tempo real da microestrutura do livro L2 via getOrderBookAnalysis. Apura a razão entre os 10 melhores níveis: bidAskRatio = askVolume > 0 ? (bidVolume / askVolume) : 1.0. Se bidAskRatio <= 0.40 (evidenciando pressão vendedora maciça com mais de 2.5x volume na venda do que na compra), a IA ativa o Order Book Skew Gate e encerra imediatamente 50% da posição inicial (em vez dos 33% padrão), mitigando o risco de absorção passiva antes do pull-back; 2) Preservação da Liquidação Padrão de 33%: Caso o livro L2 apresente suporte comprador ou equilíbrio (bidAskRatio > 0.40, ex: 1.25), o encerramento padrão de 33% é mantido, deixando 67% da posição para surfar expansões até TP2 e TP3 runner; 3) Engenharia do Caos e Fail-Safe: Se a consulta do livro L2 sofrer oscilações de rede ou timeout, o fluxo de TP1 aplica fallback gracioso para 33% sem quebrar ou abortar a operação. Possui hook determinístico DirectOperationManager.setMockOrderBookRatio(symbol, ratio); 4) Visualização no Cockpit UI & Alertas: O modal DirectAiTradeModal exibe badge 'TP1 (50% ⚡)' estilizado em violeta e com tooltip explicativo quando o Skew Gate é acionado, além de notificação Telegram contextualizada e registro nas lessonsLearned do Diário de Trades; 5) Validação: 42 testes unitários passando em bun test (198 asserções, 100% de sucesso), 0 erros no TypeScript e container atualizado.",
+    "tags": [
+      "order-book-skew-gate",
+      "microstructure-l2",
+      "bid-ask-depth-ratio",
+      "passive-absorption-defense",
+      "triple-target-ladder",
+      "chaos-engineering-fail-safe",
+      "institutional-cockpit"
+    ],
+    "details": {
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "orderBookCachePath": "src/lib/bot/order-book-cache.ts",
+      "modalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "testSuitePath": "tests/unit/direct-operation-flow.test.ts",
+      "totalPassingTests": 42,
+      "totalAssertions": 198
+    },
+    "id": "mem-1792282000000-order-book-skew-gate",
+    "timestamp": "2026-10-18T03:22:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Trailing Stop Agressivo com Base em MAE Residual: Elevação Proporcional do Break-Even (+0.35% -> +0.60%) para Mitigação de Risco de Retração pós-Estresse Inicial",
     "summary": "1) Trailing Stop Agressivo por MAE Residual: O sistema audita atômica e continuamente o lowestPriceReached durante a vida da sessão ativa. Ao atingir o Alvo TP1 (33% liquidado), a IA computa a excursão adversa inicial suportada: maeAtTp1 = ((lowest - entryPrice) / entryPrice) * 100. Se maeAtTp1 <= -0.60% (indicando que a zona de suporte imediata foi estressada), o Break-Even protegido é elevado agressivamente para +0.60% (em vez de +0.35%), garantindo que qualquer tentativa subsequente de recuo encerre a posição com ganho líquido consolidado antes do retorno à zona de dor; 2) Preservação do Break-Even Padrão para Movimentos Limpos: Se a operação expandiu com folga (maeAtTp1 > -0.60%, ex: -0.2%), o Break-Even protegido padrão de +0.35% é mantido, conferindo espaço ao runner para capturar a tendência; 3) Visualização no Cockpit UI & Alertas: Quando o Break-Even Agressivo é ativado, o modal de operação direta exibe '🛡️ Break-Even Agressivo (+0.60%): (MAE -X.XX%)' com destaque âmbar pulsante e disparo de notificação no Telegram contextualizando a medida preventiva; 4) Validação Rigorosa: 40 testes unitários passando em bun test (186 asserções, 100% de sucesso), 0 erros no TypeScript e container atualizado.",
     "tags": [

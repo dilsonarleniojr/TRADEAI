@@ -882,6 +882,70 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
 
       DirectOperationManager.clearSession(session.id);
     });
+
+    it("deve acionar o Order Book Skew Gate (liquidando 50% em vez de 33%) quando a razão Bid/Ask Depth <= 0.40 no disparo do TP1", async () => {
+      const { session: created } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        strategy: "AUTO",
+        mode: "paper",
+      });
+
+      const session = created.status === "WAITING_TRIGGER"
+        ? await DirectOperationManager.forceEntry(created.id)
+        : created;
+
+      const initialQty = session.quantity;
+
+      // Injeta assimetria no livro L2 com razão Bid/Ask Depth de 0.35 (<= 0.40)
+      DirectOperationManager.setMockOrderBookRatio(session.symbol, 0.35);
+
+      // Preço atinge o Alvo TP1
+      const afterTp1 = await DirectOperationManager.processPriceTick(session.id, session.tp1Price!);
+
+      expect(afterTp1.isTp1Taken).toBe(true);
+      expect(afterTp1.isSkewGateActive).toBe(true);
+      expect(afterTp1.orderBookSkewRatio).toBe(0.35);
+      expect(afterTp1.tp1LiquidationPct).toBe(50);
+      expect(afterTp1.tp1QuantityExecuted).toBeCloseTo(initialQty * 0.50, 2);
+      expect(afterTp1.quantity).toBeCloseTo(initialQty * 0.50, 2);
+
+      // Limpa mock e sessão
+      DirectOperationManager.setMockOrderBookRatio(session.symbol, null);
+      DirectOperationManager.clearSession(session.id);
+    });
+
+    it("deve manter a liquidação padrão de 33% no TP1 quando o Order Book L2 for equilibrado com razão Bid/Ask Depth > 0.40", async () => {
+      const { session: created } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        strategy: "AUTO",
+        mode: "paper",
+      });
+
+      const session = created.status === "WAITING_TRIGGER"
+        ? await DirectOperationManager.forceEntry(created.id)
+        : created;
+
+      const initialQty = session.quantity;
+
+      // Injeta livro L2 favorável com razão Bid/Ask Depth de 1.25 (> 0.40)
+      DirectOperationManager.setMockOrderBookRatio(session.symbol, 1.25);
+
+      // Preço atinge o Alvo TP1
+      const afterTp1 = await DirectOperationManager.processPriceTick(session.id, session.tp1Price!);
+
+      expect(afterTp1.isTp1Taken).toBe(true);
+      expect(afterTp1.isSkewGateActive).toBe(false);
+      expect(afterTp1.orderBookSkewRatio).toBe(1.25);
+      expect(afterTp1.tp1LiquidationPct).toBe(33);
+      expect(afterTp1.tp1QuantityExecuted).toBeCloseTo(initialQty * 0.33, 2);
+      expect(afterTp1.quantity).toBeCloseTo(initialQty * 0.67, 2);
+
+      // Limpa mock e sessão
+      DirectOperationManager.setMockOrderBookRatio(session.symbol, null);
+      DirectOperationManager.clearSession(session.id);
+    });
   });
 });
 

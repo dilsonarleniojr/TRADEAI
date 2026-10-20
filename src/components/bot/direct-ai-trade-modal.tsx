@@ -1527,11 +1527,24 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                       <span className="text-[9px] text-slate-400 block truncate">Preço Atual</span>
                       <span className="text-xs font-mono font-bold text-white">${formatPrice(session.currentPrice)}</span>
                     </div>
-                    <div className={cn("p-1.5 rounded-lg border", session.isTp1Taken ? "bg-emerald-500/15 border-emerald-500/30" : "bg-white/[0.02] border-white/[0.05]")}>
-                      <span className="text-[9px] text-emerald-400 block truncate flex items-center gap-0.5">
-                        TP1 (33%) {session.isTp1Taken && "✓"}
+                    <div className={cn(
+                      "p-1.5 rounded-lg border",
+                      session.isTp1Taken
+                        ? (session as any).isSkewGateActive
+                          ? "bg-violet-500/15 border-violet-500/30"
+                          : "bg-emerald-500/15 border-emerald-500/30"
+                        : "bg-white/[0.02] border-white/[0.05]"
+                    )}>
+                      <span className={cn(
+                        "text-[9px] block truncate flex items-center gap-0.5",
+                        (session as any).isSkewGateActive ? "text-violet-400 font-semibold" : "text-emerald-400"
+                      )} title={(session as any).isSkewGateActive ? `Order Book Skew Gate: 50% liquidado devido a pressão vendedora L2 (Bid/Ask ${(session as any).orderBookSkewRatio?.toFixed(2) ?? '0.40'} <= 0.40)` : "Alvo TP1: Realização parcial"}>
+                        TP1 ({(session as any).isSkewGateActive ? "50% ⚡" : "33%"}) {session.isTp1Taken && "✓"}
                       </span>
-                      <span className="text-xs font-mono font-bold text-emerald-300">
+                      <span className={cn(
+                        "text-xs font-mono font-bold",
+                        (session as any).isSkewGateActive ? "text-violet-300" : "text-emerald-300"
+                      )}>
                         ${formatPrice(session.tp1Price || session.partialTargetPrice || session.targetPrice)}
                       </span>
                     </div>
