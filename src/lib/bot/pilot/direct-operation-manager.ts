@@ -100,6 +100,24 @@ export interface DirectOperationSession {
   orderBookSkewRatio?: number;
   tp1LiquidationPct?: number;
   injectedOrderBookRatio?: number;
+
+  // Filtro de Desaceleração de Momentum (CVD Exhaustion Filter no TP2)
+  isCvdExhaustionTriggered?: boolean;
+  cvdDeltaAtTp2Pct?: number;
+  tp2AnticipatedReason?: string;
+  injectedCvdDeltaPct?: number;
+
+  // Blindagem de Lucro Mínimo Absoluto no Runner (TP3 Hard Floor)
+  isTp3HardFloorActive?: boolean;
+  tp3HardFloorPrice?: number;
+  tp3HardFloorPct?: number;
+
+  // Aceleração Dinâmica de Expansão do Runner por ATR/Volume Spike (Runner Momentum Acceleration)
+  isRunnerAccelerationActive?: boolean;
+  isRunnerClimaxTighteningActive?: boolean;
+  runnerTrailingFactor?: number; // 0.992 (padrão 0.8%), 0.988 (aceleração/folga 1.2%), 0.995 (clímax/aperto 0.5%)
+  runnerVolumeRatio?: number;
+  runnerAccelerationReason?: string;
 }
 
 export interface TradeJournalEntry {
@@ -131,6 +149,20 @@ export interface TradeJournalEntry {
   // Order Book Skew Gate
   isSkewGateActive?: boolean;
   orderBookSkewRatio?: number;
+  // CVD Exhaustion Filter
+  isCvdExhaustionTriggered?: boolean;
+  cvdDeltaAtTp2Pct?: number;
+  tp2AnticipatedReason?: string;
+  // Blindagem de Lucro Mínimo Absoluto no Runner (TP3 Hard Floor)
+  isTp3HardFloorActive?: boolean;
+  tp3HardFloorPrice?: number;
+  tp3HardFloorPct?: number;
+  // Aceleração Dinâmica de Expansão do Runner por ATR/Volume Spike
+  isRunnerAccelerationActive?: boolean;
+  isRunnerClimaxTighteningActive?: boolean;
+  runnerTrailingFactor?: number;
+  runnerVolumeRatio?: number;
+  runnerAccelerationReason?: string;
 }
 
 // Armazenamento em memória do Diário de Trades
@@ -236,6 +268,9 @@ export class DirectOperationManager {
   // Mock determinístico de Order Book Ratio para testes unitários e simulação de caos
   private static mockOrderBookRatios = new Map<string, number>();
 
+  // Mock determinístico de CVD Delta para testes unitários e simulação de caos
+  private static mockCvdDeltas = new Map<string, number>();
+
   /**
    * Configura ou limpa a razão mock Bid/Ask Depth para testes e simulação de caos
    */
@@ -244,6 +279,153 @@ export class DirectOperationManager {
       this.mockOrderBookRatios.delete(symbol);
     } else {
       this.mockOrderBookRatios.set(symbol, ratio);
+    }
+  }
+
+  /**
+   * Configura ou limpa o mock de CVD Delta para testes e simulação de caos
+   */
+  public static setMockCvdDelta(symbol: string, delta: number | null): void {
+    if (delta === null) {
+      this.mockCvdDeltas.delete(symbol);
+    } else {
+      this.mockCvdDeltas.set(symbol, delta);
+    }
+  }
+
+  // Mock determinístico de Runner Momentum Acceleration para testes unitários e simulação de caos
+  private static mockRunnerSpikes = new Map<string, { isSpike: boolean; isExhausted: boolean; volumeRatio?: number }>();
+
+  /**
+   * Configura ou limpa o mock de Runner Momentum Spike para testes determinísticos
+   */
+  public static setMockRunnerSpike(
+    symbol: string,
+    mock: { isSpike: boolean; isExhausted: boolean; volumeRatio?: number } | null
+  ): void {
+    if (mock === null) {
+      this.mockRunnerSpikes.delete(symbol);
+    } else {
+      this.mockRunnerSpikes.set(symbol, mock);
+    }
+  }
+
+  /**
+   * Audita o Momentum e Volume do Runner na janela de 1m via Binance Klines
+   * Verifica se o candle de 1m recente apresenta amplitude volumétrica > 2.5x a média dos últimos 15 períodos
+   * e fechamento acima da Upper Bollinger Band (2.0 stdDev dos últimos 15 períodos).
+   * Detecta também exaustão volumétrica (volume recuando para < 1.5x média).
+   */
+  public static async auditRunnerMomentum(symbol: string): Promise<{
+    isSpike: boolean;
+    isExhausted: boolean;
+    volumeRatio: number;
+    upperBB: number;
+    closePrice: number;
+  }> {
+    if (this.mockRunnerSpikes.has(symbol)) {
+      const mock = this.mockRunnerSpikes.get(symbol)!;
+      return {
+        isSpike: mock.isSpike,
+        isExhausted: mock.isExhausted,
+        volumeRatio: mock.volumeRatio ?? (mock.isSpike ? 2.8 : 1.1),
+        upperBB: 0,
+        closePrice: 0,
+      };
+    }
+
+    try {
+      // Busca 16 klines de 1m: 15 anteriores para baseline e a última para teste de spike
+      const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=16`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
+      if (!res.ok) {
+        return { isSpike: false, isExhausted: false, volumeRatio: 1.0, upperBB: 0, closePrice: 0 };
+      }
+      const klines: any[] = await res.json();
+      if (!Array.isArray(klines) || klines.length < 16) {
+        return { isSpike: false, isExhausted: false, volumeRatio: 1.0, upperBB: 0, closePrice: 0 };
+      }
+
+      // 15 períodos de baseline: klines[0..14]
+      let totalVol15 = 0;
+      const closes15: number[] = [];
+
+      for (let i = 0; i < 15; i++) {
+        const v = parseFloat(klines[i][5]) || 0; // volume base
+        const c = parseFloat(klines[i][4]) || 0; // close
+        totalVol15 += v;
+        closes15.push(c);
+      }
+
+      const avgVol15 = totalVol15 / 15;
+      const meanClose15 = closes15.reduce((acc, c) => acc + c, 0) / 15;
+      const variance15 = closes15.reduce((acc, c) => acc + Math.pow(c - meanClose15, 2), 0) / 15;
+      const stdDev15 = Math.sqrt(variance15);
+      const upperBB = meanClose15 + (2.0 * stdDev15);
+
+      // Candle recente (último concluído/ativo): klines[15]
+      const currentVol = parseFloat(klines[15][5]) || 0;
+      const currentClose = parseFloat(klines[15][4]) || 0;
+      const volumeRatio = avgVol15 > 0 ? (currentVol / avgVol15) : 1.0;
+
+      const isSpike = volumeRatio > 2.5 && currentClose > upperBB;
+      const isExhausted = volumeRatio < 1.5;
+
+      return {
+        isSpike,
+        isExhausted,
+        volumeRatio: PreciseMath.roundDown(volumeRatio, 2),
+        upperBB: PreciseMath.roundDown(upperBB, 6),
+        closePrice: currentClose,
+      };
+    } catch {
+      return { isSpike: false, isExhausted: false, volumeRatio: 1.0, upperBB: 0, closePrice: 0 };
+    }
+  }
+
+  /**
+   * Audita o Delta Acumulado de Volume (CVD) dos últimos 5 minutos via Binance Klines
+   * Retorna a variação percentual líquida de agressão compradora vs vendedora:
+   * ((takerBuyQuoteVolume - takerSellQuoteVolume) / totalQuoteVolume) * 100
+   * Valor negativo (< 0) indica exaustão de compradores / dominância de venda a mercado.
+   */
+  public static async auditCvdDelta5m(symbol: string): Promise<number> {
+    if (this.mockCvdDeltas.has(symbol)) {
+      return this.mockCvdDeltas.get(symbol)!;
+    }
+
+    try {
+      const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=5`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
+      if (!res.ok) {
+        return 0; // Fallback neutro em caso de falha de rede/HTTP
+      }
+      const klines: any[] = await res.json();
+      if (!Array.isArray(klines) || klines.length === 0) {
+        return 0;
+      }
+
+      let totalQuoteVolume = 0;
+      let totalTakerBuyQuoteVolume = 0;
+
+      for (const k of klines) {
+        // Índice 7: quote asset volume (volume total USDT)
+        // Índice 10: taker buy quote asset volume (volume agressor comprador USDT)
+        const quoteVol = parseFloat(k[7]) || 0;
+        const takerBuyQuoteVol = parseFloat(k[10]) || 0;
+        totalQuoteVolume += quoteVol;
+        totalTakerBuyQuoteVolume += takerBuyQuoteVol;
+      }
+
+      const totalTakerSellQuoteVolume = Math.max(0, totalQuoteVolume - totalTakerBuyQuoteVolume);
+      if (totalQuoteVolume <= 0) return 0;
+
+      const netDeltaQuote = totalTakerBuyQuoteVolume - totalTakerSellQuoteVolume;
+      const cvdDeltaPct = PreciseMath.roundDown((netDeltaQuote / totalQuoteVolume) * 100, 2);
+      return cvdDeltaPct;
+    } catch (err: any) {
+      console.warn(`[DirectOperationManager] Falha não-bloqueante ao auditar CVD Delta 5m para ${symbol}: ${err.message}. Retornando neutro 0.`);
+      return 0;
     }
   }
 
@@ -844,8 +1026,37 @@ export class DirectOperationManager {
         }
       }
 
-      // 3. Escada Tripla de Alvos - Alvo TP2 (Mais 33%): Ao bater TP2, realiza 50% do restante e aperta o Trailing Stop (0.8% do topo)
-      if (session.isTp1Taken && !session.isTp2Taken && session.tp2Price && latestPrice >= session.tp2Price) {
+      // 3. Escada Tripla de Alvos - Alvo TP2 (Mais 33%):
+      // Filtro de Desaceleração de Momentum (CVD Exhaustion Filter no TP2):
+      // Se o preço se aproximar a menos de 0.20% do TP2 (latestPrice >= tp2Price * 0.998 && latestPrice < tp2Price)
+      // mas o CVD Delta dos últimos 5 minutos divergir negativamente (< 0), a IA antecipa o TP2 a mercado imediatamente,
+      // evitando que uma exaustão de compradores no topo transforme uma posição lucrativa em saída prematura por trailing stop.
+      // Se latestPrice >= session.tp2Price, o TP2 é executado normalmente pelo toque direto no alvo.
+      let isCvdExhaustionHit = false;
+      let cvdDelta = 0;
+
+      if (session.isTp1Taken && !session.isTp2Taken && session.tp2Price) {
+        const isWithinProximity = latestPrice < session.tp2Price && latestPrice >= session.tp2Price * 0.998;
+        if (isWithinProximity) {
+          try {
+            if (session.injectedCvdDeltaPct !== undefined) {
+              cvdDelta = session.injectedCvdDeltaPct;
+            } else {
+              cvdDelta = await DirectOperationManager.auditCvdDelta5m(session.symbol);
+            }
+            if (cvdDelta < 0) {
+              isCvdExhaustionHit = true;
+            }
+          } catch (err: any) {
+            console.warn(`[DirectOperationManager] Falha ao auditar CVD Delta em TP2: ${err.message}.`);
+            isCvdExhaustionHit = false;
+          }
+        }
+      }
+
+      const shouldExecuteTp2 = session.isTp1Taken && !session.isTp2Taken && session.tp2Price && (latestPrice >= session.tp2Price || isCvdExhaustionHit);
+
+      if (shouldExecuteTp2) {
         const tp2Qty = PreciseMath.quantizeLotDown(session.quantity * 0.5, filters.stepSize);
 
         if (tp2Qty > 0) {
@@ -873,25 +1084,81 @@ export class DirectOperationManager {
           session.tp2RealizedPnlUsd = tp2NetPnl;
           session.partialRealizedPnlUsd = (session.partialRealizedPnlUsd || 0) + tp2NetPnl;
           session.quantity = PreciseMath.roundDown(session.quantity - tp2Qty, 8);
+          session.isCvdExhaustionTriggered = isCvdExhaustionHit;
+          session.cvdDeltaAtTp2Pct = cvdDelta;
+          session.tp2AnticipatedReason = isCvdExhaustionHit ? 'CVD_EXHAUSTION' : undefined;
 
-          // Aperta Trailing Stop para 0.8% abaixo da máxima
+          // Blindagem de Lucro Mínimo Absoluto no Runner (TP3 Hard Floor)
+          // Trava irrevogavelmente em no mínimo +1.0% acima do preço de entrada (ou no nível exato do TP1, o que for maior)
+          const minProfitFloor = PreciseMath.roundDown(session.entryPrice * 1.010, 6);
+          const tp1Floor = session.tp1Price || minProfitFloor;
+          const hardFloorPrice = Math.max(minProfitFloor, tp1Floor);
+          const hardFloorPct = PreciseMath.roundDown(((hardFloorPrice - session.entryPrice) / session.entryPrice) * 100, 2);
+
+          session.isTp3HardFloorActive = true;
+          session.tp3HardFloorPrice = hardFloorPrice;
+          session.tp3HardFloorPct = hardFloorPct;
+
+          // Aperta Trailing Stop para 0.8% abaixo da máxima, respeitando estritamente o TP3 Hard Floor como piso mínimo
           const tightTrailing = PreciseMath.roundDown(session.highestPriceReached * 0.992, 6);
-          if (tightTrailing > (session.trailingStopPrice || 0)) {
-            session.trailingStopPrice = tightTrailing;
-            session.stopLossPrice = tightTrailing;
-          }
+          const newTrailingStop = Math.max(tightTrailing, hardFloorPrice, session.trailingStopPrice || 0);
+
+          session.trailingStopPrice = newTrailingStop;
+          session.stopLossPrice = newTrailingStop;
+
+          const tp2Prefix = isCvdExhaustionHit
+            ? `⚡ [${session.symbol}] TP2 ANTECIPADO A MERCADO (CVD Exhaustion Filter)! Preço a menos de 0.20% do alvo ($${latestPrice} vs TP2 $${session.tp2Price}) com divergência negativa de agressão compradora (CVD Delta 5m: ${cvdDelta.toFixed(2)}% < 0). Liquidando 50% do restante (+${tp2NetPnl} USD) antes de reversão.`
+            : `🚀 [${session.symbol}] TP2 Executado! Mais 33% liquidado a $${latestPrice} (+${tp2NetPnl} USD).`;
 
           TelegramNotifier.notify(
-            `🚀 [${session.symbol}] TP2 Executado! Mais 33% liquidado a $${latestPrice} (+${tp2NetPnl} USD). Trailing Stop apertado para $${session.trailingStopPrice}.`
+            `${tp2Prefix} Trailing Stop apertado para $${session.trailingStopPrice} (🛡️ TP3 Hard Floor travado irrevogavelmente em $${hardFloorPrice} [+${hardFloorPct}%]).`
           );
         }
       }
 
       // 4. Trailing Stop Adaptativo no Runner
       if (session.isTp1Taken && session.highestPriceReached) {
-        const trailingFactor = session.isTp2Taken ? 0.992 : 0.988;
-        const dynamicTrailing = PreciseMath.roundDown(session.highestPriceReached * trailingFactor, 6);
-        if (dynamicTrailing > (session.trailingStopPrice || 0)) {
+        let trailingFactor = session.isTp2Taken ? 0.992 : 0.988;
+
+        // Aceleração Dinâmica de Expansão do Runner por ATR Spike (Runner Momentum Acceleration)
+        if (session.isTp2Taken) {
+          const momentumAudit = await DirectOperationManager.auditRunnerMomentum(session.symbol);
+
+          if (momentumAudit.isSpike) {
+            // Volume > 2.5x média 15p e Fechamento > Upper BB: afrouxa trailing para 1.2% (factor 0.988) para o candle parabólico respirar
+            trailingFactor = 0.988;
+            session.isRunnerAccelerationActive = true;
+            session.isRunnerClimaxTighteningActive = false;
+            session.runnerTrailingFactor = 0.988;
+            session.runnerVolumeRatio = momentumAudit.volumeRatio;
+            session.runnerAccelerationReason = `Spike de Volume (${momentumAudit.volumeRatio.toFixed(2)}x > 2.5x) e rompimento de Upper BB`;
+          } else if (session.isRunnerAccelerationActive && momentumAudit.isExhausted) {
+            // Exaustão volumétrica pós-spike: aperta agressivamente para 0.5% (factor 0.995) para consolidar o clímax no topo
+            trailingFactor = 0.995;
+            session.isRunnerAccelerationActive = false;
+            session.isRunnerClimaxTighteningActive = true;
+            session.runnerTrailingFactor = 0.995;
+            session.runnerVolumeRatio = momentumAudit.volumeRatio;
+            session.runnerAccelerationReason = `Exaustão Volumétrica pós-Spike (${momentumAudit.volumeRatio.toFixed(2)}x < 1.5x) - Clímax Travado`;
+          } else if (session.isRunnerClimaxTighteningActive) {
+            trailingFactor = 0.995;
+          } else if (session.isRunnerAccelerationActive) {
+            trailingFactor = 0.988;
+          }
+        }
+
+        let dynamicTrailing = PreciseMath.roundDown(session.highestPriceReached * trailingFactor, 6);
+
+        // Se o TP3 Hard Floor estiver ativo, o trailing stop jamais pode recuar abaixo do piso rígido
+        if (session.isTp3HardFloorActive && session.tp3HardFloorPrice && dynamicTrailing < session.tp3HardFloorPrice) {
+          dynamicTrailing = session.tp3HardFloorPrice;
+        }
+
+        // Se a aceleração estiver ativa e dynamicTrailing >= hardFloorPrice, permite o afrouxamento controlado para 1.2%
+        if (session.isRunnerAccelerationActive && dynamicTrailing >= (session.tp3HardFloorPrice || 0)) {
+          session.trailingStopPrice = dynamicTrailing;
+          session.stopLossPrice = dynamicTrailing;
+        } else if (dynamicTrailing > (session.trailingStopPrice || 0)) {
           session.trailingStopPrice = dynamicTrailing;
           session.stopLossPrice = dynamicTrailing;
         }
@@ -1074,6 +1341,22 @@ export class DirectOperationManager {
       lessons.push(`Order Book Skew Gate ativado em TP1 (Bid/Ask ${session.orderBookSkewRatio?.toFixed(2) ?? '0.40'} <= 0.40): 50% liquidado preventivamente contra absorção passiva.`);
     }
 
+    if (session.isCvdExhaustionTriggered) {
+      lessons.push(`CVD Exhaustion Filter acionado em TP2 (CVD Delta ${session.cvdDeltaAtTp2Pct?.toFixed(2) ?? '-'}% < 0): TP2 antecipado a menos de 0.20% do alvo por exaustão compradora, blindando o lucro contra reversão.`);
+    }
+
+    if (session.isTp3HardFloorActive) {
+      lessons.push(`Blindagem TP3 Hard Floor ativada após TP2: piso irrevogável travado em $${session.tp3HardFloorPrice} (+${session.tp3HardFloorPct}% acima da entrada), eliminando devolução de lucro no runner.`);
+    }
+
+    if (session.isRunnerAccelerationActive || session.runnerTrailingFactor === 0.988) {
+      lessons.push(`Aceleração Dinâmica de Expansão no Runner (Spike Vol ${session.runnerVolumeRatio?.toFixed(2) ?? '2.5'}x > 2.5x e Upper BB): Trailing stop afrouxado temporariamente para 1.2% para respiro da vela parabólica com Hard Floor garantido.`);
+    }
+
+    if (session.isRunnerClimaxTighteningActive || session.runnerTrailingFactor === 0.995) {
+      lessons.push(`Clímax e Exaustão Volumétrica no Runner: Trailing stop recapturado e apertado para 0.5% abaixo da máxima, consolidando o lucro do topo.`);
+    }
+
     if (maePercent < -1.5) {
       lessons.push(`Drawdown flutuante MAE atingiu ${maePercent}%; considerar entrada em pullback mais profundo.`);
     } else {
@@ -1118,6 +1401,17 @@ export class DirectOperationManager {
       timestamp: Date.now(),
       isSkewGateActive: session.isSkewGateActive,
       orderBookSkewRatio: session.orderBookSkewRatio,
+      isCvdExhaustionTriggered: session.isCvdExhaustionTriggered,
+      cvdDeltaAtTp2Pct: session.cvdDeltaAtTp2Pct,
+      tp2AnticipatedReason: session.tp2AnticipatedReason,
+      isTp3HardFloorActive: session.isTp3HardFloorActive,
+      tp3HardFloorPrice: session.tp3HardFloorPrice,
+      tp3HardFloorPct: session.tp3HardFloorPct,
+      isRunnerAccelerationActive: session.isRunnerAccelerationActive,
+      isRunnerClimaxTighteningActive: session.isRunnerClimaxTighteningActive,
+      runnerTrailingFactor: session.runnerTrailingFactor,
+      runnerVolumeRatio: session.runnerVolumeRatio,
+      runnerAccelerationReason: session.runnerAccelerationReason,
     };
 
     this.addJournalEntry(entry);

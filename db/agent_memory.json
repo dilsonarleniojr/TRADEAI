@@ -1,6 +1,76 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Aceleração Dinâmica de Expansão do Runner por ATR Spike (Runner Momentum Acceleration): Afrouxamento para 1.2% sob Spike de Volume e Upper BB com Clímax Apertado para 0.5% sob Exaustão",
+    "summary": "1) Aceleração Dinâmica de Expansão do Runner por ATR Spike: Durante o trailing stop do TP3 (34% do lote do runner), se a IA detectar via auditRunnerMomentum um candle de 1m com volume > 2.5x a média dos últimos 15 períodos e fechamento acima da Upper Bollinger Band, o fator de trailing é temporariamente afrouxado de 0.8% (0.992) para 1.2% (0.988), dando espaço para a expansão parabólica respirar sem ser estopada por ruído; 2) Invariante Matemática Rígida: O trailing stop afrouxado de 1.2% jamais recua abaixo do TP3 Hard Floor (Math.max(dynamicTrailing, session.tp3HardFloorPrice || 0)), garantindo que a respiração parabólica nunca viole o lucro consolidado garantido pós-TP2; 3) Clímax Travado por Exaustão Volumétrica: Assim que o volume de order flow recuar e a exaustão for confirmada (volumeRatio < 1.5x e isExhausted: true), a IA encerra o afrouxamento e aperta agressivamente o trailing stop para 0.5% (factor 0.995), cravando o stop rente à máxima para capturar o topo absoluto da expansão; 4) Resiliência e Fail-Safe: Consulta isolada e não-bloqueante a klines de 1m, com suporte a mock determinístico DirectOperationManager.setMockRunnerSpike(symbol, mock); 5) Cockpit & Telemetria: Badges dinâmicos no DirectAiTradeModal: 'TP3 Runner (Aceleração 🚀)' (azul ciano pulsante com indicador de trailing 1.2%) e 'TP3 Runner (Clímax 🔒)' (roxo/fúcsia com trailing 0.5%), além de reflexão detalhada gravada no Diário de Trades; 6) Validação: 48 testes unitários passando em bun test (249 asserções, 100% de sucesso), 0 erros no TypeScript e container Docker reconstruído.",
+    "tags": [
+      "runner-momentum-acceleration",
+      "atr-volume-spike",
+      "bollinger-band-breakout",
+      "climax-tightening",
+      "volume-exhaustion",
+      "tp3-runner-trailing",
+      "hard-floor-invariant",
+      "institutional-cockpit"
+    ],
+    "details": {
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "modalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "testSuitePath": "tests/unit/direct-operation-flow.test.ts",
+      "totalPassingTests": 48,
+      "totalAssertions": 249
+    },
+    "id": "mem-1792472000000-runner-momentum-acceleration",
+    "timestamp": "2026-10-20T04:20:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Blindagem de Lucro Mínimo Absoluto no Runner (TP3 Hard Floor): Piso Irrevogável Travado em no Mínimo +1.0% (ou TP1) após Execução do TP2 para Prevenção Matemática de Devolução de Lucro",
+    "summary": "1) Blindagem de Lucro Mínimo Absoluto no Runner (TP3 Hard Floor): Após a execução bem-sucedida do TP2 (seja por toque direto de preço ou por antecipação via CVD Exhaustion Filter), a IA ativa irrevogavelmente o TP3 Hard Floor para o saldo remanescente (34% do lote do runner); 2) Formulação Matemática Rígida: hardFloorPrice = Math.max(PreciseMath.roundDown(session.entryPrice * 1.010, 6), session.tp1Price || minProfitFloor). O Trailing Stop inicial pós-TP2 é travado em Math.max(tightTrailing, hardFloorPrice, session.trailingStopPrice || 0); 3) Invariante do Trailing Stop Móvel: Conforme o runner renova máximas, o trailing stop continua subindo dinamicamente (highestPriceReached * 0.992), mas jamais retrocede abaixo do hardFloorPrice sob nenhuma hipótese de pullback; 4) Eliminação de Devolução de Lucro: Garante matematicamente que uma operação com 2 alvos já consolidados no bolso nunca saia no zero a zero ou com prejuízo residual no runner; 5) Cockpit & Telemetria: Exibição no modal DirectAiTradeModal com badge 'TP3 Runner (Piso 🛡️)' e destaque na Linha de Proteção Dinâmica 'TP3 Hard Floor (+X.XX% min 🛡️): (Piso $XXXXX)', notificação contextualizada no Telegram e lição de reflexão persistida no Diário de Trades; 6) Validação Rigorosa: 46 testes unitários passando em bun test (233 asserções, 100% de sucesso), 0 erros no TypeScript e container Docker reconstruído.",
+    "tags": [
+      "tp3-hard-floor",
+      "runner-absolute-profit-shield",
+      "trailing-stop-rigid-floor",
+      "triple-target-ladder",
+      "profit-lock",
+      "chaos-engineering-fail-safe",
+      "institutional-cockpit"
+    ],
+    "details": {
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "modalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "testSuitePath": "tests/unit/direct-operation-flow.test.ts",
+      "totalPassingTests": 46,
+      "totalAssertions": 233
+    },
+    "id": "mem-1792470000000-runner-tp3-hard-floor",
+    "timestamp": "2026-10-20T03:55:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Filtro de Desaceleração de Momentum (CVD Exhaustion Filter no TP2): Antecipação Imediata a Mercado a menos de 0.20% do Alvo sob Divergência Negativa de Agressão Compradora (< 0)",
+    "summary": "1) Auditoria de Delta Acumulado de Volume (CVD) em Janela de 5 Minutos: Na aproximação a menos de 0.20% do TP2 (latestPrice >= tp2Price * 0.998 && latestPrice < tp2Price), a IA inspeciona via auditCvdDelta5m as klines de 1m da Binance. Computa a agressão compradora líquida: cvdDeltaPct = ((totalTakerBuyQuote - totalTakerSellQuote) / totalQuote) * 100. Se cvdDeltaPct < 0 (divergência negativa onde o preço sobe mas o volume agressor comprador seca e vendas a mercado dominam), a IA antecipa imediatamente a execução do TP2 a mercado (liquidando 50% do restante); 2) Prevenção Contra Reversão de Topo: Evita que exaustões clássicas de topo em criptoacionários transformem posições com lucros máximos em saídas antecipadas por retração até o trailing stop; 3) Preservação de Alvo Regular em Fluxo Saudável: Se o CVD Delta for positivo ou neutro (>= 0), a IA mantém a posição intacta aguardando o toque direto no alvo TP2; 4) Resiliência e Fail-Safe: Em falhas de rede na consulta de klines, a rotina aplica fallback neutro (0) sem falsos positivos. Suporta hook determinístico DirectOperationManager.setMockCvdDelta(symbol, delta); 5) Cockpit & Telemetria: Exibição no modal DirectAiTradeModal com badge 'TP2 (Antecipado ⚡) ✓' e tooltip explicativo, alertas instantâneos no Telegram e lição de reflexão persistida no Diário de Trades; 6) Validação: 44 testes unitários passando em bun test (217 asserções, 100% de sucesso), 0 erros no TypeScript e container Docker reconstruído.",
+    "tags": [
+      "cvd-exhaustion-filter",
+      "momentum-deceleration",
+      "cumulative-volume-delta",
+      "tp2-anticipation",
+      "triple-target-ladder",
+      "chaos-engineering-fail-safe",
+      "institutional-cockpit"
+    ],
+    "details": {
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "modalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "testSuitePath": "tests/unit/direct-operation-flow.test.ts",
+      "totalPassingTests": 44,
+      "totalAssertions": 217
+    },
+    "id": "mem-1792468000000-cvd-exhaustion-filter-tp2",
+    "timestamp": "2026-10-20T03:30:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Exclusão Temporária de Liquidez Residual em Livros Assimétricos (Order Book Skew Gate): Liquidação Acelerada de 50% em TP1 sob Razão Bid/Ask Depth <= 0.40 para Mitigação de Absorção Passiva",
     "summary": "1) Order Book Skew Gate no Disparo de TP1: No instante exato em que o preço atinge o Alvo TP1 (latestPrice >= tp1Price), o sistema realiza auditoria em tempo real da microestrutura do livro L2 via getOrderBookAnalysis. Apura a razão entre os 10 melhores níveis: bidAskRatio = askVolume > 0 ? (bidVolume / askVolume) : 1.0. Se bidAskRatio <= 0.40 (evidenciando pressão vendedora maciça com mais de 2.5x volume na venda do que na compra), a IA ativa o Order Book Skew Gate e encerra imediatamente 50% da posição inicial (em vez dos 33% padrão), mitigando o risco de absorção passiva antes do pull-back; 2) Preservação da Liquidação Padrão de 33%: Caso o livro L2 apresente suporte comprador ou equilíbrio (bidAskRatio > 0.40, ex: 1.25), o encerramento padrão de 33% é mantido, deixando 67% da posição para surfar expansões até TP2 e TP3 runner; 3) Engenharia do Caos e Fail-Safe: Se a consulta do livro L2 sofrer oscilações de rede ou timeout, o fluxo de TP1 aplica fallback gracioso para 33% sem quebrar ou abortar a operação. Possui hook determinístico DirectOperationManager.setMockOrderBookRatio(symbol, ratio); 4) Visualização no Cockpit UI & Alertas: O modal DirectAiTradeModal exibe badge 'TP1 (50% ⚡)' estilizado em violeta e com tooltip explicativo quando o Skew Gate é acionado, além de notificação Telegram contextualizada e registro nas lessonsLearned do Diário de Trades; 5) Validação: 42 testes unitários passando em bun test (198 asserções, 100% de sucesso), 0 erros no TypeScript e container atualizado.",
     "tags": [

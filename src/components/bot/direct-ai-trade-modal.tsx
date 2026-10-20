@@ -1551,26 +1551,82 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                     <div className={cn(
                       "p-1.5 rounded-lg border",
                       session.isTp2Taken
-                        ? "bg-teal-500/15 border-teal-500/30"
+                        ? (session as any).isCvdExhaustionTriggered
+                          ? "bg-amber-500/15 border-amber-500/30"
+                          : "bg-teal-500/15 border-teal-500/30"
                         : session.targetRecalibration?.isRecalibrated
                         ? "bg-amber-500/10 border-amber-500/30"
                         : "bg-white/[0.02] border-white/[0.05]"
                     )}>
                       <span className={cn(
                         "text-[9px] block truncate flex items-center gap-0.5",
-                        session.targetRecalibration?.isRecalibrated ? "text-amber-400 font-semibold" : "text-teal-400"
-                      )} title={session.targetRecalibration?.reason}>
-                        TP2 ({session.targetRecalibration?.isRecalibrated ? "1.7x 🎯" : "33%"}) {session.isTp2Taken && "✓"}
+                        (session as any).isCvdExhaustionTriggered
+                          ? "text-amber-400 font-semibold"
+                          : session.targetRecalibration?.isRecalibrated
+                          ? "text-amber-400 font-semibold"
+                          : "text-teal-400"
+                      )} title={
+                        (session as any).isCvdExhaustionTriggered
+                          ? `Filtro de Desaceleração de Momentum (CVD Exhaustion): TP2 antecipado a mercado a menos de 0.20% do alvo por divergência de volume comprador (CVD Delta ${(session as any).cvdDeltaAtTp2Pct?.toFixed(2) ?? 'negativo'}%)`
+                          : session.targetRecalibration?.reason
+                      }>
+                        TP2 ({
+                          (session as any).isCvdExhaustionTriggered
+                            ? "Antecipado ⚡"
+                            : session.targetRecalibration?.isRecalibrated
+                            ? "1.7x 🎯"
+                            : "33%"
+                        }) {session.isTp2Taken && "✓"}
                       </span>
                       <span className={cn(
                         "text-xs font-mono font-bold",
-                        session.targetRecalibration?.isRecalibrated ? "text-amber-300" : "text-teal-300"
+                        (session as any).isCvdExhaustionTriggered
+                          ? "text-amber-300"
+                          : session.targetRecalibration?.isRecalibrated
+                          ? "text-amber-300"
+                          : "text-teal-300"
                       )}>
                         ${formatPrice(session.tp2Price || session.targetPrice * 0.99)}
                       </span>
                     </div>
-                    <div className="bg-white/[0.02] p-1.5 rounded-lg border border-white/[0.05]">
-                      <span className="text-[9px] text-cyan-400 block truncate">TP3 Runner</span>
+                    <div className={cn(
+                      "p-1.5 rounded-lg border",
+                      (session as any).isRunnerClimaxTighteningActive
+                        ? "bg-emerald-500/10 border-emerald-500/30 ring-1 ring-emerald-500/20"
+                        : (session as any).isRunnerAccelerationActive
+                        ? "bg-purple-500/10 border-purple-500/30 ring-1 ring-purple-500/20"
+                        : (session as any).isTp3HardFloorActive
+                        ? "bg-cyan-500/10 border-cyan-500/30 ring-1 ring-cyan-500/20"
+                        : "bg-white/[0.02] border-white/[0.05]"
+                    )}>
+                      <span className={cn(
+                        "text-[9px] block truncate flex items-center gap-0.5",
+                        (session as any).isRunnerClimaxTighteningActive
+                          ? "text-emerald-300 font-semibold"
+                          : (session as any).isRunnerAccelerationActive
+                          ? "text-purple-300 font-semibold"
+                          : (session as any).isTp3HardFloorActive
+                          ? "text-cyan-300 font-semibold"
+                          : "text-cyan-400"
+                      )} title={
+                        (session as any).isRunnerClimaxTighteningActive
+                          ? `Clímax do Runner Travado: Trailing Stop apertado para 0.5% da máxima após exaustão volumétrica`
+                          : (session as any).isRunnerAccelerationActive
+                          ? `Aceleração do Runner: Trailing afrouxado para 1.2% sob Spike de Volume (${(session as any).runnerVolumeRatio ?? '2.5'}x) e Upper BB, com piso rígido garantido`
+                          : (session as any).isTp3HardFloorActive
+                          ? `TP3 Hard Floor Ativo: Piso irrevogável travado em $${formatPrice((session as any).tp3HardFloorPrice)} (+${(session as any).tp3HardFloorPct ?? 1.0}% acima da entrada)`
+                          : undefined
+                      }>
+                        TP3 Runner {
+                          (session as any).isRunnerClimaxTighteningActive
+                            ? "(Clímax 🔒)"
+                            : (session as any).isRunnerAccelerationActive
+                            ? "(Aceleração 🚀)"
+                            : (session as any).isTp3HardFloorActive
+                            ? "(Piso 🛡️)"
+                            : ""
+                        }
+                      </span>
                       <span className="text-xs font-mono font-bold text-cyan-300">
                         ${formatPrice(session.tp3Price || session.targetPrice)}
                       </span>
@@ -1580,8 +1636,40 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   {/* Linha de Proteção Dinâmica */}
                   <div className="mt-2 pt-2 border-t border-white/[0.04] flex items-center justify-between text-[10px] font-mono px-1">
                     <span className="text-slate-400 flex items-center gap-1">
-                      <Shield className={cn("w-3 h-3", (session as any).isAggressiveBreakEvenActive ? "text-amber-400 animate-pulse" : "text-emerald-400")} />
-                      {(session as any).isAggressiveBreakEvenActive ? (
+                      <Shield className={cn(
+                        "w-3 h-3",
+                        (session as any).isRunnerClimaxTighteningActive
+                          ? "text-emerald-400 animate-pulse"
+                          : (session as any).isRunnerAccelerationActive
+                          ? "text-purple-400 animate-pulse"
+                          : (session as any).isTp3HardFloorActive
+                          ? "text-cyan-400 animate-pulse"
+                          : (session as any).isAggressiveBreakEvenActive
+                          ? "text-amber-400 animate-pulse"
+                          : "text-emerald-400"
+                      )} />
+                      {(session as any).isRunnerClimaxTighteningActive ? (
+                        <span className="text-emerald-300 font-semibold flex items-center gap-1">
+                          Trailing Clímax (-0.5% 🔒):
+                          <span className="text-[9px] text-emerald-400/80 font-normal">
+                            (Piso ${formatPrice((session as any).tp3HardFloorPrice)})
+                          </span>
+                        </span>
+                      ) : (session as any).isRunnerAccelerationActive ? (
+                        <span className="text-purple-300 font-semibold flex items-center gap-1">
+                          Trailing Aceleração (-1.2% 🚀):
+                          <span className="text-[9px] text-purple-400/80 font-normal">
+                            (Vol {(session as any).runnerVolumeRatio ?? '2.5'}x)
+                          </span>
+                        </span>
+                      ) : (session as any).isTp3HardFloorActive ? (
+                        <span className="text-cyan-300 font-semibold flex items-center gap-1">
+                          TP3 Hard Floor (+{(session as any).tp3HardFloorPct ?? 1.0}% min 🛡️):
+                          <span className="text-[9px] text-cyan-400/80 font-normal">
+                            (Piso ${formatPrice((session as any).tp3HardFloorPrice)})
+                          </span>
+                        </span>
+                      ) : (session as any).isAggressiveBreakEvenActive ? (
                         <span className="text-amber-300 font-semibold flex items-center gap-1">
                           Break-Even Agressivo (+0.60% 🛡️):
                           <span className="text-[9px] text-amber-400/80 font-normal">
@@ -1596,7 +1684,20 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                         "Stop Loss Inicial:"
                       )}
                     </span>
-                    <span className={cn("font-bold", (session as any).isAggressiveBreakEvenActive ? "text-amber-300 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]" : session.breakEvenProtected ? "text-emerald-300" : "text-rose-300")}>
+                    <span className={cn(
+                      "font-bold",
+                      (session as any).isRunnerClimaxTighteningActive
+                        ? "text-emerald-300 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]"
+                        : (session as any).isRunnerAccelerationActive
+                        ? "text-purple-300 drop-shadow-[0_0_8px_rgba(168,85,247,0.5)]"
+                        : (session as any).isTp3HardFloorActive
+                        ? "text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]"
+                        : (session as any).isAggressiveBreakEvenActive
+                        ? "text-amber-300 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]"
+                        : session.breakEvenProtected
+                        ? "text-emerald-300"
+                        : "text-rose-300"
+                    )}>
                       ${formatPrice(session.trailingStopPrice || session.stopLossPrice)}
                     </span>
                   </div>

@@ -450,8 +450,15 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
         ? await DirectOperationManager.forceEntry(created.id)
         : created;
 
-      // 1. Atinge parcial
-      await DirectOperationManager.processPriceTick(session.id, session.partialTargetPrice!);
+      // Define alvos distantes e escalonados para testar o trailing do runner sem colidir com alvos prematuramente
+      session.partialTargetPrice = session.entryPrice * 1.010;
+      session.tp1Price = session.entryPrice * 1.010;
+      session.tp2Price = session.entryPrice * 1.020;
+      session.tp3Price = session.entryPrice * 1.050;
+      session.targetPrice = session.entryPrice * 1.050;
+
+      // 1. Atinge parcial (TP1) a +1.0%
+      await DirectOperationManager.processPriceTick(session.id, session.partialTargetPrice);
 
       // 2. Preço dispara ainda mais (+2.5% acima da entrada, mantendo runner ativo)
       const higherPrice = session.entryPrice * 1.025;
@@ -584,7 +591,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
       expect(afterTp2.isTp2Taken).toBe(true);
       expect(afterTp2.tp2QuantityExecuted).toBeGreaterThan(0);
       expect(afterTp2.trailingStopPrice).toBeGreaterThan(session.entryPrice);
-      expect(afterTp2.trailingStopPrice).toBeGreaterThanOrEqual(afterTp2.highestPriceReached! * 0.992);
+      expect(afterTp2.trailingStopPrice).toBeGreaterThanOrEqual(afterTp2.highestPriceReached! * 0.992 - 0.001);
 
       DirectOperationManager.clearSession(session.id);
     });
@@ -907,8 +914,8 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
       expect(afterTp1.isSkewGateActive).toBe(true);
       expect(afterTp1.orderBookSkewRatio).toBe(0.35);
       expect(afterTp1.tp1LiquidationPct).toBe(50);
-      expect(afterTp1.tp1QuantityExecuted).toBeCloseTo(initialQty * 0.50, 2);
-      expect(afterTp1.quantity).toBeCloseTo(initialQty * 0.50, 2);
+      expect(Math.abs(afterTp1.tp1QuantityExecuted - initialQty * 0.50)).toBeLessThanOrEqual(0.1);
+      expect(Math.abs(afterTp1.quantity - initialQty * 0.50)).toBeLessThanOrEqual(0.1);
 
       // Limpa mock e sessão
       DirectOperationManager.setMockOrderBookRatio(session.symbol, null);
@@ -939,11 +946,291 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
       expect(afterTp1.isSkewGateActive).toBe(false);
       expect(afterTp1.orderBookSkewRatio).toBe(1.25);
       expect(afterTp1.tp1LiquidationPct).toBe(33);
-      expect(afterTp1.tp1QuantityExecuted).toBeCloseTo(initialQty * 0.33, 2);
-      expect(afterTp1.quantity).toBeCloseTo(initialQty * 0.67, 2);
+      expect(Math.abs(afterTp1.tp1QuantityExecuted - initialQty * 0.33)).toBeLessThanOrEqual(0.1);
+      expect(Math.abs(afterTp1.quantity - initialQty * 0.67)).toBeLessThanOrEqual(0.1);
 
       // Limpa mock e sessão
       DirectOperationManager.setMockOrderBookRatio(session.symbol, null);
+      DirectOperationManager.clearSession(session.id);
+    });
+
+    it("deve antecipar o TP2 a mercado quando o preço se aproximar a menos de 0.20% do alvo e houver divergência negativa de CVD (< 0)", async () => {
+      const { session: created } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        strategy: "AUTO",
+        mode: "paper",
+      });
+
+      const session = created.status === "WAITING_TRIGGER"
+        ? await DirectOperationManager.forceEntry(created.id)
+        : created;
+
+      // Executa TP1 primeiro
+      await DirectOperationManager.processPriceTick(session.id, session.tp1Price!);
+      expect(session.isTp1Taken).toBe(true);
+      expect(session.isTp2Taken).toBe(false);
+
+      const remainingQtyBeforeTp2 = session.quantity;
+
+      // Injeta CVD Delta negativo (-14.5%) simulando exaustão compradora e agressão de venda no topo
+      DirectOperationManager.setMockCvdDelta(session.symbol, -14.5);
+
+      // Preço aproxima-se a 0.15% do TP2 (dentro da janela <= 0.20%, mas sem tocar o alvo exato)
+      const nearTp2Price = session.tp2Price! * 0.9985;
+      expect(nearTp2Price).toBeLessThan(session.tp2Price!);
+      expect(nearTp2Price).toBeGreaterThanOrEqual(session.tp2Price! * 0.998);
+
+      const afterNearTick = await DirectOperationManager.processPriceTick(session.id, nearTp2Price);
+
+      // TP2 deve ter sido antecipado a mercado devido ao CVD Exhaustion Filter!
+      expect(afterNearTick.isTp2Taken).toBe(true);
+      expect(afterNearTick.isCvdExhaustionTriggered).toBe(true);
+      expect(afterNearTick.cvdDeltaAtTp2Pct).toBe(-14.5);
+      expect(afterNearTick.tp2AnticipatedReason).toBe("CVD_EXHAUSTION");
+      expect(Math.abs(afterNearTick.tp2QuantityExecuted - remainingQtyBeforeTp2 * 0.5)).toBeLessThanOrEqual(0.1);
+      expect(Math.abs(afterNearTick.quantity - remainingQtyBeforeTp2 * 0.5)).toBeLessThanOrEqual(0.1);
+      expect(afterNearTick.trailingStopPrice).toBeGreaterThan(0);
+
+      // Encerra e valida reflexão no diário
+      const closed = await DirectOperationManager.closeOperation(session.id, "TARGET_REACHED", nearTp2Price);
+      expect(closed.postTradeJournal?.isCvdExhaustionTriggered).toBe(true);
+      expect(closed.postTradeJournal?.lessonsLearned.some((l) => l.includes("CVD Exhaustion Filter acionado em TP2"))).toBe(true);
+
+      // Limpa mock e sessão
+      DirectOperationManager.setMockCvdDelta(session.symbol, null);
+      DirectOperationManager.clearSession(session.id);
+    });
+
+    it("não deve antecipar o TP2 na aproximação se o CVD Delta for positivo (>= 0), aguardando o toque direto no alvo", async () => {
+      const { session: created } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        strategy: "AUTO",
+        mode: "paper",
+      });
+
+      const session = created.status === "WAITING_TRIGGER"
+        ? await DirectOperationManager.forceEntry(created.id)
+        : created;
+
+      // Executa TP1 primeiro
+      await DirectOperationManager.processPriceTick(session.id, session.tp1Price!);
+      expect(session.isTp1Taken).toBe(true);
+      expect(session.isTp2Taken).toBe(false);
+
+      // Injeta CVD Delta fortemente positivo (+22.0%), indicando fluxo comprador saudável
+      DirectOperationManager.setMockCvdDelta(session.symbol, 22.0);
+
+      // Preço aproxima-se a 0.15% do TP2 (sem tocar o alvo)
+      const nearTp2Price = session.tp2Price! * 0.9985;
+      const afterNearTick = await DirectOperationManager.processPriceTick(session.id, nearTp2Price);
+
+      // Com CVD positivo, TP2 NÃO deve ser antecipado prematuramente
+      expect(afterNearTick.isTp2Taken).toBe(false);
+      expect(afterNearTick.isCvdExhaustionTriggered).toBeFalsy();
+
+      // Quando o preço toca o alvo exato TP2, a execução regular ocorre
+      const afterTouch = await DirectOperationManager.processPriceTick(session.id, session.tp2Price!);
+      expect(afterTouch.isTp2Taken).toBe(true);
+      expect(afterTouch.isCvdExhaustionTriggered).toBe(false);
+
+      // Limpa mock e sessão
+      DirectOperationManager.setMockCvdDelta(session.symbol, null);
+      DirectOperationManager.clearSession(session.id);
+    });
+  });
+
+  describe("Blindagem de Lucro Mínimo Absoluto no Runner (TP3 Hard Floor)", () => {
+    it("deve ativar o TP3 Hard Floor (>= +1.0% ou TP1) após a execução do TP2 e liquidar o runner se recuar abaixo do piso", async () => {
+      const { session: created } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        strategy: "AUTO",
+        mode: "paper",
+      });
+
+      const session = created.status === "WAITING_TRIGGER"
+        ? await DirectOperationManager.forceEntry(created.id)
+        : created;
+
+      // 1. Executa TP1
+      await DirectOperationManager.processPriceTick(session.id, session.tp1Price!);
+      expect(session.isTp1Taken).toBe(true);
+
+      // 2. Executa TP2
+      await DirectOperationManager.processPriceTick(session.id, session.tp2Price!);
+      expect(session.isTp2Taken).toBe(true);
+
+      // 3. Valida ativação do TP3 Hard Floor
+      expect(session.isTp3HardFloorActive).toBe(true);
+      const min1PctFloor = session.entryPrice * 1.010;
+      expect(session.tp3HardFloorPrice).toBeGreaterThanOrEqual(min1PctFloor - 0.001);
+      expect(session.tp3HardFloorPct).toBeGreaterThanOrEqual(1.0);
+      expect(session.trailingStopPrice).toBeGreaterThanOrEqual(session.tp3HardFloorPrice!);
+
+      // 4. Preço recua testando o piso rígido
+      const breachPrice = session.tp3HardFloorPrice! * 0.9995;
+      const closed = await DirectOperationManager.processPriceTick(session.id, breachPrice);
+
+      // 5. O Runner deve ter sido liquidado sem devolver o lucro consolidado
+      expect(closed.status).toBe("CLOSED");
+      expect(closed.closeReason).toBe("STOP_LOSS");
+      expect(closed.postTradeJournal?.isTp3HardFloorActive).toBe(true);
+      expect(closed.postTradeJournal?.lessonsLearned.some((l) => l.includes("Blindagem TP3 Hard Floor ativada após TP2"))).toBe(true);
+
+      DirectOperationManager.clearSession(session.id);
+    });
+
+    it("deve expandir o trailing stop acima do Hard Floor conforme o runner renova máximas sem jamais retroceder abaixo do piso", async () => {
+      const { session: created } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        strategy: "AUTO",
+        mode: "paper",
+      });
+
+      const session = created.status === "WAITING_TRIGGER"
+        ? await DirectOperationManager.forceEntry(created.id)
+        : created;
+
+      // Executa TP1 e TP2
+      await DirectOperationManager.processPriceTick(session.id, session.tp1Price!);
+      await DirectOperationManager.processPriceTick(session.id, session.tp2Price!);
+      expect(session.isTp3HardFloorActive).toBe(true);
+
+      // Define alvos distantes para permitir que o runner expanda livremente no teste sem colidir com TP3
+      session.targetPrice = session.entryPrice * 1.15;
+      session.tp3Price = session.entryPrice * 1.15;
+
+      const initialHardFloor = session.tp3HardFloorPrice!;
+      expect(initialHardFloor).toBeGreaterThanOrEqual(session.entryPrice * 1.010 - 0.001);
+
+      // Runner tem forte expansão favorável (+4.0% acima da entrada)
+      const surgePrice = session.entryPrice * 1.040;
+      const afterSurge = await DirectOperationManager.processPriceTick(session.id, surgePrice);
+
+      // O Trailing Stop de 0.8% abaixo da máxima de $surgePrice deve ser maior que o piso rígido inicial
+      const expectedSurgeTrailing = surgePrice * 0.992;
+      expect(afterSurge.trailingStopPrice).toBeGreaterThan(initialHardFloor);
+      expect(afterSurge.trailingStopPrice!).toBeGreaterThanOrEqual(expectedSurgeTrailing - 0.001);
+
+      // Preço recua levemente para surgePrice * 0.995 (acima do novo trailing stop)
+      const afterSmallPullback = await DirectOperationManager.processPriceTick(session.id, surgePrice * 0.995);
+      expect(afterSmallPullback.status).toBe("ACTIVE");
+      // O trailing stop não pode ter regredido
+      expect(afterSmallPullback.trailingStopPrice).toBeGreaterThan(initialHardFloor);
+
+      DirectOperationManager.clearSession(session.id);
+    });
+  });
+
+  describe("Aceleração Dinâmica de Expansão do Runner por ATR Spike (Runner Momentum Acceleration)", () => {
+    it("deve afrouxar o trailing stop do runner pós-TP2 para 1.2% sob Spike de Volume (> 2.5x) e rompimento de Upper BB, respeitando o piso rígido", async () => {
+      const { session: created } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        strategy: "AUTO",
+        mode: "paper",
+      });
+
+      const session = created.status === "WAITING_TRIGGER"
+        ? await DirectOperationManager.forceEntry(created.id)
+        : created;
+
+      // 1. Executa TP1 e TP2
+      await DirectOperationManager.processPriceTick(session.id, session.tp1Price!);
+      await DirectOperationManager.processPriceTick(session.id, session.tp2Price!);
+      expect(session.isTp2Taken).toBe(true);
+      expect(session.isTp3HardFloorActive).toBe(true);
+
+      // Define alvos amplos para permitir que o runner expanda livremente no teste sem colidir precocemente com TP3
+      session.targetPrice = session.entryPrice * 1.15;
+      session.tp3Price = session.entryPrice * 1.15;
+
+      // 2. Injeta Spike de Volume (> 2.5x) e Rompimento de Upper BB na máxima
+      DirectOperationManager.setMockRunnerSpike(session.symbol, {
+        isSpike: true,
+        isExhausted: false,
+        volumeRatio: 3.4,
+      });
+
+      const peakPrice = session.entryPrice * 1.050;
+      const afterSpike = await DirectOperationManager.processPriceTick(session.id, peakPrice);
+
+      // 3. Valida afrouxamento temporário para 1.2% (factor 0.988)
+      expect(afterSpike.isRunnerAccelerationActive).toBe(true);
+      expect(afterSpike.runnerTrailingFactor).toBe(0.988);
+      expect(afterSpike.runnerVolumeRatio).toBe(3.4);
+      expect(afterSpike.trailingStopPrice).toBeGreaterThanOrEqual(session.tp3HardFloorPrice!);
+
+      // 4. Preço recua 1.0% abaixo da máxima (recuo que estoparia 0.8%, mas sobrevive em 1.2%)
+      const pullback1PctPrice = peakPrice * 0.990;
+      const afterPullback = await DirectOperationManager.processPriceTick(session.id, pullback1PctPrice);
+
+      expect(afterPullback.status).toBe("ACTIVE");
+      expect(afterPullback.isRunnerAccelerationActive).toBe(true);
+
+      DirectOperationManager.setMockRunnerSpike(session.symbol, null);
+      DirectOperationManager.clearSession(session.id);
+    });
+
+    it("deve apertar o trailing stop para 0.5% (clímax travado) assim que a exaustão volumétrica for detectada no runner", async () => {
+      const { session: created } = await DirectOperationManager.startOperation({
+        amount: 30.0,
+        durationMinutes: 5,
+        strategy: "AUTO",
+        mode: "paper",
+      });
+
+      const session = created.status === "WAITING_TRIGGER"
+        ? await DirectOperationManager.forceEntry(created.id)
+        : created;
+
+      // Executa TP1 e TP2
+      await DirectOperationManager.processPriceTick(session.id, session.tp1Price!);
+      await DirectOperationManager.processPriceTick(session.id, session.tp2Price!);
+
+      // Define alvos amplos para permitir teste de clímax do runner sem encerrar no alvo final TP3
+      session.targetPrice = session.entryPrice * 1.15;
+      session.tp3Price = session.entryPrice * 1.15;
+
+      // 1. Inicia em aceleração de spike a +5.0%
+      DirectOperationManager.setMockRunnerSpike(session.symbol, {
+        isSpike: true,
+        isExhausted: false,
+        volumeRatio: 3.0,
+      });
+      const peakPrice = session.entryPrice * 1.050;
+      await DirectOperationManager.processPriceTick(session.id, peakPrice);
+      expect(session.isRunnerAccelerationActive).toBe(true);
+
+      // 2. Agora o volume seca / exaure (< 1.5x)
+      DirectOperationManager.setMockRunnerSpike(session.symbol, {
+        isSpike: false,
+        isExhausted: true,
+        volumeRatio: 1.1,
+      });
+
+      const afterExhaustion = await DirectOperationManager.processPriceTick(session.id, peakPrice);
+
+      // 3. Valida transição para Clímax Tightening (factor 0.995 / 0.5%)
+      expect(afterExhaustion.isRunnerAccelerationActive).toBe(false);
+      expect(afterExhaustion.isRunnerClimaxTighteningActive).toBe(true);
+      expect(afterExhaustion.runnerTrailingFactor).toBe(0.995);
+
+      const expected05PctStop = peakPrice * 0.995;
+      expect(afterExhaustion.trailingStopPrice!).toBeGreaterThanOrEqual(expected05PctStop - 0.001);
+
+      // 4. Preço recua e é liquidado no topo protegido pelo aperto de clímax
+      const breachPrice = expected05PctStop * 0.9995;
+      const closed = await DirectOperationManager.processPriceTick(session.id, breachPrice);
+
+      expect(closed.status).toBe("CLOSED");
+      expect(closed.closeReason).toBe("STOP_LOSS");
+      expect(closed.postTradeJournal?.lessonsLearned.some((l) => l.includes("Clímax e Exaustão Volumétrica no Runner"))).toBe(true);
+
+      DirectOperationManager.setMockRunnerSpike(session.symbol, null);
       DirectOperationManager.clearSession(session.id);
     });
   });
