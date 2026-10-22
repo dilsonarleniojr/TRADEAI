@@ -9,6 +9,9 @@ import { getCostBasisForSymbol } from "./cost-basis";
 import { riskManager, RiskManager } from "./risk-manager";
 import { dispatchNotification } from "@/lib/notifications/notification-service";
 import { latencyTelemetry } from "./latency-telemetry";
+import { flightRecorder } from "@/lib/telemetry/flight-recorder";
+import { structuredLogger } from "@/lib/telemetry/structured-logger";
+import { playOrderExecutedSound, playTakeProfitHitSound, playStopLossOrKillSwitchSound } from "@/lib/sound/sound-effects";
 
 export interface MultiBotEngineCallbacks {
   onToast?: (toast: { title: string; description: string; variant?: "default" | "destructive" }) => void;
@@ -114,16 +117,26 @@ export interface RestingLimitMakerOrder {
   repricedAt?: number;
   originalPrice?: number;
   tickSize?: number;
+  // Simulação de fila realista (Queue Execution Model)
+  queueAheadVolume?: number;
+  consumedVolume?: number;
+  levelAbsorbed?: boolean;
 }
 
 const restingMakerOrders = new Map<string, RestingLimitMakerOrder>();
 
 export function registerRestingMakerOrder(order: RestingLimitMakerOrder) {
+  // Volume à frente na fila do livro (se não informado, estima de 3 a 10x o lote do robô)
+  const estimatedQueue = order.queueAheadVolume ?? parseFloat((order.quantity * (4 + Math.random() * 8)).toFixed(4));
+
   restingMakerOrders.set(`${order.botId}_${order.symbol}`, {
     ...order,
     hasRepriced: order.hasRepriced ?? false,
     originalPrice: order.originalPrice ?? order.price,
     tickSize: order.tickSize ?? 0.01,
+    queueAheadVolume: estimatedQueue,
+    consumedVolume: order.consumedVolume ?? 0,
+    levelAbsorbed: false,
   });
 }
 
@@ -190,13 +203,28 @@ export async function checkRestingMakerOrdersTimeout() {
         console.warn(`[MultiBotEngine] Falha ao consultar status da ordem ${order.orderId}:`, err.message);
       }
     } else {
-      // 1.1 Em modo PAPER, simula preenchimento se o preço de mercado cruzar ou tocar a ordem passiva
+      // 1.1 Em modo PAPER: Mecanismo Realista de Execução em Fila (Queue Execution Model)
       const tickerPrice = store.tickers[order.symbol]?.price || store.tickers[`${order.symbol}USDT`]?.price || 0;
-      if (tickerPrice > 0 && tickerPrice <= order.price) {
+      const tickSize = order.tickSize || 0.01;
+
+      // Se o preço de mercado cruzou integralmente o nível para baixo, o lote foi totalmente absorvido
+      const levelAbsorbed = tickerPrice > 0 && tickerPrice < order.price - tickSize * 0.5;
+
+      // Se o preço de mercado toca exatamente o preço limite, consome o volume que estava à frente na fila
+      if (tickerPrice > 0 && Math.abs(tickerPrice - order.price) <= tickSize) {
+        const incrementalVolume = parseFloat((order.quantity * 0.85).toFixed(4));
+        order.consumedVolume = (order.consumedVolume || 0) + incrementalVolume;
+      }
+
+      const totalRequiredVolume = (order.queueAheadVolume || 0) + order.quantity;
+      const queueFilled = (order.consumedVolume || 0) >= totalRequiredVolume;
+
+      if (levelAbsorbed || queueFilled) {
         restingMakerOrders.delete(key);
         riskManager.recordMakerFill(order.symbol);
+        playOrderExecutedSound();
         store.addBotLog({
-          message: `✅ [${order.botName}] Ordem simulada LIMIT_MAKER em ${order.symbol} ($${order.price.toFixed(4)}) PREENCHIDA no book passivo. Fill-rate: ${riskManager.getFillRateTelemetry().fillRatePct.toFixed(1)}%.`,
+          message: `✅ [${order.botName}] Ordem simulada LIMIT_MAKER em ${order.symbol} ($${order.price.toFixed(4)}) PREENCHIDA na fila do book (${(order.consumedVolume || 0).toFixed(2)}/${totalRequiredVolume.toFixed(2)} vol). Fill-rate: ${riskManager.getFillRateTelemetry().fillRatePct.toFixed(1)}%.`,
           type: "success",
           botId: order.botId,
           botName: order.botName,
@@ -1026,6 +1054,20 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       stats: {
         ...bot.stats,
         lastAction: `🚨 Circuit Breaker Global Ativo (${circuitBreakerState.reason})`,
+        lastActionTime: new Date().toISOString(),
+      },
+    });
+    return;
+  }
+
+  // ⚠️ Trava de Dados Obsoletos (Stale Data Watchdog - Pilar 1 & Guardrails):
+  // Se o feed estiver atrasado > 3s, suspende novas entradas para proteger capital contra slippage cego.
+  if (!hasOpenPosition && store.isMarketDataStale) {
+    store.updateBot(bot.id, {
+      status: "scanning",
+      stats: {
+        ...bot.stats,
+        lastAction: "⚠️ MARKET DATA STALE (>3s). Entradas automáticas suspensas.",
         lastActionTime: new Date().toISOString(),
       },
     });
@@ -2446,6 +2488,9 @@ async function executeBotBuy({
     store.applyTradeToPortfolio(trade);
   }
 
+  // Feedback Sonoro de Confirmação de Ordem
+  playOrderExecutedSound();
+
   // Create BotPosition com valores reais executados
   const finalQty = (executedTrade.quantity && executedTrade.quantity > 0) ? executedTrade.quantity : quantity;
   const finalPrice = (executedTrade.price && executedTrade.price > 0) ? executedTrade.price : buyPrice;
@@ -3135,6 +3180,31 @@ async function executeBotSell({
   const totalNav = store.portfolio?.totalValue || store.portfolio?.cashBalance || 90.0;
   riskManager.recordTradeResult(netPnl, totalNav);
   checkCircuitBreaker();
+
+  // Feedback Sonoro e Flight Recorder Pós-Mortem
+  if (netPnl > 0) {
+    playTakeProfitHitSound();
+  } else {
+    playStopLossOrKillSwitchSound();
+    flightRecorder.captureSnapshot(
+      "STOP_LOSS_TRIGGERED",
+      execSymbol,
+      `Venda encerrada com prejuízo líquido de -$${Math.abs(netPnl).toFixed(2)} (${netGainPercent.toFixed(2)}%). Motivo: ${reason}`,
+      {
+        botId: bot.id,
+        botName: bot.name,
+        strategy: bot.strategy,
+        symbol: execSymbol,
+        entryPrice: position.entryPrice,
+        currentPrice: sellPrice,
+        unrealizedPnl: netPnl,
+        unrealizedPnlPercent: netGainPercent,
+        stopLossPrice: position.dynamicStopLoss || position.entryPrice * (1 - (bot.stopLoss || 2) / 100),
+        takeProfitPrice: position.dynamicTakeProfit || position.entryPrice * (1 + (bot.takeProfit || 3) / 100),
+        availableBalanceUsdt: totalNav,
+      }
+    );
+  }
 
   dispatchNotification({
     type: "TRADE_EXIT",

@@ -4,6 +4,9 @@ import { io, Socket } from "socket.io-client";
 import { useCryptoStore, type TickerData } from "@/lib/store";
 import { syncManager } from "@/lib/realtime-sync";
 import { useShallow } from "zustand/react/shallow";
+import { feedWatchdog } from "@/lib/websocket/feed-watchdog";
+import { reconnectionManager } from "@/lib/websocket/reconnection-manager";
+import { flightRecorder } from "@/lib/telemetry/flight-recorder";
 
 let globalSocket: Socket | null = null;
 let globalNativeWs: WebSocket | null = null;
@@ -58,6 +61,9 @@ function flushForegroundTickers() {
 }
 
 function handleIncomingTicker(sym: string, ticker: TickerData) {
+  // Registra chegada de tick no Stale Feed Watchdog
+  feedWatchdog.recordTick(sym, Date.now());
+
   // Se a aba estiver em segundo plano, bufferiza e atualiza em intervalos espaçados (2.5s)
   // reduzindo o consumo de CPU/bateria em mais de 90%
   if (typeof document !== "undefined" && isDocumentHidden) {
@@ -253,6 +259,9 @@ export function useBinanceStream() {
         console.log("[BinanceStream] Connected via", socket.io.engine?.transport?.name || "unknown");
         reconnectAttemptRef.current = 0;
         failedRef.current = false;
+        reconnectionManager.reset();
+        reconnectionManager.syncClock().catch(() => {});
+        feedWatchdog.start();
         syncManager.onWSConnected();
         syncSocketSubscriptions(socket);
         stopNativeWsFallback();

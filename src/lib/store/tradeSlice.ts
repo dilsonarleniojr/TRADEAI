@@ -1,5 +1,6 @@
 import type { StateCreator } from "zustand";
-import type { TradeData, AISignalData, ChatMessage, BotLogEntry } from "./types";
+import type { TradeData, AISignalData, ChatMessage, BotLogEntry, StructuredLogEntry, LogChannel, LogSeverity, RiskProfile } from "./types";
+import { structuredLogger } from "../telemetry/structured-logger";
 
 // ─── Strategy Types ───────────────────────────────────────────────────────────
 export type BotStrategy =
@@ -102,6 +103,19 @@ export interface TradeSlice {
   botLogs: BotLogEntry[];
   addBotLog: (log: Omit<BotLogEntry, 'id' | 'timestamp'>) => void;
   clearBotLogs: () => void;
+
+  // Structured Telemetry Logs
+  structuredLogs: StructuredLogEntry[];
+  addStructuredLog: (entry: Omit<StructuredLogEntry, "id" | "formattedTime">) => void;
+  clearStructuredLogs: () => void;
+
+  // Ergonomia & Telemetria Desktop
+  isLogAutoScrollPaused: boolean;
+  toggleLogAutoScroll: (paused?: boolean) => void;
+  activeRiskProfile: RiskProfile;
+  setActiveRiskProfile: (profile: RiskProfile) => void;
+  isMarketDataStale: boolean;
+  setIsMarketDataStale: (stale: boolean) => void;
 
   // AI Signals
   aiSignals: AISignalData[];
@@ -351,14 +365,73 @@ export const createTradeSlice: StateCreator<TradeSlice, [], [], TradeSlice> = (s
   botLogs: [],
   addBotLog: (log) =>
     set((state) => {
+      const now = Date.now();
       const newLog: BotLogEntry = {
         ...log,
-        id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        timestamp: Date.now(),
+        id: `log-${now}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: now,
       };
-      return { botLogs: [newLog, ...state.botLogs].slice(0, 1500) };
+
+      // Mapeia automaticamente para o canal e severidade do StructuredLogger
+      let channel: LogChannel = log.channel || "SIGNALS";
+      if (!log.channel) {
+        if (log.type === "system") channel = "RISK_ENGINE";
+        else if (log.type === "buy" || log.type === "sell") channel = "BINANCE_API";
+        else if (log.message.includes("book") || log.message.includes("spread") || log.message.includes("tick")) channel = "MARKET_DATA";
+      }
+
+      let severity: LogSeverity = log.severity || "INFO";
+      if (!log.severity) {
+        if (log.type === "error") severity = "ERROR";
+        else if (log.type === "warning") severity = "WARN";
+        else if (log.type === "loss" && (log.message.includes("Stop-Loss") || log.message.includes("Circuit Breaker"))) severity = "CRITICAL";
+      }
+
+      structuredLogger.log(channel, severity, log.message, {
+        botId: log.botId,
+        botName: log.botName,
+        timestamp: now,
+      });
+
+      return {
+        botLogs: [newLog, ...state.botLogs].slice(0, 1500),
+        structuredLogs: structuredLogger.getEntries(),
+      };
     }),
-  clearBotLogs: () => set({ botLogs: [] }),
+  clearBotLogs: () => {
+    structuredLogger.clear();
+    set({ botLogs: [], structuredLogs: [] });
+  },
+
+  // Structured Telemetry Logs
+  structuredLogs: [],
+  addStructuredLog: (entry) => {
+    structuredLogger.log(entry.channel, entry.severity, entry.message, {
+      botId: entry.botId,
+      botName: entry.botName,
+      symbol: entry.symbol,
+      metadata: entry.metadata,
+      timestamp: entry.timestamp,
+    });
+    set({ structuredLogs: structuredLogger.getEntries() });
+  },
+  clearStructuredLogs: () => {
+    structuredLogger.clear();
+    set({ structuredLogs: [] });
+  },
+
+  // Ergonomia & Telemetria Desktop
+  isLogAutoScrollPaused: false,
+  toggleLogAutoScroll: (paused) =>
+    set((state) => ({
+      isLogAutoScrollPaused: paused !== undefined ? paused : !state.isLogAutoScrollPaused,
+    })),
+
+  activeRiskProfile: "conservative",
+  setActiveRiskProfile: (profile) => set({ activeRiskProfile: profile }),
+
+  isMarketDataStale: false,
+  setIsMarketDataStale: (stale) => set({ isMarketDataStale: stale }),
 
   // AI Signals
   aiSignals: [],

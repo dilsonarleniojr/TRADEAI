@@ -400,6 +400,24 @@ export interface ChatMessage {
   timestamp: string;
 }
 
+export type LogChannel = "MARKET_DATA" | "SIGNALS" | "RISK_ENGINE" | "BINANCE_API";
+export type LogSeverity = "INFO" | "WARN" | "ERROR" | "CRITICAL";
+
+export interface StructuredLogEntry {
+  id: string;
+  timestamp: number;
+  formattedTime: string; // HH:mm:ss.SSS
+  channel: LogChannel;
+  severity: LogSeverity;
+  message: string;
+  botId?: string;
+  botName?: string;
+  symbol?: string;
+  metadata?: Record<string, any>;
+}
+
+export type RiskProfile = "conservative" | "aggressive" | "monitoring";
+
 export interface BotLogEntry {
   id: string;
   timestamp: number;
@@ -407,6 +425,8 @@ export interface BotLogEntry {
   type: "info" | "buy" | "sell" | "profit" | "loss" | "system" | "warning" | "error" | "success";
   botId?: string;
   botName?: string;
+  channel?: LogChannel;
+  severity?: LogSeverity;
 }
 
 export interface PriceAlert {
