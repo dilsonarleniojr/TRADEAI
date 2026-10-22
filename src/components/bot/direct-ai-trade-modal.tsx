@@ -857,6 +857,13 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                 stopLossPct: 1.8,
               });
 
+              const stopLossY = getY(wickCalc.theoreticalStopPrice);
+              const wickY = getY(wickCalc.manipulatedWickPrice);
+              const huntTopY = Math.min(stopLossY, wickY);
+              const huntHeight = Math.max(Math.abs(stopLossY - wickY), 3);
+              const huntWidth = 22;
+              const huntX = m.x - huntWidth / 2;
+
               return (
                 <g key={`spoof-marker-${m.id}`} className="cursor-help">
                   <title>
@@ -869,6 +876,33 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                      `Quantificação: ${wickCalc.narrative}\n` +
                      `Ação: Ordem pausada por 3s evitando derrapagem severa (adverse slippage).`}
                   </title>
+
+                {/* Zona de Liquidação Evitada (Sombreado Vermelho Translúcido entre Stop e Pavio) */}
+                {wickCalc.didBreachStop && (
+                  <g className="animate-pulse">
+                    <rect
+                      x={huntX}
+                      y={huntTopY}
+                      width={huntWidth}
+                      height={huntHeight}
+                      fill="rgba(244, 63, 94, 0.22)"
+                      rx={2}
+                      stroke="#f43f5e"
+                      strokeWidth={0.8}
+                      strokeDasharray="2 2"
+                      strokeOpacity={0.85}
+                    />
+                    <line
+                      x1={huntX - 3}
+                      y1={stopLossY}
+                      x2={huntX + huntWidth + 3}
+                      y2={stopLossY}
+                      stroke="#f43f5e"
+                      strokeWidth={1}
+                      strokeDasharray="1.5 1.5"
+                    />
+                  </g>
+                )}
 
                 {/* Linha vertical tracejada verde esmeralda no exato segundo da evasão */}
                 <line

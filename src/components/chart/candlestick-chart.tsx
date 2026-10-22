@@ -773,6 +773,11 @@ export function CandlestickChart({
                   <feMergeNode in="SourceGraphic" />
                 </feMerge>
               </filter>
+              {/* Liquidation Hunt Zone Gradient */}
+              <linearGradient id="hunt-zone-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.35" />
+                <stop offset="100%" stopColor="#ef4444" stopOpacity="0.12" />
+              </linearGradient>
             </defs>
             {/* Background */}
             <rect
@@ -1437,6 +1442,13 @@ export function CandlestickChart({
                   stopLossPct: 1.8,
                 });
 
+                const stopLossY = priceToY(wickCalc.theoreticalStopPrice);
+                const wickTipY = priceToY(wickCalc.manipulatedWickPrice);
+                const huntTopY = Math.min(stopLossY, wickTipY);
+                const huntHeight = Math.max(Math.abs(stopLossY - wickTipY), 4);
+                const huntWidth = Math.max(colWidth * 1.3, 14);
+                const huntX = x - huntWidth / 2;
+
                 return (
                   <g key={`spoof-marker-${event.id}`} className="cursor-pointer">
                     {/* 1. Faixa Vertical Translúcida de Fundo Destacando o Candle */}
@@ -1452,6 +1464,48 @@ export function CandlestickChart({
                       strokeDasharray="3 3"
                       strokeOpacity={0.4}
                     />
+
+                    {/* 1.1 Zona de Liquidação Evitada (Hunt Zone): Sombreado vermelho translúcido entre o Stop Teórico e o Pavio */}
+                    {wickCalc.didBreachStop && (
+                      <g className="animate-pulse">
+                        <rect
+                          x={huntX}
+                          y={huntTopY}
+                          width={huntWidth}
+                          height={huntHeight}
+                          fill="url(#hunt-zone-gradient)"
+                          rx={3}
+                          stroke="#f43f5e"
+                          strokeWidth={1}
+                          strokeDasharray="2 2"
+                          strokeOpacity={0.85}
+                        />
+                        {/* Nível do Stop Loss Teórico */}
+                        <line
+                          x1={huntX - 4}
+                          y1={stopLossY}
+                          x2={huntX + huntWidth + 4}
+                          y2={stopLossY}
+                          stroke="#f43f5e"
+                          strokeWidth={1.5}
+                          strokeDasharray="2 2"
+                        />
+                        {/* Micro-etiqueta STOP HUNT */}
+                        <text
+                          x={huntX + huntWidth / 2}
+                          y={huntTopY + huntHeight / 2 + 2.5}
+                          textAnchor="middle"
+                          fontSize="7"
+                          fontFamily="monospace"
+                          fontWeight="bold"
+                          fill="#fecdd3"
+                          opacity={0.9}
+                          className="select-none pointer-events-none"
+                        >
+                          STOP HUNT
+                        </text>
+                      </g>
+                    )}
 
                     {/* 2. Destaque Especial no Pavio / Absorção da Vela */}
                     <line
