@@ -22,6 +22,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useCryptoStore } from "@/lib/store";
 import { formatPrice } from "@/lib/format";
+import { calculateWickPenetration } from "@/lib/order-book-imbalance";
 import {
   Zap,
   Clock,
@@ -665,7 +666,8 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
     currentPrice: number = 0,
     vwapPrice?: number,
     spoofingEvents?: { timestamp: number; price?: number; dropPct?: number; side?: 'BID' | 'ASK' | 'NONE' | 'BUY' | 'SELL' }[],
-    spoofingEvasionsCount?: number
+    spoofingEvasionsCount?: number,
+    notionalUsd?: number
   ) => {
     const points = priceHistory && priceHistory.length >= 2
       ? priceHistory
