@@ -1,6 +1,34 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Modernização Integral de UI/UX HFT Desktop, Order Book com Heatmap e Bot Cockpit",
+    "summary": "1) Tokens de Estilo & Tipografia Tabular (globals.css): Fundo Dark Pro Slate balanceado (#0c0e14/#0f1622), tipografia tabular (.tabular-nums) em todas as cotações, volumes e PnL eliminando micro-jitter horizontal de largura, e animações de micro-flash de tick (@keyframes flash-bid-tick e flash-ask-tick) com will-change: background-color isoladas para evitar repinturas de DOM vizinho; 2) Order Book L2 com Heatmap (order-book.tsx): Barras horizontais de profundidade de mercado translúcidas proporcionais ao volume acumulado, ancoragem fixa do Mid Price e Spread central, detecção atômica de mudança de tick via useRef e clique tátil pré-trade para compra/venda instantânea; 3) Cockpit da Frota & Risco (bot-cockpit.tsx): Strip quantitativo de status (Ativos, Em Posição, Buscando, Off), somatório de uPnL e PnL Realizado com tipografia tabular, gauge dinâmico do Circuit Breaker diário (teto de 3.0% do NAV com alerta aos 75% e trava aos 100%) e botões de emergência com confirmação tátil em 2 etapas (Kill-Switch Frota e Panic Close a Mercado); 4) Barra de Status Global (global-status-bar.tsx): Telemetria de latência RTT em ms com categorização verde/amarela/vermelha, sincronização de relógio contra a Binance (Δt clock drift) e atalho rápido ao Kill-Switch; 5) Validação: 5 novos testes unitários dedicados em desktop-hft-ui.test.ts (100% aprovados) e 0 erros de compilação no TypeScript (tsc --noEmit).",
+    "tags": [
+      "desktop-hft-ui",
+      "order-book-heatmap",
+      "tabular-numerics",
+      "micro-tick-flash",
+      "bot-cockpit",
+      "daily-circuit-breaker",
+      "two-step-emergency-actions",
+      "global-status-bar",
+      "latency-telemetry",
+      "clock-drift-sync"
+    ],
+    "details": {
+      "globalsCssPath": "src/app/globals.css",
+      "orderBookComponentPath": "src/components/chart/order-book.tsx",
+      "botCockpitComponentPath": "src/components/bot/bot-cockpit.tsx",
+      "globalStatusBarPath": "src/components/header/global-status-bar.tsx",
+      "testSuitePath": "tests/unit/desktop-hft-ui.test.ts",
+      "totalPassingTests": 5,
+      "totalAssertions": 22
+    },
+    "id": "mem-1792482600000-desktop-hft-ui-modernization",
+    "timestamp": "2026-10-22T21:58:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Calibração de Reversão por Volume Delta (Order Flow Confluence) no Mini-Popover",
     "summary": "1) Módulo Matemático (order-book-imbalance.ts): Criadas interfaces OrderFlowConfluence e ReversalDriverType ('PASSIVE_LIMIT_ABSORPTION' | 'AGGRESSIVE_MARKET_SWEEP' | 'BALANCED_FLOW'). Implementada a calibração da razão de delta de volume agressivo no pé do pavio (aggressiveDeltaRatio, volumeDeltaPct, buyPressurePct, sellPressurePct), informando explicitamente se a reversão rápida decorreu de absorção passiva de ordens limitadas/icebergs no suporte ou de disparo agressivo a mercado (short squeeze instantâneo varrendo o livro); 2) Mini-Popover Enriquecido (candlestick-chart.tsx): Adicionado card institucional de Order Flow com banner temático do Driver (ícone Flame/Zap vs Shield), badge de razão de delta em tempo real, barra visual split de Taker Buy vs Taker Sell e diagnóstico de microestrutura; 3) Tooltips SVG: Atualizados os elementos <title> em candlestick-chart.tsx e direct-ai-trade-modal.tsx para refletir a razão de agressão e o driver da reversão; 4) Validação: 27 testes unitários passando em bun test (141 asserções) com 0 erros de compilação no TypeScript (tsc --noEmit).",
     "tags": [
