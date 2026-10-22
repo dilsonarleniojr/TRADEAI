@@ -1211,3 +1211,37 @@
   background: oklch(0.5 0.01 260);
 }
 
+/* ========================================================
+   HFT DATA-DENSE & TABULAR NUMERICS
+   ======================================================== */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.015em;
+}
+
+@keyframes flash-bid-tick {
+  0% { background-color: rgba(16, 185, 129, 0.45); }
+  100% { background-color: transparent; }
+}
+
+@keyframes flash-ask-tick {
+  0% { background-color: rgba(244, 63, 94, 0.45); }
+  100% { background-color: transparent; }
+}
+
+.flash-bid {
+  animation: flash-bid-tick 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: background-color;
+}
+
+.flash-ask {
+  animation: flash-ask-tick 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: background-color;
+}
+
+.hft-panel {
+  background: #0f1622;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+

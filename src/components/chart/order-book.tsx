@@ -95,16 +95,20 @@ export function OrderBook({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [flashedLevels, setFlashedLevels] = useState<Record<number, "bid" | "ask">>({});
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previousSnapshotRef = useRef<DepthSnapshot | null>(null);
+  const prevVolumesRef = useRef<Map<number, number>>(new Map());
   const spoofingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Expande a profundidade para 22 níveis no modo analítico exclusivo L2
-  const levels = isCompact ? 8 : (mode === "book" ? 22 : 15);
+  const levels = isCompact ? 8 : (mode === "book" ? 22 : 14);
 
   // Reseta histórico de snapshots ao trocar de símbolo
   useEffect(() => {
     previousSnapshotRef.current = null;
+    prevVolumesRef.current.clear();
+    setFlashedLevels({});
     onSpoofingAlert?.(null);
   }, [selectedSymbol, onSpoofingAlert]);
 
@@ -123,6 +127,33 @@ export function OrderBook({
         () => fetchRealOrderBook(selectedSymbol, levels),
         CACHE_TTL.ORDER_BOOK
       );
+
+      // Micro-tick flash detection: compare volume shifts
+      const newFlashes: Record<number, "bid" | "ask"> = {};
+      const nextVolumes = new Map<number, number>();
+
+      data.bids.forEach((b) => {
+        nextVolumes.set(b.price, b.volume);
+        const prev = prevVolumesRef.current.get(b.price);
+        if (prev !== undefined && prev !== b.volume) {
+          newFlashes[b.price] = "bid";
+        }
+      });
+
+      data.asks.forEach((a) => {
+        nextVolumes.set(a.price, a.volume);
+        const prev = prevVolumesRef.current.get(a.price);
+        if (prev !== undefined && prev !== a.volume) {
+          newFlashes[a.price] = "ask";
+        }
+      });
+
+      prevVolumesRef.current = nextVolumes;
+      if (Object.keys(newFlashes).length > 0) {
+        setFlashedLevels(newFlashes);
+        setTimeout(() => setFlashedLevels({}), 450);
+      }
+
       setOrderBook(data);
       onDepthData?.({ bids: data.bids, asks: data.asks });
 
@@ -171,7 +202,7 @@ export function OrderBook({
 
   if (error && !orderBook) {
     return (
-      <Card className="bg-card/50 border-border backdrop-blur-sm">
+      <Card className="bg-[#0f1622]/90 border-white/[0.08] backdrop-blur-md shadow-lg">
         <CardContent className="p-6 text-center">
           <div className="w-10 h-10 rounded-xl bg-crypto-red/10 flex items-center justify-center mx-auto mb-3">
             <BookOpen className="w-5 h-5 text-crypto-red" />
@@ -181,7 +212,7 @@ export function OrderBook({
             variant="ghost"
             size="sm"
             onClick={refreshOrderBook}
-            className="mt-2 text-xs text-crypto-cyan"
+            className="mt-2 text-xs text-crypto-cyan hover:bg-crypto-cyan/10"
           >
             Tentar novamente
           </Button>
@@ -192,12 +223,12 @@ export function OrderBook({
 
   if (!orderBook) {
     return (
-      <Card className="bg-card/50 border-border backdrop-blur-sm">
+      <Card className="bg-[#0f1622]/90 border-white/[0.08] backdrop-blur-md shadow-lg">
         <CardContent className="p-6 text-center">
           <div className="w-10 h-10 rounded-xl bg-crypto-cyan/10 flex items-center justify-center mx-auto mb-3">
             <BookOpen className="w-5 h-5 text-crypto-cyan" />
           </div>
-          <p className="text-xs text-muted-foreground">Carregando livro de ofertas...</p>
+          <p className="text-xs text-muted-foreground">Carregando livro de ofertas L2...</p>
         </CardContent>
       </Card>
     );
@@ -205,7 +236,8 @@ export function OrderBook({
 
   const maxCumulative = Math.max(
     orderBook.bids[orderBook.bids.length - 1]?.cumulative ?? 0,
-    orderBook.asks[orderBook.asks.length - 1]?.cumulative ?? 0
+    orderBook.asks[orderBook.asks.length - 1]?.cumulative ?? 0,
+    0.0001
   );
 
   const totalVolume = orderBook.totalBidVolume + orderBook.totalAskVolume;
@@ -213,95 +245,107 @@ export function OrderBook({
   const askPct = totalVolume > 0 ? (orderBook.totalAskVolume / totalVolume) * 100 : 50;
 
   return (
-    <Card className="bg-card/50 border-border backdrop-blur-sm">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium flex items-center justify-between">
+    <Card className="bg-[#0f1622]/95 border-white/[0.08] backdrop-blur-md shadow-xl overflow-hidden rounded-xl">
+      <CardHeader className="py-2.5 px-3 border-b border-white/[0.06] bg-slate-900/40">
+        <CardTitle className="text-xs font-semibold flex items-center justify-between text-slate-200">
           <div className="flex items-center gap-2">
-            <BookOpen className="w-4 h-4 text-crypto-cyan" />
-            Livro de Ofertas
-            <span className="text-[10px] text-muted-foreground font-normal">
+            <BookOpen className="w-3.5 h-3.5 text-crypto-cyan" />
+            <span className="tracking-wide">Livro de Ofertas L2</span>
+            <span className="text-[10px] text-slate-400 font-mono font-normal">
               {selectedSymbol.replace("USDT", "/USDT")}
             </span>
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] bg-crypto-green/10 text-crypto-green border border-crypto-green/20">
-              Dados Reais
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[8px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+              TEMPO REAL
             </span>
           </div>
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0"
+              className="h-5 w-5 p-0 text-slate-400 hover:text-slate-200 hover:bg-white/[0.06]"
               onClick={() => setIsCompact(!isCompact)}
               aria-label={isCompact ? "Expandir" : "Compactar"}
             >
               {isCompact ? (
-                <Maximize2 className="w-3 h-3 text-muted-foreground" />
+                <Maximize2 className="w-3 h-3" />
               ) : (
-                <Minimize2 className="w-3 h-3 text-muted-foreground" />
+                <Minimize2 className="w-3 h-3" />
               )}
             </Button>
             <motion.div
               animate={{ rotate: isRefreshing ? 360 : 0 }}
               transition={{ duration: 0.5, ease: "easeInOut" }}
+              className="p-1"
             >
-              <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
+              <RefreshCw className="w-3 h-3 text-slate-400" />
             </motion.div>
           </div>
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-3 pt-0">
-        {/* Spread Info */}
-        <div className="flex items-center justify-between mb-3 px-1 py-1.5 rounded-md bg-gradient-to-r from-crypto-green/8 via-crypto-cyan/8 to-crypto-red/8 border border-border/30">
-          <div className="text-[10px] text-muted-foreground">
-            Spread:{" "}
-            <span className="text-foreground font-medium">
+
+      <CardContent className="p-2.5 pt-2">
+        {/* Spread Info Bar */}
+        <div className="flex items-center justify-between mb-2 px-2 py-1 rounded bg-slate-950/60 border border-white/[0.05] text-[10px] tabular-nums">
+          <div className="text-slate-400 flex items-center gap-1">
+            <span className="text-slate-500 uppercase tracking-wider text-[9px]">Spread:</span>
+            <span className="text-slate-200 font-mono font-semibold">
               ${formatBookPrice(orderBook.spread)}
             </span>
-            <span className="text-muted-foreground ml-1">
+            <span className="text-slate-400 font-mono">
               ({orderBook.spreadPercent.toFixed(3)}%)
             </span>
           </div>
-          <div className="flex items-center gap-3 text-[10px]">
-            <span className="text-crypto-green">
-              Compra: {formatBookVolume(orderBook.totalBidVolume)}
+          <div className="flex items-center gap-3 font-mono text-[9px]">
+            <span className="text-emerald-400 flex items-center gap-1">
+              <span className="w-1 h-1 rounded-full bg-emerald-500" />
+              Bid: {formatBookVolume(orderBook.totalBidVolume)}
             </span>
-            <span className="text-crypto-red">
-              Venda: {formatBookVolume(orderBook.totalAskVolume)}
+            <span className="text-rose-400 flex items-center gap-1">
+              <span className="w-1 h-1 rounded-full bg-rose-500" />
+              Ask: {formatBookVolume(orderBook.totalAskVolume)}
             </span>
           </div>
         </div>
 
         {/* Column Headers */}
-        <div className="grid grid-cols-3 gap-1 text-[9px] text-muted-foreground uppercase tracking-wider mb-1 px-1">
-          <span>Preço</span>
-          <span className="text-right">Qtd</span>
-          <span className="text-right">Total</span>
+        <div className="grid grid-cols-3 gap-1 text-[9px] font-semibold text-slate-400 uppercase tracking-wider mb-1 px-1.5 py-0.5 border-b border-white/[0.04]">
+          <span>Preço (USDT)</span>
+          <span className="text-right">Tamanho</span>
+          <span className="text-right">Acumulado</span>
         </div>
 
-        {/* Asks (sells) - displayed top-to-bottom, closest to center at bottom */}
-        <div className="space-y-0.5 mb-1">
+        {/* Asks (sells) - reversed so highest ask is on top and lowest ask is nearest to center */}
+        <div className="space-y-[1px] mb-1">
           {[...orderBook.asks].reverse().map((level) => {
-            const barWidth = maxCumulative > 0 ? (level.cumulative / maxCumulative) * 100 : 0;
+            const barWidth = Math.min(100, Math.max(1, (level.cumulative / maxCumulative) * 100));
+            const isFlashed = flashedLevels[level.price] === "ask";
+
             return (
               <div
                 key={`ask-${level.price}`}
-                className="relative grid grid-cols-3 gap-1 px-1 py-0.5 rounded-sm text-[11px] font-mono hover:bg-crypto-red/5 cursor-default transition-colors duration-150"
+                onClick={() => onExecuteMarketOrder?.("BUY")}
+                title={`Clique para preencher compra no preço $${formatBookPrice(level.price)}`}
+                className={`relative grid grid-cols-3 gap-1 px-1.5 py-[2px] rounded text-[11px] font-mono tabular-nums cursor-pointer transition-colors select-none group hover:bg-rose-500/10 ${
+                  isFlashed ? "flash-ask" : ""
+                }`}
               >
-                {/* Background bar */}
+                {/* Horizontal Depth Heatmap Bar */}
                 <div
-                  className="absolute inset-y-0 right-0 rounded-sm transition-all duration-300 pointer-events-none"
+                  className="absolute inset-y-0 right-0 rounded pointer-events-none transition-[width] duration-200 ease-out"
                   style={{
                     width: `${barWidth}%`,
-                    background: "linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.08))",
+                    background: "linear-gradient(90deg, transparent, rgba(244, 63, 94, 0.16))",
+                    borderLeft: "1px solid rgba(244, 63, 94, 0.35)",
                   }}
                 />
-                <span className="relative text-crypto-red font-medium">
+                <span className="relative text-rose-400 font-semibold group-hover:text-rose-300">
                   {formatBookPrice(level.price)}
                 </span>
-                <span className="relative text-right text-muted-foreground">
+                <span className="relative text-right text-slate-300 group-hover:text-white">
                   {formatBookVolume(level.volume)}
                 </span>
-                <span className="relative text-right text-muted-foreground">
+                <span className="relative text-right text-slate-400 group-hover:text-slate-200">
                   {formatBookVolume(level.cumulative)}
                 </span>
               </div>
@@ -309,44 +353,55 @@ export function OrderBook({
           })}
         </div>
 
-        {/* Current Price Divider */}
-        <div
-          className="flex items-center gap-2 py-1.5 px-1 my-1 bg-crypto-cyan/5 border-y border-crypto-cyan/20 rounded-sm mid-price-pulse"
-        >
-          <span className="text-sm font-bold text-crypto-cyan">
-            ${currentPrice > 0 ? formatBookPrice(currentPrice) : "—"}
-          </span>
-          <span className="text-[9px] text-muted-foreground">Preço Atual</span>
-          <span className="ml-auto flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-crypto-cyan animate-pulse" />
-            <span className="text-[8px] text-crypto-cyan font-medium">AO VIVO</span>
-          </span>
+        {/* Current Mid-Price Anchor */}
+        <div className="flex items-center justify-between py-1 px-2 my-1.5 bg-cyan-950/40 border-y border-cyan-500/30 rounded text-xs tabular-nums select-none">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold font-mono text-cyan-300 tracking-tight">
+              ${currentPrice > 0 ? formatBookPrice(currentPrice) : "—"}
+            </span>
+            <span className="text-[9px] uppercase tracking-wider text-cyan-400/80 font-medium">
+              Último Preço
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+            <span className="text-[8px] font-mono text-cyan-400 uppercase tracking-widest font-semibold">
+              SPREAD {orderBook.spreadPercent.toFixed(3)}%
+            </span>
+          </div>
         </div>
 
         {/* Bids (buys) - closest to center at top */}
-        <div className="space-y-0.5 mt-1">
+        <div className="space-y-[1px] mt-1">
           {orderBook.bids.map((level) => {
-            const barWidth = maxCumulative > 0 ? (level.cumulative / maxCumulative) * 100 : 0;
+            const barWidth = Math.min(100, Math.max(1, (level.cumulative / maxCumulative) * 100));
+            const isFlashed = flashedLevels[level.price] === "bid";
+
             return (
               <div
                 key={`bid-${level.price}`}
-                className="relative grid grid-cols-3 gap-1 px-1 py-0.5 rounded-sm text-[11px] font-mono hover:bg-crypto-green/5 cursor-default transition-colors duration-150"
+                onClick={() => onExecuteMarketOrder?.("SELL")}
+                title={`Clique para preencher venda no preço $${formatBookPrice(level.price)}`}
+                className={`relative grid grid-cols-3 gap-1 px-1.5 py-[2px] rounded text-[11px] font-mono tabular-nums cursor-pointer transition-colors select-none group hover:bg-emerald-500/10 ${
+                  isFlashed ? "flash-bid" : ""
+                }`}
               >
-                {/* Background bar */}
+                {/* Horizontal Depth Heatmap Bar */}
                 <div
-                  className="absolute inset-y-0 right-0 rounded-sm transition-all duration-300 pointer-events-none"
+                  className="absolute inset-y-0 right-0 rounded pointer-events-none transition-[width] duration-200 ease-out"
                   style={{
                     width: `${barWidth}%`,
-                    background: "linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.08))",
+                    background: "linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.16))",
+                    borderLeft: "1px solid rgba(16, 185, 129, 0.35)",
                   }}
                 />
-                <span className="relative text-crypto-green font-medium">
+                <span className="relative text-emerald-400 font-semibold group-hover:text-emerald-300">
                   {formatBookPrice(level.price)}
                 </span>
-                <span className="relative text-right text-muted-foreground">
+                <span className="relative text-right text-slate-300 group-hover:text-white">
                   {formatBookVolume(level.volume)}
                 </span>
-                <span className="relative text-right text-muted-foreground">
+                <span className="relative text-right text-slate-400 group-hover:text-slate-200">
                   {formatBookVolume(level.cumulative)}
                 </span>
               </div>
@@ -354,56 +409,31 @@ export function OrderBook({
           })}
         </div>
 
-        {/* Depth Visual Bar */}
-        <div className="mt-3 px-1">
-          <div className="flex items-center gap-1 text-[9px] text-muted-foreground mb-1">
-            <span>Profundidade</span>
-            <span className="ml-auto">
-              Pressão Compra vs Venda
+        {/* Depth Pressure Gauge */}
+        <div className="mt-2.5 pt-2 border-t border-white/[0.05] px-1">
+          <div className="flex items-center justify-between text-[9px] text-slate-400 font-medium mb-1">
+            <span>Pressão do Book</span>
+            <span className="font-mono tabular-nums text-slate-300">
+              {bidPct.toFixed(1)}% vs {askPct.toFixed(1)}%
             </span>
           </div>
-          <div className="h-2.5 rounded-full overflow-hidden flex bg-secondary/30 relative">
-            <motion.div
-              className="h-full rounded-l-full relative"
-              style={{
-                background: "linear-gradient(90deg, #10b981, #06b6d4)",
-              }}
-              animate={{
-                width: `${bidPct}%`,
-              }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse" />
-            </motion.div>
-            <motion.div
-              className="h-full rounded-r-full relative"
-              style={{
-                background: "linear-gradient(90deg, #06b6d4, #ef4444)",
-              }}
-              animate={{
-                width: `${askPct}%`,
-              }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse" />
-            </motion.div>
+          <div className="h-1.5 rounded-full overflow-hidden flex bg-slate-800 relative">
+            <div
+              className="h-full bg-emerald-500 transition-all duration-300 ease-out"
+              style={{ width: `${bidPct}%` }}
+            />
+            <div
+              className="h-full bg-rose-500 transition-all duration-300 ease-out"
+              style={{ width: `${askPct}%` }}
+            />
           </div>
-          <div className="flex justify-between text-[9px] mt-0.5">
-            <span className="text-crypto-green">
-              {bidPct.toFixed(1)}% Compra
-            </span>
-            <span className="text-crypto-red">
-              {askPct.toFixed(1)}% Venda
-            </span>
+          <div className="flex justify-between text-[8px] font-mono mt-0.5 text-slate-400">
+            <span className="text-emerald-400 font-semibold">COMPRA</span>
+            <span className="text-rose-400 font-semibold">VENDA</span>
           </div>
-        </div>
-
-        {/* Auto-refresh indicator */}
-        <div className="mt-2 flex items-center justify-center gap-1.5 text-[9px] text-muted-foreground">
-          <div className="w-1.5 h-1.5 rounded-full bg-crypto-green animate-pulse" />
-          Dados reais da Binance • Atualizando a cada 3s
         </div>
       </CardContent>
     </Card>
   );
 }
+

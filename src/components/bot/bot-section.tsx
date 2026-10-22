@@ -19,6 +19,7 @@ import { NotificationSettingsDialog } from "./notification-settings-dialog";
 import { OrphanOrdersDialog } from "./orphan-orders-dialog";
 import { BotBacktestDialog } from "./bot-backtest-dialog";
 import { BotRiskCockpit } from "./bot-risk-cockpit";
+import { BotCockpit } from "./bot-cockpit";
 import { BinanceConnection } from "./binance-connection";
 import { EnginePanel } from "./engine-panel";
 import { BotReadinessBar } from "./bot-readiness";
@@ -668,6 +669,9 @@ export function BotSection() {
             </Button>
           </div>
         </div>
+
+        {/* Cockpit de Alta Densidade e Gestão de Risco HFT */}
+        <BotCockpit />
 
         {/* Prontidão: avisa quando cotações, candles e saldo estão prontos */}
         <BotReadinessBar />

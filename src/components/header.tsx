@@ -10,6 +10,7 @@ import { useSyncExternalStore, useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { CryptoSelector } from "./header/crypto-selector";
 import { GlobalCommandSearch } from "./header/global-command-search";
+import { GlobalStatusBar } from "./header/global-status-bar";
 import { ApiSettingsDialog } from "./header/api-settings-dialog";
 import { AiSettingsDialog } from "./header/ai-settings-dialog";
 import { DirectAiTradeModal } from "@/components/bot/direct-ai-trade-modal";
@@ -593,6 +594,9 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
           </Button>
         </div>
       </div>
+
+      {/* Global HFT Telemetry and Status Bar */}
+      {mounted && <GlobalStatusBar />}
 
       {isRealMoney && (
         <div
