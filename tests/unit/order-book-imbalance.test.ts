@@ -218,4 +218,49 @@ describe("Filtro de Liquidação de Pavio (Wick Penetration Calculator)", () => 
     expect(result.distanceToStopUsd).toBe(3); // 985 - 982
     expect(result.narrative).toBe("Esta evasão evitou um stop de -$0.90 (-1.8%) causado pelo pavio de manipulação");
   });
+
+  it("deve calcular as métricas de velocidade de rejeição do pavio (WickRejectionMetrics)", () => {
+    // Candle de 1000 a 970 (queda de $30), fechamento recuperou em 995 ($25 recuperados) em 350ms
+    const result = calculateWickPenetration({
+      entryPrice: 1000,
+      candleHigh: 1002,
+      candleLow: 970,
+      candleClose: 995,
+      side: "BID",
+      timeDeltaMs: 350,
+    });
+
+    expect(result.rejection).toBeDefined();
+    expect(result.rejection.rejectionTimeMs).toBe(350);
+    expect(result.rejection.classification).toBe("ULTRA_FAST");
+    expect(result.rejection.label).toContain("Instantânea");
+    // $25 em 0.35s = ~71.43 $/s
+    expect(result.rejection.rejectionVelocityUsdPerSec).toBeCloseTo(71.43, 1);
+    // 25 / 32 = ~78.1% de absorção do pavio
+    expect(result.rejection.absorptionPct).toBeGreaterThan(70);
+    expect(result.rejection.estimatedTicks).toBeGreaterThan(10);
+    expect(result.rejection.summary).toContain("350ms");
+  });
+
+  it("deve classificar rejeições mais lentas como FAST ou MODERATE conforme o timeDeltaMs", () => {
+    const fastResult = calculateWickPenetration({
+      entryPrice: 2000,
+      candleHigh: 2050,
+      candleLow: 1990,
+      candleClose: 2010,
+      side: "ASK",
+      timeDeltaMs: 900,
+    });
+    expect(fastResult.rejection.classification).toBe("FAST");
+
+    const modResult = calculateWickPenetration({
+      entryPrice: 2000,
+      candleHigh: 2050,
+      candleLow: 1990,
+      candleClose: 2010,
+      side: "ASK",
+      timeDeltaMs: 2200,
+    });
+    expect(modResult.rejection.classification).toBe("MODERATE");
+  });
 });

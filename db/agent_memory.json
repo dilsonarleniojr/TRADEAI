@@ -1,6 +1,32 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Velocidade de Rejeição do Pavio (Wick Rejection Velocity) & Mini-Popover Interativo em STOP HUNT",
+    "summary": "1) Módulo Matemático (order-book-imbalance.ts): Definida a interface WickRejectionMetrics e estendida a função calculateWickPenetration(...) para calcular a velocidade de absorção do pavio em $/s, tempo de recuperação em ms, percentual de absorção do pavio até o fechamento (absorptionPct), estimativa de ticks institucionais consumidos e classificação de velocidade (ULTRA_FAST, FAST, MODERATE); 2) Mini-Popover Interativo no Gráfico Principal (candlestick-chart.tsx): A etiqueta SVG 'STOP HUNT' agora possui gatilhos de clique e hover (onClick e onMouseEnter), abrindo um mini-popover flutuante com framer-motion em estilo glassmorphism institucional. Exibe badge de classificação, velocidade em $/s com barra de progresso neon, tempo de absorção em ms, percentual absorvido e contagem estimada de ticks, com clamping de coordenadas para evitar cortes de tela e botão de fechamento [X]; 3) Fallback Acessível em SVG <title>: Injetada a síntese textual executiva de rejeição no tooltip SVG <title> das etiquetas STOP HUNT tanto no gráfico principal quanto no mini-sparkline intradiário (direct-ai-trade-modal.tsx); 4) Validação: 23 testes unitários passando em bun test (115 asserções) e 0 erros de compilação no TypeScript (tsc --noEmit).",
+    "tags": [
+      "wick-rejection-velocity",
+      "mini-popover",
+      "stop-hunt-tag",
+      "order-book-imbalance",
+      "candlestick-chart",
+      "institutional-absorption",
+      "framer-motion",
+      "microstructure-metrics"
+    ],
+    "details": {
+      "utilityPath": "src/lib/order-book-imbalance.ts",
+      "chartComponentPath": "src/components/chart/candlestick-chart.tsx",
+      "modalComponentPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "storeTypesPath": "src/lib/store/types.ts",
+      "testSuitePath": "tests/unit/order-book-imbalance.test.ts",
+      "totalPassingTests": 23,
+      "totalAssertions": 115
+    },
+    "id": "mem-1792481400000-wick-rejection-popover",
+    "timestamp": "2026-10-22T21:28:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Filtro de Liquidação de Pavio (Wick Penetration Calculator) & Zona de Liquidação Evitada (Hunt Zone)",
     "summary": "1) Módulo Matemático (order-book-imbalance.ts): Criada função calculateWickPenetration(...) e interfaces WickPenetrationParams e WickPenetrationResult. Calcula a distância exata em dólares e percentual entre a mínima (para BID spoofing / compra) ou máxima (para ASK spoofing / venda) do pavio do candle manipulado e a posição teórica do Stop Loss da operação (default 1.8% alinhado aos trading guardrails institucionais ou stopLossPrice da sessão); 2) Quantificação Financeira Explícita ao Trader: Gera a narrativa institucional estrita: 'Esta evasão evitou um stop de -$X.XX (-1.8%) causado pelo pavio de manipulação', calculando savedLossUsd a partir do tamanho nocional da operação; 3) Zona de Liquidação Evitada (Hunt Zone Sombreada): Quando didBreachStop === true, plota um sombreado de área translúcida em vermelho claro pulsante ('url(#hunt-zone-gradient)' e rgba(244, 63, 94, 0.22)) com borda tracejada (#f43f5e) entre o nível do Stop Loss teórico e a ponta do pavio do candle, acompanhado de micro-etiqueta 'STOP HUNT', destacando graficamente o hunt de liquidez neutralizado; 4) Tooltips SVG Atualizados: Injetada a quantificação e auditoria de pavio no tooltip nativo <title> do escudo no gráfico principal (candlestick-chart.tsx) e no mini-sparkline intradiário (direct-ai-trade-modal.tsx); 5) Testes e Verificação: 21 testes unitários passando em bun test (105 asserções) cobrindo BID/ASK spoofing, violação de stop, aproximação e customStopLossPrice, com 0 erros no TypeScript.",
     "tags": [

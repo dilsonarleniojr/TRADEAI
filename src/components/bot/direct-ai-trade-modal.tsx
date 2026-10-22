@@ -879,7 +879,8 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
 
                 {/* Zona de Liquidação Evitada (Sombreado Vermelho Translúcido entre Stop e Pavio) */}
                 {wickCalc.didBreachStop && (
-                  <g className="animate-pulse">
+                  <g className="animate-pulse cursor-help">
+                    <title>{`⚡ VELOCIDADE DE REJEIÇÃO DO PAVIO (STOP HUNT)\nClassificação: ${wickCalc.rejection.label}\nTempo: ${wickCalc.rejection.rejectionTimeMs}ms | Velocidade: $${wickCalc.rejection.rejectionVelocityUsdPerSec}/s\nAbsorção: ${wickCalc.rejection.absorptionPct}% (~${wickCalc.rejection.estimatedTicks} ticks)\n${wickCalc.rejection.summary}`}</title>
                     <rect
                       x={huntX}
                       y={huntTopY}

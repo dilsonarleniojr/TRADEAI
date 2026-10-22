@@ -476,6 +476,7 @@ export interface SpoofingChartMarker {
   timestamp: number;
   price?: number;
   dropPct: number;
+  timeDeltaMs?: number;
   side?: 'BID' | 'ASK' | 'NONE' | 'BUY' | 'SELL';
   severity?: 'WARNING' | 'CRITICAL';
   actionTaken?: string;

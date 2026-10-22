@@ -3,11 +3,11 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useCryptoStore, type SpoofingChartMarker } from '@/lib/store';
 import { formatPrice, formatVolume, formatTime } from '@/lib/format';
-import { calculateWickPenetration } from '@/lib/order-book-imbalance';
+import { calculateWickPenetration, type WickRejectionMetrics } from '@/lib/order-book-imbalance';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Zap, X, Activity, Sparkles, Gauge, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export type DrawingTool = 'crosshair' | 'trendline' | 'horizontal';
@@ -222,6 +222,20 @@ export function CandlestickChart({
   // Drawing state
   const [pendingDrawPoint, setPendingDrawPoint] = useState<{ time: number; price: number } | null>(null);
   const [drawMousePos, setDrawMousePos] = useState<{ x: number; y: number } | null>(null);
+
+  // Stop Hunt Popover state (Velocidade de Rejeição do Pavio)
+  const [activeStopHuntPopover, setActiveStopHuntPopover] = useState<{
+    id: string;
+    x: number;
+    y: number;
+    rejection: WickRejectionMetrics;
+    candle: ProcessedCandle;
+    eventPrice: number;
+    stopLossPrice: number;
+    savedLossUsd: number;
+    narrative: string;
+    side: 'BID' | 'ASK';
+  } | null>(null);
 
   // Resize observer
   useEffect(() => {
@@ -1438,8 +1452,12 @@ export function CandlestickChart({
                   entryPrice: eventRefPrice,
                   candleHigh: candle.high,
                   candleLow: candle.low,
+                  candleOpen: candle.open,
+                  candleClose: candle.close,
+                  candleVolume: candle.volume,
                   side: event.side,
                   stopLossPct: 1.8,
+                  timeDeltaMs: event.timeDeltaMs,
                 });
 
                 const stopLossY = priceToY(wickCalc.theoreticalStopPrice);
@@ -1467,7 +1485,43 @@ export function CandlestickChart({
 
                     {/* 1.1 Zona de Liquidação Evitada (Hunt Zone): Sombreado vermelho translúcido entre o Stop Teórico e o Pavio */}
                     {wickCalc.didBreachStop && (
-                      <g className="animate-pulse">
+                      <g
+                        className="cursor-pointer transition-transform hover:scale-105"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveStopHuntPopover((curr) =>
+                            curr?.id === event.id
+                              ? null
+                              : {
+                                  id: event.id,
+                                  x: huntX + huntWidth / 2,
+                                  y: huntTopY,
+                                  rejection: wickCalc.rejection,
+                                  candle,
+                                  eventPrice: eventRefPrice,
+                                  stopLossPrice: wickCalc.theoreticalStopPrice,
+                                  savedLossUsd: wickCalc.savedLossUsd,
+                                  narrative: wickCalc.narrative,
+                                  side: wickCalc.side,
+                                }
+                          );
+                        }}
+                        onMouseEnter={() => {
+                          setActiveStopHuntPopover({
+                            id: event.id,
+                            x: huntX + huntWidth / 2,
+                            y: huntTopY,
+                            rejection: wickCalc.rejection,
+                            candle,
+                            eventPrice: eventRefPrice,
+                            stopLossPrice: wickCalc.theoreticalStopPrice,
+                            savedLossUsd: wickCalc.savedLossUsd,
+                            narrative: wickCalc.narrative,
+                            side: wickCalc.side,
+                          });
+                        }}
+                      >
+                        <title>{`⚡ VELOCIDADE DE REJEIÇÃO DO PAVIO (STOP HUNT)\nClassificação: ${wickCalc.rejection.label}\nTempo de Rejeição: ${wickCalc.rejection.rejectionTimeMs}ms\nVelocidade de Absorção: $${wickCalc.rejection.rejectionVelocityUsdPerSec}/s\nAbsorção do Pavio: ${wickCalc.rejection.absorptionPct}%\nTicks Absorvidos: ~${wickCalc.rejection.estimatedTicks} ticks\n\n${wickCalc.rejection.summary}\n\nClique para fixar o mini-popover de telemetria.`}</title>
                         <rect
                           x={huntX}
                           y={huntTopY}
@@ -1490,7 +1544,18 @@ export function CandlestickChart({
                           strokeWidth={1.5}
                           strokeDasharray="2 2"
                         />
-                        {/* Micro-etiqueta STOP HUNT */}
+                        {/* Micro-etiqueta STOP HUNT com fundo sólido para clique */}
+                        <rect
+                          x={huntX + huntWidth / 2 - 25}
+                          y={huntTopY + huntHeight / 2 - 6}
+                          width={50}
+                          height={12}
+                          rx={2.5}
+                          fill="#881337"
+                          fillOpacity={0.9}
+                          stroke="#f43f5e"
+                          strokeWidth={0.8}
+                        />
                         <text
                           x={huntX + huntWidth / 2}
                           y={huntTopY + huntHeight / 2 + 2.5}
@@ -1499,7 +1564,7 @@ export function CandlestickChart({
                           fontFamily="monospace"
                           fontWeight="bold"
                           fill="#fecdd3"
-                          opacity={0.9}
+                          opacity={0.95}
                           className="select-none pointer-events-none"
                         >
                           STOP HUNT
@@ -1858,6 +1923,107 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
               />
             )}
           </svg>
+
+          {/* Mini-Popover Flutuante: Velocidade de Rejeição do Pavio (Stop Hunt) */}
+          <AnimatePresence>
+            {activeStopHuntPopover && (() => {
+              const popWidth = 280;
+              const popHeight = 180;
+              const popLeft = Math.max(12, Math.min(dimensions.width - popWidth - 12, activeStopHuntPopover.x - popWidth / 2));
+              const popTop = Math.max(12, activeStopHuntPopover.y - popHeight - 12);
+              const rej = activeStopHuntPopover.rejection;
+
+              return (
+                <motion.div
+                  key="stop-hunt-popover"
+                  initial={{ opacity: 0, scale: 0.92, y: 6 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.92, y: 6 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="absolute z-50 p-3 rounded-xl bg-slate-950/95 border border-rose-500/40 shadow-2xl backdrop-blur-xl pointer-events-auto"
+                  style={{
+                    left: `${popLeft}px`,
+                    top: `${popTop}px`,
+                    width: `${popWidth}px`,
+                    boxShadow: "0 10px 25px -5px rgba(244, 63, 94, 0.3), 0 0 15px rgba(244, 63, 94, 0.15)",
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between pb-2 border-b border-rose-500/20">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-rose-300">
+                      <Zap className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+                      <span>Velocidade de Rejeição do Pavio</span>
+                    </div>
+                    <button
+                      onClick={() => setActiveStopHuntPopover(null)}
+                      className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                      aria-label="Fechar popover"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  <div className="mt-2 space-y-2 text-[10px] font-mono">
+                    {/* Badge de Classificação */}
+                    <div className="flex items-center justify-between px-2 py-1 rounded bg-rose-950/60 border border-rose-500/30 text-[9px] font-semibold text-rose-200">
+                      <span>{rej.label}</span>
+                      <span className="text-emerald-400 font-bold">
+                        {activeStopHuntPopover.savedLossUsd > 0 ? `-$${activeStopHuntPopover.savedLossUsd.toFixed(2)}` : '-1.8%'} EVITADO
+                      </span>
+                    </div>
+
+                    {/* Grid 2x2 com Métricas Quantitativas */}
+                    <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                      <div className="p-1.5 rounded-lg bg-slate-900/80 border border-white/5 space-y-0.5">
+                        <span className="text-[9px] text-slate-400 flex items-center gap-1">
+                          <Clock className="w-2.5 h-2.5 text-cyan-400" />
+                          Tempo de Rejeição
+                        </span>
+                        <div className="font-bold text-cyan-300 text-xs">
+                          {rej.rejectionTimeMs} ms
+                        </div>
+                      </div>
+
+                      <div className="p-1.5 rounded-lg bg-slate-900/80 border border-white/5 space-y-0.5">
+                        <span className="text-[9px] text-slate-400 flex items-center gap-1">
+                          <Activity className="w-2.5 h-2.5 text-emerald-400" />
+                          Velocidade
+                        </span>
+                        <div className="font-bold text-emerald-300 text-xs">
+                          ${rej.rejectionVelocityUsdPerSec} /s
+                        </div>
+                      </div>
+
+                      <div className="p-1.5 rounded-lg bg-slate-900/80 border border-white/5 space-y-0.5">
+                        <span className="text-[9px] text-slate-400 flex items-center gap-1">
+                          <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                          Absorção do Pavio
+                        </span>
+                        <div className="font-bold text-amber-300 text-xs">
+                          {rej.absorptionPct}%
+                        </div>
+                      </div>
+
+                      <div className="p-1.5 rounded-lg bg-slate-900/80 border border-white/5 space-y-0.5">
+                        <span className="text-[9px] text-slate-400 flex items-center gap-1">
+                          <Gauge className="w-2.5 h-2.5 text-purple-400" />
+                          Ticks de Absorção
+                        </span>
+                        <div className="font-bold text-purple-300 text-xs">
+                          ~{rej.estimatedTicks} ticks
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Resumo Institucional */}
+                    <p className="text-[9px] text-slate-300 leading-tight bg-white/[0.02] p-1.5 rounded border border-white/5">
+                      {rej.summary}
+                    </p>
+                  </div>
+                </motion.div>
+              );
+            })()}
+          </AnimatePresence>
         </motion.div>
       </AnimatePresence>
     </div>

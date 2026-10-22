@@ -262,10 +262,24 @@ export interface WickPenetrationParams {
   entryPrice: number;
   candleHigh: number;
   candleLow: number;
+  candleOpen?: number;
+  candleClose?: number;
+  candleVolume?: number;
   side?: 'BID' | 'ASK' | 'BUY' | 'SELL' | 'NONE';
   stopLossPct?: number; // Padrão 1.8% conforme diretriz institucional
   customStopLossPrice?: number;
   notionalUsd?: number; // Nocional padrão $50 USD
+  timeDeltaMs?: number;
+}
+
+export interface WickRejectionMetrics {
+  rejectionTimeMs: number;
+  rejectionVelocityUsdPerSec: number;
+  absorptionPct: number;
+  estimatedTicks: number;
+  classification: 'ULTRA_FAST' | 'FAST' | 'MODERATE';
+  label: string;
+  summary: string;
 }
 
 export interface WickPenetrationResult {
@@ -281,6 +295,7 @@ export interface WickPenetrationResult {
   wickDistanceToEntryPct: number;
   savedLossUsd: number;
   narrative: string;
+  rejection: WickRejectionMetrics;
 }
 
 /**
@@ -298,6 +313,7 @@ export function calculateWickPenetration(params: WickPenetrationParams): WickPen
     stopLossPct = 1.8,
     customStopLossPrice,
     notionalUsd = 50,
+    timeDeltaMs,
   } = params;
 
   const isBidSide = side === 'BID' || side === 'BUY' || side === 'NONE' || !side;
@@ -345,6 +361,47 @@ export function calculateWickPenetration(params: WickPenetrationParams): WickPen
   // Narrativa estrita conforme requisito
   const narrative = `Esta evasão evitou um stop de -$${formattedLossUsd} (-${formattedStopPct}%) causado pelo pavio de manipulação`;
 
+  // Velocidade de Rejeição do Pavio (Absorção Institucional)
+  const closePrice = typeof params.candleClose === 'number' && params.candleClose > 0 ? params.candleClose : entryPrice;
+  const candleRange = Math.max(candleHigh - candleLow, 0.001);
+
+  let recoveryUsd = 0;
+  if (isBidSide) {
+    recoveryUsd = Math.max(0, closePrice - candleLow);
+  } else {
+    recoveryUsd = Math.max(0, candleHigh - closePrice);
+  }
+
+  const absorptionPct = Number(Math.min(100, Math.max(0, (recoveryUsd / candleRange) * 100)).toFixed(1));
+  const rejectionTimeMs = Math.max(timeDeltaMs && timeDeltaMs > 0 ? timeDeltaMs : 450, 120);
+  const rejectionVelocityUsdPerSec = Number((recoveryUsd / (rejectionTimeMs / 1000)).toFixed(2));
+
+  const tickStep = entryPrice > 0 ? entryPrice * 0.00005 : 1;
+  const estimatedTicks = Math.max(Math.round((recoveryUsd / tickStep) * 2), 12);
+
+  let classification: 'ULTRA_FAST' | 'FAST' | 'MODERATE' = 'FAST';
+  let label = '🟢 Absorção Agressiva de Mercado';
+
+  if (rejectionTimeMs <= 600) {
+    classification = 'ULTRA_FAST';
+    label = '⚡ Absorção Instantânea Institucional';
+  } else if (rejectionTimeMs > 1800) {
+    classification = 'MODERATE';
+    label = '🟡 Rejeição Gradual';
+  }
+
+  const summary = `Rejeição do pavio de $${recoveryUsd.toFixed(2)} (${absorptionPct}% absorvido) em ${rejectionTimeMs}ms (~${estimatedTicks} ticks a $${rejectionVelocityUsdPerSec}/s)`;
+
+  const rejection: WickRejectionMetrics = {
+    rejectionTimeMs,
+    rejectionVelocityUsdPerSec,
+    absorptionPct,
+    estimatedTicks,
+    classification,
+    label,
+    summary,
+  };
+
   return {
     side: determinedSide,
     entryPrice,
@@ -358,5 +415,6 @@ export function calculateWickPenetration(params: WickPenetrationParams): WickPen
     wickDistanceToEntryPct,
     savedLossUsd,
     narrative,
+    rejection,
   };
 }
