@@ -11,25 +11,58 @@ export interface ClockSyncResult {
   acceptable: boolean;
 }
 
+export interface ReconnectionConfig {
+  initialDelayMs?: number;
+  maxDelayMs?: number;
+  factor?: number;
+  jitterPct?: number;
+  maxClockDriftMs?: number;
+}
+
 export class ReconnectionManager {
   private attempt = 0;
   private readonly initialDelayMs: number;
   private readonly maxDelayMs: number;
+  private readonly factor: number;
+  private readonly jitterPct: number;
+  readonly maxClockDriftMs: number;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(initialDelayMs = 1000, maxDelayMs = 30000) {
-    this.initialDelayMs = initialDelayMs;
-    this.maxDelayMs = maxDelayMs;
+  constructor(
+    configOrInitialDelay: number | ReconnectionConfig = 1000,
+    maxDelayMs = 30000
+  ) {
+    if (typeof configOrInitialDelay === "object") {
+      this.initialDelayMs = configOrInitialDelay.initialDelayMs ?? 1000;
+      this.maxDelayMs = configOrInitialDelay.maxDelayMs ?? 30000;
+      this.factor = configOrInitialDelay.factor ?? 2.0;
+      this.jitterPct = configOrInitialDelay.jitterPct ?? 0.15;
+      this.maxClockDriftMs = configOrInitialDelay.maxClockDriftMs ?? 1000;
+    } else {
+      this.initialDelayMs = configOrInitialDelay;
+      this.maxDelayMs = maxDelayMs;
+      this.factor = 2.0;
+      this.jitterPct = 0.15;
+      this.maxClockDriftMs = 1000;
+    }
   }
 
   /**
    * Calcula o próximo intervalo de reconexão aplicando backoff exponencial com jitter (±15%).
-   * Δt = min(maxDelay, initialDelay * 2^attempt) * (0.85 + Math.random() * 0.30)
+   * Δt = min(maxDelay, initialDelay * factor^attempt) * (1 - jitter + Math.random() * (2 * jitter))
    */
   calculateNextDelay(): number {
-    const rawDelay = Math.min(this.maxDelayMs, this.initialDelayMs * Math.pow(2, this.attempt));
-    const jitterFactor = 0.85 + Math.random() * 0.3; // ±15%
+    const rawDelay = Math.min(this.maxDelayMs, this.initialDelayMs * Math.pow(this.factor, this.attempt));
+    const minJitter = 1 - this.jitterPct;
+    const maxJitter = 1 + this.jitterPct;
+    const jitterFactor = minJitter + Math.random() * (maxJitter - minJitter);
     return Math.round(rawDelay * jitterFactor);
+  }
+
+  getNextDelayMs(): number {
+    const delay = this.calculateNextDelay();
+    this.attempt++;
+    return delay;
   }
 
   /**
@@ -69,6 +102,18 @@ export class ReconnectionManager {
 
   getAttempts(): number {
     return this.attempt;
+  }
+
+  getAttemptCount(): number {
+    return this.attempt;
+  }
+
+  validateClockDrift(serverTime: number): { isAcceptable: boolean; driftMs: number } {
+    const driftMs = Math.abs(Date.now() - serverTime);
+    return {
+      isAcceptable: driftMs <= this.maxClockDriftMs,
+      driftMs,
+    };
   }
 
   /**

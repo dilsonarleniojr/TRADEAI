@@ -57,7 +57,7 @@ export class CircularBuffer<T> {
   /**
    * Quantidade de itens atualmente no buffer.
    */
-  size(): number {
+  get size(): number {
     return this.count;
   }
 

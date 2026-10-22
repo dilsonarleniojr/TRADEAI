@@ -7,8 +7,9 @@ import { calculateWickPenetration, type WickRejectionMetrics, type OrderFlowConf
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ZoomIn, ZoomOut, Maximize2, Zap, X, Activity, Sparkles, Gauge, Clock, Shield, Flame, Layers } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Zap, X, Activity, Sparkles, Gauge, Clock, Shield, Flame, Layers, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { structuredLogger } from '@/lib/telemetry/structured-logger';
 
 export type DrawingTool = 'crosshair' | 'trendline' | 'horizontal';
 
@@ -209,6 +210,25 @@ export function CandlestickChart({
   showSpoofingMarkers = true,
 }: CandlestickChartProps) {
   const trades = useCryptoStore((s) => s.trades);
+  const bots = useCryptoStore((s) => s.bots);
+  const updateBotPosition = useCryptoStore((s) => s.updateBotPosition);
+  const isMarketDataStale = useCryptoStore((s) => s.isMarketDataStale);
+
+  // Bot com posição aberta no par atual
+  const activeBotWithPosition = useMemo(() => {
+    return bots.find((b) => b.position && b.position.symbol === symbol && b.position.quantity > 0);
+  }, [bots, symbol]);
+
+  // Estado de Drag-and-Drop interativo de Stop-Loss e Take-Profit
+  const [draggedOrderLine, setDraggedOrderLine] = useState<{
+    botId: string;
+    type: 'TP' | 'SL';
+    currentPrice: number;
+    initialPrice: number;
+    entryPrice: number;
+    quantity: number;
+  } | null>(null);
+
   const storeSpoofingMarkers = useCryptoStore((s) => s.spoofingMarkers[symbol] || []);
   const activeSpoofingEvents = spoofingEvents ?? storeSpoofingMarkers;
   const [candles, setCandles] = useState<ProcessedCandle[]>([]);
@@ -537,6 +557,13 @@ export function CandlestickChart({
         setDrawMousePos({ x: mouseX, y: mouseY });
       }
 
+      // Se estiver arrastando linha de SL ou TP, recalcula preço em tempo real
+      if (draggedOrderLine) {
+        const newPrice = yToPrice(mouseY);
+        setDraggedOrderLine((prev) => (prev ? { ...prev, currentPrice: newPrice } : null));
+        return;
+      }
+
       const candleIndex = Math.floor((mouseX - CHART_PADDING.left) / candleWidth);
 
       if (candleIndex >= 0 && candleIndex < visibleCandles.length) {
@@ -550,13 +577,49 @@ export function CandlestickChart({
         setTooltip(null);
       }
     },
-    [visibleCandles, candleWidth, indexToX, priceToY, drawingTool, pendingDrawPoint]
+    [visibleCandles, candleWidth, indexToX, priceToY, drawingTool, pendingDrawPoint, draggedOrderLine, yToPrice]
   );
+
+  const handleMouseUp = useCallback(() => {
+    if (draggedOrderLine) {
+      const { botId, type, currentPrice, entryPrice } = draggedOrderLine;
+      const targetBot = bots.find((b) => b.id === botId);
+      if (targetBot && targetBot.position) {
+        if (type === 'TP') {
+          updateBotPosition(botId, {
+            ...targetBot.position,
+            dynamicTakeProfit: currentPrice,
+          });
+          const gainUsd = (currentPrice - entryPrice) * targetBot.position.quantity;
+          structuredLogger.info(
+            "RISK_ENGINE",
+            `🎯 [DRAG_DROP] Take-Profit de ${symbol} ajustado para $${currentPrice.toFixed(4)} (+$$${gainUsd.toFixed(2)} USD).`,
+            { symbol, botId }
+          );
+        } else {
+          updateBotPosition(botId, {
+            ...targetBot.position,
+            dynamicStopLoss: currentPrice,
+          });
+          const lossUsd = (currentPrice - entryPrice) * targetBot.position.quantity;
+          structuredLogger.warn(
+            "RISK_ENGINE",
+            `🛡️ [DRAG_DROP] Stop-Loss de ${symbol} ajustado para $${currentPrice.toFixed(4)} ($${lossUsd.toFixed(2)} USD).`,
+            { symbol, botId }
+          );
+        }
+      }
+      setDraggedOrderLine(null);
+    }
+  }, [draggedOrderLine, bots, updateBotPosition, symbol]);
 
   const handleMouseLeave = useCallback(() => {
     setTooltip(null);
     setDrawMousePos(null);
-  }, []);
+    if (draggedOrderLine) {
+      handleMouseUp();
+    }
+  }, [draggedOrderLine, handleMouseUp]);
 
   // Clear pending drawing when tool changes
   useEffect(() => {
@@ -742,14 +805,23 @@ export function CandlestickChart({
             </Button>
           </div>
 
+          {/* Banner de alerta de dados de mercado obsoletos (FeedWatchdog) */}
+          {isMarketDataStale && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[11px] font-bold flex items-center gap-1.5 backdrop-blur-md shadow-lg animate-pulse">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+              <span>MARKET DATA STALE (&gt;3s) - ENTRADAS AUTOMÁTICAS SUSPENSAS</span>
+            </div>
+          )}
+
           <svg
             ref={svgRef}
             width={dimensions.width}
             height={dimensions.height}
             className="select-none"
-            style={{ cursor: drawingTool !== 'crosshair' ? 'crosshair' : 'default' }}
+            style={{ cursor: draggedOrderLine ? 'ns-resize' : drawingTool !== 'crosshair' ? 'crosshair' : 'default' }}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
+            onMouseUp={handleMouseUp}
             onClick={handleChartClick}
           >
             {/* Glow filter for drawing lines */}
@@ -1939,6 +2011,175 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
                 opacity={0.4}
               />
             )}
+
+            {/* Linhas Interativas de Execução e Drag-and-Drop de SL / TP (Módulo 3) */}
+            {activeBotWithPosition && activeBotWithPosition.position && (() => {
+              const pos = activeBotWithPosition.position;
+              const entryPrice = pos.entryPrice;
+              const qty = pos.quantity;
+
+              const currentTp = draggedOrderLine?.type === 'TP'
+                ? draggedOrderLine.currentPrice
+                : (pos.dynamicTakeProfit || entryPrice * (1 + (activeBotWithPosition.takeProfit || 3) / 100));
+
+              const currentSl = draggedOrderLine?.type === 'SL'
+                ? draggedOrderLine.currentPrice
+                : (pos.dynamicStopLoss || entryPrice * (1 - (activeBotWithPosition.stopLoss || 2) / 100));
+
+              const entryY = priceToY(entryPrice);
+              const tpY = priceToY(currentTp);
+              const slY = priceToY(currentSl);
+
+              const tpGainUsd = (currentTp - entryPrice) * qty;
+              const tpGainPct = ((currentTp - entryPrice) / entryPrice) * 100;
+              const slLossUsd = (currentSl - entryPrice) * qty;
+              const slLossPct = ((currentSl - entryPrice) / entryPrice) * 100;
+
+              return (
+                <g key="interactive-position-overlay">
+                  {/* 1. LINHA DE PREÇO MÉDIO DE ENTRADA (Azul / Cyan) */}
+                  <line
+                    x1={CHART_PADDING.left}
+                    y1={entryY}
+                    x2={dimensions.width - CHART_PADDING.right}
+                    y2={entryY}
+                    stroke="#06b6d4"
+                    strokeWidth={1.5}
+                    strokeDasharray="4,2"
+                    opacity={0.85}
+                  />
+                  {/* Badge de Entrada */}
+                  <rect
+                    x={CHART_PADDING.left + 8}
+                    y={entryY - 10}
+                    width={130}
+                    height={20}
+                    fill="#083344"
+                    stroke="#06b6d4"
+                    strokeWidth={1}
+                    rx={4}
+                  />
+                  <text
+                    x={CHART_PADDING.left + 14}
+                    y={entryY + 4}
+                    fill="#22d3ee"
+                    fontSize={10}
+                    fontFamily="monospace"
+                    fontWeight={700}
+                  >
+                    ENTRADA: {qty} @ ${formatPrice(entryPrice)}
+                  </text>
+
+                  {/* 2. LINHA DE TAKE-PROFIT (Verde / Emerald) */}
+                  <line
+                    x1={CHART_PADDING.left}
+                    y1={tpY}
+                    x2={dimensions.width - CHART_PADDING.right}
+                    y2={tpY}
+                    stroke="#10b981"
+                    strokeWidth={draggedOrderLine?.type === 'TP' ? 2.5 : 1.5}
+                    strokeDasharray="6,3"
+                    opacity={0.9}
+                  />
+                  {/* Handle de Drag TP */}
+                  <circle
+                    cx={dimensions.width - CHART_PADDING.right - 14}
+                    cy={tpY}
+                    r={7}
+                    fill="#065f46"
+                    stroke="#34d399"
+                    strokeWidth={2}
+                    className="cursor-ns-resize hover:scale-125 transition-transform"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setDraggedOrderLine({
+                        botId: activeBotWithPosition.id,
+                        type: 'TP',
+                        currentPrice: currentTp,
+                        initialPrice: currentTp,
+                        entryPrice,
+                        quantity: qty,
+                      });
+                    }}
+                  />
+                  {/* Badge TP */}
+                  <rect
+                    x={dimensions.width - CHART_PADDING.right - 180}
+                    y={tpY - 10}
+                    width={160}
+                    height={20}
+                    fill="#064e3b"
+                    stroke="#10b981"
+                    strokeWidth={1}
+                    rx={4}
+                  />
+                  <text
+                    x={dimensions.width - CHART_PADDING.right - 174}
+                    y={tpY + 4}
+                    fill="#6ee7b7"
+                    fontSize={10}
+                    fontFamily="monospace"
+                    fontWeight={700}
+                  >
+                    TP: ${formatPrice(currentTp)} (+${tpGainUsd.toFixed(2)} | +{tpGainPct.toFixed(1)}%)
+                  </text>
+
+                  {/* 3. LINHA DE STOP-LOSS (Vermelha / Rose) */}
+                  <line
+                    x1={CHART_PADDING.left}
+                    y1={slY}
+                    x2={dimensions.width - CHART_PADDING.right}
+                    y2={slY}
+                    stroke="#f43f5e"
+                    strokeWidth={draggedOrderLine?.type === 'SL' ? 2.5 : 1.5}
+                    strokeDasharray="6,3"
+                    opacity={0.9}
+                  />
+                  {/* Handle de Drag SL */}
+                  <circle
+                    cx={dimensions.width - CHART_PADDING.right - 14}
+                    cy={slY}
+                    r={7}
+                    fill="#881337"
+                    stroke="#fb7185"
+                    strokeWidth={2}
+                    className="cursor-ns-resize hover:scale-125 transition-transform"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setDraggedOrderLine({
+                        botId: activeBotWithPosition.id,
+                        type: 'SL',
+                        currentPrice: currentSl,
+                        initialPrice: currentSl,
+                        entryPrice,
+                        quantity: qty,
+                      });
+                    }}
+                  />
+                  {/* Badge SL */}
+                  <rect
+                    x={dimensions.width - CHART_PADDING.right - 180}
+                    y={slY - 10}
+                    width={160}
+                    height={20}
+                    fill="#4c0519"
+                    stroke="#f43f5e"
+                    strokeWidth={1}
+                    rx={4}
+                  />
+                  <text
+                    x={dimensions.width - CHART_PADDING.right - 174}
+                    y={slY + 4}
+                    fill="#fda4af"
+                    fontSize={10}
+                    fontFamily="monospace"
+                    fontWeight={700}
+                  >
+                    SL: ${formatPrice(currentSl)} (-${Math.abs(slLossUsd).toFixed(2)} | {slLossPct.toFixed(1)}%)
+                  </text>
+                </g>
+              );
+            })()}
           </svg>
 
           {/* Mini-Popover Flutuante: Velocidade de Rejeição do Pavio (Stop Hunt) & Order Flow */}

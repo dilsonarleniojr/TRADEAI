@@ -14,6 +14,8 @@ import { GlobalStatusBar } from "./header/global-status-bar";
 import { ApiSettingsDialog } from "./header/api-settings-dialog";
 import { AiSettingsDialog } from "./header/ai-settings-dialog";
 import { DirectAiTradeModal } from "@/components/bot/direct-ai-trade-modal";
+import { RiskProfileSelector } from "@/components/bot/risk-profile-selector";
+import { useDesktopHotkeys } from "@/hooks/use-desktop-hotkeys";
 import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
@@ -93,6 +95,9 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
   const [confirmLiveOpen, setConfirmLiveOpen] = useState(false);
   const [directTradeModalOpen, setDirectTradeModalOpen] = useState(false);
   const [aiInfo, setAiInfo] = useState<{ provider: string; model: string; configured: boolean } | null>(null);
+
+  // Mapeamento e escuta global dos atalhos de teclado desktop (Espaço, Ctrl+K, Duplo Esc)
+  useDesktopHotkeys();
 
   useEffect(() => {
     if (!mounted) return;
@@ -255,6 +260,9 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
               </Badge>
             )}
           </div>
+
+          {/* Perfil de Risco (1-clique) */}
+          <RiskProfileSelector compact className="hidden xl:flex shrink-0" />
 
           {/* Modo de Operação (REAL / SIMULADO) */}
           <DropdownMenu>

@@ -33,6 +33,11 @@ export type {
   SyncMode,
   TradePrefill,
   SpoofingChartMarker,
+  BotLogEntry,
+  RiskProfile,
+  StructuredLogEntry,
+  LogChannel,
+  LogSeverity,
 } from "./types";
 
 export { deduplicateBots } from "./botSlice";

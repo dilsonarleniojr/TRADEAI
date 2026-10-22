@@ -1,6 +1,45 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Telemetria Blackbox em Memória, Resiliência de Conexão, Hotkeys e Ordens Interativas no Gráfico",
+    "summary": "1) Blackbox & Telemetria em Memória: Criado CircularBuffer<T> com capacidade rígida de 2.000 entradas e O(1) push/leitura para evitar churn de GC. StructuredLogger com canais isolados (MARKET_DATA, SIGNALS, RISK_ENGINE, BINANCE_API), severidades (INFO, WARN, ERROR, CRITICAL) e timestamps em milissegundos HH:mm:ss.SSS. FlightRecorder pós-mortem com captura automática de Top 10 Bids/Asks do livro L2, últimos 20 trades e estado do robô na ativação de SL, anomalia de spread ou rejeição de ordem, com exportação JSON. Sintetizador de áudio estritamente via Web Audio API (sem dependências de arquivos MP3 externos); 2) Ergonomia Desktop & Hotkeys (useDesktopHotkeys): Barra de espaço (pausa/retoma auto-scroll do terminal de logs), Ctrl+K (foco na busca global), Duplo Esc (<500ms) como Emergency Kill Switch atômico desligando bots, limpando ordens e emitindo alarme sonoro. Seletor de Perfil de Risco em 1 clique (Conservador: 1.0% risco/3 posições máx; Agressivo: 2.0% risco/5 posições máx; Monitoramento Puro); 3) Gráfico Interativo com Drag-and-Drop (candlestick-chart.tsx): Linhas no SVG para Entrada (azul), Take Profit (verde com projeção em USD) e Stop Loss (vermelho com perda projetada), com alças interativas circulares permitindo ajuste tátil por arrasto que recalcula PnL em tempo real e atualiza parâmetros do bot ao soltar; 4) Resiliência de Conexão & Stale Data: FeedWatchdog que monitora atraso entre ticks e bloqueia entradas automáticas se delta > 3000ms com banner amarelo de alerta no gráfico, e ReconnectionManager com backoff exponencial 1s-30s com ±15% jitter e validação contínua de clock drift contra o serverTime da Binance (limite <= 1000ms); 5) Simulação Paper Realista (multi-bot-engine.ts): Modelo de fila volumétrica para ordens LIMIT_MAKER exigindo absorção acumulada (consumedVolume >= queueAheadVolume + quantity) antes do preenchimento; 6) Validação: 6 testes unitários em desktop-telemetry-resilience.test.ts (100% aprovados) e 0 erros de compilação no TypeScript (tsc --noEmit).",
+    "tags": [
+      "desktop-telemetry",
+      "circular-buffer",
+      "structured-logger",
+      "flight-recorder",
+      "web-audio-synth",
+      "desktop-hotkeys",
+      "emergency-kill-switch",
+      "risk-profile-selector",
+      "interactive-chart-orders",
+      "drag-and-drop-levels",
+      "feed-watchdog",
+      "stale-data-guard",
+      "reconnection-manager",
+      "clock-drift-validation",
+      "realistic-paper-queue"
+    ],
+    "details": {
+      "circularBufferPath": "src/lib/telemetry/circular-buffer.ts",
+      "structuredLoggerPath": "src/lib/telemetry/structured-logger.ts",
+      "flightRecorderPath": "src/lib/telemetry/flight-recorder.ts",
+      "soundEffectsPath": "src/lib/sound/sound-effects.ts",
+      "hotkeysHookPath": "src/hooks/use-desktop-hotkeys.ts",
+      "riskProfileSelectorPath": "src/components/bot/risk-profile-selector.tsx",
+      "chartComponentPath": "src/components/chart/candlestick-chart.tsx",
+      "feedWatchdogPath": "src/lib/websocket/feed-watchdog.ts",
+      "reconnectionManagerPath": "src/lib/websocket/reconnection-manager.ts",
+      "multiBotEnginePath": "src/lib/bot/multi-bot-engine.ts",
+      "testSuitePath": "tests/unit/desktop-telemetry-resilience.test.ts",
+      "totalPassingTests": 6,
+      "totalAssertions": 51
+    },
+    "id": "mem-1792484500000-desktop-telemetry-resilience",
+    "timestamp": "2026-10-22T22:42:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Modernização Integral de UI/UX HFT Desktop, Order Book com Heatmap e Bot Cockpit",
     "summary": "1) Tokens de Estilo & Tipografia Tabular (globals.css): Fundo Dark Pro Slate balanceado (#0c0e14/#0f1622), tipografia tabular (.tabular-nums) em todas as cotações, volumes e PnL eliminando micro-jitter horizontal de largura, e animações de micro-flash de tick (@keyframes flash-bid-tick e flash-ask-tick) com will-change: background-color isoladas para evitar repinturas de DOM vizinho; 2) Order Book L2 com Heatmap (order-book.tsx): Barras horizontais de profundidade de mercado translúcidas proporcionais ao volume acumulado, ancoragem fixa do Mid Price e Spread central, detecção atômica de mudança de tick via useRef e clique tátil pré-trade para compra/venda instantânea; 3) Cockpit da Frota & Risco (bot-cockpit.tsx): Strip quantitativo de status (Ativos, Em Posição, Buscando, Off), somatório de uPnL e PnL Realizado com tipografia tabular, gauge dinâmico do Circuit Breaker diário (teto de 3.0% do NAV com alerta aos 75% e trava aos 100%) e botões de emergência com confirmação tátil em 2 etapas (Kill-Switch Frota e Panic Close a Mercado); 4) Barra de Status Global (global-status-bar.tsx): Telemetria de latência RTT em ms com categorização verde/amarela/vermelha, sincronização de relógio contra a Binance (Δt clock drift) e atalho rápido ao Kill-Switch; 5) Validação: 5 novos testes unitários dedicados em desktop-hft-ui.test.ts (100% aprovados) e 0 erros de compilação no TypeScript (tsc --noEmit).",
     "tags": [

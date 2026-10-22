@@ -30,7 +30,7 @@ export function RiskProfileSelector({ className, compact = false }: RiskProfileS
         maxSimultaneousPositions: 3,
         fractionalRiskSizing: true,
       });
-      riskManager.updateProtectionSettings({
+      riskManager.setProtectionSettings({
         maxRiskPerTradePct: 0.01,
         maxDailyDrawdownPct: 0.03,
         minNetRewardRiskRatio: 1.50,
@@ -52,7 +52,7 @@ export function RiskProfileSelector({ className, compact = false }: RiskProfileS
         maxSimultaneousPositions: 5,
         fractionalRiskSizing: true,
       });
-      riskManager.updateProtectionSettings({
+      riskManager.setProtectionSettings({
         maxRiskPerTradePct: 0.02,
         maxDailyDrawdownPct: 0.03,
         minNetRewardRiskRatio: 1.20,

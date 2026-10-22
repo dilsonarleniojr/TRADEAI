@@ -7,6 +7,7 @@ export interface StructuredLogEntry {
   id: string;
   timestamp: number;
   formattedTime: string; // HH:mm:ss.SSS
+  timestampFormatted?: string;
   channel: LogChannel;
   severity: LogSeverity;
   message: string;
@@ -14,6 +15,7 @@ export interface StructuredLogEntry {
   botName?: string;
   symbol?: string;
   metadata?: Record<string, any>;
+  details?: Record<string, any>;
 }
 
 export type LogListener = (entry: StructuredLogEntry) => void;
@@ -51,17 +53,28 @@ export class StructuredLogger {
   ): StructuredLogEntry {
     const ts = options?.timestamp ?? Date.now();
     const date = new Date(ts);
+    const isGenericDetails =
+      options &&
+      !("botId" in options) &&
+      !("symbol" in options) &&
+      !("metadata" in options) &&
+      !("timestamp" in options);
+    const resolvedDetails =
+      (options as any)?.details || options?.metadata || (isGenericDetails ? options : undefined);
+
     const entry: StructuredLogEntry = {
       id: `log-${ts}-${++entryCounter}`,
       timestamp: ts,
       formattedTime: formatTimestampPrecise(date),
+      timestampFormatted: formatTimestampPrecise(date),
       channel,
       severity,
       message,
       botId: options?.botId,
       botName: options?.botName,
       symbol: options?.symbol,
-      metadata: options?.metadata,
+      metadata: resolvedDetails,
+      details: resolvedDetails,
     };
 
     this.buffer.push(entry);
@@ -103,7 +116,11 @@ export class StructuredLogger {
   }
 
   size(): number {
-    return this.buffer.size();
+    return this.buffer.size;
+  }
+
+  get sizeCount(): number {
+    return this.buffer.size;
   }
 
   clear(): void {
@@ -115,6 +132,14 @@ export class StructuredLogger {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  subscribe(listener: LogListener): () => void {
+    return this.addListener(listener);
+  }
+
+  getByChannel(channel: LogChannel): StructuredLogEntry[] {
+    return this.getChronologicalEntries().filter((entry) => entry.channel === channel);
   }
 }
 

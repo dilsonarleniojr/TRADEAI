@@ -63,7 +63,7 @@ export interface FlightSnapshot {
   recentTrades: FlightRecorderTrade[];
 }
 
-class FlightRecorder {
+export class FlightRecorder {
   private recentTradesBuffer = new Map<string, CircularBuffer<FlightRecorderTrade>>();
   private lastBookSnapshots = new Map<string, FlightRecorderOrderBookSnapshot>();
   private snapshotsBuffer = new CircularBuffer<FlightSnapshot>(50);

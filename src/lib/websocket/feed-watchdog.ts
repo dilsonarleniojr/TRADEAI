@@ -55,6 +55,13 @@ export class FeedWatchdog {
   }
 
   /**
+   * Retorna boolean direto se os dados do par estão obsoletos (>3.000ms).
+   */
+  isFeedStale(symbol: string): boolean {
+    return this.checkFreshness(symbol).stale;
+  }
+
+  /**
    * Inicia o loop contínuo de verificação do Watchdog (a cada 500ms).
    */
   start(intervalMs = 500): void {
