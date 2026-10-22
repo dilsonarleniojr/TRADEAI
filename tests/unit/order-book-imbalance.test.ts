@@ -263,4 +263,96 @@ describe("Filtro de Liquidação de Pavio (Wick Penetration Calculator)", () => 
     });
     expect(modResult.rejection.classification).toBe("MODERATE");
   });
+
+  it("deve calcular OrderFlowConfluence com disparo agressivo a mercado (Short Squeeze) quando takerBuy domina no pé do pavio", () => {
+    const result = calculateWickPenetration({
+      entryPrice: 50000,
+      candleHigh: 50200,
+      candleLow: 49200,
+      candleClose: 49950,
+      side: "BID",
+      takerBuyVolume: 80,
+      takerSellVolume: 20,
+    });
+
+    expect(result.orderFlow).toBeDefined();
+    expect(result.orderFlow.takerBuyVolume).toBe(80);
+    expect(result.orderFlow.takerSellVolume).toBe(20);
+    expect(result.orderFlow.aggressiveDeltaRatio).toBe(4); // 80 / 20 = 4.0x
+    expect(result.orderFlow.volumeDeltaPct).toBe(60); // (80 - 20) / 100 * 100 = 60%
+    expect(result.orderFlow.buyPressurePct).toBe(80);
+    expect(result.orderFlow.sellPressurePct).toBe(20);
+    expect(result.orderFlow.driver).toBe("AGGRESSIVE_MARKET_SWEEP");
+    expect(result.orderFlow.driverTitle).toContain("Short Squeeze Instantâneo");
+    expect(result.orderFlow.driverBadgeColor).toBe("emerald");
+    expect(result.rejection.orderFlow).toBeDefined();
+  });
+
+  it("deve calcular OrderFlowConfluence com absorção passiva de ordens limitadas quando takerSell é absorvido no suporte", () => {
+    const result = calculateWickPenetration({
+      entryPrice: 50000,
+      candleHigh: 50050,
+      candleLow: 49300,
+      candleClose: 49400,
+      side: "BID",
+      takerBuyVolume: 45,
+      takerSellVolume: 55, // Varejo vendendo a mercado mais do que comprando
+    });
+
+    expect(result.orderFlow).toBeDefined();
+    expect(result.orderFlow.aggressiveDeltaRatio).toBeCloseTo(0.82, 1);
+    expect(result.orderFlow.driver).toBe("PASSIVE_LIMIT_ABSORPTION");
+    expect(result.orderFlow.driverTitle).toContain("Absorção Passiva de Ordens Limitadas");
+    expect(result.orderFlow.driverBadgeColor).toBe("cyan");
+    expect(result.orderFlow.driverDescription).toContain("icebergs institucionais no suporte");
+  });
+
+  it("deve calcular OrderFlowConfluence no lado ASK com Long Squeeze quando takerSell domina o topo do pavio", () => {
+    const result = calculateWickPenetration({
+      entryPrice: 3000,
+      candleHigh: 3080,
+      candleLow: 2990,
+      candleClose: 3010,
+      side: "ASK",
+      takerBuyVolume: 25,
+      takerSellVolume: 75,
+    });
+
+    expect(result.orderFlow.driver).toBe("AGGRESSIVE_MARKET_SWEEP");
+    expect(result.orderFlow.driverTitle).toContain("Long Squeeze Instantâneo");
+    expect(result.orderFlow.driverBadgeColor).toBe("rose");
+    expect(result.orderFlow.volumeDeltaPct).toBe(-50);
+  });
+
+  it("deve inferir realisticamente o driver a partir do candle quando volumes explícitos de taker não forem passados", () => {
+    // Candle fechou bem acima da abertura (50100 > 49800) com absorção forte no fundo (49100 a 50100)
+    const sweepResult = calculateWickPenetration({
+      entryPrice: 50000,
+      candleOpen: 49800,
+      candleHigh: 50200,
+      candleLow: 49100,
+      candleClose: 50100,
+      candleVolume: 120,
+      side: "BID",
+    });
+
+    expect(sweepResult.orderFlow.driver).toBe("AGGRESSIVE_MARKET_SWEEP");
+    expect(sweepResult.orderFlow.aggressiveDeltaRatio).toBeGreaterThan(1.5);
+    expect(sweepResult.orderFlow.buyPressurePct).toBeGreaterThan(60);
+
+    // Candle fechou perto do fundo ou abaixo da abertura (absorção passiva de suporte)
+    const passiveResult = calculateWickPenetration({
+      entryPrice: 50000,
+      candleOpen: 49800,
+      candleHigh: 49900,
+      candleLow: 49100,
+      candleClose: 49500, // Fechou vermelho
+      candleVolume: 120,
+      side: "BID",
+    });
+
+    expect(passiveResult.orderFlow.driver).toBe("PASSIVE_LIMIT_ABSORPTION");
+    expect(passiveResult.orderFlow.driverTitle).toContain("Absorção Passiva");
+  });
 });
+

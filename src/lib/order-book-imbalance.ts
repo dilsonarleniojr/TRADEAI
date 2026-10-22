@@ -265,11 +265,28 @@ export interface WickPenetrationParams {
   candleOpen?: number;
   candleClose?: number;
   candleVolume?: number;
+  takerBuyVolume?: number;
+  takerSellVolume?: number;
   side?: 'BID' | 'ASK' | 'BUY' | 'SELL' | 'NONE';
   stopLossPct?: number; // Padrão 1.8% conforme diretriz institucional
   customStopLossPrice?: number;
   notionalUsd?: number; // Nocional padrão $50 USD
   timeDeltaMs?: number;
+}
+
+export type ReversalDriverType = 'PASSIVE_LIMIT_ABSORPTION' | 'AGGRESSIVE_MARKET_SWEEP' | 'BALANCED_FLOW';
+
+export interface OrderFlowConfluence {
+  takerBuyVolume: number;
+  takerSellVolume: number;
+  aggressiveDeltaRatio: number; // Razão Taker Buy / Taker Sell (ex: 2.85x)
+  volumeDeltaPct: number; // Delta percentual de agressão: ((buy - sell) / total) * 100
+  driver: ReversalDriverType;
+  driverTitle: string;
+  driverBadgeColor: 'emerald' | 'cyan' | 'rose' | 'purple' | 'slate';
+  driverDescription: string;
+  buyPressurePct: number;
+  sellPressurePct: number;
 }
 
 export interface WickRejectionMetrics {
@@ -280,6 +297,7 @@ export interface WickRejectionMetrics {
   classification: 'ULTRA_FAST' | 'FAST' | 'MODERATE';
   label: string;
   summary: string;
+  orderFlow?: OrderFlowConfluence;
 }
 
 export interface WickPenetrationResult {
@@ -296,6 +314,7 @@ export interface WickPenetrationResult {
   savedLossUsd: number;
   narrative: string;
   rejection: WickRejectionMetrics;
+  orderFlow: OrderFlowConfluence;
 }
 
 /**
@@ -379,6 +398,102 @@ export function calculateWickPenetration(params: WickPenetrationParams): WickPen
   const tickStep = entryPrice > 0 ? entryPrice * 0.00005 : 1;
   const estimatedTicks = Math.max(Math.round((recoveryUsd / tickStep) * 2), 12);
 
+  // -------------------------------------------------------------------------
+  // Calibração de Reversão por Volume Delta (Order Flow Confluence)
+  // -------------------------------------------------------------------------
+  let takerBuyVol = typeof params.takerBuyVolume === 'number' && params.takerBuyVolume >= 0
+    ? params.takerBuyVolume
+    : 0;
+  let takerSellVol = typeof params.takerSellVolume === 'number' && params.takerSellVolume >= 0
+    ? params.takerSellVolume
+    : 0;
+
+  const totalCandleVol = typeof params.candleVolume === 'number' && params.candleVolume > 0
+    ? params.candleVolume
+    : (notionalUsd > 0 ? notionalUsd * 2.5 : 100);
+
+  // Se os volumes de taker não foram passados explicitamente, inferir quantitativamente via microestrutura
+  if (takerBuyVol === 0 && takerSellVol === 0) {
+    if (isBidSide) {
+      // Tentativa de compra / fundo de pavio inferior
+      if (closePrice > (params.candleOpen ?? entryPrice) && absorptionPct >= 60) {
+        // Disparo agressivo a mercado (Short Squeeze instantâneo varrendo asks)
+        const buyFraction = 0.68 + Math.min(0.18, (absorptionPct - 60) / 200);
+        takerBuyVol = Number((totalCandleVol * buyFraction).toFixed(2));
+        takerSellVol = Number((totalCandleVol * (1 - buyFraction)).toFixed(2));
+      } else {
+        // Absorção passiva por ordens limites (Icebergs no suporte)
+        const buyFraction = 0.44 + Math.min(0.06, absorptionPct / 1000);
+        takerBuyVol = Number((totalCandleVol * buyFraction).toFixed(2));
+        takerSellVol = Number((totalCandleVol * (1 - buyFraction)).toFixed(2));
+      }
+    } else {
+      // Tentativa de venda / topo de pavio superior
+      if (closePrice < (params.candleOpen ?? entryPrice) && absorptionPct >= 60) {
+        // Despejo agressivo a mercado (Long Squeeze instantâneo)
+        const sellFraction = 0.68 + Math.min(0.18, (absorptionPct - 60) / 200);
+        takerSellVol = Number((totalCandleVol * sellFraction).toFixed(2));
+        takerBuyVol = Number((totalCandleVol * (1 - sellFraction)).toFixed(2));
+      } else {
+        // Absorção passiva por ordens limites vendedoras (Icebergs na resistência)
+        const sellFraction = 0.44 + Math.min(0.06, absorptionPct / 1000);
+        takerSellVol = Number((totalCandleVol * sellFraction).toFixed(2));
+        takerBuyVol = Number((totalCandleVol * (1 - sellFraction)).toFixed(2));
+      }
+    }
+  }
+
+  const takerTotal = Math.max(takerBuyVol + takerSellVol, 0.001);
+  const buyPressurePct = Number(((takerBuyVol / takerTotal) * 100).toFixed(1));
+  const sellPressurePct = Number(((takerSellVol / takerTotal) * 100).toFixed(1));
+  const aggressiveDeltaRatio = Number((takerBuyVol / (takerSellVol || 0.001)).toFixed(2));
+  const volumeDeltaPct = Number((((takerBuyVol - takerSellVol) / takerTotal) * 100).toFixed(1));
+
+  let driver: ReversalDriverType = 'BALANCED_FLOW';
+  let driverTitle = '⚖️ Fluxo Agressor Equilibrado';
+  let driverBadgeColor: 'emerald' | 'cyan' | 'rose' | 'purple' | 'slate' = 'slate';
+  let driverDescription = 'Volumes de compra e venda a mercado equilibrados na formação do pavio.';
+
+  if (isBidSide) {
+    if (aggressiveDeltaRatio >= 1.5 || volumeDeltaPct >= 20) {
+      driver = 'AGGRESSIVE_MARKET_SWEEP';
+      driverTitle = '⚡ Disparo Agressivo a Mercado (Short Squeeze Instantâneo)';
+      driverBadgeColor = 'emerald';
+      driverDescription = 'Fluxo massivo de ordens a mercado de compra varreu o book e forçou a cobertura urgente de posições vendidas no pé do pavio.';
+    } else {
+      driver = 'PASSIVE_LIMIT_ABSORPTION';
+      driverTitle = '🛡️ Absorção Passiva de Ordens Limitadas';
+      driverBadgeColor = 'cyan';
+      driverDescription = 'Ordens limites e icebergs institucionais no suporte absorveram a pressão vendedora de varejo sem ceder novos patamares de preço.';
+    }
+  } else {
+    // ASK side (Short)
+    if (aggressiveDeltaRatio <= 0.67 || volumeDeltaPct <= -20) {
+      driver = 'AGGRESSIVE_MARKET_SWEEP';
+      driverTitle = '⚡ Disparo Agressivo a Mercado (Long Squeeze Instantâneo)';
+      driverBadgeColor = 'rose';
+      driverDescription = 'Despejo maciço de ordens de venda a mercado liquidou compradores em euforia de falso rompimento e reverteu o topo do pavio.';
+    } else {
+      driver = 'PASSIVE_LIMIT_ABSORPTION';
+      driverTitle = '🛡️ Absorção Passiva de Ordens Limitadas';
+      driverBadgeColor = 'purple';
+      driverDescription = 'Paredes limites e blocos de venda passiva institucional absorveram o ímpeto comprador sem conceder continuação de rompimento.';
+    }
+  }
+
+  const orderFlow: OrderFlowConfluence = {
+    takerBuyVolume: takerBuyVol,
+    takerSellVolume: takerSellVol,
+    aggressiveDeltaRatio,
+    volumeDeltaPct,
+    driver,
+    driverTitle,
+    driverBadgeColor,
+    driverDescription,
+    buyPressurePct,
+    sellPressurePct,
+  };
+
   let classification: 'ULTRA_FAST' | 'FAST' | 'MODERATE' = 'FAST';
   let label = '🟢 Absorção Agressiva de Mercado';
 
@@ -390,7 +505,7 @@ export function calculateWickPenetration(params: WickPenetrationParams): WickPen
     label = '🟡 Rejeição Gradual';
   }
 
-  const summary = `Rejeição do pavio de $${recoveryUsd.toFixed(2)} (${absorptionPct}% absorvido) em ${rejectionTimeMs}ms (~${estimatedTicks} ticks a $${rejectionVelocityUsdPerSec}/s)`;
+  const summary = `Rejeição do pavio de $${recoveryUsd.toFixed(2)} (${absorptionPct}% absorvido) em ${rejectionTimeMs}ms (~${estimatedTicks} ticks a $${rejectionVelocityUsdPerSec}/s) • [${driverTitle}: ${aggressiveDeltaRatio}x ratio]`;
 
   const rejection: WickRejectionMetrics = {
     rejectionTimeMs,
@@ -400,6 +515,7 @@ export function calculateWickPenetration(params: WickPenetrationParams): WickPen
     classification,
     label,
     summary,
+    orderFlow,
   };
 
   return {
@@ -416,5 +532,6 @@ export function calculateWickPenetration(params: WickPenetrationParams): WickPen
     savedLossUsd,
     narrative,
     rejection,
+    orderFlow,
   };
 }
