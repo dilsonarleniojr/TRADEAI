@@ -936,7 +936,8 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   {m.dropPct ? `-${m.dropPct}% SPOOF` : "🛡️ SPOOF EVITADO"}
                 </text>
               </g>
-            ))}
+            );
+          })}
 
             {/* Ponto do Preço Atual */}
             <circle
