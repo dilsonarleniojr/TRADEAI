@@ -845,14 +845,30 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
             />
 
             {/* Marcadores de Evasão de Spoofing (🛡️ Liquidity Spoofing Guard) */}
-            {spoofMarkers.map((m) => (
-              <g key={`spoof-marker-${m.id}`} className="cursor-help">
-                <title>
-                  {`🛡️ Armadilha de Spoofing Evitada pela IA\n` +
-                   `Momento: ${new Date(m.timestamp).toLocaleTimeString()}\n` +
-                   `Queda súbita de liquidez no book${m.dropPct ? ` (-${m.dropPct}%)` : ''}\n` +
-                   `Ação: Ordem pausada por 3s evitando derrapagem severa (adverse slippage).`}
-                </title>
+            {spoofMarkers.map((m) => {
+              const refPrice = m.price || entryPrice || currentPrice;
+              const wickCalc = calculateWickPenetration({
+                entryPrice: refPrice,
+                candleHigh: maxP,
+                candleLow: minP,
+                side: m.side,
+                customStopLossPrice: stopLossPrice,
+                notionalUsd: notionalUsd ?? 50,
+                stopLossPct: 1.8,
+              });
+
+              return (
+                <g key={`spoof-marker-${m.id}`} className="cursor-help">
+                  <title>
+                    {`🛡️ Armadilha de Spoofing Evitada pela IA\n` +
+                     `Momento: ${new Date(m.timestamp).toLocaleTimeString()}\n` +
+                     `Queda súbita de liquidez no book${m.dropPct ? ` (-${m.dropPct}%)` : ''}\n` +
+                     `Stop Loss Teórico: $${wickCalc.theoreticalStopPrice.toFixed(2)} (-${wickCalc.stopLossPct.toFixed(1)}%)\n` +
+                     `Pavio Manipulado: $${wickCalc.manipulatedWickPrice.toFixed(2)}\n` +
+                     `Distância Pavio vs Stop: $${wickCalc.distanceToStopUsd.toFixed(2)} (${wickCalc.distanceToStopPct.toFixed(2)}%) ${wickCalc.didBreachStop ? '[Pavio Perfurou Stop]' : '[Pavio Próximo ao Stop]'}\n` +
+                     `Quantificação: ${wickCalc.narrative}\n` +
+                     `Ação: Ordem pausada por 3s evitando derrapagem severa (adverse slippage).`}
+                  </title>
 
                 {/* Linha vertical tracejada verde esmeralda no exato segundo da evasão */}
                 <line
