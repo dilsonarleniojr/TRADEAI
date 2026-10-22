@@ -1,6 +1,30 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Filtro de Liquidação de Pavio (Wick Penetration Calculator) no Tooltip do Escudo de Evasão",
+    "summary": "1) Módulo Matemático (order-book-imbalance.ts): Criada função calculateWickPenetration(...) e interfaces WickPenetrationParams e WickPenetrationResult. Calcula a distância exata em dólares e percentual entre a mínima (para BID spoofing / compra) ou máxima (para ASK spoofing / venda) do pavio do candle manipulado e a posição teórica do Stop Loss da operação (default 1.8% alinhado aos trading guardrails institucionais ou stopLossPrice da sessão); 2) Quantificação Financeira Explícita ao Trader: Gera a narrativa institucional estrita: 'Esta evasão evitou um stop de -$X.XX (-1.8%) causado pelo pavio de manipulação', calculando savedLossUsd a partir do tamanho nocional da operação; 3) Tooltips SVG Atualizados: Injetada a quantificação e auditoria de pavio no tooltip nativo <title> do escudo no gráfico principal (candlestick-chart.tsx) e no mini-sparkline intradiário (direct-ai-trade-modal.tsx); 4) Testes e Verificação: 21 testes unitários passando em bun test (105 asserções) cobrindo BID/ASK spoofing, violação de stop, aproximação e customStopLossPrice, com 0 erros no TypeScript.",
+    "tags": [
+      "wick-penetration-calculator",
+      "stop-loss-evasion",
+      "order-book-imbalance",
+      "candlestick-chart",
+      "direct-ai-trade-modal",
+      "risk-guardrails",
+      "institutional-auditing"
+    ],
+    "details": {
+      "utilityPath": "src/lib/order-book-imbalance.ts",
+      "chartComponentPath": "src/components/chart/candlestick-chart.tsx",
+      "modalComponentPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "testSuitePath": "tests/unit/order-book-imbalance.test.ts",
+      "totalPassingTests": 21,
+      "totalAssertions": 105
+    },
+    "id": "mem-1792480800000-wick-penetration-calculator",
+    "timestamp": "2026-10-22T21:14:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Micro-Destaque no Candle do Gráfico Principal (CandlestickChart / ChartSection): Anotação de Evasão de Spoofing",
     "summary": "1) Registro Global e Rota de API (direct-operation-manager.ts e /api/bot/direct-operation/spoofing-events): Adicionado registro globalSpoofingEvents com métodos recordSpoofingEvasion e getSpoofingEvents(symbol) no DirectOperationManager. Criada rota Next.js GET /api/bot/direct-operation/spoofing-events para alimentar o frontend sob demanda; 2) Zustand Store (marketDataSlice.ts): Adicionado estado spoofingMarkers: Record<string, SpoofingChartMarker[]> com ações addSpoofingMarker e setSpoofingMarkers para desacoplamento reativo entre OrderBook e o Gráfico; 3) Micro-Destaque Visual no Candle (candlestick-chart.tsx): No gráfico principal SVG, cada evento de spoofing é correlacionado ao candle intradiário mais próximo. Renderizada faixa vertical translúcida cobrindo toda a altura do gráfico (fill='url(#spoof-column-gradient)'), destaque reforçado no pavio/absorção (line com stroke=#10b981 de 3px e ticks de máxima/mínima), linha guia tracejada, pulso de radar, círculo de escudo esmeralda (🛡️), pill tag superior (-X% SPOOF) e tooltip SVG com auditoria de preços e amplitude do pavio; 4) Barra de Ferramentas Institucional (chart-section.tsx): Adicionado botão toggle '🛡️ Anti-Spoof (X)' com badge numérico em tempo real; 5) Validação: 17 testes unitários passando em bun test com 82 asserções e 0 erros no TypeScript.",
     "tags": [

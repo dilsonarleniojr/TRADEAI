@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { calculateOrderBookImbalance, detectLiquiditySpoofing } from "@/lib/order-book-imbalance";
+import { calculateOrderBookImbalance, detectLiquiditySpoofing, calculateWickPenetration } from "@/lib/order-book-imbalance";
 
 describe("Order Book Liquidity Imbalance (OBI) & Market Confluence", () => {
   it("deve lidar com livro vazio retornando neutro sem exceção", () => {
@@ -145,5 +145,77 @@ describe("Liquidity Spoofing Guard (Inversão Repentina de Liquidez)", () => {
 
     const alert = detectLiquiditySpoofing(current, previous);
     expect(alert.isAlertActive).toBe(false);
+  });
+});
+
+describe("Filtro de Liquidação de Pavio (Wick Penetration Calculator)", () => {
+  it("deve calcular a evasão de stop loss evitada por pavio de baixa em tentativa de compra (BID spoofing)", () => {
+    const result = calculateWickPenetration({
+      entryPrice: 1000,
+      candleHigh: 1005,
+      candleLow: 975,
+      side: "BID",
+      notionalUsd: 100,
+      stopLossPct: 1.8,
+    });
+
+    expect(result.side).toBe("BID");
+    expect(result.theoreticalStopPrice).toBe(982); // 1000 * (1 - 0.018)
+    expect(result.manipulatedWickPrice).toBe(975);
+    expect(result.didBreachStop).toBe(true);
+    expect(result.distanceToStopUsd).toBe(7); // |975 - 982|
+    expect(result.distanceToStopPct).toBe(0.7); // 7 / 1000 * 100
+    expect(result.savedLossUsd).toBe(1.8); // 100 * 1.8%
+    expect(result.narrative).toBe("Esta evasão evitou um stop de -$1.80 (-1.8%) causado pelo pavio de manipulação");
+  });
+
+  it("deve calcular evasão no lado vendedor (ASK spoofing) com pavio de alta violando stop de short", () => {
+    const result = calculateWickPenetration({
+      entryPrice: 2000,
+      candleHigh: 2045,
+      candleLow: 1990,
+      side: "ASK",
+      notionalUsd: 50,
+      stopLossPct: 1.8,
+    });
+
+    expect(result.side).toBe("ASK");
+    expect(result.theoreticalStopPrice).toBe(2036); // 2000 * (1 + 0.018)
+    expect(result.manipulatedWickPrice).toBe(2045);
+    expect(result.didBreachStop).toBe(true);
+    expect(result.distanceToStopUsd).toBe(9); // |2045 - 2036|
+    expect(result.savedLossUsd).toBe(0.9); // 50 * 1.8%
+    expect(result.narrative).toBe("Esta evasão evitou um stop de -$0.90 (-1.8%) causado pelo pavio de manipulação");
+  });
+
+  it("deve respeitar customStopLossPrice quando fornecido pela sessão de trading", () => {
+    const result = calculateWickPenetration({
+      entryPrice: 100,
+      candleHigh: 101,
+      candleLow: 97.5,
+      customStopLossPrice: 98.2,
+      notionalUsd: 50,
+    });
+
+    expect(result.theoreticalStopPrice).toBe(98.2);
+    expect(result.stopLossPct).toBe(1.8);
+    expect(result.savedLossUsd).toBe(0.9);
+    expect(result.narrative).toBe("Esta evasão evitou um stop de -$0.90 (-1.8%) causado pelo pavio de manipulação");
+  });
+
+  it("deve identificar corretamente quando o pavio se aproxima do stop sem perfurar", () => {
+    const result = calculateWickPenetration({
+      entryPrice: 1000,
+      candleHigh: 1002,
+      candleLow: 985,
+      side: "BID",
+      notionalUsd: 50,
+      stopLossPct: 1.8,
+    });
+
+    expect(result.theoreticalStopPrice).toBe(982);
+    expect(result.didBreachStop).toBe(false);
+    expect(result.distanceToStopUsd).toBe(3); // 985 - 982
+    expect(result.narrative).toBe("Esta evasão evitou um stop de -$0.90 (-1.8%) causado pelo pavio de manipulação");
   });
 });

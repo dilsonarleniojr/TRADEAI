@@ -1950,7 +1950,8 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   session.currentPrice,
                   session.vwapPrice,
                   session.spoofingEvents,
-                  session.spoofingEvasionsCount
+                  session.spoofingEvasionsCount,
+                  session.notionalUsd
                 )}
 
                 {/* Cockpit de Ranking: Top 3 Oportunidades no Radar da IA */}
@@ -2169,7 +2170,8 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                         session.currentPrice,
                         session.vwapPrice,
                         session.spoofingEvents,
-                        session.spoofingEvasionsCount
+                        session.spoofingEvasionsCount,
+                        session.notionalUsd
                       )
                     )}
 
