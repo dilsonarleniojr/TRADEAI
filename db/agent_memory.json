@@ -1,6 +1,32 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Calibração de Reversão por Volume Delta (Order Flow Confluence) no Mini-Popover",
+    "summary": "1) Módulo Matemático (order-book-imbalance.ts): Criadas interfaces OrderFlowConfluence e ReversalDriverType ('PASSIVE_LIMIT_ABSORPTION' | 'AGGRESSIVE_MARKET_SWEEP' | 'BALANCED_FLOW'). Implementada a calibração da razão de delta de volume agressivo no pé do pavio (aggressiveDeltaRatio, volumeDeltaPct, buyPressurePct, sellPressurePct), informando explicitamente se a reversão rápida decorreu de absorção passiva de ordens limitadas/icebergs no suporte ou de disparo agressivo a mercado (short squeeze instantâneo varrendo o livro); 2) Mini-Popover Enriquecido (candlestick-chart.tsx): Adicionado card institucional de Order Flow com banner temático do Driver (ícone Flame/Zap vs Shield), badge de razão de delta em tempo real, barra visual split de Taker Buy vs Taker Sell e diagnóstico de microestrutura; 3) Tooltips SVG: Atualizados os elementos <title> em candlestick-chart.tsx e direct-ai-trade-modal.tsx para refletir a razão de agressão e o driver da reversão; 4) Validação: 27 testes unitários passando em bun test (141 asserções) com 0 erros de compilação no TypeScript (tsc --noEmit).",
+    "tags": [
+      "order-flow-confluence",
+      "volume-delta",
+      "reversal-driver",
+      "short-squeeze",
+      "passive-limit-absorption",
+      "aggressive-market-sweep",
+      "mini-popover",
+      "order-book-imbalance",
+      "microstructure"
+    ],
+    "details": {
+      "utilityPath": "src/lib/order-book-imbalance.ts",
+      "chartComponentPath": "src/components/chart/candlestick-chart.tsx",
+      "modalComponentPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "testSuitePath": "tests/unit/order-book-imbalance.test.ts",
+      "totalPassingTests": 27,
+      "totalAssertions": 141
+    },
+    "id": "mem-1792482000000-order-flow-volume-delta",
+    "timestamp": "2026-10-22T21:38:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Velocidade de Rejeição do Pavio (Wick Rejection Velocity) & Mini-Popover Interativo em STOP HUNT",
     "summary": "1) Módulo Matemático (order-book-imbalance.ts): Definida a interface WickRejectionMetrics e estendida a função calculateWickPenetration(...) para calcular a velocidade de absorção do pavio em $/s, tempo de recuperação em ms, percentual de absorção do pavio até o fechamento (absorptionPct), estimativa de ticks institucionais consumidos e classificação de velocidade (ULTRA_FAST, FAST, MODERATE); 2) Mini-Popover Interativo no Gráfico Principal (candlestick-chart.tsx): A etiqueta SVG 'STOP HUNT' agora possui gatilhos de clique e hover (onClick e onMouseEnter), abrindo um mini-popover flutuante com framer-motion em estilo glassmorphism institucional. Exibe badge de classificação, velocidade em $/s com barra de progresso neon, tempo de absorção em ms, percentual absorvido e contagem estimada de ticks, com clamping de coordenadas para evitar cortes de tela e botão de fechamento [X]; 3) Fallback Acessível em SVG <title>: Injetada a síntese textual executiva de rejeição no tooltip SVG <title> das etiquetas STOP HUNT tanto no gráfico principal quanto no mini-sparkline intradiário (direct-ai-trade-modal.tsx); 4) Validação: 23 testes unitários passando em bun test (115 asserções) e 0 erros de compilação no TypeScript (tsc --noEmit).",
     "tags": [

@@ -3,11 +3,11 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useCryptoStore, type SpoofingChartMarker } from '@/lib/store';
 import { formatPrice, formatVolume, formatTime } from '@/lib/format';
-import { calculateWickPenetration, type WickRejectionMetrics } from '@/lib/order-book-imbalance';
+import { calculateWickPenetration, type WickRejectionMetrics, type OrderFlowConfluence } from '@/lib/order-book-imbalance';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ZoomIn, ZoomOut, Maximize2, Zap, X, Activity, Sparkles, Gauge, Clock } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Zap, X, Activity, Sparkles, Gauge, Clock, Shield, Flame, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export type DrawingTool = 'crosshair' | 'trendline' | 'horizontal';
@@ -223,12 +223,13 @@ export function CandlestickChart({
   const [pendingDrawPoint, setPendingDrawPoint] = useState<{ time: number; price: number } | null>(null);
   const [drawMousePos, setDrawMousePos] = useState<{ x: number; y: number } | null>(null);
 
-  // Stop Hunt Popover state (Velocidade de Rejeição do Pavio)
+  // Stop Hunt Popover state (Velocidade de Rejeição do Pavio & Order Flow)
   const [activeStopHuntPopover, setActiveStopHuntPopover] = useState<{
     id: string;
     x: number;
     y: number;
     rejection: WickRejectionMetrics;
+    orderFlow: OrderFlowConfluence;
     candle: ProcessedCandle;
     eventPrice: number;
     stopLossPrice: number;
@@ -1497,6 +1498,7 @@ export function CandlestickChart({
                                   x: huntX + huntWidth / 2,
                                   y: huntTopY,
                                   rejection: wickCalc.rejection,
+                                  orderFlow: wickCalc.orderFlow,
                                   candle,
                                   eventPrice: eventRefPrice,
                                   stopLossPrice: wickCalc.theoreticalStopPrice,
@@ -1512,6 +1514,7 @@ export function CandlestickChart({
                             x: huntX + huntWidth / 2,
                             y: huntTopY,
                             rejection: wickCalc.rejection,
+                            orderFlow: wickCalc.orderFlow,
                             candle,
                             eventPrice: eventRefPrice,
                             stopLossPrice: wickCalc.theoreticalStopPrice,
@@ -1521,7 +1524,21 @@ export function CandlestickChart({
                           });
                         }}
                       >
-                        <title>{`⚡ VELOCIDADE DE REJEIÇÃO DO PAVIO (STOP HUNT)\nClassificação: ${wickCalc.rejection.label}\nTempo de Rejeição: ${wickCalc.rejection.rejectionTimeMs}ms\nVelocidade de Absorção: $${wickCalc.rejection.rejectionVelocityUsdPerSec}/s\nAbsorção do Pavio: ${wickCalc.rejection.absorptionPct}%\nTicks Absorvidos: ~${wickCalc.rejection.estimatedTicks} ticks\n\n${wickCalc.rejection.summary}\n\nClique para fixar o mini-popover de telemetria.`}</title>
+                        <title>{`⚡ VELOCIDADE DE REJEIÇÃO DO PAVIO (STOP HUNT)
+Classificação: ${wickCalc.rejection.label}
+Tempo de Rejeição: ${wickCalc.rejection.rejectionTimeMs}ms
+Velocidade de Absorção: $${wickCalc.rejection.rejectionVelocityUsdPerSec}/s
+Absorção do Pavio: ${wickCalc.rejection.absorptionPct}% (~${wickCalc.rejection.estimatedTicks} ticks)
+
+Order Flow & Delta Agressor (Pé do Pavio):
+ • Driver: ${wickCalc.orderFlow.driverTitle}
+ • Razão Delta Agressivo: ${wickCalc.orderFlow.aggressiveDeltaRatio}x (${wickCalc.orderFlow.volumeDeltaPct >= 0 ? '+' : ''}${wickCalc.orderFlow.volumeDeltaPct}% Delta)
+ • Taker Buy vs Sell: ${wickCalc.orderFlow.buyPressurePct}% Comprador / ${wickCalc.orderFlow.sellPressurePct}% Vendedor
+ • Diagnóstico: ${wickCalc.orderFlow.driverDescription}
+
+${wickCalc.rejection.summary}
+
+Clique para fixar o mini-popover de telemetria.`}</title>
                         <rect
                           x={huntX}
                           y={huntTopY}
@@ -1924,14 +1941,17 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
             )}
           </svg>
 
-          {/* Mini-Popover Flutuante: Velocidade de Rejeição do Pavio (Stop Hunt) */}
+          {/* Mini-Popover Flutuante: Velocidade de Rejeição do Pavio (Stop Hunt) & Order Flow */}
           <AnimatePresence>
             {activeStopHuntPopover && (() => {
-              const popWidth = 280;
-              const popHeight = 180;
+              const popWidth = 320;
+              const popHeight = 330;
               const popLeft = Math.max(12, Math.min(dimensions.width - popWidth - 12, activeStopHuntPopover.x - popWidth / 2));
-              const popTop = Math.max(12, activeStopHuntPopover.y - popHeight - 12);
+              const popTop = activeStopHuntPopover.y - popHeight - 12 < 12
+                ? Math.min(dimensions.height - popHeight - 12, activeStopHuntPopover.y + 16)
+                : activeStopHuntPopover.y - popHeight - 12;
               const rej = activeStopHuntPopover.rejection;
+              const of = activeStopHuntPopover.orderFlow ?? rej.orderFlow;
 
               return (
                 <motion.div
@@ -1940,7 +1960,7 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.92, y: 6 }}
                   transition={{ duration: 0.15, ease: "easeOut" }}
-                  className="absolute z-50 p-3 rounded-xl bg-slate-950/95 border border-rose-500/40 shadow-2xl backdrop-blur-xl pointer-events-auto"
+                  className="absolute z-50 p-3.5 rounded-xl bg-slate-950/95 border border-rose-500/40 shadow-2xl backdrop-blur-xl pointer-events-auto"
                   style={{
                     left: `${popLeft}px`,
                     top: `${popTop}px`,
@@ -1972,7 +1992,7 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
                       </span>
                     </div>
 
-                    {/* Grid 2x2 com Métricas Quantitativas */}
+                    {/* Grid 2x2 com Métricas Quantitativas de Rejeição */}
                     <div className="grid grid-cols-2 gap-1.5 pt-0.5">
                       <div className="p-1.5 rounded-lg bg-slate-900/80 border border-white/5 space-y-0.5">
                         <span className="text-[9px] text-slate-400 flex items-center gap-1">
@@ -2015,8 +2035,70 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
                       </div>
                     </div>
 
+                    {/* Calibração de Reversão por Volume Delta (Order Flow Confluence) */}
+                    {of && (
+                      <div className="p-2 rounded-lg bg-slate-900/90 border border-white/10 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-semibold text-slate-300 flex items-center gap-1">
+                            {of.driver === 'AGGRESSIVE_MARKET_SWEEP' ? (
+                              <Flame className="w-2.5 h-2.5 text-amber-400" />
+                            ) : (
+                              <Shield className="w-2.5 h-2.5 text-cyan-400" />
+                            )}
+                            Order Flow & Delta Agressor
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-bold ${
+                            of.volumeDeltaPct >= 0 
+                              ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40' 
+                              : 'bg-rose-950/80 text-rose-300 border border-rose-500/40'
+                          }`}>
+                            {of.aggressiveDeltaRatio}x ({of.volumeDeltaPct >= 0 ? '+' : ''}{of.volumeDeltaPct}% Delta)
+                          </span>
+                        </div>
+
+                        {/* Driver Banner */}
+                        <div className={`p-1.5 rounded border text-[9px] font-medium leading-tight flex items-start gap-1.5 ${
+                          of.driver === 'AGGRESSIVE_MARKET_SWEEP'
+                            ? 'bg-emerald-950/50 border-emerald-500/30 text-emerald-200'
+                            : 'bg-cyan-950/50 border-cyan-500/30 text-cyan-200'
+                        }`}>
+                          <div className="mt-0.5">
+                            {of.driver === 'AGGRESSIVE_MARKET_SWEEP' ? (
+                              <Zap className="w-3 h-3 text-emerald-400 shrink-0" />
+                            ) : (
+                              <Shield className="w-3 h-3 text-cyan-400 shrink-0" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-bold">{of.driverTitle}</div>
+                            <div className="text-[8px] text-slate-300 mt-0.5">{of.driverDescription}</div>
+                          </div>
+                        </div>
+
+                        {/* Split Bar: Taker Buy vs Taker Sell */}
+                        <div className="space-y-1 pt-0.5">
+                          <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden flex">
+                            <div
+                              className="h-full bg-emerald-500 transition-all duration-300"
+                              style={{ width: `${Math.max(of.buyPressurePct, 5)}%` }}
+                              title={`Taker Buy: ${of.buyPressurePct}%`}
+                            />
+                            <div
+                              className="h-full bg-rose-500 transition-all duration-300"
+                              style={{ width: `${Math.max(of.sellPressurePct, 5)}%` }}
+                              title={`Taker Sell: ${of.sellPressurePct}%`}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[8px] text-slate-400">
+                            <span className="text-emerald-400 font-semibold">Taker Buy: {of.buyPressurePct}%</span>
+                            <span className="text-rose-400 font-semibold">Taker Sell: {of.sellPressurePct}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Resumo Institucional */}
-                    <p className="text-[9px] text-slate-300 leading-tight bg-white/[0.02] p-1.5 rounded border border-white/5">
+                    <p className="text-[8.5px] text-slate-400 leading-tight bg-white/[0.02] p-1.5 rounded border border-white/5">
                       {rej.summary}
                     </p>
                   </div>

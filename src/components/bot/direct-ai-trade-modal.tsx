@@ -880,7 +880,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                 {/* Zona de Liquidação Evitada (Sombreado Vermelho Translúcido entre Stop e Pavio) */}
                 {wickCalc.didBreachStop && (
                   <g className="animate-pulse cursor-help">
-                    <title>{`⚡ VELOCIDADE DE REJEIÇÃO DO PAVIO (STOP HUNT)\nClassificação: ${wickCalc.rejection.label}\nTempo: ${wickCalc.rejection.rejectionTimeMs}ms | Velocidade: $${wickCalc.rejection.rejectionVelocityUsdPerSec}/s\nAbsorção: ${wickCalc.rejection.absorptionPct}% (~${wickCalc.rejection.estimatedTicks} ticks)\n${wickCalc.rejection.summary}`}</title>
+                    <title>{`⚡ VELOCIDADE DE REJEIÇÃO DO PAVIO (STOP HUNT)\nClassificação: ${wickCalc.rejection.label}\nTempo: ${wickCalc.rejection.rejectionTimeMs}ms | Velocidade: $${wickCalc.rejection.rejectionVelocityUsdPerSec}/s\nAbsorção: ${wickCalc.rejection.absorptionPct}% (~${wickCalc.rejection.estimatedTicks} ticks)\n\nOrder Flow Confluence:\n • ${wickCalc.orderFlow.driverTitle}\n • Ratio Delta: ${wickCalc.orderFlow.aggressiveDeltaRatio}x (${wickCalc.orderFlow.buyPressurePct}% Compra / ${wickCalc.orderFlow.sellPressurePct}% Venda)\n • ${wickCalc.orderFlow.driverDescription}\n\n${wickCalc.rejection.summary}`}</title>
                     <rect
                       x={huntX}
                       y={huntTopY}
