@@ -162,7 +162,7 @@ export function StrategyCardsGrid() {
 
       {/* Diálogo Institucional de Detalhes da Estratégia */}
       <Dialog open={!!selectedStrategy} onOpenChange={(open) => !open && setSelectedStrategy(null)}>
-        <DialogContent className="bg-[#080d17] border border-cyan-500/30 text-white max-w-lg font-mono">
+        <DialogContent className="bg-[#080d17] border border-cyan-500/30 text-white max-w-lg max-h-[92vh] overflow-y-auto pro-scrollbar font-mono">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base text-cyan-300">
               <Award className="w-5 h-5 text-cyan-400" />

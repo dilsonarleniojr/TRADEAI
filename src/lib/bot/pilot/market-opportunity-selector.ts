@@ -828,7 +828,7 @@ export class MarketOpportunitySelector {
       strategyScore += 5;
     }
 
-    const totalScore = Math.max(0, Math.min(100, volumeScore + strategyScore - spreadPenalty));
+    const totalScore = Math.round(Math.max(0, Math.min(100, volumeScore + strategyScore - spreadPenalty)));
 
     const signal: TradeSignal = {
       symbol: candidate.symbol,

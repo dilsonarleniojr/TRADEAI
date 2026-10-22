@@ -1,6 +1,227 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Micro-Destaque no Candle do Gráfico Principal (CandlestickChart / ChartSection): Anotação de Evasão de Spoofing",
+    "summary": "1) Registro Global e Rota de API (direct-operation-manager.ts e /api/bot/direct-operation/spoofing-events): Adicionado registro globalSpoofingEvents com métodos recordSpoofingEvasion e getSpoofingEvents(symbol) no DirectOperationManager. Criada rota Next.js GET /api/bot/direct-operation/spoofing-events para alimentar o frontend sob demanda; 2) Zustand Store (marketDataSlice.ts): Adicionado estado spoofingMarkers: Record<string, SpoofingChartMarker[]> com ações addSpoofingMarker e setSpoofingMarkers para desacoplamento reativo entre OrderBook e o Gráfico; 3) Micro-Destaque Visual no Candle (candlestick-chart.tsx): No gráfico principal SVG, cada evento de spoofing é correlacionado ao candle intradiário mais próximo. Renderizada faixa vertical translúcida cobrindo toda a altura do gráfico (fill='url(#spoof-column-gradient)'), destaque reforçado no pavio/absorção (line com stroke=#10b981 de 3px e ticks de máxima/mínima), linha guia tracejada, pulso de radar, círculo de escudo esmeralda (🛡️), pill tag superior (-X% SPOOF) e tooltip SVG com auditoria de preços e amplitude do pavio; 4) Barra de Ferramentas Institucional (chart-section.tsx): Adicionado botão toggle '🛡️ Anti-Spoof (X)' com badge numérico em tempo real; 5) Validação: 17 testes unitários passando em bun test com 82 asserções e 0 erros no TypeScript.",
+    "tags": [
+      "main-chart-spoofing-marker",
+      "candlestick-chart",
+      "chart-section",
+      "candle-highlighting",
+      "wick-absorption-audit",
+      "emerald-shield-annotation",
+      "spoofing-evasion-events",
+      "anti-spoof-toggle"
+    ],
+    "details": {
+      "chartComponentPath": "src/components/chart/candlestick-chart.tsx",
+      "chartSectionPath": "src/components/chart/chart-section.tsx",
+      "apiRoutePath": "src/app/api/bot/direct-operation/spoofing-events/route.ts",
+      "storeSlicePath": "src/lib/store/marketDataSlice.ts",
+      "testSuitePath": "tests/unit/radar-spoofing-guard.test.ts",
+      "totalPassingTests": 17,
+      "totalAssertions": 82
+    },
+    "id": "mem-1792480200000-main-chart-spoofing-candle-highlight",
+    "timestamp": "2026-10-22T21:02:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Marcador de Evasão de Spoofing (🛡️) no Gráfico de Mini-Sparkline da Operação no DirectAiTradeModal",
+    "summary": "1) Registro Temporal e Histórico de Eventos de Spoofing (direct-operation-manager.ts): Definida interface SpoofingEvasionEvent (timestamp, price, dropPct, side, actionTaken) e campo spoofingEvents na DirectOperationSession. Quando o Radar Sniper detecta spoofing e aciona a pausa de 3s, o evento com timestamp milissegundo e preço de mercado é salvo na sessão; 2) Plotagem do Escudo Esmeralda no Gráfico SVG (direct-ai-trade-modal.tsx): Na função renderMiniTrajectoryChart, calculada a projeção temporal getXForTime(time) para mapear o timestamp exato do spoofing ao eixo X do SVG. Renderizada linha vertical tracejada (#10b981), anel pulsante com efeito de radar (animate-ping), círculo verde esmeralda com ícone de escudo (🛡️), tag superior estilizada ('-X% SPOOF' ou '🛡️ SPOOF EVITADO') e tooltip nativo SVG <title>; 3) Legenda e Suporte Pós-Operação: Adicionado badge '🛡️ Spoofing Evitado (X)' na legenda visual do gráfico intradiário (tanto em ACTIVE quanto em RESULT caso haja histórico de preços); 4) Validação: 100% dos testes unitários passando em bun test (15 testes com 67 asserções) e 0 erros de compilação no TypeScript (tsc --noEmit).",
+    "tags": [
+      "sparkline-spoofing-marker",
+      "direct-ai-trade-modal",
+      "svg-temporal-projection",
+      "emerald-shield-marker",
+      "spoofing-evasion-events",
+      "intraday-sparkline",
+      "visual-confluence"
+    ],
+    "details": {
+      "modalComponentPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "testSuitePath": "tests/unit/radar-spoofing-guard.test.ts",
+      "totalPassingTests": 15,
+      "totalAssertions": 67
+    },
+    "id": "mem-1792479600000-sparkline-spoofing-marker",
+    "timestamp": "2026-10-22T19:45:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Exibição de Armadilhas de Spoofing Evitadas (spoofingEvasionsCount) e Economia de Slippage no DirectAiTradeModal",
+    "summary": "1) Badge Institucional Verde (DirectAiTradeModal.tsx): Renderizado badge com ícone ShieldCheck ('X Armadilhas de Spoofing Evitadas') no cabeçalho da sessão ativa (estado ACTIVE) e no detalhamento de encerramento (estado RESULT), além de banner dinâmico pulsante durante a espera no radar (WAITING_TRIGGER) caso o robô esteja em pausa defensiva de 3s; 2) Tooltip Institucional com Economia Estimada de Slippage: Integrado componente Tooltip (Radix UI) detalhando a proteção contra manipulação predadora no topo do book, adverse selection e cálculo matemático da economia estimada de slippage em percentual (~0.45% por evasão) e valor nocional em USD protegido para a banca; 3) Breakdown Pós-Operação: No estado RESULT, incorporada métrica formal de 'Armadilhas de Spoofing Evitadas' ao lado das ordens Binance e parciais executadas; 4) Validação: 100% dos testes unitários passando em bun test (15 testes em radar-spoofing-guard.test.ts e order-book-imbalance.test.ts com 62 asserções), e 0 erros de compilação no TypeScript (tsc --noEmit).",
+    "tags": [
+      "direct-ai-trade-modal",
+      "spoofing-evasions-count",
+      "slippage-savings",
+      "institutional-tooltip",
+      "shield-check-badge",
+      "active-trade-modal",
+      "adverse-selection-defense"
+    ],
+    "details": {
+      "modalComponentPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "testSuitePath": "tests/unit/radar-spoofing-guard.test.ts",
+      "totalPassingTests": 15,
+      "totalAssertions": 62
+    },
+    "id": "mem-1792479000000-direct-ai-trade-modal-spoofing-badge",
+    "timestamp": "2026-10-22T19:35:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Integração do Liquidity Spoofing Guard ao GraduatedCircuitBreaker e Pausa de 3s no Radar Sniper",
+    "summary": "1) GraduatedCircuitBreaker com Tier Spoofing Pause (chaos-test-harness.ts): Adicionado tier TIER_SPOOFING_PAUSE com positionScale: 0.0 e canOpenNewOrder: false por 1 ciclo (3000ms) quando uma parede >= 30% é cancelada no book. Inclui métodos registerSpoofingAlert, isSpoofingHalted e getSpoofingAlert; 2) Proteção Autônoma no Radar Sniper (direct-operation-manager.ts): No momento em que o preço atinge o gatilho ótimo em sessões WAITING_TRIGGER, o DirectOperationManager consulta o GraduatedCircuitBreaker antes de despachar a ordem a mercado. Se spoofing ativo for detectado, o despacho é imediatamente pausado por 1 ciclo (radarPausedUntil = Date.now() + 3000), incrementa spoofingEvasionsCount e injeta passo explicativo no AiThoughtStream (fase RISK_GATE), reavaliando a integridade do suporte/resistência no próximo tick; 3) Soberania do Operador: Preservado override de entrada imediata caso o operador humano execute forceEntry() explicitamente; 4) Validação: 15 testes unitários passando em bun test (10 em order-book-imbalance.test.ts e 5 em radar-spoofing-guard.test.ts com 62 asserções), 0 erros no TypeScript.",
+    "tags": [
+      "radar-sniper",
+      "graduated-circuit-breaker",
+      "liquidity-spoofing-guard",
+      "tier-spoofing-pause",
+      "autonomous-defense",
+      "adverse-slippage-prevention",
+      "ai-thought-stream"
+    ],
+    "details": {
+      "circuitBreakerPath": "src/lib/bot/pilot/chaos-test-harness.ts",
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "testSuitePath": "tests/unit/radar-spoofing-guard.test.ts",
+      "totalPassingTests": 15,
+      "totalAssertions": 62
+    },
+    "id": "mem-1792478000000-radar-sniper-circuit-breaker-spoofing",
+    "timestamp": "2026-10-22T19:18:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Alerta de Inversão Repentina de Liquidez (Liquidity Spoofing Guard) na Barra de Confluência L2",
+    "summary": "1) Motor Matemático de Microestrutura (order-book-imbalance.ts): Criada função detectLiquiditySpoofing(current, previous, thresholdPct = 30.0, maxWindowMs = 1500/3500) que compara snapshots consecutivos de profundidade L2. Detecta cancelamentos rápidos de paredes (>= 30% em menos de 3500ms no ciclo do book ou < 1500ms no feed de streaming), classificando a gravidade em WARNING (30-44%) e CRITICAL (>= 45%), com recomendações defensivas específicas para compra e venda; 2) Notificação Sutil na Barra de Confluência (order-book-imbalance-histogram.tsx): Incorporado banner animado (AnimatePresence) com ícone ShieldAlert, delta temporal exato (ex: '240ms atrás'), percentual de queda (ex: '-38.5% Volume') e mensagem tática contextual anti-armadilha; 3) Monitoramento Contínuo no Livro e Terminal Lateral (order-book.tsx + chart-section.tsx): O OrderBook audita snapshots a cada atualização e dispara onSpoofingAlert com auto-limpeza em 4.5s e reset automático ao alternar de símbolo. O chart-section intercepta o envio rápido via handleQuickMarketOrderFromConfluence bloqueando preventivamente ações ingênuas a mercado caso o trader tente comprar exatamente quando uma parede de Bid acabou de ser cancelada; 4) Validação: 100% dos 10 testes unitários passando em bun test (44 asserções), 0 erros no TypeScript.",
+    "tags": [
+      "liquidity-spoofing-guard",
+      "order-book-manipulation",
+      "predatory-flow-protection",
+      "microstructure-defense",
+      "confluence-bar-alert",
+      "depth-snapshot-tracking",
+      "anti-slippage"
+    ],
+    "details": {
+      "mathModulePath": "src/lib/order-book-imbalance.ts",
+      "histogramComponentPath": "src/components/chart/order-book-imbalance-histogram.tsx",
+      "orderBookPath": "src/components/chart/order-book.tsx",
+      "chartSectionPath": "src/components/chart/chart-section.tsx",
+      "testSuitePath": "tests/unit/order-book-imbalance.test.ts",
+      "totalPassingTests": 10,
+      "totalAssertions": 44
+    },
+    "id": "mem-1792477000000-liquidity-spoofing-guard",
+    "timestamp": "2026-10-22T19:02:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Mini-Histograma de Desbalanceamento de Liquidez L2 (OBI) e Confluência Pré-Ordem a Mercado na Aba Livro L2",
+    "summary": "1) Mini-Histograma de Desbalanceamento L2 (order-book-imbalance-histogram.tsx + order-book-imbalance.ts): Criado componente de microestrutura analítica em tempo real com 8 colunas verticais bipolares (L1 a L8) representando os estratos de profundidade do book L2, com barras ascendentes ciano/verde para dominância compradora e descendentes vermelho/carmesim para dominância vendedora; 2) Integração Direta na Aba Livro L2 (chart-section.tsx + order-book.tsx): Ao alternar para o modo Livro L2, a aba exibe um mini-pill dinâmico com o delta de fluxo (ex: ▲+28.4% ou ▼-14.2%) e expande imediatamente o mini-histograma com diagnóstico de Skew Ratio (ex: 1.48x) e sinalização de confluência institucional pré-ordem; 3) Confluência para Ação a Mercado: Fornece confluência visual instantânea antes do envio de ordens a mercado com gatilhos rápidos [⚡ Comprar Mercado] e [⚡ Vender Mercado] que preenchem o QuickTrade e alternam suavemente a visualização; 4) Expansão de Profundidade: O OrderBook amplia a profundidade de 15 para 22 níveis no modo exclusivo L2; 5) Validação: 100% dos testes unitários passando em bun test (5 testes em order-book-imbalance.test.ts e 48 testes na suíte geral), 0 erros no TypeScript.",
+    "tags": [
+      "order-book-imbalance",
+      "obi-mini-histogram",
+      "market-confluence",
+      "order-flow-skew",
+      "depth-liquidity",
+      "quick-market-order",
+      "terminal-lateral-tabs"
+    ],
+    "details": {
+      "mathModulePath": "src/lib/order-book-imbalance.ts",
+      "componentPath": "src/components/chart/order-book-imbalance-histogram.tsx",
+      "chartSectionPath": "src/components/chart/chart-section.tsx",
+      "orderBookPath": "src/components/chart/order-book.tsx",
+      "testSuitePath": "tests/unit/order-book-imbalance.test.ts",
+      "totalPassingTests": 5
+    },
+    "id": "mem-1792476000000-obi-mini-histogram-confluence",
+    "timestamp": "2026-10-22T18:52:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Otimização Ampla da Interface Institucional: Blindagem Anti-Corte de Tabelas, Presets Fluidos no Dashboard e Abas de Alta Densidade no Terminal Lateral",
+    "summary": "1) Blindagem Anti-Corte em Tabelas de Mercado (market-table.tsx + globals.css): Implementado container de rolagem horizontal fluida (.table-scroll-container com min-w-[640px]), eliminando truncamento ou esmagamento de colunas analíticas (Ativo, Preço, Var 24h, Máx/Mín, Volume e Ação) em telas de 13/14 polegadas, tablets e zoom elevado; 2) Barra de Presets Responsiva do Terminal Pro (dashboard-grid.tsx): Reestruturação do header de controle com flex-wrap/nowrap inteligente, mantendo botões de presets operacionais em carrossel deslizante suave (cyan-scrollbar) sem empilhar botões ou quebrar a estética; 3) Abas de Alta Densidade no Terminal Lateral (chart-section.tsx): Criação de seletor de visualização (Divisão 50/50, Trade Rápido Exclusivo, Livro L2 Profundo) com persistência em localStorage (tradeai_chart_side_view), permitindo ao trader expandir a profundidade do order book ou focar 100% no painel de despacho com ergonomia de ponta; 4) Pausa Automática do Ticker no Header (globals.css): Adicionada regra CSS para congelar suavemente o marquee sob hover (.ticker-wrap:hover .ticker-tape { animation-play-state: paused; }), facilitando a leitura de cotações; 5) Validação: 100% dos testes unitários passando em bun test (48 testes, 246 asserções), 0 erros no TypeScript.",
+    "tags": [
+      "ui-ux-optimization",
+      "market-table-anti-cutoff",
+      "high-density-terminal-tabs",
+      "dashboard-presets-responsive",
+      "ticker-hover-pause",
+      "institutional-cockpit",
+      "localStorage-persistence"
+    ],
+    "details": {
+      "marketTablePath": "src/components/dashboard/market-table.tsx",
+      "dashboardGridPath": "src/components/dashboard/dashboard-grid.tsx",
+      "chartSectionPath": "src/components/chart/chart-section.tsx",
+      "openOrdersPath": "src/components/dashboard/open-orders.tsx",
+      "globalsCssPath": "src/app/globals.css",
+      "totalPassingTests": 48
+    },
+    "id": "mem-1792475000000-broad-ui-ux-optimization",
+    "timestamp": "2026-10-20T17:15:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Otimização Integral do Frontend Institucional: Modo Flexível de Frota (Compacto vs Analítico), Telemetria de Latência com Ping Real no Header e Blindagem de Viewport",
+    "summary": "1) Modo Flexível Institucional de Robôs (bot-section.tsx + compact-bot-row.tsx): Adicionado seletor de densidade com persistência em localStorage (tradeai_bot_view_mode) entre Visão Compacta Institucional (grid tabular de alta densidade sem cortes visuais, exibindo Rank #, Nome, Estratégia, Símbolo, Posição Atual, PnL Realizado/Não-realizado e ações rápidas de Play/Pause, Edição e Take Profit) e Visão Analítica Completa (cards tradicionais com todos os subpainéis e gráficos); 2) Telemetria de Conexão com Ping Real (header.tsx): Substituído badge estático por indicador vivo de latência em milissegundos (🟢 Ao Vivo 24ms, REST API 65ms) com efeito pulse, fonte monoestilizada e regras defensivas de layout (shrink-0, min-w-0, truncamento inteligente sem quebra de header); 3) Sticky Footer e Proteção Contra Overflow (direct-ai-trade-modal.tsx + dialog.tsx): Fixação de rodapé para manter botões de liquidação sempre à vista e restrição defensiva de viewport max-h-[calc(100vh-2rem)] flex flex-col; 4) Validação: 100% dos testes unitários passando em bun test (48 testes, 249 asserções), 0 erros no TypeScript.",
+    "tags": [
+      "ui-ux-optimization",
+      "flexible-view-mode",
+      "compact-bot-row",
+      "latency-ping-telemetry",
+      "header-anti-collision",
+      "institutional-design-system",
+      "localStorage-persistence",
+      "sticky-footer"
+    ],
+    "details": {
+      "botSectionPath": "src/components/bot/bot-section.tsx",
+      "compactRowPath": "src/components/bot/compact-bot-row.tsx",
+      "headerPath": "src/components/header.tsx",
+      "dialogPath": "src/components/ui/dialog.tsx",
+      "activeTradeModalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "testSuitePath": "tests/unit/direct-operation-flow.test.ts",
+      "totalPassingTests": 48,
+      "totalAssertions": 249
+    },
+    "id": "mem-1792474000000-frontend-optimization-flexible-fleet",
+    "timestamp": "2026-10-20T16:25:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Blindagem de Viewport, Rodapé Fixo (Sticky Footer) e Higienização Visual Institucional de Modais (UI/UX Design System)",
+    "summary": "1) Rodapé Fixo Institucional (Sticky Footer) no Trade Ativo: Implementado footer ancorado e dinâmico no DialogContent que mantém o botão de liquidação manual ('Encerrar e Consolidar Resultado Agora') permanentemente visível na barra inferior mesmo quando o usuário analisa dados de book, klines e confluências no topo. Inclui telemetria em tempo real (Símbolo, Preço Atual, PnL flutuante formatado e Trailing Stop ativo); 2) Efeito de Elevação por Scroll Longo: Monitoramento dinâmico via scroll metrics com transição de sombra e borda ciano quando há conteúdo rolável abaixo (hasLongScroll && !isAtBottom), com backdrop-blur-md bg-[#0b0f19]/95; 3) Resolução de Truncamento Vertical (Overflow): Corrigido o corte inferior dos modais com max-h-[92vh] flex flex-col e scroll suave pro-scrollbar; 4) Higienização Numérica Institucional: Sanitização do AI Score e scores de oportunidade com Math.round(...) em todas as camadas, eliminando dízimas periódicas; 5) Validação: 48 testes unitários passando em bun test (249 asserções), 0 erros no TypeScript.",
+    "tags": [
+      "ui-ux-design",
+      "sticky-footer",
+      "active-trade-modal",
+      "viewport-blindness-fix",
+      "dialog-overflow-scroll",
+      "modal-sanitization",
+      "pro-scrollbar",
+      "direct-ai-trade-modal",
+      "institutional-cockpit"
+    ],
+    "details": {
+      "modalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "dialogBasePath": "src/components/ui/dialog.tsx",
+      "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "testSuitePath": "tests/unit/direct-operation-flow.test.ts",
+      "totalPassingTests": 48,
+      "totalAssertions": 249
+    },
+    "id": "mem-1792473000000-ui-ux-viewport-sanitization",
+    "timestamp": "2026-10-20T12:23:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Aceleração Dinâmica de Expansão do Runner por ATR Spike (Runner Momentum Acceleration): Afrouxamento para 1.2% sob Spike de Volume e Upper BB com Clímax Apertado para 0.5% sob Exaustão",
     "summary": "1) Aceleração Dinâmica de Expansão do Runner por ATR Spike: Durante o trailing stop do TP3 (34% do lote do runner), se a IA detectar via auditRunnerMomentum um candle de 1m com volume > 2.5x a média dos últimos 15 períodos e fechamento acima da Upper Bollinger Band, o fator de trailing é temporariamente afrouxado de 0.8% (0.992) para 1.2% (0.988), dando espaço para a expansão parabólica respirar sem ser estopada por ruído; 2) Invariante Matemática Rígida: O trailing stop afrouxado de 1.2% jamais recua abaixo do TP3 Hard Floor (Math.max(dynamicTrailing, session.tp3HardFloorPrice || 0)), garantindo que a respiração parabólica nunca viole o lucro consolidado garantido pós-TP2; 3) Clímax Travado por Exaustão Volumétrica: Assim que o volume de order flow recuar e a exaustão for confirmada (volumeRatio < 1.5x e isExhausted: true), a IA encerra o afrouxamento e aperta agressivamente o trailing stop para 0.5% (factor 0.995), cravando o stop rente à máxima para capturar o topo absoluto da expansão; 4) Resiliência e Fail-Safe: Consulta isolada e não-bloqueante a klines de 1m, com suporte a mock determinístico DirectOperationManager.setMockRunnerSpike(symbol, mock); 5) Cockpit & Telemetria: Badges dinâmicos no DirectAiTradeModal: 'TP3 Runner (Aceleração 🚀)' (azul ciano pulsante com indicador de trailing 1.2%) e 'TP3 Runner (Clímax 🔒)' (roxo/fúcsia com trailing 0.5%), além de reflexão detalhada gravada no Diário de Trades; 6) Validação: 48 testes unitários passando em bun test (249 asserções, 100% de sucesso), 0 erros no TypeScript e container Docker reconstruído.",
     "tags": [

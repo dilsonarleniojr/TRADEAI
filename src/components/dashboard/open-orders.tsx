@@ -283,7 +283,7 @@ export function OpenOrders() {
                 Nova Ordem
               </Button>
             </DialogTrigger>
-            <DialogContent className="bg-background border-border sm:max-w-md glass">
+            <DialogContent className="bg-background border-border sm:max-w-md max-h-[92vh] overflow-y-auto pro-scrollbar glass">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <Zap className="w-5 h-5 text-crypto-cyan" />
@@ -448,7 +448,7 @@ export function OpenOrders() {
                       exit={{ opacity: 0, scale: 0.95 }}
                       className="flex flex-col p-3 rounded-lg border bg-secondary/20 border-border/40 hover:shadow-sm"
                     >
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className={cn(
                             "p-1.5 rounded-md shrink-0",

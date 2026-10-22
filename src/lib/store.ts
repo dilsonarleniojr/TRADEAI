@@ -24,4 +24,5 @@ export type {
   ConnectionStatus,
   SyncMode,
   CryptoStore,
+  SpoofingChartMarker,
 } from "./store/index";

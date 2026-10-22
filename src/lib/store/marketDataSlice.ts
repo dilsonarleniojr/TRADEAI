@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import type { TickerData, KlineData } from "./types";
+import type { TickerData, KlineData, SpoofingChartMarker } from "./types";
 
 export interface MarketDataSlice {
   // Market data
@@ -19,6 +19,11 @@ export interface MarketDataSlice {
 
   // Momento do último dado de mercado recebido (REST ou WebSocket), para detectar dados atrasados
   lastMarketUpdate: number;
+
+  // Spoofing Evasion Markers para o gráfico principal
+  spoofingMarkers: Record<string, SpoofingChartMarker[]>;
+  addSpoofingMarker: (marker: SpoofingChartMarker) => void;
+  setSpoofingMarkers: (symbol: string, markers: SpoofingChartMarker[]) => void;
 
   // Cache timestamps for TTL management
   tickersCacheAt: number;
@@ -94,6 +99,29 @@ export const createMarketDataSlice: StateCreator<MarketDataSlice, [], [], Market
     set({ selectedSymbol: sym });
     get().loadKlinesForSymbol(sym);
   },
+
+  // Spoofing Evasion Markers
+  spoofingMarkers: {},
+  addSpoofingMarker: (marker) =>
+    set((state) => {
+      const existing = state.spoofingMarkers[marker.symbol] || [];
+      if (existing.some((m) => Math.abs(m.timestamp - marker.timestamp) < 1500)) {
+        return state;
+      }
+      return {
+        spoofingMarkers: {
+          ...state.spoofingMarkers,
+          [marker.symbol]: [marker, ...existing].slice(0, 50),
+        },
+      };
+    }),
+  setSpoofingMarkers: (symbol, markers) =>
+    set((state) => ({
+      spoofingMarkers: {
+        ...state.spoofingMarkers,
+        [symbol]: markers,
+      },
+    })),
 
   lastMarketUpdate: 0,
 

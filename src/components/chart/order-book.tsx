@@ -7,20 +7,30 @@ import { Button } from "@/components/ui/button";
 import { BookOpen, RefreshCw, Minimize2, Maximize2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { getOrFetch, CACHE_TTL, invalidateCache } from "@/lib/cache";
+import { calculateOrderBookImbalance, detectLiquiditySpoofing, OrderBookImbalanceResult, DepthSnapshot, SpoofingAlert } from "@/lib/order-book-imbalance";
 
-interface OrderBookLevel {
+export interface OrderBookLevel {
   price: number;
   volume: number;
   cumulative: number;
 }
 
-interface OrderBookData {
+export interface OrderBookData {
   bids: OrderBookLevel[];
   asks: OrderBookLevel[];
   spread: number;
   spreadPercent: number;
   totalBidVolume: number;
   totalAskVolume: number;
+}
+
+export interface OrderBookProps {
+  mode?: "both" | "trade" | "book";
+  onDepthData?: (depth: { bids: OrderBookLevel[]; asks: OrderBookLevel[] }) => void;
+  onImbalanceUpdate?: (result: OrderBookImbalanceResult) => void;
+  onExecuteMarketOrder?: (side: "BUY" | "SELL") => void;
+  onSpoofingAlert?: (alert: SpoofingAlert | null) => void;
+  showInlineHistogram?: boolean;
 }
 
 async function fetchRealOrderBook(symbol: string, limit: number): Promise<OrderBookData> {
@@ -71,7 +81,14 @@ function formatBookVolume(vol: number): string {
   return vol.toFixed(6);
 }
 
-export function OrderBook() {
+export function OrderBook({
+  mode = "both",
+  onDepthData,
+  onImbalanceUpdate,
+  onExecuteMarketOrder,
+  onSpoofingAlert,
+  showInlineHistogram = false,
+}: OrderBookProps = {}) {
   const selectedSymbol = useCryptoStore((s) => s.selectedSymbol);
   const currentPrice = useCryptoStore((s) => s.tickers[s.selectedSymbol]?.price ?? 0);
   const [orderBook, setOrderBook] = useState<OrderBookData | null>(null);
@@ -79,8 +96,17 @@ export function OrderBook() {
   const [isCompact, setIsCompact] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const previousSnapshotRef = useRef<DepthSnapshot | null>(null);
+  const spoofingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const levels = isCompact ? 8 : 15;
+  // Expande a profundidade para 22 níveis no modo analítico exclusivo L2
+  const levels = isCompact ? 8 : (mode === "book" ? 22 : 15);
+
+  // Reseta histórico de snapshots ao trocar de símbolo
+  useEffect(() => {
+    previousSnapshotRef.current = null;
+    onSpoofingAlert?.(null);
+  }, [selectedSymbol, onSpoofingAlert]);
 
   const refreshOrderBook = useCallback(async () => {
     if (!selectedSymbol) return;
@@ -98,13 +124,38 @@ export function OrderBook() {
         CACHE_TTL.ORDER_BOOK
       );
       setOrderBook(data);
+      onDepthData?.({ bids: data.bids, asks: data.asks });
+
+      // Detecção de Liquidity Spoofing (quedas abruptas >= 30% em menos de 3.5s)
+      const currentSnapshot: DepthSnapshot = {
+        totalBidVol: data.totalBidVolume,
+        totalAskVol: data.totalAskVolume,
+        timestamp: Date.now(),
+      };
+
+      if (previousSnapshotRef.current) {
+        const spoofAlert = detectLiquiditySpoofing(currentSnapshot, previousSnapshotRef.current, 30.0, 3500);
+        if (spoofAlert) {
+          onSpoofingAlert?.(spoofAlert);
+          if (spoofingTimeoutRef.current) clearTimeout(spoofingTimeoutRef.current);
+          spoofingTimeoutRef.current = setTimeout(() => {
+            onSpoofingAlert?.(null);
+          }, 4500);
+        }
+      }
+      previousSnapshotRef.current = currentSnapshot;
+
+      if (onImbalanceUpdate) {
+        const imb = calculateOrderBookImbalance(data.bids, data.asks, 8);
+        onImbalanceUpdate(imb);
+      }
     } catch (err) {
       console.error("[OrderBook] Fetch error:", err);
       setError("Dados indisponíveis");
     } finally {
       setTimeout(() => setIsRefreshing(false), 300);
     }
-  }, [selectedSymbol, levels]);
+  }, [selectedSymbol, levels, onDepthData, onImbalanceUpdate, onSpoofingAlert]);
 
   // Initial load and auto-refresh every 3 seconds
   useEffect(() => {
@@ -114,6 +165,7 @@ export function OrderBook() {
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      if (spoofingTimeoutRef.current) clearTimeout(spoofingTimeoutRef.current);
     };
   }, [refreshOrderBook]);
 

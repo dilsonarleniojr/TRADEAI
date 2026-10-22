@@ -470,7 +470,8 @@
   animation: ticker-scroll 45s linear infinite;
   will-change: transform;
 }
-.ticker-tape:hover {
+.ticker-tape:hover,
+.ticker-wrap:hover .ticker-tape {
   animation-play-state: paused;
 }
 /* Quem prefere menos movimento rola a fita à mão em vez de vê-la animada */
@@ -481,6 +482,14 @@
   .ticker-wrap {
     overflow-x: auto;
   }
+}
+
+/* Indicador de tabela rolável sem corte de borda */
+.table-scroll-container {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Scale bounce for trade confirmations */

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { useCryptoStore } from '@/lib/store';
+import { useCryptoStore, type SpoofingChartMarker } from '@/lib/store';
 import { formatPrice, formatVolume, formatTime } from '@/lib/format';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
@@ -88,6 +88,8 @@ interface CandlestickChartProps {
   drawingTool?: DrawingTool;
   drawings?: Drawing[];
   onDrawingAdd?: (drawing: Drawing) => void;
+  spoofingEvents?: SpoofingChartMarker[];
+  showSpoofingMarkers?: boolean;
 }
 
 const CHART_PADDING = { top: 20, right: 90, bottom: 30, left: 10 };
@@ -202,8 +204,12 @@ export function CandlestickChart({
   drawingTool = 'crosshair',
   drawings = [],
   onDrawingAdd,
+  spoofingEvents,
+  showSpoofingMarkers = true,
 }: CandlestickChartProps) {
   const trades = useCryptoStore((s) => s.trades);
+  const storeSpoofingMarkers = useCryptoStore((s) => s.spoofingMarkers[symbol] || []);
+  const activeSpoofingEvents = spoofingEvents ?? storeSpoofingMarkers;
   const [candles, setCandles] = useState<ProcessedCandle[]>([]);
   const [loading, setLoading] = useState(true);
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
@@ -744,6 +750,22 @@ export function CandlestickChart({
               <filter id="drawing-glow-gold" x="-20%" y="-20%" width="140%" height="140%">
                 <feGaussianBlur stdDeviation="3" result="blur" />
                 <feFlood floodColor="#fbbf24" floodOpacity="0.6" result="color" />
+                <feComposite in="color" in2="blur" operator="in" result="glow" />
+                <feMerge>
+                  <feMergeNode in="glow" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+              {/* Spoofing Evasion highlight filters */}
+              <linearGradient id="spoof-column-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="#10b981" stopOpacity="0.25" />
+                <stop offset="35%" stopColor="#10b981" stopOpacity="0.12" />
+                <stop offset="70%" stopColor="#10b981" stopOpacity="0.05" />
+                <stop offset="100%" stopColor="#10b981" stopOpacity="0.01" />
+              </linearGradient>
+              <filter id="spoof-glow-emerald" x="-30%" y="-30%" width="160%" height="160%">
+                <feGaussianBlur stdDeviation="2.5" result="blur" />
+                <feFlood floodColor="#10b981" floodOpacity="0.65" result="color" />
                 <feComposite in="color" in2="blur" operator="in" result="glow" />
                 <feMerge>
                   <feMergeNode in="glow" />
@@ -1360,6 +1382,180 @@ export function CandlestickChart({
                       opacity={0.6}
                     />
                     <title>{`Execução ${trade.side === 'BUY' ? 'Compra' : 'Venda'}\nQtd: ${trade.quantity} ${trade.symbol.replace("USDT", "")}\nPreço: ${formatPrice(trade.price)}\nPnL: ${trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)} USD\nEstratégia: ${trade.strategy}\nModo: ${trade.mode.toUpperCase()}`}</title>
+                  </g>
+                );
+              });
+            })()}
+
+            {/* Liquidity Spoofing Evasion Markers & Candle Highlighting */}
+            {showSpoofingMarkers && (() => {
+              if (activeSpoofingEvents.length === 0 || candles.length === 0) return null;
+              const startOfVisible = candles.length - visibleCandles.length;
+
+              return activeSpoofingEvents.map((event) => {
+                const eventTime = event.timestamp;
+
+                // Encontra o candle mais próximo temporalmente
+                let closestIdx = 0;
+                let minDiff = Infinity;
+                for (let j = 0; j < candles.length; j++) {
+                  const diff = Math.abs(candles[j].time - eventTime);
+                  if (diff < minDiff) {
+                    minDiff = diff;
+                    closestIdx = j;
+                  }
+                }
+
+                const relIndex = closestIdx - startOfVisible;
+                if (relIndex < 0 || relIndex >= visibleCandles.length) return null;
+
+                const candle = visibleCandles[relIndex];
+                const x = indexToX(relIndex);
+                const colWidth = Math.max(bodyWidth + 12, candleWidth * 0.95);
+                const colX = x - colWidth / 2;
+                const colY = CHART_PADDING.top;
+                const colHeight = priceChartHeight;
+
+                const candleHighY = priceToY(candle.high);
+                const candleLowY = priceToY(candle.low);
+
+                // Posicionamento do marcador de escudo (por padrão acima do topo do candle)
+                const placeAbove = candleHighY - 26 >= CHART_PADDING.top + 10;
+                const badgeY = placeAbove ? candleHighY - 24 : candleLowY + 24;
+                const pillY = placeAbove ? badgeY - 14 : badgeY + 14;
+
+                const isRecent = Date.now() - event.timestamp < 180000;
+                const isBidSpoof = event.side === 'BID';
+                const dropPctFormatted = event.dropPct ? event.dropPct.toFixed(1) : '30.0';
+
+                return (
+                  <g key={`spoof-marker-${event.id}`} className="cursor-pointer">
+                    {/* 1. Faixa Vertical Translúcida de Fundo Destacando o Candle */}
+                    <rect
+                      x={colX}
+                      y={colY}
+                      width={colWidth}
+                      height={colHeight}
+                      fill="url(#spoof-column-gradient)"
+                      rx={3}
+                      stroke="#10b981"
+                      strokeWidth={1}
+                      strokeDasharray="3 3"
+                      strokeOpacity={0.4}
+                    />
+
+                    {/* 2. Destaque Especial no Pavio / Absorção da Vela */}
+                    <line
+                      x1={x}
+                      y1={candleHighY}
+                      x2={x}
+                      y2={candleLowY}
+                      stroke="#10b981"
+                      strokeWidth={3}
+                      opacity={0.8}
+                      strokeLinecap="round"
+                    />
+                    {/* Ticks nas extremidades do pavio (Máxima e Mínima) */}
+                    <line
+                      x1={x - 4}
+                      y1={candleHighY}
+                      x2={x + 4}
+                      y2={candleHighY}
+                      stroke="#34d399"
+                      strokeWidth={2}
+                    />
+                    <line
+                      x1={x - 4}
+                      y1={candleLowY}
+                      x2={x + 4}
+                      y2={candleLowY}
+                      stroke="#34d399"
+                      strokeWidth={2}
+                    />
+
+                    {/* 3. Linha Conectora Tracejada entre o Pavio e o Escudo */}
+                    <line
+                      x1={x}
+                      y1={placeAbove ? candleHighY : candleLowY}
+                      x2={x}
+                      y2={badgeY}
+                      stroke="#10b981"
+                      strokeWidth={1.5}
+                      strokeDasharray="2 2"
+                      opacity={0.85}
+                    />
+
+                    {/* 4. Anel Pulsante de Radar (ativo se recente) */}
+                    {isRecent && (
+                      <circle
+                        cx={x}
+                        cy={badgeY}
+                        r={14}
+                        fill="#10b981"
+                        className="animate-ping"
+                        opacity={0.35}
+                      />
+                    )}
+
+                    {/* 5. Círculo Escudo Esmeralda com Ícone */}
+                    <circle
+                      cx={x}
+                      cy={badgeY}
+                      r={11}
+                      fill="#022c22"
+                      stroke="#10b981"
+                      strokeWidth={1.5}
+                      filter="url(#spoof-glow-emerald)"
+                    />
+                    <text
+                      x={x}
+                      y={badgeY + 4}
+                      textAnchor="middle"
+                      fontSize="12"
+                      className="select-none pointer-events-none"
+                    >
+                      🛡️
+                    </text>
+
+                    {/* 6. Pill Tag Superior Informativa */}
+                    <g transform={`translate(${x}, ${pillY})`}>
+                      <rect
+                        x={-30}
+                        y={-8}
+                        width={60}
+                        height={16}
+                        rx={4}
+                        fill="#064e3b"
+                        stroke="#10b981"
+                        strokeWidth={1}
+                        opacity={0.95}
+                      />
+                      <text
+                        x={0}
+                        y={3.5}
+                        textAnchor="middle"
+                        fontSize="9"
+                        fontWeight="bold"
+                        fontFamily="monospace"
+                        fill="#a7f3d0"
+                      >
+                        -{dropPctFormatted}% SPOOF
+                      </text>
+                    </g>
+
+                    {/* 7. Tooltip Nativo SVG com Dados de Auditoria */}
+                    <title>{`🛡️ EVASÃO DE SPOOFING (IA DEFENSE)
+Horário: ${new Date(event.timestamp).toLocaleTimeString()}
+Lado Manipulado: ${isBidSpoof ? 'BID (Suporte Falso Cancelado)' : 'ASK (Resistência Falsa Cancelada)'}
+Parede Retirada: -${dropPctFormatted}% do Book L2
+Preço no Evento: ${event.price ? formatPrice(event.price) : formatPrice(candle.close)}
+Candle Auditado:
+ • Máxima: ${formatPrice(candle.high)}
+ • Mínima: ${formatPrice(candle.low)}
+ • Abertura: ${formatPrice(candle.open)} | Fechamento: ${formatPrice(candle.close)}
+ • Volume: ${formatVolume(candle.volume)}
+ • Amplitude Pavio/Absorção: ${( ((candle.high - candle.low) / (candle.low || 1)) * 100 ).toFixed(2)}%
+Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse slippage.`}</title>
                   </g>
                 );
               });

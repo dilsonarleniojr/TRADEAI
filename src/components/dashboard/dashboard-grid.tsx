@@ -346,18 +346,18 @@ export function DashboardGrid() {
       <motion.div
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2 px-3 rounded-xl bg-[#0d131f]/80 backdrop-blur-xl border border-white/[0.07] shadow-sm"
+        className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2.5 p-2 px-3 rounded-xl bg-[#0d131f]/80 backdrop-blur-xl border border-white/[0.07] shadow-sm"
       >
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5 overflow-x-auto cyan-scrollbar max-w-full pb-1 sm:pb-0">
+          <div className="flex items-center gap-2 shrink-0">
             <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
             <span className="text-xs font-bold text-slate-200 tracking-wider uppercase font-mono">Terminal Pro</span>
           </div>
-          <span className="text-white/10 font-thin">|</span>
+          <span className="text-white/10 font-thin shrink-0">|</span>
           <div
             role="tablist"
             aria-label="Presets do painel"
-            className="flex gap-1 p-0.5 rounded-lg bg-black/40 border border-white/[0.06] overflow-x-auto scrollbar-none"
+            className="flex gap-1 p-0.5 rounded-lg bg-black/40 border border-white/[0.06] overflow-x-auto scrollbar-none shrink-0"
           >
             {PRESET_OPTIONS.map((opt) => (
               <button
@@ -367,7 +367,7 @@ export function DashboardGrid() {
                 aria-selected={preset === opt.id}
                 onClick={() => handlePresetChange(opt.id)}
                 className={cn(
-                  "px-3 py-1 rounded-md text-xs font-medium whitespace-nowrap cursor-pointer transition-all duration-150",
+                  "px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap cursor-pointer transition-all duration-150",
                   preset === opt.id
                     ? "bg-cyan-500/20 text-cyan-400 font-semibold border border-cyan-500/30 shadow-sm"
                     : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
@@ -379,7 +379,7 @@ export function DashboardGrid() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="flex items-center gap-2 ml-auto flex-wrap sm:flex-nowrap shrink-0">
           <Button
             size="sm"
             onClick={() => setDirectTradeOpen(true)}
@@ -398,7 +398,8 @@ export function DashboardGrid() {
             title="Abrir Cockpit Institucional (PnL Real-Time, OFI, Livro L2 e IA)"
           >
             <Zap className="w-3 h-3 text-cyan-400" />
-            <span className="font-semibold">Cockpit Institucional</span>
+            <span className="font-semibold hidden xl:inline">Cockpit</span>
+            <span className="font-semibold xl:hidden">Cockpit</span>
           </Button>
 
           <Button
@@ -406,11 +407,11 @@ export function DashboardGrid() {
             size="sm"
             onClick={handleSyncMarket}
             disabled={isSyncing}
-            className="h-7 px-2.5 text-xs text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10 gap-1.5 cursor-pointer font-medium border border-transparent hover:border-cyan-500/20 rounded-lg"
+            className="h-7 px-2 text-xs text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10 gap-1.5 cursor-pointer font-medium border border-transparent hover:border-cyan-500/20 rounded-lg"
             title="Sincronizar moedas com a Binance"
           >
             <RefreshCw className={cn("w-3 h-3", isSyncing && "animate-spin text-cyan-400")} />
-            <span className="hidden sm:inline font-mono">503 Moedas Binance</span>
+            <span className="hidden sm:inline font-mono">503 Moedas</span>
           </Button>
 
           {customizer}

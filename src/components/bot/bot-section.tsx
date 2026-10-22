@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { BotCard } from "./bot-card";
+import { CompactBotRow } from "./compact-bot-row";
 import { BotDialog } from "./bot-dialog";
 import { AIBotRecommendationsDialog } from "./ai-bot-recommendations-dialog";
 import { BinanceProfitableBotsDialog } from "./binance-profitable-bots-dialog";
@@ -57,6 +58,10 @@ import {
   Receipt,
   Bell,
   FlaskConical,
+  LayoutGrid,
+  LayoutList,
+  Search,
+  X,
 } from "lucide-react";
 import { calculateRiskMetrics } from "@/lib/bot/risk-metrics";
 import { motion, AnimatePresence } from "framer-motion";
@@ -150,6 +155,24 @@ export function BotSection() {
   const [botToEdit, setBotToEdit] = useState<BotInstance | null>(null);
   const [botFilter, setBotFilter] = useState<"all" | "active" | "in_position" | "stopped">("all");
   const [activeBotTab, setActiveBotTab] = useState("registry");
+  const [viewMode, setViewMode] = useState<"compact" | "full">("compact");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("tradeai_bot_view_mode");
+      if (saved === "compact" || saved === "full") {
+        setViewMode(saved);
+      }
+    }
+  }, []);
+
+  const handleToggleViewMode = (mode: "compact" | "full") => {
+    setViewMode(mode);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("tradeai_bot_view_mode", mode);
+    }
+  };
 
   useEffect(() => {
     if (openBotCreateModal) {
@@ -297,17 +320,35 @@ export function BotSection() {
 
   // Filtered bots list
   const filteredBots = useMemo(() => {
+    let result = bots;
     switch (botFilter) {
       case "active":
-        return bots.filter((b) => b.active);
+        result = bots.filter((b) => b.active);
+        break;
       case "in_position":
-        return bots.filter((b) => !!b.position && b.position.quantity > 0);
+        result = bots.filter((b) => !!b.position && b.position.quantity > 0);
+        break;
       case "stopped":
-        return bots.filter((b) => !b.active);
+        result = bots.filter((b) => !b.active);
+        break;
       default:
-        return bots;
+        result = bots;
+        break;
     }
-  }, [bots, botFilter]);
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter(
+        (b) =>
+          b.name.toLowerCase().includes(q) ||
+          b.symbol.toLowerCase().includes(q) ||
+          b.strategy.toLowerCase().includes(q) ||
+          (b.overrideSymbol && b.overrideSymbol.toLowerCase().includes(q))
+      );
+    }
+
+    return result;
+  }, [bots, botFilter, searchQuery]);
 
   return (
     <motion.div
@@ -880,7 +921,61 @@ export function BotSection() {
             <span className="text-[10px] text-muted-foreground hidden lg:inline">vagas</span>
           </div>
 
-          <span className="text-xs text-muted-foreground hidden xl:inline">
+          {/* Alternador de Modo de Densidade (Modo Flexível Institucional) */}
+          <div className="flex items-center gap-1 bg-secondary/35 p-1 rounded-xl border border-border/40 text-xs shadow-sm">
+            <Button
+              size="sm"
+              variant={viewMode === "compact" ? "default" : "ghost"}
+              className={`h-7 px-2.5 text-xs font-semibold cursor-pointer gap-1.5 transition-all ${
+                viewMode === "compact"
+                  ? "bg-crypto-cyan text-white shadow-sm font-bold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => handleToggleViewMode("compact")}
+              title="Visão Compacta Institucional: tabela/linhas de alta densidade sem cortes de tela"
+            >
+              <LayoutList className="w-3.5 h-3.5" />
+              <span className="text-[11px]">Compacto</span>
+            </Button>
+            <Button
+              size="sm"
+              variant={viewMode === "full" ? "default" : "ghost"}
+              className={`h-7 px-2.5 text-xs font-semibold cursor-pointer gap-1.5 transition-all ${
+                viewMode === "full"
+                  ? "bg-crypto-cyan text-white shadow-sm font-bold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => handleToggleViewMode("full")}
+              title="Visão Analítica Completa: cards detalhados com gráficos e ordens parciais"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span className="text-[11px]">Analítico</span>
+            </Button>
+          </div>
+
+          {/* Busca Rápida de Robôs e Pares */}
+          <div className="flex items-center gap-1.5 bg-secondary/35 px-2.5 py-1 rounded-xl border border-border/40 text-xs shadow-sm focus-within:border-crypto-cyan/60 focus-within:ring-1 focus-within:ring-crypto-cyan/30 transition-all">
+            <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <input
+              type="text"
+              placeholder="Buscar robô/par/estratégia..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-transparent border-none outline-none text-xs w-28 sm:w-36 placeholder:text-muted-foreground/60 text-foreground"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="text-muted-foreground hover:text-foreground cursor-pointer"
+                title="Limpar busca"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <span className="text-xs text-muted-foreground hidden 2xl:inline">
             ⚡ Robôs operando em tempo real na Binance / Simulado
           </span>
         </div>
@@ -963,6 +1058,27 @@ export function BotSection() {
                 Criar Robô Manual
               </Button>
             </div>
+          </div>
+        ) : viewMode === "compact" ? (
+          <div className="space-y-2">
+            <AnimatePresence>
+              {filteredBots.map((bot, idx) => (
+                <motion.div
+                  key={bot.id}
+                  layout
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <CompactBotRow
+                    bot={bot}
+                    index={idx}
+                    onEdit={handleOpenEditDialog}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4">

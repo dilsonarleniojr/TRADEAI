@@ -470,3 +470,14 @@ export interface TradePrefill {
   maxRiskPerTradePercent?: number;
 }
 
+export interface SpoofingChartMarker {
+  id: string;
+  symbol: string;
+  timestamp: number;
+  price?: number;
+  dropPct: number;
+  side?: 'BID' | 'ASK' | 'NONE' | 'BUY' | 'SELL';
+  severity?: 'WARNING' | 'CRITICAL';
+  actionTaken?: string;
+  message?: string;
+}

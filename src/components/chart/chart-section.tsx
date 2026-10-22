@@ -7,6 +7,9 @@ import { CandlestickChart } from './candlestick-chart';
 import { IndicatorsPanel } from './indicators-panel';
 import { QuickTrade } from './quick-trade';
 import { OrderBook } from './order-book';
+import { OrderBookImbalanceHistogram } from './order-book-imbalance-histogram';
+import type { OrderBookImbalanceResult, SpoofingAlert } from '@/lib/order-book-imbalance';
+import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -16,7 +19,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MousePointer2, TrendingUp, Minus, Trash2, Search, ChevronDown } from 'lucide-react';
+import { MousePointer2, TrendingUp, Minus, Trash2, Search, ChevronDown, Zap, Activity } from 'lucide-react';
 import { ALL_SYMBOLS } from '@/lib/crypto-meta';
 import { cn } from '@/lib/utils';
 import type { DrawingTool, Drawing } from './candlestick-chart';
@@ -134,6 +137,29 @@ export function ChartSection() {
   const [drawingTool, setDrawingTool] = useState<DrawingTool>('crosshair');
   const [drawings, setDrawings] = useState<Drawing[]>([]);
 
+  // High-density terminal side view mode: both | trade | book
+  const [sideView, setSideView] = useState<'both' | 'trade' | 'book'>('both');
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('tradeai_chart_side_view');
+      if (saved === 'both' || saved === 'trade' || saved === 'book') {
+        setSideView(saved);
+      }
+    } catch {
+      // LocalStorage access fallback
+    }
+  }, []);
+
+  const handleSideViewChange = useCallback((mode: 'both' | 'trade' | 'book') => {
+    setSideView(mode);
+    try {
+      localStorage.setItem('tradeai_chart_side_view', mode);
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
   const handleDrawingAdd = useCallback((drawing: Drawing) => {
     setDrawings((prev) => [...prev, drawing]);
   }, []);
@@ -141,6 +167,95 @@ export function ChartSection() {
   const handleClearDrawings = useCallback(() => {
     setDrawings([]);
   }, []);
+
+  // L2 Order Book Depth & Imbalance (OBI) State
+  const [depthData, setDepthData] = useState<{ bids: { price: number; volume: number }[]; asks: { price: number; volume: number }[] } | null>(null);
+  const [depthImbalance, setDepthImbalance] = useState<OrderBookImbalanceResult | null>(null);
+  const [spoofingAlert, setSpoofingAlert] = useState<SpoofingAlert | null>(null);
+  const spoofingMarkers = useCryptoStore((s) => s.spoofingMarkers[s.selectedSymbol] || []);
+  const addSpoofingMarker = useCryptoStore((s) => s.addSpoofingMarker);
+  const setSpoofingMarkers = useCryptoStore((s) => s.setSpoofingMarkers);
+  const [showSpoofingMarkers, setShowSpoofingMarkers] = useState<boolean>(true);
+  const setTradePrefill = useCryptoStore((s) => s.setTradePrefill);
+  const currentPrice = useCryptoStore((s) => s.tickers[s.selectedSymbol]?.price ?? 0);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    setSpoofingAlert(null);
+    let cancelled = false;
+
+    // Carrega histórico de eventos de evasão de spoofing do robô / radar
+    async function fetchSpoofingEvents() {
+      try {
+        const res = await fetch(`/api/bot/direct-operation/spoofing-events?symbol=${selectedSymbol}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (!cancelled && json?.data?.events && Array.isArray(json.data.events)) {
+            setSpoofingMarkers(selectedSymbol, json.data.events);
+          }
+        }
+      } catch {
+        // Fallback silencioso
+      }
+    }
+
+    fetchSpoofingEvents();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSymbol, setSpoofingMarkers]);
+
+  const handleSpoofingAlert = useCallback((alert: SpoofingAlert | null) => {
+    setSpoofingAlert(alert);
+    if (alert && alert.isAlertActive && alert.dropPct >= 30.0) {
+      addSpoofingMarker({
+        id: `alert-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        symbol: selectedSymbol,
+        timestamp: alert.timestamp || Date.now(),
+        dropPct: alert.dropPct,
+        side: alert.side,
+        severity: alert.severity,
+        actionTaken: 'Despacho pausado por 3s para reavaliar profundidade real',
+        message: alert.message,
+      });
+    }
+  }, [selectedSymbol, addSpoofingMarker]);
+
+  const handleQuickMarketOrderFromConfluence = useCallback((side: 'BUY' | 'SELL') => {
+    const currentTickerPrice = useCryptoStore.getState().tickers[selectedSymbol]?.price || 0;
+    const deltaStr = depthImbalance ? (depthImbalance.imbalancePct > 0 ? `+${depthImbalance.imbalancePct}%` : `${depthImbalance.imbalancePct}%`) : '';
+    setTradePrefill({
+      symbol: selectedSymbol,
+      side,
+      entryPrice: currentTickerPrice,
+      horizon: 'RAPIDO',
+      source: 'Confluência L2 (OBI)',
+      reason: `Desbalanceamento de Liquidez L2 ${side === 'BUY' ? 'Comprador' : 'Vendedor'} Favorável (${deltaStr})`,
+    });
+    // Alterna suavemente para visualização dividida exibindo o trade com dados preenchidos
+    handleSideViewChange('both');
+
+    // Alerta defensivo de Spoofing se uma parede do mesmo lado tiver sido cancelada
+    if (spoofingAlert?.isAlertActive) {
+      const isAdverse =
+        (side === 'BUY' && spoofingAlert.side === 'BID') ||
+        (side === 'SELL' && spoofingAlert.side === 'ASK');
+
+      if (isAdverse) {
+        toast({
+          variant: 'destructive',
+          title: `🛡️ Alerta de Spoofing no Book (${spoofingAlert.side === 'BID' ? 'COMPRA' : 'VENDA'})`,
+          description: `Parede de liquidez cancelada (-${spoofingAlert.dropPct}%) a ${spoofingAlert.timeDeltaMs}ms atrás. Risco elevado de derrapagem por liquidez fantasma.`,
+        });
+        return;
+      }
+    }
+
+    toast({
+      title: `⚡ Confluência L2 Aplicada: ${side === 'BUY' ? 'COMPRA' : 'VENDA'}`,
+      description: `Parâmetros preenchidos no Painel de Trade para ${selectedSymbol.replace('USDT', '')} com base no book L2. Revise o lote antes da confirmação.`,
+    });
+  }, [selectedSymbol, depthImbalance, spoofingAlert, handleSideViewChange, setTradePrefill, toast]);
 
   // Fetch RSI data - using a ref-based approach to avoid set-state-in-effect
   useEffect(() => {
@@ -448,6 +563,27 @@ export function ChartSection() {
               </div>
             </PopoverContent>
           </Popover>
+
+          {/* Toggle de Micro-Destaques de Spoofing nos Candles */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowSpoofingMarkers(!showSpoofingMarkers)}
+            className={cn(
+              "h-7 px-2.5 text-xs transition-all duration-200 shrink-0 gap-1.5 border",
+              showSpoofingMarkers
+                ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25 shadow-sm shadow-emerald-500/10 font-semibold"
+                : "border-border/40 text-muted-foreground hover:text-foreground opacity-60"
+            )}
+            title="Exibir ou ocultar micro-destaques de spoofing nos candles intradiários auditados"
+          >
+            <span>🛡️ Anti-Spoof</span>
+            {spoofingMarkers.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                {spoofingMarkers.length}
+              </span>
+            )}
+          </Button>
         </div>
       </div>
 
@@ -481,6 +617,8 @@ export function ChartSection() {
                     drawingTool={drawingTool}
                     drawings={drawings}
                     onDrawingAdd={handleDrawingAdd}
+                    spoofingEvents={spoofingMarkers}
+                    showSpoofingMarkers={showSpoofingMarkers}
                   />
                 </motion.div>
               </AnimatePresence>
@@ -489,9 +627,102 @@ export function ChartSection() {
         </div>
 
         {/* Right Side Trading & Orderbook Area (4 cols on lg, 3 on 2xl) */}
-        <div className="lg:col-span-4 2xl:col-span-3 flex flex-col gap-3">
-          <QuickTrade />
-          <OrderBook />
+        <div className="lg:col-span-4 2xl:col-span-3 flex flex-col gap-2.5">
+          {/* Institutional Side Panel Density Selector */}
+          <div className="flex items-center justify-between px-2.5 py-1.5 bg-secondary/15 rounded-lg border border-border/40 text-[11px] backdrop-blur-sm">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Terminal Lateral
+            </span>
+            <div className="flex items-center gap-1 bg-secondary/40 p-0.5 rounded-md border border-border/30">
+              <button
+                type="button"
+                onClick={() => handleSideViewChange('both')}
+                className={cn(
+                  "px-2 py-0.5 rounded text-[10px] font-medium transition-all cursor-pointer",
+                  sideView === 'both'
+                    ? "bg-crypto-cyan text-black font-bold shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                title="Visualização dividida: Trade Rápido + Livro de Ofertas"
+              >
+                Divisão
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSideViewChange('trade')}
+                className={cn(
+                  "px-2 py-0.5 rounded text-[10px] font-medium transition-all cursor-pointer",
+                  sideView === 'trade'
+                    ? "bg-crypto-cyan text-black font-bold shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                title="Foco exclusivo no Painel de Ordem / Trade Rápido"
+              >
+                Trade
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSideViewChange('book')}
+                className={cn(
+                  "px-2 py-0.5 rounded text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1",
+                  sideView === 'book'
+                    ? "bg-crypto-cyan text-black font-bold shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                title="Foco exclusivo no Livro de Ofertas (OrderBook L2) com mini-histograma OBI"
+              >
+                <span>Livro L2</span>
+                {depthImbalance && (
+                  <span
+                    className={cn(
+                      "text-[8px] font-mono px-1 py-0 rounded transition-all",
+                      sideView === 'book'
+                        ? "bg-black/20 text-black font-bold"
+                        : depthImbalance.confluenceSignal === 'BULLISH'
+                        ? "text-crypto-green bg-crypto-green/10 font-bold"
+                        : depthImbalance.confluenceSignal === 'BEARISH'
+                        ? "text-crypto-red bg-crypto-red/10 font-bold"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    {depthImbalance.imbalancePct > 0 ? `▲+${depthImbalance.imbalancePct}%` : `▼${depthImbalance.imbalancePct}%`}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Mini-Histograma de Desbalanceamento de Liquidez Bid/Ask (OBI) ativado no modo Livro L2 */}
+          <AnimatePresence>
+            {sideView === 'book' && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2 }}
+              >
+                <OrderBookImbalanceHistogram
+                  bids={depthData?.bids || []}
+                  asks={depthData?.asks || []}
+                  symbol={selectedSymbol}
+                  currentPrice={currentPrice}
+                  onExecuteMarketOrder={handleQuickMarketOrderFromConfluence}
+                  spoofingAlert={spoofingAlert}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {(sideView === 'both' || sideView === 'trade') && <QuickTrade />}
+          {(sideView === 'both' || sideView === 'book') && (
+            <OrderBook
+              mode={sideView}
+              onDepthData={setDepthData}
+              onImbalanceUpdate={setDepthImbalance}
+              onExecuteMarketOrder={handleQuickMarketOrderFromConfluence}
+              onSpoofingAlert={handleSpoofingAlert}
+            />
+          )}
         </div>
       </div>
 

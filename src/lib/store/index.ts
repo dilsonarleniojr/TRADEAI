@@ -32,6 +32,7 @@ export type {
   ConnectionStatus,
   SyncMode,
   TradePrefill,
+  SpoofingChartMarker,
 } from "./types";
 
 export { deduplicateBots } from "./botSlice";

@@ -129,14 +129,14 @@ export function MarketTable() {
 
           <CategoryFilters active={categoryFilter} counts={categoryCounts} onChange={setCategoryFilter} />
 
-          {/* Tabela */}
+          {/* Tabela com proteção de rolagem horizontal e vertical */}
           <div
             className={cn(
-              "overflow-y-auto cyan-scrollbar relative transition-[max-height] duration-300",
+              "overflow-y-auto overflow-x-auto cyan-scrollbar relative transition-[max-height] duration-300 table-scroll-container",
               showAll ? "max-h-[600px]" : "max-h-[420px]"
             )}
           >
-            <Table>
+            <Table className="min-w-[640px]">
               <TableHeader>
                 <TableRow className="border-border hover:bg-transparent">
                   <TableHead className={cn(headClass, "w-7")} />

@@ -238,10 +238,10 @@ export function ApiSettingsDialog({
         </DialogTrigger>
       )}
 
-      <DialogContent className="sm:max-w-[500px] bg-card/95 backdrop-blur-xl border border-border/80 text-foreground shadow-2xl">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[520px] w-[calc(100vw-1.5rem)] max-h-[92vh] flex flex-col p-0 gap-0 overflow-hidden bg-card/95 backdrop-blur-xl border border-border/80 text-foreground shadow-2xl">
+        <DialogHeader className="p-5 sm:p-6 pb-4 shrink-0 pr-16 border-b border-border/40">
           <DialogTitle className="flex items-center gap-2 text-base font-bold">
-            <div className="w-8 h-8 rounded-lg bg-crypto-cyan/15 border border-crypto-cyan/30 flex items-center justify-center text-crypto-cyan">
+            <div className="w-8 h-8 rounded-lg bg-crypto-cyan/15 border border-crypto-cyan/30 flex items-center justify-center text-crypto-cyan shrink-0">
               <KeyRound className="w-4 h-4" />
             </div>
             <span>Configurações da API Binance</span>
@@ -251,8 +251,9 @@ export function ApiSettingsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Status Alert Banner */}
-        <div
+        <div className="p-5 sm:p-6 overflow-y-auto pro-scrollbar flex-1 min-h-0 space-y-4">
+          {/* Status Alert Banner */}
+          <div
           className={cn(
             "p-3 rounded-lg border text-xs flex items-start gap-2.5 transition-colors",
             binanceConnected
@@ -403,8 +404,9 @@ export function ApiSettingsDialog({
             </ul>
           </div>
         </div>
+        </div>
 
-        <DialogFooter className="flex flex-row items-center justify-between gap-2 pt-2 border-t border-border/40">
+        <DialogFooter className="flex flex-row items-center justify-between gap-2 p-4 sm:p-5 pt-3 shrink-0 border-t border-border/40 bg-card/60">
           {binanceConnected ? (
             <Button
               type="button"

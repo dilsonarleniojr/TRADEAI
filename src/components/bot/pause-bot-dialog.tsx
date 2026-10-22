@@ -64,7 +64,7 @@ export function PauseBotDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !isLiquidating && onOpenChange(v)}>
-      <DialogContent className="max-w-md bg-card/95 backdrop-blur-xl border-border/60 shadow-2xl">
+      <DialogContent className="max-w-md max-h-[92vh] overflow-y-auto pro-scrollbar bg-card/95 backdrop-blur-xl border-border/60 shadow-2xl">
         <DialogHeader className="space-y-2">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400">

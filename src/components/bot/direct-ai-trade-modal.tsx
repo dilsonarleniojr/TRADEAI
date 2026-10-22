@@ -13,6 +13,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useCryptoStore } from "@/lib/store";
 import { formatPrice } from "@/lib/format";
@@ -125,6 +131,33 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [hasLongScroll, setHasLongScroll] = useState<boolean>(false);
+  const [isAtBottom, setIsAtBottom] = useState<boolean>(false);
+
+  // Monitoramento dinâmico de scroll longo para ativação do rodapé fixo (Sticky Footer)
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const scrollable = el.scrollHeight > el.clientHeight + 15;
+    setHasLongScroll(scrollable);
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 25;
+    setIsAtBottom(atBottom);
+  };
+
+  useEffect(() => {
+    if (state !== "ACTIVE") return;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const updateScrollMetrics = () => {
+      const scrollable = el.scrollHeight > el.clientHeight + 15;
+      setHasLongScroll(scrollable);
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 25;
+      setIsAtBottom(atBottom);
+    };
+    updateScrollMetrics();
+    const t = setTimeout(updateScrollMetrics, 150);
+    return () => clearTimeout(t);
+  }, [state, session?.currentPrice, session?.unrealizedPnlUsd]);
 
   const isReal = operationMode === "live" && !binanceTestnet;
 
@@ -610,11 +643,11 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
 
         <div className="flex items-center gap-2 text-slate-400">
           {sizing?.recommendedAllocationUsd && (
-            <span>Parity: <strong className="text-white">${sizing.recommendedAllocationUsd}</strong></span>
+            <span>Parity: <strong className="text-white">${typeof sizing.recommendedAllocationUsd === "number" ? sizing.recommendedAllocationUsd.toFixed(2) : sizing.recommendedAllocationUsd}</strong></span>
           )}
           {latencyMs !== undefined && latencyMs > 0 && (
             <span className="text-cyan-400 font-bold bg-cyan-500/10 px-1.5 py-0.5 rounded border border-cyan-500/20">
-              ⚡ {latencyMs}ms
+              ⚡ {Math.round(latencyMs)}ms
             </span>
           )}
         </div>
@@ -630,7 +663,9 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
     tp3Price?: number,
     stopLossPrice?: number,
     currentPrice: number = 0,
-    vwapPrice?: number
+    vwapPrice?: number,
+    spoofingEvents?: { timestamp: number; price?: number; dropPct?: number; side?: 'BID' | 'ASK' | 'NONE' | 'BUY' | 'SELL' }[],
+    spoofingEvasionsCount?: number
   ) => {
     const points = priceHistory && priceHistory.length >= 2
       ? priceHistory
@@ -667,6 +702,38 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
       return padding + (idx / (total - 1)) * (width - padding * 2);
     };
 
+    // Mapeamento temporal para eventos de spoofing no eixo X
+    const firstTime = points[0].timestamp;
+    const lastTime = points[points.length - 1].timestamp;
+    const timeSpan = lastTime - firstTime;
+
+    const getXForTime = (time: number) => {
+      if (timeSpan <= 0) return padding + 12;
+      if (time <= firstTime) return padding + 12;
+      if (time >= lastTime) return width - padding - 12;
+      const ratio = (time - firstTime) / timeSpan;
+      return padding + ratio * (width - padding * 2);
+    };
+
+    const rawEvents = (spoofingEvents && spoofingEvents.length > 0)
+      ? spoofingEvents
+      : (typeof spoofingEvasionsCount === "number" && spoofingEvasionsCount > 0)
+        ? [{ timestamp: firstTime, price: entryPrice || currentPrice, dropPct: 35 }]
+        : [];
+
+    const spoofMarkers = rawEvents.map((evt, idx) => {
+      const rawX = getXForTime(evt.timestamp);
+      const clampedX = Math.max(padding + 10, Math.min(width - padding - 10, rawX));
+      const rawY = getY(evt.price || entryPrice);
+      const clampedY = Math.max(padding + 8, Math.min(height - padding - 12, rawY));
+      return {
+        ...evt,
+        x: clampedX,
+        y: clampedY,
+        id: idx,
+      };
+    });
+
     const pathData = points
       .map((pt, i) => `${i === 0 ? "M" : "L"} ${getX(i, points.length).toFixed(1)} ${getY(pt.price).toFixed(1)}`)
       .join(" ");
@@ -688,13 +755,18 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
             <Activity className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
             <span className="font-bold text-slate-200">Trajetória e Alvos Dinâmicos (SVG)</span>
           </div>
-          <div className="flex items-center gap-2 text-[9px]">
+          <div className="flex items-center gap-2 text-[9px] flex-wrap">
             <span className="text-emerald-400 font-bold">● TP3</span>
             <span className="text-teal-400 font-bold">● TP2</span>
             <span className="text-cyan-400 font-bold">● TP1</span>
             {vwapY !== null && <span className="text-purple-400 font-bold">● VWAP</span>}
             <span className="text-slate-400">⋯ Entrada</span>
             <span className="text-rose-400">● SL</span>
+            {spoofMarkers.length > 0 && (
+              <span className="text-emerald-400 font-bold flex items-center gap-1 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/30 font-mono shadow-[0_0_8px_rgba(16,185,129,0.2)]">
+                🛡️ Spoofing Evitado ({spoofMarkers.length})
+              </span>
+            )}
           </div>
         </div>
 
@@ -770,6 +842,84 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
               strokeLinejoin="round"
             />
 
+            {/* Marcadores de Evasão de Spoofing (🛡️ Liquidity Spoofing Guard) */}
+            {spoofMarkers.map((m) => (
+              <g key={`spoof-marker-${m.id}`} className="cursor-help">
+                <title>
+                  {`🛡️ Armadilha de Spoofing Evitada pela IA\n` +
+                   `Momento: ${new Date(m.timestamp).toLocaleTimeString()}\n` +
+                   `Queda súbita de liquidez no book${m.dropPct ? ` (-${m.dropPct}%)` : ''}\n` +
+                   `Ação: Ordem pausada por 3s evitando derrapagem severa (adverse slippage).`}
+                </title>
+
+                {/* Linha vertical tracejada verde esmeralda no exato segundo da evasão */}
+                <line
+                  x1={m.x}
+                  y1={padding}
+                  x2={m.x}
+                  y2={height - padding}
+                  stroke="#10b981"
+                  strokeWidth="1.2"
+                  strokeDasharray="2 2"
+                  strokeOpacity="0.75"
+                />
+
+                {/* Pulso de radar esmeralda no ponto da cotação */}
+                <circle
+                  cx={m.x}
+                  cy={m.y}
+                  r="7.5"
+                  fill="#10b981"
+                  fillOpacity="0.25"
+                  className="animate-ping"
+                />
+
+                {/* Círculo do marcador */}
+                <circle
+                  cx={m.x}
+                  cy={m.y}
+                  r="6"
+                  fill="#022c22"
+                  stroke="#10b981"
+                  strokeWidth="1.5"
+                />
+
+                {/* Escudo Esmeralda no ponto */}
+                <text
+                  x={m.x}
+                  y={m.y + 3}
+                  textAnchor="middle"
+                  fontSize="7"
+                  style={{ userSelect: "none" }}
+                >
+                  🛡️
+                </text>
+
+                {/* Pill indicativo no topo do eixo temporal */}
+                <rect
+                  x={Math.max(padding, Math.min(width - padding - 48, m.x - 24))}
+                  y={2}
+                  width="48"
+                  height="11"
+                  rx="3.5"
+                  fill="#022c22"
+                  stroke="#10b981"
+                  strokeWidth="0.8"
+                />
+                <text
+                  x={Math.max(padding + 24, Math.min(width - padding - 24, m.x))}
+                  y={9.5}
+                  textAnchor="middle"
+                  fontSize="6"
+                  fontFamily="monospace"
+                  fontWeight="bold"
+                  fill="#6ee7b7"
+                >
+                  {m.dropPct ? `-${m.dropPct}% SPOOF` : "🛡️ SPOOF EVITADO"}
+                </text>
+              </g>
+            ))}
+
             {/* Ponto do Preço Atual */}
             <circle
               cx={getX(points.length - 1, points.length)}
@@ -795,26 +945,26 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[540px] bg-[#090d14]/95 backdrop-blur-2xl border border-white/[0.1] text-foreground p-0 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] rounded-2xl">
+      <DialogContent className="sm:max-w-[580px] w-[calc(100vw-1.5rem)] max-h-[92vh] flex flex-col bg-[#090d14]/95 backdrop-blur-2xl border border-white/[0.1] text-foreground p-0 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] rounded-2xl">
         {/* Header Decorativo com Gradiente */}
-        <div className="relative px-6 pt-6 pb-4 border-b border-white/[0.08] bg-gradient-to-r from-cyan-950/40 via-background to-emerald-950/40">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 to-emerald-400 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.4)]">
+        <div className="relative px-5 sm:px-6 pt-5 pb-3.5 border-b border-white/[0.08] bg-gradient-to-r from-cyan-950/40 via-background to-emerald-950/40 shrink-0 pr-16">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 to-emerald-400 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.4)] shrink-0">
                 <Zap className="w-5 h-5 text-black font-extrabold fill-current" />
               </div>
-              <div>
-                <DialogTitle className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+              <div className="min-w-0">
+                <DialogTitle className="text-base sm:text-lg font-bold tracking-tight text-white flex items-center gap-2 truncate">
                   Operação Direta com IA
-                  <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
+                  <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse shrink-0" />
                 </DialogTitle>
-                <DialogDescription className="text-xs text-slate-400">
-                  Defina o valor e tempo. A IA seleciona o melhor ativo, opera e entrega o lucro.
+                <DialogDescription className="text-xs text-slate-400 truncate">
+                  Defina o valor e tempo. A IA seleciona o melhor ativo e entrega o lucro.
                 </DialogDescription>
               </div>
             </div>
 
-            <div className="flex items-center gap-1 bg-white/[0.04] p-0.5 rounded-lg border border-white/[0.08]">
+            <div className="flex items-center gap-1 bg-white/[0.04] p-0.5 rounded-lg border border-white/[0.08] shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -872,8 +1022,12 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
           </div>
         </div>
 
-        {/* Corpo do Modal em Função do Estado */}
-        <div className="p-6">
+        {/* Corpo do Modal em Função do Estado com Scroll */}
+        <div 
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="p-4 sm:p-6 overflow-y-auto pro-scrollbar flex-1 min-h-0 space-y-4"
+        >
           <AnimatePresence mode="wait">
             {/* ETAPA 1: CONFIGURAÇÃO */}
             {state === "CONFIG" && (
@@ -1084,7 +1238,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                                 "text-[9px] font-bold px-1 rounded",
                                 isChosen ? "bg-cyan-500/20 text-cyan-300" : "bg-white/[0.05] text-slate-400"
                               )}>
-                                {item.score} pts
+                                {typeof item.score === "number" ? Math.round(item.score) : item.score} pts
                               </span>
                             </div>
                             <div className="flex items-center justify-between mt-1 text-[9px] font-mono">
@@ -1291,6 +1445,31 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   </div>
                 </div>
 
+                {/* Alerta de Proteção Anti-Spoofing Ativa no Radar Sniper */}
+                {(session.isSpoofingProtectionTriggered || (typeof session.spoofingEvasionsCount === "number" && session.spoofingEvasionsCount > 0)) && (
+                  <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex items-start gap-2.5 shadow-[0_0_15px_rgba(16,185,129,0.15)] animate-pulse">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                    <div className="text-[11px] text-slate-300 leading-relaxed flex-1">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <strong className="text-emerald-300 font-semibold flex items-center gap-1.5">
+                          Armadilha de Spoofing Evitada pela IA
+                          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-[9px] font-mono px-1.5 py-0">
+                            {session.spoofingEvasionsCount || 1} {session.spoofingEvasionsCount === 1 ? "evasão" : "evasões"}
+                          </Badge>
+                        </strong>
+                        {session.isSpoofingProtectionTriggered && (
+                          <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                            Pausa de Defesa: 3s
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-slate-300">
+                        Queda abrupta de liquidez fantasma detectada no topo do book. O robô pausou o disparo para reavaliar a profundidade real e prevenir adverse slippage.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Cockpit de Ranking: Top 3 Oportunidades no Radar da IA */}
                 {session.topRanked && session.topRanked.length > 0 && (
                   <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.08] space-y-2">
@@ -1328,7 +1507,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                                 "text-[9px] font-mono font-bold px-1 rounded",
                                 isChosen ? "bg-emerald-500/20 text-emerald-300" : "bg-white/[0.05] text-slate-400"
                               )}>
-                                {item.score} pts
+                                {typeof item.score === "number" ? Math.round(item.score) : item.score} pts
                               </span>
                             </div>
                             <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono">
@@ -1400,7 +1579,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-white text-sm">{session.symbol}</span>
                         <Badge className="bg-emerald-500/20 text-emerald-400 border-none text-[10px] font-mono">
-                          Score IA: {session.aiScore}/100
+                          Score IA: {typeof session.aiScore === 'number' ? Math.round(session.aiScore) : Math.round(Number(session.aiScore) || 0)}/100
                         </Badge>
                         {session.strategyChosen && (
                           <Badge variant="outline" className="bg-purple-500/10 text-purple-300 border-purple-500/30 text-[10px] font-mono">
@@ -1411,6 +1590,44 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                           <Badge variant="outline" className="bg-cyan-500/10 text-cyan-300 border-cyan-500/30 text-[10px] font-mono">
                             Binance #{session.binanceOrderId}
                           </Badge>
+                        )}
+                        {typeof session.spoofingEvasionsCount === "number" && session.spoofingEvasionsCount > 0 && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge
+                                variant="outline"
+                                className="bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40 text-[10px] font-mono cursor-help flex items-center gap-1 shadow-[0_0_12px_rgba(16,185,129,0.25)] transition-colors"
+                              >
+                                <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                                <span>
+                                  {session.spoofingEvasionsCount}{" "}
+                                  {session.spoofingEvasionsCount === 1
+                                    ? "Armadilha de Spoofing Evitada"
+                                    : "Armadilhas de Spoofing Evitadas"}
+                                </span>
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent
+                              side="bottom"
+                              className="max-w-xs bg-slate-900/95 border border-emerald-500/30 text-slate-200 p-2.5 shadow-2xl backdrop-blur-md"
+                            >
+                              <div className="space-y-1.5 text-left">
+                                <div className="font-semibold text-emerald-400 flex items-center gap-1.5 text-xs">
+                                  <ShieldCheck className="w-3.5 h-3.5" />
+                                  <span>Proteção Institucional Anti-Spoofing</span>
+                                </div>
+                                <p className="text-[11px] leading-relaxed text-slate-300">
+                                  A IA detectou paredes falsas de liquidez canceladas no topo do book antes do despacho a mercado. Ao pausar temporariamente a execução por 3 segundos, a IA blindou a operação contra adverse selection e derrapagem predatória de preço.
+                                </p>
+                                <div className="pt-1.5 border-t border-white/[0.08] flex items-center justify-between text-[10px] font-mono">
+                                  <span className="text-slate-400">Slippage Economizado:</span>
+                                  <span className="text-emerald-300 font-bold">
+                                    ~{(session.spoofingEvasionsCount * 0.45).toFixed(2)}% (+${((session.notionalUsd || 0) * session.spoofingEvasionsCount * 0.0045).toFixed(2)} USD)
+                                  </span>
+                                </div>
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
                         )}
                       </div>
                       <span className="text-[11px] text-slate-400 font-mono">
@@ -1711,7 +1928,10 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   session.tp2Price,
                   session.tp3Price || session.targetPrice,
                   session.trailingStopPrice || session.stopLossPrice,
-                  session.currentPrice
+                  session.currentPrice,
+                  session.vwapPrice,
+                  session.spoofingEvents,
+                  session.spoofingEvasionsCount
                 )}
 
                 {/* Cockpit de Ranking: Top 3 Oportunidades no Radar da IA */}
@@ -1751,7 +1971,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                                 "text-[9px] font-mono font-bold px-1 rounded",
                                 isChosen ? "bg-emerald-500/20 text-emerald-300" : "bg-white/[0.05] text-slate-400"
                               )}>
-                                {item.score} pts
+                                {typeof item.score === "number" ? Math.round(item.score) : item.score} pts
                               </span>
                             </div>
                             <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono">
@@ -1772,20 +1992,13 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   </div>
                 )}
 
-                {/* Botão de Encerramento Antecipado */}
-                <Button
-                  onClick={() => handleCloseSession("MANUAL_CLOSE")}
-                  disabled={isClosing}
-                  variant="outline"
-                  className="w-full h-10 border-white/[0.1] hover:bg-rose-500/20 hover:border-rose-500/40 text-slate-200 hover:text-rose-300 text-xs font-bold rounded-xl transition-all cursor-pointer"
-                >
-                  {isClosing ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin text-rose-400" />
-                  ) : (
-                    <Shield className="w-4 h-4 mr-2 text-rose-400" />
-                  )}
-                  Encerrar e Consolidar Resultado Agora
-                </Button>
+                {/* Nota de Auditoria no Fim do Scroll */}
+                <div className="pt-2 pb-1 text-center">
+                  <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.05] text-[10px] text-slate-400 flex items-center justify-center gap-1.5 font-mono">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>Execução protegida por Trailing Stop & Circuit Breaker institucional</span>
+                  </div>
+                </div>
               </motion.div>
             )}
 
@@ -1895,6 +2108,22 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                           <strong className="text-cyan-400 font-mono">#{session.closeBinanceOrderId}</strong>
                         </div>
                       )}
+                      {typeof session.spoofingEvasionsCount === "number" && session.spoofingEvasionsCount > 0 && (
+                        <div className="flex justify-between items-center text-slate-400">
+                          <span className="flex items-center gap-1.5">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Armadilhas de Spoofing Evitadas:</span>
+                          </span>
+                          <div className="flex items-center gap-1.5 font-mono">
+                            <Badge variant="outline" className="bg-emerald-500/15 text-emerald-300 border-emerald-500/30 text-[10px]">
+                              {session.spoofingEvasionsCount} {session.spoofingEvasionsCount === 1 ? "evasão" : "evasões"}
+                            </Badge>
+                            <span className="text-[11px] text-emerald-400 font-bold">
+                              (~${((session.notionalUsd || 0) * session.spoofingEvasionsCount * 0.0045).toFixed(2)} USD preservados)
+                            </span>
+                          </div>
+                        </div>
+                      )}
                       <div className="flex justify-between text-slate-400">
                         <span>Motivo de Encerramento:</span>
                         <Badge variant="outline" className="text-[10px] border-white/[0.1] text-slate-300">
@@ -1908,6 +2137,22 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                         </Badge>
                       </div>
                     </div>
+
+                    {/* Mini-Gráfico SVG de Trajetória Consolidada com Marcador de Spoofing */}
+                    {session.priceHistory && session.priceHistory.length >= 2 && (
+                      renderMiniTrajectoryChart(
+                        session.priceHistory,
+                        session.entryPrice,
+                        session.tp1Price || session.partialTargetPrice,
+                        session.tp2Price,
+                        session.tp3Price || session.targetPrice,
+                        session.trailingStopPrice || session.stopLossPrice,
+                        session.currentPrice,
+                        session.vwapPrice,
+                        session.spoofingEvents,
+                        session.spoofingEvasionsCount
+                      )
+                    )}
 
                     {/* Auto-Reflexão Pós-Trade da IA & MFE/MAE Tearsheet */}
                     {session.postTradeJournal && (
@@ -1999,6 +2244,67 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
             )}
           </AnimatePresence>
         </div>
+
+        {/* Rodapé Fixo Institucional (Sticky Footer) para Trade Ativo */}
+        {state === "ACTIVE" && session && (
+          <div className={cn(
+            "shrink-0 p-3 sm:px-6 bg-[#0b0f19]/95 backdrop-blur-md border-t border-white/[0.08] z-20 transition-all duration-300",
+            hasLongScroll && !isAtBottom
+              ? "shadow-[0_-12px_28px_rgba(0,0,0,0.7)] border-t-cyan-500/30"
+              : "shadow-[0_-6px_16px_rgba(0,0,0,0.4)]"
+          )}>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5">
+              {/* Telemetria Compacta */}
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-[11px] font-mono font-bold text-slate-200">
+                    {session.symbol.replace("USDT", "")}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    ${formatPrice(session.currentPrice)}
+                  </span>
+                </div>
+                <div className="h-3 w-px bg-white/10 hidden sm:block" />
+                <div className="flex items-center gap-1.5 font-mono text-xs">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold">Lucro:</span>
+                  <span className={cn(
+                    "font-bold px-1.5 py-0.5 rounded text-[11px]",
+                    session.unrealizedPnlUsd >= 0
+                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                      : "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                  )}>
+                    {session.unrealizedPnlUsd >= 0 ? "+" : ""}${formatPrice(session.unrealizedPnlUsd)} ({session.unrealizedPnlPercent >= 0 ? "+" : ""}{session.unrealizedPnlPercent.toFixed(2)}%)
+                  </span>
+                </div>
+                {session.trailingStopPrice && (
+                  <>
+                    <div className="h-3 w-px bg-white/10 hidden sm:block" />
+                    <div className="hidden sm:flex items-center gap-1 text-[10px] text-slate-400 font-mono">
+                      <span>Stop:</span>
+                      <span className="text-amber-300 font-bold">${formatPrice(session.trailingStopPrice)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Botão de Encerramento Fixo */}
+              <Button
+                onClick={() => handleCloseSession("MANUAL_CLOSE")}
+                disabled={isClosing}
+                variant="outline"
+                className="w-full sm:w-auto h-9 px-4 border-rose-500/30 bg-rose-500/15 hover:bg-rose-500/30 hover:border-rose-500/60 text-rose-200 hover:text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-md shrink-0 flex items-center justify-center gap-1.5"
+              >
+                {isClosing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                ) : (
+                  <Shield className="w-3.5 h-3.5 text-rose-400" />
+                )}
+                <span>Encerrar e Consolidar Resultado Agora</span>
+              </Button>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

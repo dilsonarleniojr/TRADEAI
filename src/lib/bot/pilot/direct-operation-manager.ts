@@ -14,6 +14,8 @@ import { CurrencyPairNormalizer } from './currency-pair-normalizer';
 import { PreciseMath } from './precise-math';
 import { PilotOrderExecutor, BinanceCredentials } from './pilot-order-executor';
 import { getOrderBookAnalysis } from '@/lib/bot/order-book-cache';
+import { GraduatedCircuitBreaker } from './chaos-test-harness';
+import type { SpoofingAlert } from '@/lib/order-book-imbalance';
 
 export interface DirectOperationSession {
   id: string;
@@ -118,6 +120,21 @@ export interface DirectOperationSession {
   runnerTrailingFactor?: number; // 0.992 (padrão 0.8%), 0.988 (aceleração/folga 1.2%), 0.995 (clímax/aperto 0.5%)
   runnerVolumeRatio?: number;
   runnerAccelerationReason?: string;
+
+  // Liquidity Spoofing Guard no Radar Sniper
+  isSpoofingProtectionTriggered?: boolean;
+  radarPausedUntil?: number;
+  spoofingEvasionsCount?: number;
+  injectedSpoofingAlert?: SpoofingAlert | null;
+  spoofingEvents?: SpoofingEvasionEvent[];
+}
+
+export interface SpoofingEvasionEvent {
+  timestamp: number;
+  price: number;
+  dropPct?: number;
+  side?: 'BID' | 'ASK' | 'NONE' | 'BUY' | 'SELL';
+  actionTaken?: string;
 }
 
 export interface TradeJournalEntry {
@@ -308,6 +325,76 @@ export class DirectOperationManager {
     } else {
       this.mockRunnerSpikes.set(symbol, mock);
     }
+  }
+
+  // Registro global de eventos de evasão de spoofing para plotagem no gráfico principal
+  private static globalSpoofingEvents: (SpoofingEvasionEvent & { symbol: string; id: string })[] = [];
+
+  /**
+   * Registra um evento de evasão de spoofing no histórico global
+   */
+  public static recordSpoofingEvasion(
+    symbol: string,
+    event: SpoofingEvasionEvent
+  ): void {
+    const id = `spoof-${symbol}-${event.timestamp}-${Math.random().toString(36).substring(2, 6)}`;
+    this.globalSpoofingEvents.push({ ...event, symbol, id });
+    if (this.globalSpoofingEvents.length > 200) {
+      this.globalSpoofingEvents.shift();
+    }
+  }
+
+  /**
+   * Retorna os eventos de evasão de spoofing, opcionalmente filtrados por símbolo
+   */
+  public static getSpoofingEvents(symbol?: string): (SpoofingEvasionEvent & { symbol: string; id: string })[] {
+    const results: (SpoofingEvasionEvent & { symbol: string; id: string })[] = [];
+    const seen = new Set<string>();
+
+    for (const ev of this.globalSpoofingEvents) {
+      if (!symbol || ev.symbol === symbol) {
+        const key = `${ev.symbol}-${ev.timestamp}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          results.push(ev);
+        }
+      }
+    }
+
+    for (const s of activeSessions.values()) {
+      if ((!symbol || s.symbol === symbol) && s.spoofingEvents) {
+        for (const ev of s.spoofingEvents) {
+          const key = `${s.symbol}-${ev.timestamp}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            results.push({
+              ...ev,
+              symbol: s.symbol,
+              id: `session-spoof-${s.id}-${ev.timestamp}`,
+            });
+          }
+        }
+      }
+    }
+
+    return results.sort((a, b) => b.timestamp - a.timestamp);
+  }
+
+  /**
+   * Limpa os eventos de spoofing (para testes unitários)
+   */
+  public static clearSpoofingEvents(): void {
+    this.globalSpoofingEvents = [];
+  }
+
+  /**
+   * Limpa todos os mocks estáticos configurados para testes unitários
+   */
+  public static resetMocks(): void {
+    this.mockOrderBookRatios.clear();
+    this.mockCvdDeltas.clear();
+    this.mockRunnerSpikes.clear();
+    this.clearSpoofingEvents();
   }
 
   /**
@@ -616,13 +703,13 @@ export class DirectOperationManager {
       notionalUsd: finalNotional,
       riskUsd: validation.order.riskAmountUsd,
       rewardRiskRatio: validation.order.netRewardRiskRatio,
-      aiScore: opportunity.score,
+      aiScore: Math.round(opportunity.score),
       mode,
       status: isImmediate ? 'ACTIVE' : 'WAITING_TRIGGER',
       currentPrice: opportunity.marketData.lastPrice,
       unrealizedPnlUsd: 0,
       unrealizedPnlPercent: 0,
-      rationale: `Oportunidade selecionada pela IA (${opportunity.effectiveStrategy}) com Score ${opportunity.score}/100. ${opportunity.triggerCondition.conditionDescription}`,
+      rationale: `Oportunidade selecionada pela IA (${opportunity.effectiveStrategy}) com Score ${Math.round(opportunity.score)}/100. ${opportunity.triggerCondition.conditionDescription}`,
       binanceOrderId,
       binanceClientOrderId,
       executedQuantity: executedQty,
@@ -665,6 +752,8 @@ export class DirectOperationManager {
       executionLatencyMs: latencyAudit.latencyMs,
       priceHistory: [{ price: finalEntryPrice, timestamp: now }],
       targetRecalibration: opportunity.targetRecalibration,
+      spoofingEvasionsCount: 0,
+      spoofingEvents: [],
     };
 
     activeSessions.set(sessionId, session);
@@ -701,6 +790,47 @@ export class DirectOperationManager {
       return session;
     }
     session.isExecutingTrigger = true;
+
+    // Se for disparo autônomo (não forçado manualmente), verifica se o Liquidity Spoofing Guard está ativo
+    if (!force) {
+      const cb = GraduatedCircuitBreaker.getInstance();
+      const isSpoofHalted = cb.isSpoofingHalted(session.symbol);
+      const injectedAlert = session.injectedSpoofingAlert;
+      const activeSpoof = (injectedAlert?.isAlertActive && injectedAlert.dropPct >= 30.0)
+        ? injectedAlert
+        : (isSpoofHalted ? cb.getSpoofingAlert(session.symbol) : null);
+
+      if (activeSpoof) {
+        session.isSpoofingProtectionTriggered = true;
+        session.radarPausedUntil = Date.now() + 3000;
+        session.spoofingEvasionsCount = (session.spoofingEvasionsCount || 0) + 1;
+        session.isExecutingTrigger = false;
+
+        const eventPrice = currentPrice ?? session.currentPrice;
+        if (!session.spoofingEvents) session.spoofingEvents = [];
+        const evasionEvent: SpoofingEvasionEvent = {
+          timestamp: Date.now(),
+          price: eventPrice,
+          dropPct: activeSpoof.dropPct,
+          side: activeSpoof.side,
+          actionTaken: 'Despacho pausado por 3s para reavaliar profundidade real',
+        };
+        session.spoofingEvents.push(evasionEvent);
+        DirectOperationManager.recordSpoofingEvasion(session.symbol, evasionEvent);
+
+        if (!session.aiThoughtStream) session.aiThoughtStream = [];
+        session.aiThoughtStream.push({
+          id: `step-spoofing-${Date.now()}`,
+          phase: 'RISK_GATE',
+          title: '🛡️ Radar Sniper: Liquidity Spoofing Guard Acionado',
+          description: `Cancelamento súbito de parede no ${activeSpoof.side} (-${activeSpoof.dropPct}%). Despacho pausado por 1 ciclo (3s) para reavaliação de liquidez.`,
+          status: 'active',
+          timestamp: Date.now(),
+        });
+
+        return session;
+      }
+    }
 
     try {
       const metadataService = ExchangeMetadataService.getInstance();
@@ -888,6 +1018,14 @@ export class DirectOperationManager {
 
     // Se estiver aguardando gatilho ótimo (Radar Sniper)
     if (session.status === 'WAITING_TRIGGER') {
+      // Pausa defensiva de 1 ciclo (3s) do Liquidity Spoofing Guard
+      if (session.radarPausedUntil && Date.now() < session.radarPausedUntil) {
+        return session;
+      }
+      if (session.radarPausedUntil && Date.now() >= session.radarPausedUntil) {
+        session.isSpoofingProtectionTriggered = false;
+      }
+
       const trigger = session.triggerCondition;
       const target = trigger?.targetPrice ?? session.targetEntryPrice ?? session.entryPrice;
       const distPct = Math.abs(latestPrice - target) / latestPrice * 100;
@@ -1090,10 +1228,10 @@ export class DirectOperationManager {
 
           // Blindagem de Lucro Mínimo Absoluto no Runner (TP3 Hard Floor)
           // Trava irrevogavelmente em no mínimo +1.0% acima do preço de entrada (ou no nível exato do TP1, o que for maior)
-          const minProfitFloor = PreciseMath.roundDown(session.entryPrice * 1.010, 6);
+          const minProfitFloor = PreciseMath.round(session.entryPrice * 1.010, 6);
           const tp1Floor = session.tp1Price || minProfitFloor;
           const hardFloorPrice = Math.max(minProfitFloor, tp1Floor);
-          const hardFloorPct = PreciseMath.roundDown(((hardFloorPrice - session.entryPrice) / session.entryPrice) * 100, 2);
+          const hardFloorPct = PreciseMath.round(((hardFloorPrice - session.entryPrice) / session.entryPrice) * 100, 2);
 
           session.isTp3HardFloorActive = true;
           session.tp3HardFloorPrice = hardFloorPrice;
@@ -1508,5 +1646,50 @@ export class DirectOperationManager {
    */
   public static clearSession(sessionId: string): boolean {
     return activeSessions.delete(sessionId);
+  }
+
+  /**
+   * Atualiza propriedades de sessão em memória exclusivamente para cenários de testes
+   */
+  public static updateSessionForTesting(sessionId: string, updates: Partial<DirectOperationSession>): boolean {
+    const session = activeSessions.get(sessionId);
+    if (!session) return false;
+    Object.assign(session, updates);
+    return true;
+  }
+
+  /**
+   * Cria uma sessão mockada em memória exclusivamente para cenários de testes
+   */
+  public static createSessionForTesting(overrides: Partial<DirectOperationSession>): DirectOperationSession {
+    const id = `test-session-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const now = Date.now();
+    const session: DirectOperationSession = {
+      id,
+      symbol: overrides.symbol || 'BTCUSDT',
+      baseCurrency: 'BTC',
+      quoteCurrency: 'USDT',
+      investedAmountUsd: 50.0,
+      durationMinutes: 15,
+      startTime: now,
+      endTime: now + 15 * 60 * 1000,
+      entryPrice: overrides.entryPrice || 60000,
+      targetPrice: overrides.targetPrice || 61000,
+      stopLossPrice: overrides.stopLossPrice || 59000,
+      quantity: 0.001,
+      notionalUsd: 50.0,
+      riskUsd: 1.0,
+      rewardRiskRatio: 2.0,
+      aiScore: 85,
+      mode: 'paper',
+      status: overrides.status || 'WAITING_TRIGGER',
+      currentPrice: overrides.entryPrice || 60000,
+      unrealizedPnlUsd: 0,
+      unrealizedPnlPercent: 0,
+      rationale: 'Teste unitário automatizado',
+      ...overrides,
+    };
+    activeSessions.set(id, session);
+    return session;
   }
 }
