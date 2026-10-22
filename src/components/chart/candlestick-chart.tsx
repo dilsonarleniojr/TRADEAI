@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useCryptoStore, type SpoofingChartMarker } from '@/lib/store';
 import { formatPrice, formatVolume, formatTime } from '@/lib/format';
+import { calculateWickPenetration } from '@/lib/order-book-imbalance';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -1427,6 +1428,14 @@ export function CandlestickChart({
                 const isRecent = Date.now() - event.timestamp < 180000;
                 const isBidSpoof = event.side === 'BID';
                 const dropPctFormatted = event.dropPct ? event.dropPct.toFixed(1) : '30.0';
+                const eventRefPrice = event.price ?? candle.close;
+                const wickCalc = calculateWickPenetration({
+                  entryPrice: eventRefPrice,
+                  candleHigh: candle.high,
+                  candleLow: candle.low,
+                  side: event.side,
+                  stopLossPct: 1.8,
+                });
 
                 return (
                   <g key={`spoof-marker-${event.id}`} className="cursor-pointer">
@@ -1543,18 +1552,26 @@ export function CandlestickChart({
                       </text>
                     </g>
 
-                    {/* 7. Tooltip Nativo SVG com Dados de Auditoria */}
+                    {/* 7. Tooltip Nativo SVG com Dados de Auditoria e Filtro de Pavio */}
                     <title>{`🛡️ EVASÃO DE SPOOFING (IA DEFENSE)
 Horário: ${new Date(event.timestamp).toLocaleTimeString()}
 Lado Manipulado: ${isBidSpoof ? 'BID (Suporte Falso Cancelado)' : 'ASK (Resistência Falsa Cancelada)'}
 Parede Retirada: -${dropPctFormatted}% do Book L2
-Preço no Evento: ${event.price ? formatPrice(event.price) : formatPrice(candle.close)}
+Preço no Evento: ${formatPrice(eventRefPrice)}
+
 Candle Auditado:
  • Máxima: ${formatPrice(candle.high)}
  • Mínima: ${formatPrice(candle.low)}
  • Abertura: ${formatPrice(candle.open)} | Fechamento: ${formatPrice(candle.close)}
  • Volume: ${formatVolume(candle.volume)}
- • Amplitude Pavio/Absorção: ${( ((candle.high - candle.low) / (candle.low || 1)) * 100 ).toFixed(2)}%
+ • Amplitude do Pavio: ${( ((candle.high - candle.low) / (candle.low || 1)) * 100 ).toFixed(2)}%
+
+Filtro de Liquidação de Pavio:
+ • Stop Loss Teórico: ${formatPrice(wickCalc.theoreticalStopPrice)} (-${wickCalc.stopLossPct.toFixed(1)}%)
+ • Pavio Manipulado (${isBidSpoof ? 'Mínima' : 'Máxima'}): ${formatPrice(wickCalc.manipulatedWickPrice)}
+ • Distância Pavio vs Stop: $${wickCalc.distanceToStopUsd.toFixed(2)} (${wickCalc.distanceToStopPct.toFixed(2)}%) ${wickCalc.didBreachStop ? '[Pavio Perfurou Stop]' : '[Pavio Próximo ao Stop]'}
+ • ${wickCalc.narrative}
+
 Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse slippage.`}</title>
                   </g>
                 );
