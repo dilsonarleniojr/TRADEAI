@@ -15,7 +15,8 @@ export interface WebGLViewport {
 
 export interface WebGLViewBounds {
   startIndex: number;
-  visibleCount: number;
+  visibleCount?: number;
+  endIndex?: number;
   minPrice: number;
   maxPrice: number;
   maxVolume?: number;
@@ -453,12 +454,14 @@ export class WebGLCandlestickRenderer {
     gl.useProgram(this.program);
     gl.bindVertexArray(this.vao);
 
+    const effectiveVisibleCount = bounds.visibleCount ?? (bounds.endIndex !== undefined ? Math.max(1, bounds.endIndex - bounds.startIndex) : 100);
+
     // Uniforms
     gl.uniform2f(this.uResolutionLoc, this.width, this.height);
     gl.uniform4f(
       this.uViewBoundsLoc,
       bounds.startIndex,
-      bounds.visibleCount,
+      effectiveVisibleCount,
       bounds.minPrice,
       bounds.maxPrice
     );
@@ -476,7 +479,7 @@ export class WebGLCandlestickRenderer {
         minPrice: bounds.minPrice,
         maxPrice: bounds.maxPrice,
         startIndex: bounds.startIndex,
-        visibleCount: bounds.visibleCount,
+        visibleCount: effectiveVisibleCount,
         atr: bounds.atr,
         centerPrice: bounds.centerPrice,
         compressionFactor: bounds.compressionFactor,

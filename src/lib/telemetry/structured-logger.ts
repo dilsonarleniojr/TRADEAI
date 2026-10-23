@@ -49,6 +49,8 @@ export class StructuredLogger {
       symbol?: string;
       metadata?: Record<string, any>;
       timestamp?: number;
+      details?: Record<string, any>;
+      [key: string]: any;
     }
   ): StructuredLogEntry {
     const ts = options?.timestamp ?? Date.now();

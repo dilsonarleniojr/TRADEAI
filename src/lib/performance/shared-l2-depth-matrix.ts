@@ -652,7 +652,7 @@ export class SharedL2DepthMatrix {
     minPrice: number,
     maxPrice: number,
     maxVolumeOrIceberg?: number,
-    icebergVolumeThresholdArg?: number,
+    icebergVolumeThresholdArg?: number | DynamicQuantizationOptions,
     bufferIndex?: number,
     dynamicOptions?: DynamicQuantizationOptions
   ): number {
@@ -671,10 +671,19 @@ export class SharedL2DepthMatrix {
     const priceRange = maxPrice - minPrice;
     if (priceRange <= 0) return 0;
 
-    const isDynamic = !!(dynamicOptions?.atr && dynamicOptions.atr > 0.00001);
-    const effAtr = dynamicOptions?.atr || 0;
-    const effCenter = dynamicOptions?.centerPrice || (minPrice + maxPrice) * 0.5;
-    const effKappa = dynamicOptions?.compressionFactor || 2.0;
+    let effDynamicOptions = dynamicOptions;
+    let actualIcebergThresholdArg: number | undefined;
+    if (typeof icebergVolumeThresholdArg === "object" && icebergVolumeThresholdArg !== null) {
+      effDynamicOptions = icebergVolumeThresholdArg as DynamicQuantizationOptions;
+      actualIcebergThresholdArg = undefined;
+    } else {
+      actualIcebergThresholdArg = icebergVolumeThresholdArg as number | undefined;
+    }
+
+    const isDynamic = !!(effDynamicOptions?.atr && effDynamicOptions.atr > 0.00001);
+    const effAtr = effDynamicOptions?.atr || 0;
+    const effCenter = effDynamicOptions?.centerPrice || (minPrice + maxPrice) * 0.5;
+    const effKappa = effDynamicOptions?.compressionFactor || 2.0;
 
     let gMin = 0;
     let gMax = 1;
@@ -690,8 +699,8 @@ export class SharedL2DepthMatrix {
     let icebergThreshold = 50.0;
     let manualMaxVol: number | null = null;
 
-    if (icebergVolumeThresholdArg !== undefined) {
-      icebergThreshold = icebergVolumeThresholdArg;
+    if (actualIcebergThresholdArg !== undefined) {
+      icebergThreshold = actualIcebergThresholdArg;
       if (maxVolumeOrIceberg && maxVolumeOrIceberg > 0) {
         manualMaxVol = maxVolumeOrIceberg;
       }

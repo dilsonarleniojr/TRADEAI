@@ -243,7 +243,7 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       expect(parsed!.type).toBe("TICKER");
       expect(parsed!.symbol).toBe("BTCUSDT");
 
-      if (parsed!.type === "TICKER") {
+      if (parsed && parsed.type === "TICKER") {
         expect(parsed.price).toBe(65432.1);
         expect(parsed.priceChangePercent).toBe(2.35);
         expect(parsed.high).toBe(66000);
@@ -278,7 +278,7 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       expect(parsed!.type).toBe("KLINE");
       expect(parsed!.symbol).toBe("ETHUSDT");
 
-      if (parsed!.type === "KLINE") {
+      if (parsed && parsed.type === "KLINE") {
         expect(parsed.open).toBe(3500);
         expect(parsed.close).toBe(3515.5);
         expect(parsed.isClosed).toBe(true);
@@ -306,7 +306,7 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       expect(parsed!.type).toBe("DEPTH");
       expect(parsed!.symbol).toBe("SOLUSDT");
 
-      if (parsed!.type === "DEPTH") {
+      if (parsed && parsed.type === "DEPTH") {
         expect(parsed.bids.length).toBe(2);
         expect(parsed.bids[0][0]).toBe(150.5);
         expect(parsed.bids[0][1]).toBe(12.5);
@@ -839,7 +839,7 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       await engine.init();
 
       // Monta livro sintético com 50 níveis de BTC (pressão compradora forte na ponta)
-      const levels = [];
+      const levels: Array<{ price: number; quantity: number; side: 1 | -1; distanceFromMidPct: number }> = [];
       for (let i = 0; i < 25; i++) {
         levels.push({
           price: 65000 - i * 5,
@@ -1837,7 +1837,7 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
     });
 
     it("deve gerenciar ciclo de vida limpo e resiliência a desconexões sem vazamentos de memória", () => {
-      let capturedError: OrderBookFetchError | null = null;
+      let capturedError: any = null;
       const manager = new BinanceWorkerManager(
         () => {},
         (err) => {

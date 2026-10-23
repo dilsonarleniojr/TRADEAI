@@ -556,9 +556,13 @@ export class WebGPUOrderBookComputeEngine {
   // Fallback engine WebGL 2.0 Transform Feedback
   private fallbackWebGLTF: GPUTransformFeedbackEngine | null = null;
 
-  constructor(maxLevels: number = 256, lambdaDecay: number = 2.5) {
+  constructor(maxLevels: number = 256, lambdaDecayOrOptions: number | WebGPUComputeOptions = 2.5) {
     this.maxLevels = maxLevels;
-    this.lambdaDecay = lambdaDecay;
+    if (typeof lambdaDecayOrOptions === "number") {
+      this.lambdaDecay = lambdaDecayOrOptions;
+    } else {
+      this.lambdaDecay = 2.5;
+    }
   }
 
   /**
