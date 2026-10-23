@@ -60,3 +60,4 @@ __pycache__/
 .data/
 db/*.db
 db/*.db.backup*
+audit_reports/
