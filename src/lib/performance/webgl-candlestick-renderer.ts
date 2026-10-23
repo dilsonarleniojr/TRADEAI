@@ -20,6 +20,9 @@ export interface WebGLViewBounds {
   maxPrice: number;
   maxVolume?: number;
   showHeatmap?: boolean;
+  atr?: number;
+  centerPrice?: number;
+  compressionFactor?: number;
 }
 
 export interface WebGLCandleData {
@@ -56,9 +59,14 @@ export class WebGLCandlestickRenderer {
   private gpuScratchA: Float32Array = new Float32Array(2048 * 4);
   private gpuScratchB: Float32Array = new Float32Array(2048 * 4);
 
-  constructor(contextOrCanvas?: WebGL2RenderingContext | HTMLCanvasElement | OffscreenCanvas | null) {
+  constructor(
+    contextOrCanvas?: WebGL2RenderingContext | HTMLCanvasElement | OffscreenCanvas | null,
+    options?: { heatmapEnabled?: boolean }
+  ) {
     if (contextOrCanvas) {
       this.init(contextOrCanvas);
+    } else if (options?.heatmapEnabled) {
+      this.heatmapRenderer = new WebGLL2HeatmapRenderer(null);
     }
   }
 
@@ -459,6 +467,9 @@ export class WebGLCandlestickRenderer {
         maxPrice: bounds.maxPrice,
         startIndex: bounds.startIndex,
         visibleCount: bounds.visibleCount,
+        atr: bounds.atr,
+        centerPrice: bounds.centerPrice,
+        compressionFactor: bounds.compressionFactor,
       });
     }
 

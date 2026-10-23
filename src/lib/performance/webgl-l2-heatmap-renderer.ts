@@ -18,6 +18,11 @@ export interface HeatmapConfig {
   mipmappingEnabled?: boolean;   // Habilita geração de mipmaps na GPU (generateMipmap) e filtro trilinear
   anisotropicFiltering?: boolean;// Habilita amostragem anisotrópica nativa na VRAM (EXT_texture_filter_anisotropic)
   dualAxisBloomEnabled?: boolean;// Habilita bloom bilateral com passo horizontal temporal (X)
+  dynamicQuantizationEnabled?: boolean; // Habilita quantização adaptativa logarítmica com base no ATR
+  atr?: number;                  // ATR de referência do ativo
+  centerPrice?: number;          // Preço central de referência (ex: midPrice)
+  compressionFactor?: number;    // Fator de compressão logarítmica (default: 2.0)
+  adaptivePaletteEnabled?: boolean; // Habilita compressão de alcance dinâmico de paleta
 }
 
 export interface VolumeProfileBin {
@@ -44,6 +49,9 @@ export interface HeatmapBounds {
   maxPrice: number;
   startIndex?: number;
   visibleCount?: number;
+  atr?: number;
+  centerPrice?: number;
+  compressionFactor?: number;
 }
 
 export class WebGLL2HeatmapRenderer {
@@ -58,6 +66,7 @@ export class WebGLL2HeatmapRenderer {
   private uAlphaLoc: WebGLUniformLocation | null = null;
   private uViewBoundsLoc: WebGLUniformLocation | null = null;
   private uTexBoundsLoc: WebGLUniformLocation | null = null;
+  private uDynamicRangeLoc: WebGLUniformLocation | null = null;
 
   public readonly historyLength: number;
   public readonly priceBins: number;
@@ -67,6 +76,11 @@ export class WebGLL2HeatmapRenderer {
   public anisotropicEnabled: boolean;
   public maxAnisotropy: number = 1;
   public dualAxisBloomEnabled: boolean;
+  public dynamicQuantizationEnabled: boolean;
+  public currentAtr: number = 0;
+  public currentCenterPrice: number = 0;
+  public compressionFactor: number = 2.0;
+  public adaptivePaletteEnabled: boolean;
 
   // Buffer de dados da textura RGBA (historyLength * priceBins * 4 bytes)
   // R: Bid Liquidity, G: Ask Liquidity, B: Iceberg Detection, A: Opacity/Weight
@@ -84,6 +98,11 @@ export class WebGLL2HeatmapRenderer {
     this.mipmappingEnabled = config?.mipmappingEnabled ?? true;
     this.anisotropicEnabled = config?.anisotropicFiltering ?? true;
     this.dualAxisBloomEnabled = config?.dualAxisBloomEnabled ?? true;
+    this.dynamicQuantizationEnabled = config?.dynamicQuantizationEnabled ?? false;
+    this.currentAtr = config?.atr ?? 0;
+    this.currentCenterPrice = config?.centerPrice ?? 0;
+    this.compressionFactor = config?.compressionFactor ?? 2.0;
+    this.adaptivePaletteEnabled = config?.adaptivePaletteEnabled ?? true;
 
     this.textureData = new Uint8Array(this.historyLength * this.priceBins * 4);
     this.sliceScratch = new Uint8Array(this.priceBins * 4);
@@ -131,8 +150,9 @@ export class WebGLL2HeatmapRenderer {
     in vec2 v_texCoord;
     uniform sampler2D u_heatmapTexture;
     uniform float u_alpha;
-    uniform vec4 u_viewBounds; // [startIndex, visibleCount, minPrice, maxPrice]
-    uniform vec4 u_texBounds;  // [texMinPrice, texMaxPrice, currentCol, historyLength]
+    uniform vec4 u_viewBounds;   // [startIndex, visibleCount, minPrice, maxPrice]
+    uniform vec4 u_texBounds;    // [texMinPrice, texMaxPrice, currentCol, historyLength]
+    uniform vec4 u_dynamicRange; // [atr, centerPrice, compressionFactor, flags(1.0=quant, 2.0=palette, 3.0=both)]
 
     out vec4 fragColor;
 
@@ -149,12 +169,43 @@ export class WebGLL2HeatmapRenderer {
       float texMaxP = u_texBounds.y;
 
       float price = mix(viewMinP, viewMaxP, v_texCoord.y);
-      float vCoord = clamp((price - texMinP) / max(texMaxP - texMinP, 0.00001), 0.0, 1.0);
+      float vCoord = 0.0;
+
+      // Dynamic Price Range Quantization (Logarítmica Adaptativa via ATR)
+      float flags = u_dynamicRange.w;
+      float atr = u_dynamicRange.x;
+      bool quantOn = (flags == 1.0 || flags >= 3.0) && atr > 0.00001;
+
+      if (quantOn) {
+        float centerP = u_dynamicRange.y > 0.0 ? u_dynamicRange.y : (texMinP + texMaxP) * 0.5;
+        float kappa = max(u_dynamicRange.z, 0.1);
+
+        float x = (price - centerP) / atr;
+        float xMin = (texMinP - centerP) / atr;
+        float xMax = (texMaxP - centerP) / atr;
+
+        float gX = sign(x) * log(1.0 + kappa * abs(x));
+        float gMin = sign(xMin) * log(1.0 + kappa * abs(xMin));
+        float gMax = sign(xMax) * log(1.0 + kappa * abs(xMax));
+
+        vCoord = clamp((gX - gMin) / max(gMax - gMin, 0.00001), 0.0, 1.0);
+      } else {
+        vCoord = clamp((price - texMinP) / max(texMaxP - texMinP, 0.00001), 0.0, 1.0);
+      }
 
       vec4 texel = texture(u_heatmapTexture, vec2(uCoord, vCoord));
       float bidIntensity = texel.r;
       float askIntensity = texel.g;
       float rawIceberg = texel.b;
+
+      // Compressão de Faixa Dinâmica de Volume com base no ATR (Dynamic Heat Palette Tone Mapping)
+      bool paletteOn = (flags >= 2.0);
+      if (paletteOn) {
+        float spreadRel = max(texMaxP - texMinP, 0.001);
+        float volRatio = clamp((atr > 0.0 ? atr : spreadRel * 0.05) / spreadRel * 25.0, 1.5, 40.0);
+        bidIntensity = log(1.0 + volRatio * bidIntensity) / log(1.0 + volRatio);
+        askIntensity = log(1.0 + volRatio * askIntensity) / log(1.0 + volRatio);
+      }
 
       // Dual-Axis Bloom: Convolução 1D Horizontal no Eixo Temporal (X) para capturar persistência de ordens iceberg
       float hStep = 1.0 / max(histLen, 1.0);
@@ -209,6 +260,7 @@ export class WebGLL2HeatmapRenderer {
     this.uAlphaLoc = gl.getUniformLocation(this.program, "u_alpha");
     this.uViewBoundsLoc = gl.getUniformLocation(this.program, "u_viewBounds");
     this.uTexBoundsLoc = gl.getUniformLocation(this.program, "u_texBounds");
+    this.uDynamicRangeLoc = gl.getUniformLocation(this.program, "u_dynamicRange");
 
     // Configurar VAO e Quad de fundo
     this.quadVao = gl.createVertexArray();
@@ -299,10 +351,40 @@ export class WebGLL2HeatmapRenderer {
 
   /**
    * Converte um preço contínuo no índice discreto do bin de textura [0, priceBins - 1].
+   * Suporta Quantização Adaptativa de Escala Logarítmica com base no ATR do ativo,
+   * concentrando maior resolução na vizinhança do spread e comprimindo suavemente as caudas
+   * sob picos volumétricos de alta volatilidade.
    */
-  public quantizePrice(price: number, minPrice: number, maxPrice: number): number {
+  public quantizePrice(
+    price: number,
+    minPrice: number,
+    maxPrice: number,
+    atr?: number,
+    centerPrice?: number,
+    compressionFactor?: number
+  ): number {
     const range = maxPrice - minPrice;
     if (range <= 0) return 0;
+
+    const effAtr = atr !== undefined ? atr : this.currentAtr;
+    const effCenter = centerPrice !== undefined ? centerPrice : (this.currentCenterPrice || (minPrice + maxPrice) * 0.5);
+    const effKappa = compressionFactor !== undefined ? compressionFactor : this.compressionFactor;
+    const isDynamic = this.dynamicQuantizationEnabled || (atr !== undefined && atr > 0);
+
+    if (isDynamic && effAtr > 0.00001) {
+      const x = (price - effCenter) / effAtr;
+      const xMin = (minPrice - effCenter) / effAtr;
+      const xMax = (maxPrice - effCenter) / effAtr;
+
+      const gX = Math.sign(x) * Math.log(1.0 + effKappa * Math.abs(x));
+      const gMin = Math.sign(xMin) * Math.log(1.0 + effKappa * Math.abs(xMin));
+      const gMax = Math.sign(xMax) * Math.log(1.0 + effKappa * Math.abs(xMax));
+
+      const norm = (gX - gMin) / Math.max(gMax - gMin, 0.00001);
+      const bin = Math.floor(Math.max(0, Math.min(1.0, norm)) * (this.priceBins - 1));
+      return Math.max(0, Math.min(this.priceBins - 1, bin));
+    }
+
     const normalized = (price - minPrice) / range;
     const bin = Math.floor(normalized * (this.priceBins - 1));
     return Math.max(0, Math.min(this.priceBins - 1, bin));
@@ -317,10 +399,15 @@ export class WebGLL2HeatmapRenderer {
     asks: L2Level[],
     minPrice: number,
     maxPrice: number,
-    icebergVolumeThreshold: number = 50.0
+    icebergVolumeThreshold: number = 50.0,
+    options?: { atr?: number; centerPrice?: number; compressionFactor?: number }
   ): boolean {
     this.lastMinPrice = minPrice;
     this.lastMaxPrice = maxPrice;
+
+    const effAtr = options?.atr ?? this.currentAtr;
+    const effCenter = options?.centerPrice ?? this.currentCenterPrice;
+    const effKappa = options?.compressionFactor ?? this.compressionFactor;
 
     // Limpa o slice temporário
     this.sliceScratch.fill(0);
@@ -336,7 +423,7 @@ export class WebGLL2HeatmapRenderer {
     for (let i = 0; i < bids.length; i++) {
       const b = bids[i];
       if (b.price < minPrice || b.price > maxPrice) continue;
-      const bin = this.quantizePrice(b.price, minPrice, maxPrice);
+      const bin = this.quantizePrice(b.price, minPrice, maxPrice, effAtr, effCenter, effKappa);
       const intensity = Math.min(255, Math.floor((b.quantity / maxQty) * 255));
       const offset = bin * 4;
 
@@ -352,7 +439,7 @@ export class WebGLL2HeatmapRenderer {
     for (let i = 0; i < asks.length; i++) {
       const a = asks[i];
       if (a.price < minPrice || a.price > maxPrice) continue;
-      const bin = this.quantizePrice(a.price, minPrice, maxPrice);
+      const bin = this.quantizePrice(a.price, minPrice, maxPrice, effAtr, effCenter, effKappa);
       const intensity = Math.min(255, Math.floor((a.quantity / maxQty) * 255));
       const offset = bin * 4;
 
@@ -550,11 +637,47 @@ export class WebGLL2HeatmapRenderer {
       this.historyLength
     );
 
+    // Dynamic Price Range Quantization & 1D Volume Palette Compression
+    if (this.uDynamicRangeLoc) {
+      const effAtr = bounds.atr ?? this.currentAtr;
+      const effCenter = bounds.centerPrice ?? this.currentCenterPrice;
+      const effKappa = bounds.compressionFactor ?? this.compressionFactor;
+      let flags = 0.0;
+      const quantActive = this.dynamicQuantizationEnabled || (bounds.atr !== undefined && bounds.atr > 0);
+      if (quantActive) flags += 1.0;
+      if (this.adaptivePaletteEnabled) flags += 2.0;
+
+      gl.uniform4f(this.uDynamicRangeLoc, effAtr, effCenter, effKappa, flags);
+    }
+
     // Renderiza quad de tela cheia
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     gl.bindVertexArray(null);
     return true;
+  }
+
+  /**
+   * Configura parâmetros de faixa dinâmica (ATR, centerPrice e fator de compressão).
+   */
+  public setDynamicRangeParams(atr: number, centerPrice?: number, compressionFactor?: number): void {
+    this.currentAtr = Math.max(0, atr);
+    if (centerPrice !== undefined) this.currentCenterPrice = centerPrice;
+    if (compressionFactor !== undefined) this.compressionFactor = Math.max(0.1, compressionFactor);
+  }
+
+  /**
+   * Habilita/desabilita quantização adaptativa logarítmica com base no ATR.
+   */
+  public setDynamicQuantization(enabled: boolean): void {
+    this.dynamicQuantizationEnabled = enabled;
+  }
+
+  /**
+   * Habilita/desabilita compressão de faixa dinâmica na paleta de calor.
+   */
+  public setAdaptivePalette(enabled: boolean): void {
+    this.adaptivePaletteEnabled = enabled;
   }
 
   /**
@@ -569,6 +692,15 @@ export class WebGLL2HeatmapRenderer {
     mipmappingEnabled: boolean;
     anisotropicLevel: number;
     dualAxisBloom: boolean;
+    dynamicQuantization: boolean;
+    dynamicQuantizationEnabled: boolean;
+    currentAtr: number;
+    atr: number;
+    currentCenterPrice: number;
+    centerPrice: number;
+    compressionFactor: number;
+    adaptivePalette: boolean;
+    adaptivePaletteEnabled: boolean;
   } {
     return {
       historyLength: this.historyLength,
@@ -579,6 +711,15 @@ export class WebGLL2HeatmapRenderer {
       mipmappingEnabled: this.mipmappingEnabled,
       anisotropicLevel: this.maxAnisotropy,
       dualAxisBloom: this.dualAxisBloomEnabled,
+      dynamicQuantization: this.dynamicQuantizationEnabled,
+      dynamicQuantizationEnabled: this.dynamicQuantizationEnabled,
+      currentAtr: this.currentAtr,
+      atr: this.currentAtr,
+      currentCenterPrice: this.currentCenterPrice,
+      centerPrice: this.currentCenterPrice,
+      compressionFactor: this.compressionFactor,
+      adaptivePalette: this.adaptivePaletteEnabled,
+      adaptivePaletteEnabled: this.adaptivePaletteEnabled,
     };
   }
 

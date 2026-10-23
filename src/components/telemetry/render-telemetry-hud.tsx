@@ -132,6 +132,12 @@ export function RenderTelemetryHUD() {
         <span className="text-[8.5px] px-1 py-0.2 rounded bg-teal-500/15 text-teal-300 border border-teal-500/30 font-semibold">
           MIPMAP TRILINEAR
         </span>
+        <span className="text-[8.5px] px-1 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-semibold">
+          DYNAMIC ATR QUANT
+        </span>
+        <span className="text-[8.5px] px-1 py-0.2 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 font-semibold">
+          1D PALETTE COMPRESS
+        </span>
       </div>
     </div>
   );

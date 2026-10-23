@@ -2317,6 +2317,205 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       renderController.destroy();
     });
   });
+
+  describe("20. Dynamic Price Range Quantization & 1D Texture Heat Palette Compression (Logarithmic ATR Scaling)", () => {
+    it("deve concentrar resolução de bins ao redor do centerPrice com escala logarítmica ponderada por ATR", () => {
+      const renderer = new WebGLL2HeatmapRenderer(null, {
+        priceBins: 128,
+        dynamicQuantizationEnabled: true,
+        atr: 2.0,
+        compressionFactor: 4.0,
+      });
+
+      const minPrice = 80;
+      const maxPrice = 120;
+      const centerPrice = 100;
+      const atr = 2.0;
+      const kappa = 4.0;
+
+      // Compara quantização linear vs logarítmica com ATR
+      const linearBin1 = renderer.quantizePrice(100.5, minPrice, maxPrice);
+      const linearBin2 = renderer.quantizePrice(101.5, minPrice, maxPrice);
+      const linearSpreadDelta = linearBin2 - linearBin1;
+
+      const dynamicBin1 = renderer.quantizePrice(100.5, minPrice, maxPrice, atr, centerPrice, kappa);
+      const dynamicBin2 = renderer.quantizePrice(101.5, minPrice, maxPrice, atr, centerPrice, kappa);
+      const dynamicSpreadDelta = dynamicBin2 - dynamicBin1;
+
+      // Ao redor do centerPrice (spread ativo), a quantização logarítmica com ATR
+      // deve alocar MAIS bins por unidade de preço do que o mapeamento linear tradicional
+      expect(dynamicSpreadDelta).toBeGreaterThanOrEqual(linearSpreadDelta);
+
+      // No extremo longe do centro (ex: 118 vs 119), a quantização logarítmica comprime a resolução
+      const linearFar1 = renderer.quantizePrice(118, minPrice, maxPrice);
+      const linearFar2 = renderer.quantizePrice(119, minPrice, maxPrice);
+      const linearFarDelta = linearFar2 - linearFar1;
+
+      const dynamicFar1 = renderer.quantizePrice(118, minPrice, maxPrice, atr, centerPrice, kappa);
+      const dynamicFar2 = renderer.quantizePrice(119, minPrice, maxPrice, atr, centerPrice, kappa);
+      const dynamicFarDelta = dynamicFar2 - dynamicFar1;
+
+      expect(dynamicFarDelta).toBeLessThanOrEqual(linearFarDelta);
+
+      // Limites e clamping estritos
+      expect(renderer.quantizePrice(70, minPrice, maxPrice, atr, centerPrice, kappa)).toBe(0);
+      expect(renderer.quantizePrice(80, minPrice, maxPrice, atr, centerPrice, kappa)).toBe(0);
+      expect(renderer.quantizePrice(120, minPrice, maxPrice, atr, centerPrice, kappa)).toBe(127);
+      expect(renderer.quantizePrice(150, minPrice, maxPrice, atr, centerPrice, kappa)).toBe(127);
+    });
+
+    it("deve garantir monotonicidade estrita (sem inversão de preços) em qualquer range de volatilidade", () => {
+      const renderer = new WebGLL2HeatmapRenderer(null, { priceBins: 128 });
+      const minPrice = 50000;
+      const maxPrice = 70000;
+      const centerPrice = 61250;
+      const atr = 450;
+      const kappa = 3.5;
+
+      // Gera sequência ascendente de 100 preços
+      const prices: number[] = [];
+      for (let p = minPrice; p <= maxPrice; p += 200) {
+        prices.push(p);
+      }
+
+      let lastBin = -1;
+      for (const p of prices) {
+        const bin = renderer.quantizePrice(p, minPrice, maxPrice, atr, centerPrice, kappa);
+        expect(bin).toBeGreaterThanOrEqual(0);
+        expect(bin).toBeLessThanOrEqual(127);
+        expect(bin).toBeGreaterThanOrEqual(lastBin); // Monotonicidade não-decrescente
+        lastBin = bin;
+      }
+    });
+
+    it("deve atualizar parâmetros dinâmicos via métodos fluentes e expor telemetria no getMetrics()", () => {
+      const renderer = new WebGLL2HeatmapRenderer(null, {
+        priceBins: 128,
+        dynamicQuantizationEnabled: false,
+        adaptivePaletteEnabled: false,
+      });
+
+      let metrics = renderer.getMetrics();
+      expect(metrics.dynamicQuantizationEnabled).toBe(false);
+      expect(metrics.adaptivePaletteEnabled).toBe(false);
+
+      renderer.setDynamicRangeParams(12.5, 3450.0, 5.0);
+      renderer.setDynamicQuantization(true);
+      renderer.setAdaptivePalette(true);
+
+      metrics = renderer.getMetrics();
+      expect(metrics.dynamicQuantizationEnabled).toBe(true);
+      expect(metrics.adaptivePaletteEnabled).toBe(true);
+      expect(metrics.atr).toBe(12.5);
+      expect(metrics.centerPrice).toBe(3450.0);
+      expect(metrics.compressionFactor).toBe(5.0);
+
+      renderer.destroy();
+    });
+
+    it("deve aplicar quantização adaptativa por ATR no pushDepthSnapshot sem alocação de memória", () => {
+      const renderer = new WebGLL2HeatmapRenderer(null, {
+        priceBins: 128,
+        historyLength: 64,
+        dynamicQuantizationEnabled: true,
+      });
+
+      const bids = [
+        { price: 65000, quantity: 20 },
+        { price: 64990, quantity: 15 },
+        { price: 64950, quantity: 45 },
+      ];
+      const asks = [
+        { price: 65010, quantity: 18 },
+        { price: 65020, quantity: 22 },
+        { price: 65060, quantity: 60 },
+      ];
+
+      const success = renderer.pushDepthSnapshot(
+        bids,
+        asks,
+        64500,
+        65500,
+        50.0,
+        { atr: 75.0, centerPrice: 65005.0, compressionFactor: 3.5 }
+      );
+
+      expect(success).toBe(true);
+      const metrics = renderer.getMetrics();
+      expect(metrics.currentColumn).toBe(1);
+      expect(metrics.bytesUploadedPerSlice).toBe(128 * 4);
+    });
+
+    it("deve integrar SharedL2DepthMatrix.packToSliceRGBA com DynamicQuantizationOptions e ATR scaling", () => {
+      const matrix = SharedL2DepthMatrix.create(100);
+      matrix.writeDepthSnapshot(
+        [
+          [65000, 10.0],
+          [64980, 25.0],
+          [64900, 5.0],
+        ],
+        [
+          [65010, 12.0],
+          [65030, 30.0],
+          [65100, 8.0],
+        ],
+        1700000400000
+      );
+
+      const targetSlice = new Uint8Array(128 * 4);
+
+      // Pack com quantização dinâmica por ATR
+      matrix.packToSliceRGBA(
+        targetSlice,
+        128,
+        64500,
+        65500,
+        20.0,
+        { atr: 80.0, centerPrice: 65005.0, compressionFactor: 3.5 }
+      );
+
+      // Verifica se houve preenchimento de pixels RGBA válidos
+      let nonZeroCount = 0;
+      for (let i = 0; i < 128; i++) {
+        const r = targetSlice[i * 4 + 0];
+        const g = targetSlice[i * 4 + 1];
+        const b = targetSlice[i * 4 + 2];
+        const a = targetSlice[i * 4 + 3];
+
+        if (a > 0 || r > 0 || g > 0 || b > 0) {
+          nonZeroCount++;
+        }
+      }
+
+      expect(nonZeroCount).toBeGreaterThan(0);
+      expect(nonZeroCount).toBeLessThanOrEqual(6); // 6 níveis discretos mapeados
+    });
+
+    it("deve propagar parâmetros de ATR e Dynamic Range do WebGLCandlestickRenderer para o L2 Heatmap", () => {
+      const candlestickRenderer = new WebGLCandlestickRenderer(null, {
+        heatmapEnabled: true,
+      });
+
+      expect(() => {
+        candlestickRenderer.render({
+          minPrice: 64000,
+          maxPrice: 66000,
+          startIndex: 0,
+          endIndex: 100,
+          atr: 95.0,
+          centerPrice: 65000.0,
+          compressionFactor: 4.0,
+        });
+      }).not.toThrow();
+
+      const heatmapRenderer = candlestickRenderer.getHeatmapRenderer();
+      expect(heatmapRenderer).not.toBeNull();
+      const metrics = heatmapRenderer!.getMetrics();
+      expect(metrics.priceBins).toBeGreaterThan(0);
+
+      candlestickRenderer.destroy();
+    });
+  });
 });
 
 

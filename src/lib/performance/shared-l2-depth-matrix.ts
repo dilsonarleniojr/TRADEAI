@@ -60,6 +60,12 @@ export interface DeltaOptions {
   autoSwap?: boolean; // Alterna atomicamente os buffers após aplicar o delta (default: false)
 }
 
+export interface DynamicQuantizationOptions {
+  atr?: number;
+  centerPrice?: number;
+  compressionFactor?: number;
+}
+
 /**
  * Busca binária para livro de compra (Bids) ordenado de forma DECRESCENTE (maior preço primeiro).
  */
@@ -647,7 +653,8 @@ export class SharedL2DepthMatrix {
     maxPrice: number,
     maxVolumeOrIceberg?: number,
     icebergVolumeThresholdArg?: number,
-    bufferIndex?: number
+    bufferIndex?: number,
+    dynamicOptions?: DynamicQuantizationOptions
   ): number {
     if (outSlice.length < priceBins * 4) return 0;
     outSlice.fill(0);
@@ -663,6 +670,22 @@ export class SharedL2DepthMatrix {
     const asksCount = targetHeaderInt32[L2_OFFSET_ASKS_COUNT];
     const priceRange = maxPrice - minPrice;
     if (priceRange <= 0) return 0;
+
+    const isDynamic = !!(dynamicOptions?.atr && dynamicOptions.atr > 0.00001);
+    const effAtr = dynamicOptions?.atr || 0;
+    const effCenter = dynamicOptions?.centerPrice || (minPrice + maxPrice) * 0.5;
+    const effKappa = dynamicOptions?.compressionFactor || 2.0;
+
+    let gMin = 0;
+    let gMax = 1;
+    let gDelta = 1;
+    if (isDynamic) {
+      const xMin = (minPrice - effCenter) / effAtr;
+      const xMax = (maxPrice - effCenter) / effAtr;
+      gMin = Math.sign(xMin) * Math.log(1.0 + effKappa * Math.abs(xMin));
+      gMax = Math.sign(xMax) * Math.log(1.0 + effKappa * Math.abs(xMax));
+      gDelta = Math.max(gMax - gMin, 0.00001);
+    }
 
     let icebergThreshold = 50.0;
     let manualMaxVol: number | null = null;
@@ -693,8 +716,18 @@ export class SharedL2DepthMatrix {
       const q = targetBidVolumes[i];
       if (p < minPrice || p > maxPrice) continue;
 
-      const norm = (p - minPrice) / priceRange;
-      const bin = Math.max(0, Math.min(priceBins - 1, Math.floor(norm * (priceBins - 1))));
+      let bin: number;
+      if (isDynamic) {
+        const x = (p - effCenter) / effAtr;
+        const gX = Math.sign(x) * Math.log(1.0 + effKappa * Math.abs(x));
+        const norm = (gX - gMin) / gDelta;
+        bin = Math.floor(Math.max(0, Math.min(1.0, norm)) * (priceBins - 1));
+      } else {
+        const norm = (p - minPrice) / priceRange;
+        bin = Math.floor(norm * (priceBins - 1));
+      }
+      bin = Math.max(0, Math.min(priceBins - 1, bin));
+
       const intensity = Math.min(255, Math.floor((q / maxVol) * 255));
       const offset = bin * 4;
 
@@ -711,8 +744,18 @@ export class SharedL2DepthMatrix {
       const q = targetAskVolumes[i];
       if (p < minPrice || p > maxPrice) continue;
 
-      const norm = (p - minPrice) / priceRange;
-      const bin = Math.max(0, Math.min(priceBins - 1, Math.floor(norm * (priceBins - 1))));
+      let bin: number;
+      if (isDynamic) {
+        const x = (p - effCenter) / effAtr;
+        const gX = Math.sign(x) * Math.log(1.0 + effKappa * Math.abs(x));
+        const norm = (gX - gMin) / gDelta;
+        bin = Math.floor(Math.max(0, Math.min(1.0, norm)) * (priceBins - 1));
+      } else {
+        const norm = (p - minPrice) / priceRange;
+        bin = Math.floor(norm * (priceBins - 1));
+      }
+      bin = Math.max(0, Math.min(priceBins - 1, bin));
+
       const intensity = Math.min(255, Math.floor((q / maxVol) * 255));
       const offset = bin * 4;
 
