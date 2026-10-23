@@ -19,6 +19,7 @@ export interface WebGPUImbalanceMetrics extends GPUTFIImbalanceMetrics {
   maxWallRatio?: number;
   icebergBlueChannelProjected?: boolean;
   bloomPassApplied?: boolean;
+  dualAxisBloomApplied?: boolean;
   computeTimeUs?: number; // Tempo de execução em microssegundos
 }
 
@@ -445,6 +446,64 @@ fn main(
 }
 `;
 
+export const WGSL_HORIZONTAL_BLOOM_SHADER = /* wgsl */ `
+struct HorizontalBloomParams {
+    priceBins: u32,
+    blurRadius: u32,
+    intensity: f32,
+    threshold: f32,
+}
+
+@group(0) @binding(0) var<uniform> params: HorizontalBloomParams;
+@group(0) @binding(1) var<storage, read_write> heatmapSlice: array<u32>;
+
+// Memória compartilhada para carregar a coluna inteira de bins (128 níveis) para o passo horizontal
+var<workgroup> s_hBlueChannel: array<f32, 128>;
+
+// Pesos gaussianos 1D normalizados (kernel 5-tap separável)
+const GAUSS_WEIGHTS_H = array<f32, 5>(0.06136, 0.24477, 0.38774, 0.24477, 0.06136);
+
+@compute @workgroup_size(128)
+fn main(
+    @builtin(local_invocation_id) local_id: vec3<u32>,
+    @builtin(global_invocation_id) global_id: vec3<u32>
+) {
+    let binIdx = local_id.x;
+
+    // 1. Carrega canal Azul (bits 16..23) para memória compartilhada
+    if (binIdx < params.priceBins) {
+        let texel = heatmapSlice[binIdx * 64u];
+        let blueByte = f32((texel >> 16u) & 0xFFu) / 255.0;
+        s_hBlueChannel[binIdx] = select(0.0, blueByte, blueByte >= params.threshold);
+    } else {
+        s_hBlueChannel[binIdx] = 0.0;
+    }
+
+    workgroupBarrier();
+
+    // 2. Convolução Gaussiana 1D separável aplicada ao canal Azul
+    if (binIdx < params.priceBins) {
+        var blurredBlue: f32 = 0.0;
+
+        for (var k: i32 = -2; k <= 2; k = k + 1) {
+            let sampleIdx = clamp(i32(binIdx) + k, 0, i32(params.priceBins - 1u));
+            let weight = GAUSS_WEIGHTS_H[k + 2];
+            blurredBlue = blurredBlue + s_hBlueChannel[sampleIdx] * weight;
+        }
+
+        let origTexel = heatmapSlice[binIdx * 64u];
+        let origBlue = f32((origTexel >> 16u) & 0xFFu) / 255.0;
+
+        // Dispersão óptica aditiva combinada (Dual-Axis Horizontal Glow)
+        let finalBlue = clamp(origBlue + blurredBlue * params.intensity * 0.9, 0.0, 1.0);
+        let finalBlueByte = u32(finalBlue * 255.0) << 16u;
+
+        // Preserva estritamente canais R, G e A
+        heatmapSlice[binIdx * 64u] = (origTexel & 0xFF00FFFFu) | finalBlueByte;
+    }
+}
+`;
+
 export interface WebGPUComputeOptions {
   midPrice?: number;
   readbackToCpu?: boolean;       // default: true. Se false, elimina 100% de staging e mapAsync
@@ -454,6 +513,8 @@ export interface WebGPUComputeOptions {
   enableBloomPass?: boolean;     // Ativa Bloom Pass óptico no Canal B em VRAM (default: true)
   bloomIntensity?: number;       // Intensidade da dispersão de brilho (default: 1.2)
   bloomRadius?: number;          // Raio de blur gaussiano 1D (default: 2)
+  enableDualAxisBloom?: boolean; // Ativa Bloom Bilateral com Passo Horizontal Separado (Dual-Axis)
+  bloomAxes?: "VERTICAL" | "HORIZONTAL" | "DUAL_AXIS"; // Eixos do bloom pass (default: "DUAL_AXIS")
 }
 
 export class WebGPUOrderBookComputeEngine {
@@ -478,6 +539,11 @@ export class WebGPUOrderBookComputeEngine {
   private bloomPipeline: any = null;
   private bloomParamsBuffer: any = null;
   private bloomBindGroup: any = null;
+
+  // Dual-Axis Bloom (Passo Horizontal Separado em VRAM)
+  private horizontalBloomPipeline: any = null;
+  private horizontalBloomParamsBuffer: any = null;
+  private horizontalBloomBindGroup: any = null;
 
   // SIMD Subgroups / Wave Intrinsics
   private hasSubgroupsSupport: boolean = false;
@@ -522,6 +588,13 @@ export class WebGPUOrderBookComputeEngine {
    */
   public hasBloomPass(): boolean {
     return this.isInitialized && this.bloomPipeline !== null;
+  }
+
+  /**
+   * Informa se o Bloom Bilateral Separado (Dual-Axis Bloom VRAM) está ativo e suportado.
+   */
+  public hasDualAxisBloom(): boolean {
+    return this.isInitialized && this.bloomPipeline !== null && this.horizontalBloomPipeline !== null;
   }
 
   /**
@@ -670,6 +743,39 @@ export class WebGPUOrderBookComputeEngine {
             { binding: 1, resource: { buffer: this.heatmapSliceBuffer } },
           ],
         });
+
+        // 7. Criação do Compute Pipeline de Bloom Pass Horizontal Separado (Dual-Axis Bloom)
+        const hBloomShaderModule = this.device.createShaderModule({
+          code: WGSL_HORIZONTAL_BLOOM_SHADER,
+        });
+
+        this.horizontalBloomPipeline = this.device.createComputePipeline({
+          layout: "auto",
+          compute: {
+            module: hBloomShaderModule,
+            entryPoint: "main",
+          },
+        });
+
+        this.horizontalBloomParamsBuffer = this.device.createBuffer({
+          size: 16,
+          usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+
+        const defaultHBloomParams = new Float32Array([0, 2, 1.2, 0.05]);
+        const viewHU32 = new Uint32Array(defaultHBloomParams.buffer);
+        viewHU32[0] = this.heatmapPriceBins;
+        if (this.device?.queue?.writeBuffer) {
+          this.device.queue.writeBuffer(this.horizontalBloomParamsBuffer, 0, defaultHBloomParams);
+        }
+
+        this.horizontalBloomBindGroup = this.device.createBindGroup({
+          layout: this.horizontalBloomPipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: this.horizontalBloomParamsBuffer } },
+            { binding: 1, resource: { buffer: this.heatmapSliceBuffer } },
+          ],
+        });
       } catch (bloomErr) {
         console.warn("[WebGPUOrderBookComputeEngine] Bloom pipeline opcional não inicializado:", bloomErr);
       }
@@ -726,12 +832,13 @@ export class WebGPUOrderBookComputeEngine {
 
   /**
    * Executa o Bloom Pass óptico em VRAM diretamente no buffer de fatias do Heatmap.
-   * Aplica blur gaussiano 1D vertical exclusivamente no Canal Azul (B), preservando
-   * os canais R (Bids), G (Asks) e A (Alpha).
+   * Aplica blur gaussiano separável (Vertical e/ou Horizontal) exclusivamente no Canal Azul (B),
+   * preservando os canais R (Bids), G (Asks) e A (Alpha).
    */
   public applyBloomPass(options?: {
     blurRadius?: number;
     intensity?: number;
+    axis?: "VERTICAL" | "HORIZONTAL" | "DUAL_AXIS";
     customEncoder?: any;
   }): boolean {
     if (!this.device || !this.bloomPipeline || !this.bloomBindGroup || !this.bloomParamsBuffer) {
@@ -740,19 +847,42 @@ export class WebGPUOrderBookComputeEngine {
 
     const radius = options?.blurRadius ?? 2;
     const intensity = options?.intensity ?? 1.2;
+    const axis = options?.axis ?? "DUAL_AXIS";
 
     const bloomParams = new Float32Array([0, radius, intensity, 0.05]);
     const u32View = new Uint32Array(bloomParams.buffer);
     u32View[0] = this.heatmapPriceBins;
     u32View[1] = radius;
-    this.device.queue.writeBuffer(this.bloomParamsBuffer, 0, bloomParams);
+    if (this.device?.queue?.writeBuffer) {
+      this.device.queue.writeBuffer(this.bloomParamsBuffer, 0, bloomParams);
+    }
 
     const encoder = options?.customEncoder || this.device.createCommandEncoder();
-    const pass = encoder.beginComputePass();
-    pass.setPipeline(this.bloomPipeline);
-    pass.setBindGroup(0, this.bloomBindGroup);
-    pass.dispatchWorkgroups(1); // 128 threads cobrem os 128 bins
-    pass.end();
+
+    // 1. Passo Vertical (Eixo Y - Preço)
+    if (axis === "VERTICAL" || axis === "DUAL_AXIS") {
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(this.bloomPipeline);
+      pass.setBindGroup(0, this.bloomBindGroup);
+      pass.dispatchWorkgroups(1); // 128 threads cobrem os 128 bins
+      pass.end();
+    }
+
+    // 2. Passo Horizontal Separado (Eixo X - Tempo/Persistência)
+    if (
+      (axis === "HORIZONTAL" || axis === "DUAL_AXIS") &&
+      this.horizontalBloomPipeline &&
+      this.horizontalBloomBindGroup
+    ) {
+      if (this.horizontalBloomParamsBuffer && this.device?.queue?.writeBuffer) {
+        this.device.queue.writeBuffer(this.horizontalBloomParamsBuffer, 0, bloomParams);
+      }
+      const hPass = encoder.beginComputePass();
+      hPass.setPipeline(this.horizontalBloomPipeline);
+      hPass.setBindGroup(0, this.horizontalBloomBindGroup);
+      hPass.dispatchWorkgroups(1);
+      hPass.end();
+    }
 
     if (!options?.customEncoder) {
       this.device.queue.submit([encoder.finish()]);
@@ -912,13 +1042,17 @@ export class WebGPUOrderBookComputeEngine {
 
         // Bloom Pass de Post-Processing em VRAM (Passo de Brilho Óptico no Canal Azul)
         let bloomApplied = false;
+        let dualAxisApplied = false;
         if (options.enableBloomPass !== false && this.bloomPipeline && this.bloomBindGroup) {
+          const axis = options.bloomAxes ?? (options.enableDualAxisBloom !== false ? "DUAL_AXIS" : "VERTICAL");
           this.applyBloomPass({
             blurRadius: options.bloomRadius ?? 2,
             intensity: options.bloomIntensity ?? 1.2,
+            axis,
             customEncoder: commandEncoder,
           });
           bloomApplied = true;
+          dualAxisApplied = axis === "DUAL_AXIS" && this.hasDualAxisBloom();
         }
 
         // Transferência Zero-Copy direta para Textura 2D do Heatmap na VRAM (copyBufferToTexture)
@@ -948,6 +1082,7 @@ export class WebGPUOrderBookComputeEngine {
             maxWallRatio: 1.0,
             icebergBlueChannelProjected: true,
             bloomPassApplied: bloomApplied,
+            dualAxisBloomApplied: dualAxisApplied,
           };
         }
 
@@ -987,6 +1122,7 @@ export class WebGPUOrderBookComputeEngine {
           maxWallRatio,
           icebergBlueChannelProjected: true,
           bloomPassApplied: bloomApplied,
+          dualAxisBloomApplied: dualAxisApplied,
         };
       } catch (err) {
         console.warn("[WebGPUOrderBookComputeEngine] Erro no compute pass:", err);
@@ -1102,6 +1238,7 @@ export class WebGPUOrderBookComputeEngine {
     if (this.heatmapSliceBuffer?.destroy) this.heatmapSliceBuffer.destroy();
     if (this.heatmapTexture?.destroy) this.heatmapTexture.destroy();
     if (this.bloomParamsBuffer?.destroy) this.bloomParamsBuffer.destroy();
+    if (this.horizontalBloomParamsBuffer?.destroy) this.horizontalBloomParamsBuffer.destroy();
 
     if (this.device?.destroy) {
       this.device.destroy();
@@ -1120,6 +1257,9 @@ export class WebGPUOrderBookComputeEngine {
     this.bloomPipeline = null;
     this.bloomBindGroup = null;
     this.bloomParamsBuffer = null;
+    this.horizontalBloomPipeline = null;
+    this.horizontalBloomBindGroup = null;
+    this.horizontalBloomParamsBuffer = null;
     this.hasSubgroupsSupport = false;
     this.isInitialized = false;
   }

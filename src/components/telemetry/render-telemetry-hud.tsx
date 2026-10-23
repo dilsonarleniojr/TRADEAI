@@ -126,6 +126,12 @@ export function RenderTelemetryHUD() {
         <span className="text-[8.5px] px-1 py-0.2 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-semibold">
           BLOOM PASS VRAM
         </span>
+        <span className="text-[8.5px] px-1 py-0.2 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 font-semibold">
+          DUAL-AXIS BLOOM
+        </span>
+        <span className="text-[8.5px] px-1 py-0.2 rounded bg-teal-500/15 text-teal-300 border border-teal-500/30 font-semibold">
+          MIPMAP TRILINEAR
+        </span>
       </div>
     </div>
   );

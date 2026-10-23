@@ -1,6 +1,34 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Bloom Bilateral com Separable Horizontal Pass (Dual-Axis Bloom) & GPU Mipmapping Trilinear com Amostragem Anisotrópica Nativa na VRAM",
+    "summary": "1) Pipeline WGSL de Horizontal Bloom Pass Separável (webgpu-compute-engine.ts): Implementação de WGSL_HORIZONTAL_BLOOM_SHADER operando em workgroups de 128 threads com memória compartilhada s_hBlueChannel: array<f32, 128>. Executa convolução gaussiana 1D horizontal (kernel 5-tap com pesos normalizados [0.06136, 0.24477, 0.38774, 0.24477, 0.06136]) exclusivamente no Canal Azul (B - bits 16..23) da fatia da textura L2 em VRAM. O pipeline Dual-Axis Bloom executa a decomposição 2D G(x, y) = G(x) * G(y) com complexidade O(2K) em vez de O(K²), destacando muralhas iceberg persistentes no tempo; 2) GPU Mipmapping & Filtragem Trilinear com Amostragem Anisotrópica (webgl-l2-heatmap-renderer.ts): Configuração de gl.TEXTURE_MIN_FILTER = gl.LINEAR_MIPMAP_LINEAR e ativação da extensão EXT_texture_filter_anisotropic até 16x (TEXTURE_MAX_ANISOTROPY_EXT). A chamada atômica gl.generateMipmap(gl.TEXTURE_2D) após cada pushDepthSnapshot() garante que visualizações macro/zoom reduzido apresentem amostragem anisotrópica ultra-suave sem cintilação ou artefatos de aliasing; 3) Fragment Shader com Convolução Horizontal Temporal e Fusão Bilateral: Amostragem de 5 taps temporais (uCoord +/- k * hStep) ponderados no fragment shader do heatmap, fundindo o núcleo de iceberg raw com a dispersão difusa horizontal e vertical; 4) Telemetria de Render Expandida (render-telemetry-hud.tsx): Novos badges 'DUAL-AXIS BLOOM' (sky neon) e 'MIPMAP TRILINEAR' (teal neon) no HUD do cockpit institucional, com método hasDualAxisBloom() e métricas dualAxisBloomApplied; 5) Validação Rigorosa: 47 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 297 asserções) e TypeScript verificado com 0 erros.",
+    "tags": [
+      "dual-axis-bloom",
+      "separable-horizontal-pass",
+      "gaussian-blur-2d",
+      "gpu-mipmapping",
+      "trilinear-filtering",
+      "anisotropic-filtering",
+      "iceberg-temporal-persistence",
+      "webgpu-compute-engine",
+      "webgl-l2-heatmap-renderer",
+      "desktop-performance-engine"
+    ],
+    "details": {
+      "webgpuComputeEnginePath": "src/lib/performance/webgpu-compute-engine.ts",
+      "webglHeatmapRendererPath": "src/lib/performance/webgl-l2-heatmap-renderer.ts",
+      "renderTelemetryHudPath": "src/components/telemetry/render-telemetry-hud.tsx",
+      "testSuitePath": "tests/unit/desktop-performance-engine.test.ts",
+      "totalPassingTests": 47,
+      "totalAssertions": 297,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792556000000-dual-axis-bloom-mipmapping-anisotropic",
+    "timestamp": "2026-10-23T03:20:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Shader de Post-Processing com Bloom Pass Gaussiano 1D em VRAM Aplicado Exclusivamente ao Canal Azul (B)",
     "summary": "1) Pipeline WGSL de Bloom Pass com Convolução Gaussiana 1D (webgpu-compute-engine.ts): Implementação de WGSL_BLOOM_POST_PROCESSING_SHADER operando em workgroups de 128 threads com memória compartilhada s_blueChannel: array<f32, 128>. Executa convolução gaussiana 1D vertical (kernel 5-tap com pesos normalizados [0.06136, 0.24477, 0.38774, 0.24477, 0.06136]) exclusivamente no Canal Azul (B - bits 16..23) da fatia da textura L2 em VRAM; 2) Isolamento Atômico de Canais de Preço e Profundidade: O mascaramento de bits (origTexel & 0xFF00FFFFu) | finalBlueByte preserva integralmente os canais Red (bids), Green (asks) e Alpha (opacidade) com precisão decimal exata, impedindo qualquer derrapagem ou dispersão indesejada de níveis de liquidez de compra e venda; 3) Dispersão Óptica (Optical Glow) e Renderização Visual (webgl-l2-heatmap-renderer.ts): O fragment shader consome o gradiente gaussiano em texel.b para renderizar núcleo ultra-brilhante em Magenta saturado (1.00, 0.30, 1.00) somado a um halo volumétrico difuso (0.88, 0.18, 1.00) ao redor de muralhas iceberg, tornando a anomalia visualmente destacada e detectável por operadores institucionais mesmo com zoom macro/reduzido no book; 4) Zero Overhead para a CPU e Telemetria Integrada (render-telemetry-hud.tsx): Despachado diretamente no mesmo command encoder da GPU via applyBloomPass() antes de copyBufferToTexture(). Exposição do badge 'BLOOM PASS VRAM' em ciano no HUD de telemetria; 5) Validação Rigorosa: 44 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 271 asserções) e compilação limpa em TypeScript com 0 erros.",
     "tags": [

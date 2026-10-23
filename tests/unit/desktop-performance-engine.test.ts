@@ -24,6 +24,7 @@ import {
   WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER,
   WGSL_ORDER_BOOK_IMBALANCE_SHADER,
   WGSL_BLOOM_POST_PROCESSING_SHADER,
+  WGSL_HORIZONTAL_BLOOM_SHADER,
 } from "@/lib/performance/webgpu-compute-engine";
 
 describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", () => {
@@ -642,6 +643,26 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       expect(metrics.currentColumn).toBe(1); // Avançou para a próxima coluna circular
       expect(metrics.bytesUploadedPerSlice).toBe(64 * 4); // 256 bytes por slice
       expect(metrics.totalTextureBytes).toBe(32 * 64 * 4); // 8192 bytes
+      expect(metrics.mipmappingEnabled).toBe(true);
+      expect(metrics.anisotropicLevel).toBeGreaterThanOrEqual(1);
+      expect(metrics.dualAxisBloom).toBe(true);
+    });
+
+    it("deve configurar Mipmapping e Filtragem Anisotrópica com fallback controlado", () => {
+      const disabledRenderer = new WebGLL2HeatmapRenderer(null, {
+        priceBins: 32,
+        historyLength: 16,
+        mipmappingEnabled: false,
+        anisotropicFiltering: false,
+        dualAxisBloomEnabled: false,
+      });
+
+      const disabledMetrics = disabledRenderer.getMetrics();
+      expect(disabledMetrics.mipmappingEnabled).toBe(false);
+      expect(disabledMetrics.anisotropicLevel).toBe(1);
+      expect(disabledMetrics.dualAxisBloom).toBe(false);
+
+      disabledRenderer.destroy();
     });
 
     it("deve calcular o Volume Profile Dinâmico com Point of Control (POC) e Value Area (VAH/VAL 70%)", () => {
@@ -1174,6 +1195,130 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
 
         // Testa limpeza em destroy
         engine.destroy();
+        expect(engine.hasBloomPass()).toBe(false);
+      } finally {
+        (globalThis as any).navigator = origNavigator;
+      }
+    });
+
+    it("deve validar o shader WGSL de Horizontal Bloom Pass para análise de persistência temporal", () => {
+      expect(WGSL_HORIZONTAL_BLOOM_SHADER).toBeDefined();
+      expect(WGSL_HORIZONTAL_BLOOM_SHADER).toContain("struct HorizontalBloomParams");
+      expect(WGSL_HORIZONTAL_BLOOM_SHADER).toContain("s_hBlueChannel: array<f32, 128>");
+      // Pesos gaussianos 5-tap normalizados para eixo temporal
+      expect(WGSL_HORIZONTAL_BLOOM_SHADER).toContain("0.38774");
+      expect(WGSL_HORIZONTAL_BLOOM_SHADER).toContain("0.24477");
+      expect(WGSL_HORIZONTAL_BLOOM_SHADER).toContain("0.06136");
+      // Mascaramento atômico de bits: preserva R, G, A e atualiza exclusivamente B (bits 16..23)
+      expect(WGSL_HORIZONTAL_BLOOM_SHADER).toContain("0xFF00FFFFu");
+      expect(WGSL_HORIZONTAL_BLOOM_SHADER).toContain("finalBlueByte");
+    });
+
+    it("deve gerenciar pipeline Dual-Axis Bloom (Vertical + Horizontal Separable Pass)", async () => {
+      const origNavigator = (globalThis as any).navigator;
+      let dispatchCount = 0;
+
+      const mockPass = {
+        setPipeline: () => {},
+        setBindGroup: () => {},
+        dispatchWorkgroups: () => { dispatchCount++; },
+        end: () => {},
+      };
+
+      const mockEncoder = {
+        beginComputePass: () => mockPass,
+        copyBufferToBuffer: () => {},
+        finish: () => ({}),
+      };
+
+      const mockBuffer = {
+        destroy: () => {},
+        mapAsync: async () => {},
+        getMappedRange: () => new Float32Array([100, 50, 0.33, 0.5, 1, 4.0, 0, 0]).buffer,
+        unmap: () => {},
+      };
+
+      const mockDevice = {
+        createShaderModule: () => ({}),
+        createComputePipeline: () => ({
+          getBindGroupLayout: () => ({}),
+        }),
+        createBuffer: () => mockBuffer,
+        createTexture: () => ({ destroy: () => {} }),
+        createBindGroup: () => ({}),
+        createCommandEncoder: () => mockEncoder,
+        queue: {
+          writeBuffer: () => {},
+          submit: () => {},
+        },
+        destroy: () => {},
+      };
+
+      const mockAdapter = {
+        features: { has: () => true },
+        requestDevice: async () => mockDevice,
+      };
+
+      (globalThis as any).navigator = {
+        gpu: { requestAdapter: async () => mockAdapter },
+      };
+
+      try {
+        const engine = new WebGPUOrderBookComputeEngine(64, {
+          enableBloomPass: true,
+          enableDualAxisBloom: true,
+          bloomAxes: "DUAL_AXIS",
+        });
+
+        expect(engine.hasDualAxisBloom()).toBe(false);
+
+        const initialized = await engine.init();
+        expect(initialized).toBe(true);
+        expect(engine.hasDualAxisBloom()).toBe(true);
+
+        // 1. Testa despacho de DUAL_AXIS (2 passes: Vertical e Horizontal)
+        dispatchCount = 0;
+        const dualSuccess = engine.applyBloomPass({
+          axis: "DUAL_AXIS",
+          blurRadius: 2,
+          intensity: 1.5,
+          customEncoder: mockEncoder,
+        });
+        expect(dualSuccess).toBe(true);
+        expect(dispatchCount).toBe(2);
+
+        // 2. Testa despacho isolado de HORIZONTAL (1 pass)
+        dispatchCount = 0;
+        const hSuccess = engine.applyBloomPass({
+          axis: "HORIZONTAL",
+          blurRadius: 3,
+          intensity: 1.2,
+          customEncoder: mockEncoder,
+        });
+        expect(hSuccess).toBe(true);
+        expect(dispatchCount).toBe(1);
+
+        // 3. Testa despacho isolado de VERTICAL (1 pass)
+        dispatchCount = 0;
+        const vSuccess = engine.applyBloomPass({
+          axis: "VERTICAL",
+          blurRadius: 1,
+          intensity: 1.0,
+          customEncoder: mockEncoder,
+        });
+        expect(vSuccess).toBe(true);
+        expect(dispatchCount).toBe(1);
+
+        // 4. Testa métrica dualAxisBloomApplied em computeImbalance
+        const metrics = await engine.computeImbalance([
+          { price: 65000, quantity: 200, side: 1, distanceFromMidPct: 0.0001 },
+          { price: 65010, quantity: 20, side: -1, distanceFromMidPct: 0.0001 },
+        ]);
+        expect(metrics.dualAxisBloomApplied).toBe(true);
+
+        // 5. Destrói e valida teardown
+        engine.destroy();
+        expect(engine.hasDualAxisBloom()).toBe(false);
         expect(engine.hasBloomPass()).toBe(false);
       } finally {
         (globalThis as any).navigator = origNavigator;

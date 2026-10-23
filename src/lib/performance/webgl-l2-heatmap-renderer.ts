@@ -11,10 +11,13 @@ export interface L2Level {
 }
 
 export interface HeatmapConfig {
-  historyLength?: number; // Largura da textura no tempo (ex: 256 colunas)
-  priceBins?: number;     // Altura da textura em faixas de preço (ex: 128 níveis)
-  alpha?: number;         // Opacidade geral do heatmap (0.0 a 1.0)
-  bloomEnabled?: boolean; // Habilita dispersão óptica e glow de iceberg no Canal B
+  historyLength?: number;        // Largura da textura no tempo (ex: 256 colunas)
+  priceBins?: number;            // Altura da textura em faixas de preço (ex: 128 níveis)
+  alpha?: number;                // Opacidade geral do heatmap (0.0 a 1.0)
+  bloomEnabled?: boolean;        // Habilita dispersão óptica e glow de iceberg no Canal B
+  mipmappingEnabled?: boolean;   // Habilita geração de mipmaps na GPU (generateMipmap) e filtro trilinear
+  anisotropicFiltering?: boolean;// Habilita amostragem anisotrópica nativa na VRAM (EXT_texture_filter_anisotropic)
+  dualAxisBloomEnabled?: boolean;// Habilita bloom bilateral com passo horizontal temporal (X)
 }
 
 export interface VolumeProfileBin {
@@ -60,6 +63,10 @@ export class WebGLL2HeatmapRenderer {
   public readonly priceBins: number;
   public alpha: number;
   public bloomEnabled: boolean;
+  public mipmappingEnabled: boolean;
+  public anisotropicEnabled: boolean;
+  public maxAnisotropy: number = 1;
+  public dualAxisBloomEnabled: boolean;
 
   // Buffer de dados da textura RGBA (historyLength * priceBins * 4 bytes)
   // R: Bid Liquidity, G: Ask Liquidity, B: Iceberg Detection, A: Opacity/Weight
@@ -74,6 +81,9 @@ export class WebGLL2HeatmapRenderer {
     this.priceBins = config?.priceBins ?? 128;
     this.alpha = config?.alpha ?? 0.65;
     this.bloomEnabled = config?.bloomEnabled ?? true;
+    this.mipmappingEnabled = config?.mipmappingEnabled ?? true;
+    this.anisotropicEnabled = config?.anisotropicFiltering ?? true;
+    this.dualAxisBloomEnabled = config?.dualAxisBloomEnabled ?? true;
 
     this.textureData = new Uint8Array(this.historyLength * this.priceBins * 4);
     this.sliceScratch = new Uint8Array(this.priceBins * 4);
@@ -144,22 +154,32 @@ export class WebGLL2HeatmapRenderer {
       vec4 texel = texture(u_heatmapTexture, vec2(uCoord, vCoord));
       float bidIntensity = texel.r;
       float askIntensity = texel.g;
-      float iceberg = texel.b;
+      float rawIceberg = texel.b;
+
+      // Dual-Axis Bloom: Convolução 1D Horizontal no Eixo Temporal (X) para capturar persistência de ordens iceberg
+      float hStep = 1.0 / max(histLen, 1.0);
+      float iceH = 0.0;
+      iceH += texture(u_heatmapTexture, vec2(fract(uCoord - 2.0 * hStep), vCoord)).b * 0.06136;
+      iceH += texture(u_heatmapTexture, vec2(fract(uCoord - 1.0 * hStep), vCoord)).b * 0.24477;
+      iceH += rawIceberg * 0.38774;
+      iceH += texture(u_heatmapTexture, vec2(fract(uCoord + 1.0 * hStep), vCoord)).b * 0.24477;
+      iceH += texture(u_heatmapTexture, vec2(fract(uCoord + 2.0 * hStep), vCoord)).b * 0.06136;
+
+      float iceberg = max(rawIceberg, iceH * 1.35);
 
       // Color mapping:
       // Bids (Cyan/Emerald): vec3(0.06, 0.78, 0.52)
       // Asks (Amber/Rose): vec3(0.94, 0.32, 0.25)
-      // Iceberg & Bloom Glow (Projeção Direta e Dispersão Óptica Canal B):
-      // texel.b contém tanto o núcleo da ordem iceberg quanto a dispersão gaussiana do Bloom Pass VRAM
-      float isIceCore = step(0.5, iceberg);
+      // Iceberg & Dual-Axis Bloom Glow (Projeção Direta e Dispersão Óptica Bilateral Canal B):
+      float isIceCore = step(0.5, rawIceberg);
       float isIceGlow = smoothstep(0.02, 0.5, iceberg);
       float icePulse = 1.0 + 0.35 * sin(uCoord * 62.8318); // 10 oscilações no histórico temporal
 
       vec3 bidColor = vec3(0.06, 0.78, 0.52) * bidIntensity;
       vec3 askColor = vec3(0.94, 0.32, 0.25) * askIntensity;
-      // Núcleo brilhante em magenta puro + halo de dispersão óptica volumétrico
+      // Núcleo brilhante em magenta puro + halo de dispersão óptica volumétrico bilateral
       vec3 icebergCoreColor = vec3(1.00, 0.30, 1.00) * (isIceCore * icePulse * 1.5);
-      vec3 icebergGlowColor = vec3(0.88, 0.18, 1.00) * (isIceGlow * iceberg * 1.2);
+      vec3 icebergGlowColor = vec3(0.88, 0.18, 1.00) * (isIceGlow * iceberg * 1.25);
       vec3 icebergColor = icebergCoreColor + icebergGlowColor;
 
       vec3 finalColor = bidColor + askColor + icebergColor;
@@ -219,10 +239,27 @@ export class WebGLL2HeatmapRenderer {
     // Alocar Textura 2D Dinâmica
     this.texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    if (this.mipmappingEnabled) {
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    } else {
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    }
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    // Amostragem Anisotrópica nativa na VRAM (EXT_texture_filter_anisotropic)
+    if (this.anisotropicEnabled) {
+      const ext =
+        gl.getExtension("EXT_texture_filter_anisotropic") ||
+        gl.getExtension("MOZ_EXT_texture_filter_anisotropic") ||
+        gl.getExtension("WEBKIT_EXT_texture_filter_anisotropic");
+      if (ext) {
+        const maxAniso = gl.getParameter(ext.MAX_TEXTURE_MAX_ANISOTROPY_EXT) || 4;
+        this.maxAnisotropy = Math.min(16, maxAniso);
+        gl.texParameterf(gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, this.maxAnisotropy);
+      }
+    }
 
     // Inicializa textura vazia com dimensões historyLength x priceBins
     gl.texImage2D(
@@ -236,6 +273,10 @@ export class WebGLL2HeatmapRenderer {
       gl.UNSIGNED_BYTE,
       this.textureData
     );
+
+    if (this.mipmappingEnabled && typeof gl.generateMipmap === "function") {
+      gl.generateMipmap(gl.TEXTURE_2D);
+    }
 
     return true;
   }
@@ -349,6 +390,11 @@ export class WebGLL2HeatmapRenderer {
         gl.UNSIGNED_BYTE,
         this.sliceScratch
       );
+
+      // Regenera cadeia de Mipmaps para permitir filtragem anisotrópica / trilinear suave em zoom reduzido
+      if (this.mipmappingEnabled && typeof gl.generateMipmap === "function") {
+        gl.generateMipmap(gl.TEXTURE_2D);
+      }
     }
 
     // Avança ponteiro circular de coluna
@@ -520,6 +566,9 @@ export class WebGLL2HeatmapRenderer {
     currentColumn: number;
     bytesUploadedPerSlice: number;
     totalTextureBytes: number;
+    mipmappingEnabled: boolean;
+    anisotropicLevel: number;
+    dualAxisBloom: boolean;
   } {
     return {
       historyLength: this.historyLength,
@@ -527,6 +576,9 @@ export class WebGLL2HeatmapRenderer {
       currentColumn: this.currentColumn,
       bytesUploadedPerSlice: this.priceBins * 4,
       totalTextureBytes: this.historyLength * this.priceBins * 4,
+      mipmappingEnabled: this.mipmappingEnabled,
+      anisotropicLevel: this.maxAnisotropy,
+      dualAxisBloom: this.dualAxisBloomEnabled,
     };
   }
 
