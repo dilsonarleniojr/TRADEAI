@@ -75,6 +75,16 @@ export class WebGLCandlestickRenderer {
   }
 
   /**
+   * Atualiza os parâmetros de faixa dinâmica (ATR, centerPrice e fator de compressão)
+   * no renderizador de Heatmap L2 subjacente.
+   */
+  public setDynamicRangeParams(atr: number, centerPrice?: number, compressionFactor?: number): void {
+    if (this.heatmapRenderer) {
+      this.heatmapRenderer.setDynamicRangeParams(atr, centerPrice, compressionFactor);
+    }
+  }
+
+  /**
    * Verifica se o ambiente possui suporte a WebGL 2.0.
    */
   public static isSupported(): boolean {

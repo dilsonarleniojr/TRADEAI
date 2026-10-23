@@ -138,6 +138,9 @@ export function RenderTelemetryHUD() {
         <span className="text-[8.5px] px-1 py-0.2 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 font-semibold">
           1D PALETTE COMPRESS
         </span>
+        <span className="text-[8.5px] px-1 py-0.2 rounded bg-lime-500/15 text-lime-300 border border-lime-500/30 font-semibold">
+          AUTO ATR HOOK
+        </span>
       </div>
     </div>
   );

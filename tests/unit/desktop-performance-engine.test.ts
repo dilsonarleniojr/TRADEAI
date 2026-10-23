@@ -2516,6 +2516,137 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       candlestickRenderer.destroy();
     });
   });
+
+  describe("21. ContiguousIndicatorBuffer ATR Listener & OffscreenChartController Auto-Sync (Zero Main-Thread Dynamic Range)", () => {
+    it("deve registrar listener de ATR14 e despachar notificações a cada candle fechado em O(1)", () => {
+      const buffer = new ContiguousIndicatorBuffer(50);
+      expect(buffer.getATRListenersCount()).toBe(0);
+
+      const atrEvents: Array<{ atr: number; close: number; time: number }> = [];
+      const unbind = buffer.onATRUpdate((atr, close, time) => {
+        atrEvents.push({ atr, close, time });
+      });
+
+      expect(buffer.getATRListenersCount()).toBe(1);
+
+      // Push de 5 candles simulados
+      for (let i = 1; i <= 5; i++) {
+        buffer.push(
+          1700000000000 + i * 60000,
+          65000,
+          65100 + i * 10,
+          64900 - i * 10,
+          65050 + i * 5,
+          100 + i
+        );
+      }
+
+      expect(atrEvents.length).toBe(5);
+      const latestAtr = buffer.getLatestValue(OFFSET_ATR14);
+      expect(atrEvents[4].atr).toBe(latestAtr);
+      expect(atrEvents[4].close).toBe(buffer.getLatestValue(OFFSET_CLOSE));
+
+      // Desinscrição limpa
+      unbind();
+      expect(buffer.getATRListenersCount()).toBe(0);
+
+      // Próximo push não deve gerar evento no array
+      buffer.push(1700000000000 + 6 * 60000, 65000, 65200, 64800, 65100, 150);
+      expect(atrEvents.length).toBe(5);
+    });
+
+    it("deve vincular ContiguousIndicatorBuffer ao OffscreenChartController e inicializar estado dinâmico", () => {
+      const buffer = new ContiguousIndicatorBuffer(50);
+      for (let i = 1; i <= 15; i++) {
+        buffer.push(
+          1700000000000 + i * 60000,
+          65000,
+          65250,
+          64850,
+          65100,
+          200
+        );
+      }
+
+      const controller = new OffscreenChartController();
+      const unbind = controller.bindIndicatorBuffer(buffer, true);
+
+      const state = controller.getDynamicRangeState();
+      expect(state.isBound).toBe(true);
+      expect(state.autoSyncDynamicRange).toBe(true);
+      expect(state.currentAtr).toBeGreaterThan(0);
+      expect(state.currentCenterPrice).toBe(65100);
+
+      const metrics = controller.getWorkerChannelMetrics();
+      expect(metrics.hasIndicatorBuffer).toBe(true);
+      expect(metrics.currentAtr).toBe(state.currentAtr);
+      expect(metrics.currentCenterPrice).toBe(65100);
+
+      unbind();
+      expect(controller.getDynamicRangeState().isBound).toBe(false);
+      expect(controller.getWorkerChannelMetrics().hasIndicatorBuffer).toBe(false);
+
+      controller.destroy();
+    });
+
+    it("deve atualizar automaticamente ATR e centerPrice no OffscreenChartController sem intervenção da Main Thread", () => {
+      const buffer = new ContiguousIndicatorBuffer(50);
+      buffer.push(1700000100000, 60000, 60100, 59900, 60050, 100);
+
+      const controller = new OffscreenChartController();
+      controller.bindIndicatorBuffer(buffer, true);
+
+      const initialAtr = controller.getDynamicRangeState().currentAtr;
+      expect(controller.getDynamicRangeState().currentCenterPrice).toBe(60050);
+
+      // Simula fechamento de candle de alta volatilidade (spike)
+      buffer.push(1700000160000, 60050, 62000, 59500, 61800, 800);
+
+      const updatedState = controller.getDynamicRangeState();
+      expect(updatedState.currentCenterPrice).toBe(61800);
+      expect(updatedState.currentAtr).toBeGreaterThan(initialAtr);
+
+      controller.destroy();
+    });
+
+    it("deve injetar automaticamente atr e centerPrice do buffer no render(bounds) quando não especificados", () => {
+      const buffer = new ContiguousIndicatorBuffer(50);
+      buffer.push(1700000200000, 65000, 65500, 64500, 65200, 500);
+
+      const controller = new OffscreenChartController();
+      controller.bindIndicatorBuffer(buffer, true);
+
+      const expectedAtr = controller.getDynamicRangeState().currentAtr;
+      const expectedCenter = controller.getDynamicRangeState().currentCenterPrice;
+
+      // Chama render com bounds básicos (sem atr e sem centerPrice)
+      expect(() => {
+        controller.render({
+          minPrice: 64000,
+          maxPrice: 66000,
+          startIndex: 0,
+          endIndex: 10,
+        });
+      }).not.toThrow();
+
+      expect(expectedAtr).toBeGreaterThan(0);
+      expect(expectedCenter).toBe(65200);
+
+      controller.destroy();
+    });
+
+    it("deve desvincular o listener e liberar memória sem vazamentos no destroy()", () => {
+      const buffer = new ContiguousIndicatorBuffer(50);
+      const controller = new OffscreenChartController();
+
+      controller.bindIndicatorBuffer(buffer);
+      expect(buffer.getATRListenersCount()).toBe(1);
+
+      controller.destroy();
+      expect(buffer.getATRListenersCount()).toBe(0);
+      expect(controller.getDynamicRangeState().isBound).toBe(false);
+    });
+  });
 });
 
 

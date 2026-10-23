@@ -21,6 +21,8 @@ export const OFFSET_EMA26 = 9;
 export const OFFSET_RSI14 = 10;
 export const OFFSET_ATR14 = 11;
 
+export type ATRUpdateListener = (atr: number, closePrice: number, time: number) => void;
+
 export class ContiguousIndicatorBuffer {
   readonly capacity: number;
   readonly stride: number;
@@ -28,6 +30,7 @@ export class ContiguousIndicatorBuffer {
 
   private head = 0; // Próximo índice de slot para escrita
   private count = 0; // Quantidade de candles armazenados (até capacity)
+  private atrListeners: ATRUpdateListener[] = [];
 
   // Multiplicadores pré-computados para EMA
   private readonly k12 = 2 / (12 + 1);
@@ -42,6 +45,34 @@ export class ContiguousIndicatorBuffer {
 
   get length(): number {
     return this.count;
+  }
+
+  /**
+   * Registra um listener para notificações de novo cálculo de ATR14 a cada candle fechado.
+   * Retorna uma função de desinscrição para evitar vazamentos de memória.
+   */
+  public onATRUpdate(listener: ATRUpdateListener): () => void {
+    this.atrListeners.push(listener);
+    return () => {
+      const idx = this.atrListeners.indexOf(listener);
+      if (idx !== -1) {
+        this.atrListeners.splice(idx, 1);
+      }
+    };
+  }
+
+  /**
+   * Remove todos os listeners registrados para ATR.
+   */
+  public removeAllATRListeners(): void {
+    this.atrListeners.length = 0;
+  }
+
+  /**
+   * Retorna o número de listeners registrados.
+   */
+  public getATRListenersCount(): number {
+    return this.atrListeners.length;
   }
 
   /**
@@ -82,6 +113,14 @@ export class ContiguousIndicatorBuffer {
     // Recalcula indicadores para o novo candle já considerando a contagem atualizada
     this.computeIndicatorsForSlot(slot, close, high, low);
 
+    // Notifica listeners do cálculo atualizado de ATR14
+    if (this.atrListeners.length > 0) {
+      const computedAtr = this.data[base + OFFSET_ATR14];
+      for (let i = 0; i < this.atrListeners.length; i++) {
+        this.atrListeners[i](computedAtr, close, time);
+      }
+    }
+
     this.head = (this.head + 1) % this.capacity;
   }
 
@@ -119,7 +158,7 @@ export class ContiguousIndicatorBuffer {
     const base = slot * this.stride;
     const prevSlot = (slot - 1 + this.capacity) % this.capacity;
     const prevBase = prevSlot * this.stride;
-    const hasPrevious = this.count > 0;
+    const hasPrevious = this.count > 1;
 
     // 1. EMA 12 e EMA 26
     if (!hasPrevious) {

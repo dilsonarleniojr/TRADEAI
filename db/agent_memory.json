@@ -1,6 +1,33 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Sincronização Reativa Zero Main-Thread entre ContiguousIndicatorBuffer (OFFSET_ATR14) e OffscreenChartController (u_dynamicRange)",
+    "summary": "1) Listener O(1) de ATR14 em ContiguousIndicatorBuffer (contiguous-indicator-buffer.ts): Implementação do padrão Observer desacoplado com onATRUpdate(listener: ATRUpdateListener), despachando (atr, closePrice, time) a cada candle fechado imediatamente após o cálculo vetorial de OFFSET_ATR14 em computeIndicatorsForSlot. Correção do guard hasPrevious = this.count > 1 evitando leitura de slot não inicializado no primeiro candle; 2) Vinculação Direta e Reativa em OffscreenChartController (offscreen-chart-controller.ts): Método bindIndicatorBuffer(buffer, autoSyncDynamicRange) vinculando diretamente o buffer ao controlador. Inicializa o estado atual em O(1) e encaminha notificações de ATR para WebGLCandlestickRenderer.setDynamicRangeParams(...) e para o Offscreen Worker via mensagem UPDATE_DYNAMIC_RANGE, sem tocar na Main Thread e sem acionar reflows de DOM; 3) Injeção Transparente em render(bounds): render() compõe bounds efetivos preenchendo automaticamente atr e centerPrice a partir do estado interno caso omitidos na chamada de layout, garantindo que o heatmap L2 WebGL sempre utilize o ATR atualizado mesmo sob chamadas de renderização padrão; 4) Desinscrição Limpa e Prevenção de Vazamentos: Função de unbind retornada no registro e chamada automática em destroy() ou unbindIndicatorBuffer(), garantindo desinscrição e esvaziamento de referências no ciclo de vida; 5) Badge HUD de Telemetria: Inclusão da badge AUTO ATR HOOK (lime neon) no RenderTelemetryHUD; 6) Validação: 90 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 956 asserções) e npx tsc --noEmit com 0 erros.",
+    "tags": [
+      "contiguous-indicator-buffer",
+      "atr-update-listener",
+      "offscreen-chart-controller",
+      "zero-main-thread-sync",
+      "u-dynamic-range-auto-sync",
+      "zero-layout-churn",
+      "reactive-volatility-tuning",
+      "desktop-performance-engine"
+    ],
+    "details": {
+      "indicatorBufferPath": "src/lib/performance/contiguous-indicator-buffer.ts",
+      "offscreenControllerPath": "src/lib/performance/offscreen-chart-controller.ts",
+      "candlestickRendererPath": "src/lib/performance/webgl-candlestick-renderer.ts",
+      "telemetryHudPath": "src/components/telemetry/render-telemetry-hud.tsx",
+      "testSuitePath": "tests/unit/desktop-performance-engine.test.ts",
+      "totalPassingTests": 90,
+      "totalAssertions": 956,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792566000000-atr-indicator-auto-sync-controller",
+    "timestamp": "2026-10-23T06:50:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Quantização Adaptativa de Faixa de Preço por ATR & Compressão de Faixa Dinâmica de Paleta de Calor 1D no WebGL Fragment Shader",
     "summary": "1) Quantização Adaptativa Logarítmica baseada em ATR (webgl-l2-heatmap-renderer.ts & shared-l2-depth-matrix.ts): Implementação de quantização não-linear de escala logarítmica com base no ATR (Average True Range) do ativo e centerPrice (mid price / POC), regida pela equação estritamente monotônica x = (P - Pc) / max(ATR, 1e-5), g(x) = sign(x) * ln(1 + kappa * |x|), norm = (g(x) - g(xmin)) / (g(xmax) - g(xmin)). A derivada dv/dP é inversamente proporcional à distância do spread, concentrando a resolução espacial de bins (ex: 128 bins) exatamente na região de maior liquidez e desbalanceamento ativo sem necessidade de redimensionar o buffer estático priceBins mesmo durante choques de volatilidade institucional; 2) Compressão de Faixa Dinâmica na Paleta 1D (GLSL ES 3.00): Implementação no fragment shader do heatmap da curva de compressão logarítmica / tone mapping de intensidade I_comp = ln(1.0 + gamma * I) / ln(1.0 + gamma) com gamma = 9.0. Evita saturação luminosa ofuscante gerada por paredões de liquidez institucional (ordens iceberg de alta densidade) e garante visibilidade nítida de volumes residuais dispersos; 3) Uniform u_dynamicRange [atr, centerPrice, compressionFactor, flags]: Transmissão direta ao shader de vetor vec4 contendo métricas dinâmicas e flags bitwise (flags 1.0 = Quantização Dinâmica, flags 2.0 = Tone Mapping de Paleta, flags 3.0 = Ambos ativos); 4) Paridade Algorítmica CPU/GPU Zero-Allocation: Implementação estrita da mesma função de quantização no método quantizePrice() do WebGLL2HeatmapRenderer e em SharedL2DepthMatrix.packToSliceRGBA() para geração de texturas RGBA em passada única sem alocações no Heap; 5) Propagação Transparente via WebGLCandlestickRenderer: Inclusão de atr, centerPrice e compressionFactor em WebGLViewBounds com repasse contínuo ao heatmapRenderer; 6) Telemetria e Badges HUD: Inclusão das badges DYNAMIC ATR QUANT (neon amber) e 1D PALETTE COMPRESS (neon purple) no RenderTelemetryHUD; 7) Validação: 85 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 931 asserções) e npx tsc --noEmit com 0 erros.",
     "tags": [

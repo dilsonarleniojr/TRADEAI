@@ -6,6 +6,7 @@
  */
 
 import { WebGLCandlestickRenderer, WebGLCandleData, WebGLViewBounds } from "./webgl-candlestick-renderer";
+import { ContiguousIndicatorBuffer, OFFSET_ATR14, OFFSET_CLOSE, type ATRUpdateListener } from "./contiguous-indicator-buffer";
 import type { LockFreeSPSCQueue } from "./lock-free-spsc-queue";
 import type { SharedMemoryAtomicQueue } from "./shared-memory-atomic-queue";
 import type { SharedL2DepthMatrix } from "./shared-l2-depth-matrix";
@@ -33,6 +34,14 @@ export class OffscreenChartController {
   private hasAtomicQueue: boolean = false;
   private atomicQueue: LockFreeSPSCQueue | SharedMemoryAtomicQueue | null = null;
   private l2DepthMatrix: SharedL2DepthMatrix | null = null;
+
+  // Integração direta com ContiguousIndicatorBuffer para ATR auto-sync
+  private indicatorBuffer: ContiguousIndicatorBuffer | null = null;
+  private unbindAtrListener: (() => void) | null = null;
+  private currentAtr: number = 0;
+  private currentCenterPrice: number = 0;
+  private compressionFactor: number = 4.0;
+  private autoSyncDynamicRange: boolean = true;
 
   private candleWidthPx: number = 6;
   private wickWidthPx: number = 1.5;
@@ -184,6 +193,13 @@ export class OffscreenChartController {
               }
               break;
 
+            case "UPDATE_DYNAMIC_RANGE":
+              if (msg.atr !== undefined) {
+                // Notificação de ATR / Dynamic Range recebida diretamente
+                self.postMessage({ type: "DYNAMIC_RANGE_UPDATED", atr: msg.atr, centerPrice: msg.centerPrice });
+              }
+              break;
+
             case "RESIZE":
               if (msg.width && msg.height && gl) {
                 gl.viewport(0, 0, msg.width, msg.height);
@@ -279,16 +295,26 @@ export class OffscreenChartController {
   public render(bounds: WebGLViewBounds): boolean {
     if (this.isDestroyed) return false;
 
+    // Injeta automaticamente os parâmetros dinâmicos se autoSyncDynamicRange estiver ativo
+    const effectiveBounds: WebGLViewBounds = this.autoSyncDynamicRange
+      ? {
+          ...bounds,
+          atr: bounds.atr ?? this.currentAtr,
+          centerPrice: bounds.centerPrice ?? (this.currentCenterPrice || (bounds.minPrice + bounds.maxPrice) / 2),
+          compressionFactor: bounds.compressionFactor ?? this.compressionFactor,
+        }
+      : bounds;
+
     if (this.worker) {
       this.worker.postMessage({
         type: "RENDER",
-        bounds,
+        bounds: effectiveBounds,
         candleWidthPx: this.candleWidthPx,
         wickWidthPx: this.wickWidthPx,
       });
       return true;
     } else if (this.webglRenderer) {
-      return this.webglRenderer.render(bounds, this.candleWidthPx, this.wickWidthPx);
+      return this.webglRenderer.render(effectiveBounds, this.candleWidthPx, this.wickWidthPx);
     }
 
     return false;
@@ -416,13 +442,114 @@ export class OffscreenChartController {
   }
 
   /**
-   * Retorna a telemetria do canal Zero-Hop direto.
+   * Vincula um ContiguousIndicatorBuffer ao controlador, escutando automaticamente
+   * novos cálculos de ATR14 a cada candle fechado (Zero Main-Thread / Zero Layout Churn).
+   */
+  public bindIndicatorBuffer(
+    buffer: ContiguousIndicatorBuffer,
+    autoSyncDynamicRange: boolean = true
+  ): () => void {
+    if (this.unbindAtrListener) {
+      this.unbindAtrListener();
+      this.unbindAtrListener = null;
+    }
+
+    this.indicatorBuffer = buffer;
+    this.autoSyncDynamicRange = autoSyncDynamicRange;
+
+    // Inicializa imediatamente com os valores mais recentes do buffer se já existirem dados
+    if (buffer.length > 0) {
+      this.currentAtr = buffer.getLatestValue(OFFSET_ATR14);
+      this.currentCenterPrice = buffer.getLatestValue(OFFSET_CLOSE);
+      this.updateDynamicRange(this.currentAtr, this.currentCenterPrice);
+    }
+
+    this.unbindAtrListener = buffer.onATRUpdate((atr, closePrice) => {
+      this.currentAtr = atr;
+      this.currentCenterPrice = closePrice;
+      if (this.autoSyncDynamicRange) {
+        this.updateDynamicRange(atr, closePrice);
+      }
+    });
+
+    return () => {
+      this.unbindIndicatorBuffer();
+    };
+  }
+
+  /**
+   * Desvincula o buffer de indicadores e remove o listener de ATR.
+   */
+  public unbindIndicatorBuffer(): void {
+    if (this.unbindAtrListener) {
+      this.unbindAtrListener();
+      this.unbindAtrListener = null;
+    }
+    this.indicatorBuffer = null;
+  }
+
+  /**
+   * Atualiza os parâmetros de faixa dinâmica (ATR e centerPrice)
+   * no renderizador ativo (Main Thread WebGL ou Offscreen Worker).
+   */
+  public updateDynamicRange(atr: number, centerPrice?: number, compressionFactor?: number): void {
+    this.currentAtr = atr;
+    if (centerPrice !== undefined) this.currentCenterPrice = centerPrice;
+    if (compressionFactor !== undefined) this.compressionFactor = compressionFactor;
+
+    if (this.worker) {
+      this.worker.postMessage({
+        type: "UPDATE_DYNAMIC_RANGE",
+        atr: this.currentAtr,
+        centerPrice: this.currentCenterPrice,
+        compressionFactor: this.compressionFactor,
+      });
+    } else if (this.webglRenderer) {
+      this.webglRenderer.setDynamicRangeParams(
+        this.currentAtr,
+        this.currentCenterPrice,
+        this.compressionFactor
+      );
+    }
+  }
+
+  /**
+   * Retorna os parâmetros dinâmicos de ATR e o estado da vinculação.
+   */
+  public getDynamicRangeState(): {
+    currentAtr: number;
+    currentCenterPrice: number;
+    compressionFactor: number;
+    isBound: boolean;
+    autoSyncDynamicRange: boolean;
+  } {
+    return {
+      currentAtr: this.currentAtr,
+      currentCenterPrice: this.currentCenterPrice,
+      compressionFactor: this.compressionFactor,
+      isBound: this.indicatorBuffer !== null,
+      autoSyncDynamicRange: this.autoSyncDynamicRange,
+    };
+  }
+
+  /**
+   * Retorna o renderizador WebGL local se disponível (usado em testes ou modo Main Thread).
+   */
+  public getWebGLRenderer(): WebGLCandlestickRenderer | null {
+    return this.webglRenderer;
+  }
+
+  /**
+   * Retorna a telemetria do canal Zero-Hop direto e buffers vinculados.
    */
   public getWorkerChannelMetrics(): {
     isPeerConnected: boolean;
     hasAtomicQueue: boolean;
     hasL2DepthMatrix: boolean;
     isDoubleBuffered: boolean;
+    hasIndicatorBuffer: boolean;
+    currentAtr: number;
+    currentCenterPrice: number;
     activeEngine: RenderEngineType;
   } {
     return {
@@ -430,6 +557,9 @@ export class OffscreenChartController {
       hasAtomicQueue: this.hasAtomicQueue,
       hasL2DepthMatrix: this.l2DepthMatrix !== null,
       isDoubleBuffered: this.l2DepthMatrix ? this.l2DepthMatrix.isDoubleBuffered() : false,
+      hasIndicatorBuffer: this.indicatorBuffer !== null,
+      currentAtr: this.currentAtr,
+      currentCenterPrice: this.currentCenterPrice,
       activeEngine: this.activeEngine,
     };
   }
@@ -446,6 +576,7 @@ export class OffscreenChartController {
    */
   public destroy(): void {
     this.isDestroyed = true;
+    this.unbindIndicatorBuffer();
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;
