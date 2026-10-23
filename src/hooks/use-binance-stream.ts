@@ -9,9 +9,12 @@ import { reconnectionManager } from "@/lib/websocket/reconnection-manager";
 import { flightRecorder } from "@/lib/telemetry/flight-recorder";
 import { TickCoalescer } from "@/lib/performance/tick-coalescer";
 import { MarketDataStreamParser } from "@/lib/performance/market-data-stream-parser";
+import { FastSelectiveParser } from "@/lib/performance/fast-selective-parser";
+import { BinanceWorkerManager } from "@/lib/performance/binance-worker-manager";
 
 let globalSocket: Socket | null = null;
 let globalNativeWs: WebSocket | null = null;
+let globalWorkerManager: BinanceWorkerManager | null = null;
 let nativeWsReconnectTimer: any = null;
 let activeHookCount = 0;
 
@@ -120,12 +123,35 @@ function syncSocketSubscriptions(socket: Socket) {
 
 function startNativeWsFallback() {
   if (typeof window === "undefined") return;
-  if (globalNativeWs && (globalNativeWs.readyState === WebSocket.OPEN || globalNativeWs.readyState === WebSocket.CONNECTING)) {
-    return;
-  }
 
   const symbols = getNeededSymbols();
   if (symbols.length === 0) return;
+
+  // 1. Tenta inicializar via Web Worker isolado em background thread
+  if (!globalWorkerManager) {
+    globalWorkerManager = new BinanceWorkerManager((batchTickers) => {
+      useCryptoStore.getState().setConnectionStatus("connected");
+      useCryptoStore.getState().setSyncMode("realtime");
+      batchTickers.forEach((t) => {
+        handleIncomingTicker(t.symbol, t);
+      });
+    });
+
+    const workerStarted = globalWorkerManager.start();
+    if (workerStarted) {
+      console.log(`[BinanceStream] Background Web Worker conectado com isolamento de thread para: ${symbols.join(", ")}`);
+      globalWorkerManager.subscribe(symbols);
+      return;
+    }
+  } else if (globalWorkerManager.isUsingWorker()) {
+    globalWorkerManager.subscribe(symbols);
+    return;
+  }
+
+  // 2. Fallback para WebSocket nativo direto na main thread com FastSelectiveParser
+  if (globalNativeWs && (globalNativeWs.readyState === WebSocket.OPEN || globalNativeWs.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
 
   const streams = symbols.map((s) => `${s.toLowerCase()}@ticker`).join("/");
   const url = `wss://stream.binance.com:9443/stream?streams=${streams}`;
@@ -135,14 +161,16 @@ function startNativeWsFallback() {
     globalNativeWs = ws;
 
     ws.onopen = () => {
-      console.log(`[BinanceStream] Native WS Fallback conectado para: ${symbols.join(", ")}`);
+      console.log(`[BinanceStream] Native WS Fallback (FastSelectiveParser) conectado para: ${symbols.join(", ")}`);
       useCryptoStore.getState().setConnectionStatus("connected");
       useCryptoStore.getState().setSyncMode("realtime");
     };
 
     ws.onmessage = (event) => {
       try {
-        const update = MarketDataStreamParser.parseMessage(event.data);
+        const raw = typeof event.data === "string" ? event.data : new TextDecoder().decode(event.data);
+        // Usa FastSelectiveParser para extração de token-level sem deserializar árvore JSON completa
+        const update = FastSelectiveParser.parseTicker(raw) || MarketDataStreamParser.parseMessage(raw);
         if (update && update.type === "TICKER") {
           handleIncomingTicker(update.symbol, {
             symbol: update.symbol,
@@ -164,7 +192,6 @@ function startNativeWsFallback() {
 
     ws.onclose = () => {
       globalNativeWs = null;
-      // Reconnect native WS fallback se Socket.IO ainda não estiver conectado
       if (!globalSocket || !globalSocket.connected) {
         if (nativeWsReconnectTimer) clearTimeout(nativeWsReconnectTimer);
         nativeWsReconnectTimer = setTimeout(() => {
@@ -183,6 +210,10 @@ function stopNativeWsFallback() {
   if (nativeWsReconnectTimer) {
     clearTimeout(nativeWsReconnectTimer);
     nativeWsReconnectTimer = null;
+  }
+  if (globalWorkerManager) {
+    globalWorkerManager.destroy();
+    globalWorkerManager = null;
   }
   if (globalNativeWs) {
     try {

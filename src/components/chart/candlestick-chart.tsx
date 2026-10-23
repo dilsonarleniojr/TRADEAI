@@ -12,6 +12,7 @@ import { ZoomIn, ZoomOut, Maximize2, Zap, X, Activity, Sparkles, Gauge, Clock, S
 import { structuredLogger } from '@/lib/telemetry/structured-logger';
 import { vSyncCoalescer } from '@/hooks/use-binance-stream';
 import { playTakeProfitHitSound } from '@/lib/sound/sound-effects';
+import { RenderTelemetryHUD } from '@/components/telemetry/render-telemetry-hud';
 
 export type DrawingTool = 'crosshair' | 'trendline' | 'horizontal';
 
@@ -906,23 +907,26 @@ export function CandlestickChart({
           transition={{ duration: 0.3 }}
           className="w-full h-full"
         >
-          {/* Indicador Numérico de Latência E2E e Taxa de Atualização V-Sync */}
-          <div className="absolute top-2 left-2 z-10 flex items-center gap-2 bg-background/85 backdrop-blur-md px-2.5 py-1 rounded-md border border-border/50 text-[10px] font-mono shadow-sm select-none">
-            <div className={`w-2 h-2 rounded-full ${e2eLatencyMs < 40 ? 'bg-emerald-500 animate-pulse' : e2eLatencyMs < 120 ? 'bg-amber-500' : 'bg-rose-500'}`} />
-            <span className="text-muted-foreground font-semibold">TICK E2E:</span>
-            <span className={`font-bold ${e2eLatencyMs < 40 ? 'text-emerald-400' : e2eLatencyMs < 120 ? 'text-amber-400' : 'text-rose-400'}`}>
-              {e2eLatencyMs.toFixed(0)}ms
-            </span>
-            <span className="text-muted-foreground/40">|</span>
-            <span className="text-cyan-400 font-semibold">{renderMetrics.fps} FPS</span>
-            {measureAnchor && (
-              <>
-                <span className="text-muted-foreground/40">|</span>
-                <span className="text-amber-400 font-bold bg-amber-500/10 px-1 rounded border border-amber-500/20">
-                  RÉGUA R:R ATIVA
-                </span>
-              </>
-            )}
+          {/* Indicador Numérico de Latência E2E e Telemetria de Render V-Sync (µs e Jank) */}
+          <div className="absolute top-2 left-2 z-10 flex items-center gap-2 select-none">
+            <div className="flex items-center gap-2 bg-background/85 backdrop-blur-md px-2.5 py-1 rounded-md border border-border/50 text-[10px] font-mono shadow-sm">
+              <div className={`w-2 h-2 rounded-full ${e2eLatencyMs < 40 ? 'bg-emerald-500 animate-pulse' : e2eLatencyMs < 120 ? 'bg-amber-500' : 'bg-rose-500'}`} />
+              <span className="text-muted-foreground font-semibold">TICK E2E:</span>
+              <span className={`font-bold ${e2eLatencyMs < 40 ? 'text-emerald-400' : e2eLatencyMs < 120 ? 'text-amber-400' : 'text-rose-400'}`}>
+                {e2eLatencyMs.toFixed(0)}ms
+              </span>
+              {measureAnchor && (
+                <>
+                  <span className="text-muted-foreground/40">|</span>
+                  <span className="text-amber-400 font-bold bg-amber-500/10 px-1 rounded border border-amber-500/20">
+                    RÉGUA R:R ATIVA
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* HUD de Telemetria de Frametime e CPU */}
+            <RenderTelemetryHUD />
           </div>
 
           {/* Zoom controls */}
@@ -1342,17 +1346,55 @@ export function CandlestickChart({
               );
             })}
 
-            {/* Candlesticks */}
-            {visibleCandles.map((candle, i) => {
-              const x = indexToX(i);
+            {/* Candlesticks: Separação de Camadas (Histórico Estático vs Dirty Rect Ativo) */}
+            <g key="layer-historical-candles">
+              {visibleCandles.slice(0, -1).map((candle, i) => {
+                const x = indexToX(i);
+                const bodyTop = priceToY(Math.max(candle.open, candle.close));
+                const bodyBottom = priceToY(Math.min(candle.open, candle.close));
+                const bodyH = Math.max(1, bodyBottom - bodyTop);
+                const color = candle.isBullish ? '#22c55e' : '#ef4444';
+                const wickColor = candle.isBullish ? 'oklch(0.65 0.2 145 / 70%)' : 'oklch(0.65 0.22 25 / 70%)';
+
+                return (
+                  <g key={`candle-hist-${i}`}>
+                    {/* Wick */}
+                    <line
+                      x1={x}
+                      y1={priceToY(candle.high)}
+                      x2={x}
+                      y2={priceToY(candle.low)}
+                      stroke={wickColor}
+                      strokeWidth={1}
+                    />
+                    {/* Body */}
+                    <rect
+                      x={x - bodyWidth / 2}
+                      y={bodyTop}
+                      width={bodyWidth}
+                      height={bodyH}
+                      fill={color}
+                      rx={1}
+                      opacity={0.9}
+                    />
+                  </g>
+                );
+              })}
+            </g>
+
+            {/* Camada Dinâmica de Alta Frequência (Active Dirty Rect Candle) */}
+            {visibleCandles.length > 0 && (() => {
+              const activeIndex = visibleCandles.length - 1;
+              const candle = visibleCandles[activeIndex];
+              const x = indexToX(activeIndex);
               const bodyTop = priceToY(Math.max(candle.open, candle.close));
               const bodyBottom = priceToY(Math.min(candle.open, candle.close));
               const bodyH = Math.max(1, bodyBottom - bodyTop);
               const color = candle.isBullish ? '#22c55e' : '#ef4444';
-              const wickColor = candle.isBullish ? 'oklch(0.65 0.2 145 / 70%)' : 'oklch(0.65 0.22 25 / 70%)';
+              const wickColor = candle.isBullish ? 'oklch(0.65 0.2 145 / 80%)' : 'oklch(0.65 0.22 25 / 80%)';
 
               return (
-                <g key={`candle-${i}`}>
+                <g key="layer-active-dirty-candle">
                   {/* Wick */}
                   <line
                     x1={x}
@@ -1360,21 +1402,23 @@ export function CandlestickChart({
                     x2={x}
                     y2={priceToY(candle.low)}
                     stroke={wickColor}
-                    strokeWidth={1}
+                    strokeWidth={1.5}
                   />
-                  {/* Body */}
+                  {/* Body com contorno de alta definição */}
                   <rect
                     x={x - bodyWidth / 2}
                     y={bodyTop}
                     width={bodyWidth}
                     height={bodyH}
                     fill={color}
+                    stroke={candle.isBullish ? '#86efac' : '#fca5a5'}
+                    strokeWidth={0.75}
                     rx={1}
-                    opacity={0.9}
+                    opacity={0.95}
                   />
                 </g>
               );
-            })}
+            })()}
 
             {/* SMA 20 line */}
             {showSMA20 &&

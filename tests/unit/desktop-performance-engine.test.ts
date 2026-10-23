@@ -2,6 +2,21 @@ import { describe, it, expect } from "bun:test";
 import { TickCoalescer } from "@/lib/performance/tick-coalescer";
 import { TypedCandleRingBuffer } from "@/lib/performance/typed-candle-ring-buffer";
 import { MarketDataStreamParser } from "@/lib/performance/market-data-stream-parser";
+import { FastSelectiveParser } from "@/lib/performance/fast-selective-parser";
+import { MarketEventPool } from "@/lib/performance/market-event-pool";
+import {
+  ContiguousIndicatorBuffer,
+  OFFSET_CLOSE,
+  OFFSET_SMA20,
+  OFFSET_EMA12,
+  OFFSET_RSI14,
+  OFFSET_ATR14,
+} from "@/lib/performance/contiguous-indicator-buffer";
+import { AdaptiveFrameScheduler } from "@/lib/performance/adaptive-frame-scheduler";
+import { BinanceWorkerManager } from "@/lib/performance/binance-worker-manager";
+import { SharedMemoryAtomicQueue } from "@/lib/performance/shared-memory-atomic-queue";
+import { WebGLCandlestickRenderer } from "@/lib/performance/webgl-candlestick-renderer";
+import { OffscreenChartController } from "@/lib/performance/offscreen-chart-controller";
 
 describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", () => {
   describe("1. TickCoalescer (V-Sync Frame Batching & Pacing)", () => {
@@ -270,4 +285,323 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       expect(keyAtPrice1).toBe(keyAtPrice2);
     });
   });
+
+  describe("5. FastSelectiveParser (Zero-Reflection Token Extraction)", () => {
+    it("deve extrair campos de ticker diretamente sem instanciar árvores JSON completas", () => {
+      const rawTicker = JSON.stringify({
+        e: "24hrTicker",
+        E: 1700000000000,
+        s: "BTCUSDT",
+        p: "1250.50",
+        P: "1.95",
+        w: "64500.00",
+        x: "63000.00",
+        c: "65432.10",
+        Q: "0.500",
+        b: "65430.00",
+        B: "1.200",
+        a: "65432.00",
+        A: "0.850",
+        o: "64181.60",
+        h: "66000.00",
+        l: "63500.00",
+        v: "14520.55",
+        q: "945000000.00",
+        O: 1699900000000,
+        C: 1700000000000,
+        F: 100000,
+        L: 250000,
+        n: 150000,
+      });
+
+      const parsed = FastSelectiveParser.parseTicker(rawTicker);
+      expect(parsed).not.toBeNull();
+      expect(parsed!.type).toBe("TICKER");
+      expect(parsed!.symbol).toBe("BTCUSDT");
+      expect(parsed!.price).toBe(65432.1);
+      expect(parsed!.priceChange).toBe(1250.5);
+      expect(parsed!.priceChangePercent).toBe(1.95);
+      expect(parsed!.high).toBe(66000);
+      expect(parsed!.low).toBe(63500);
+      expect(parsed!.volume).toBe(14520.55);
+
+      // Reuso da mesma referência de string em memória (String Interning)
+      const parsedAgain = FastSelectiveParser.parseTicker(rawTicker);
+      expect(parsed!.symbol).toBe(parsedAgain!.symbol);
+    });
+
+    it("deve extrair campos de kline seletivamente preservando o status isClosed", () => {
+      const rawKline = JSON.stringify({
+        e: "kline",
+        E: 1700000060000,
+        s: "ETHUSDT",
+        k: {
+          t: 1700000000000,
+          T: 1700000059999,
+          s: "ETHUSDT",
+          i: "1m",
+          f: 100,
+          L: 200,
+          o: "3450.00",
+          c: "3485.50",
+          h: "3490.00",
+          l: "3445.00",
+          v: "450.25",
+          n: 120,
+          x: true,
+          q: "1560000.00",
+          V: "220.00",
+          Q: "760000.00",
+          B: "0",
+        },
+      });
+
+      const kline = FastSelectiveParser.parseKline(rawKline);
+      expect(kline).not.toBeNull();
+      expect(kline!.type).toBe("KLINE");
+      expect(kline!.symbol).toBe("ETHUSDT");
+      expect(kline!.interval).toBe("1m");
+      expect(kline!.open).toBe(3450);
+      expect(kline!.close).toBe(3485.5);
+      expect(kline!.high).toBe(3490);
+      expect(kline!.low).toBe(3445);
+      expect(kline!.volume).toBe(450.25);
+      expect(kline!.isClosed).toBe(true);
+    });
+  });
+
+  describe("6. MarketEventPool (Zero-GC Churn & Object Recycling)", () => {
+    it("deve reutilizar instâncias de eventos pré-alocadas sem gerar lixo no Heap", () => {
+      const pool = new MarketEventPool(10, 10);
+      const metricsBefore = pool.getMetrics();
+      expect(metricsBefore.availableTickers).toBe(10);
+      expect(metricsBefore.inUseTickers).toBe(0);
+
+      // Adquire 3 tickers
+      const t1 = pool.acquireTicker("BTCUSDT", 65000, 100, 0.5, 65500, 64500, 1000, 65000000, 1700000000);
+      const t2 = pool.acquireTicker("ETHUSDT", 3500, 50, 1.2, 3550, 3450, 500, 1750000, 1700000000);
+      const t3 = pool.acquireTicker("SOLUSDT", 150, 5, 2.5, 155, 145, 200, 30000, 1700000000);
+
+      const metricsInUse = pool.getMetrics();
+      expect(metricsInUse.availableTickers).toBe(7);
+      expect(metricsInUse.inUseTickers).toBe(3);
+      expect(t1.symbol).toBe("BTCUSDT");
+
+      // Devolve t1 e t2 para o pool
+      pool.releaseTicker(t1);
+      pool.releaseTicker(t2);
+
+      const metricsAfterRelease = pool.getMetrics();
+      expect(metricsAfterRelease.availableTickers).toBe(9);
+      expect(metricsAfterRelease.inUseTickers).toBe(1);
+
+      // Re-adquire um ticker: deve reaproveitar a instância existente
+      const tReused = pool.acquireTicker("BNBUSDT", 580, 10, 1.5, 590, 570, 50, 29000, 1700000000);
+      expect(tReused.symbol).toBe("BNBUSDT");
+      expect(pool.getMetrics().availableTickers).toBe(8);
+
+      pool.releaseTicker(t3);
+      pool.releaseTicker(tReused);
+      expect(pool.getMetrics().inUseTickers).toBe(0);
+    });
+  });
+
+  describe("7. ContiguousIndicatorBuffer (Vectorized Flat Memory & L1/L2 Locality)", () => {
+    it("deve armazenar dados em array contíguo Float64Array e atualizar candle atual in-place", () => {
+      const buffer = new ContiguousIndicatorBuffer(10);
+      expect(buffer.length).toBe(0);
+      expect(buffer.data.length).toBe(120); // 10 slots * 12 stride
+
+      // Insere primeiro candle fechado
+      buffer.push(1000, 100, 105, 95, 102, 50);
+      expect(buffer.length).toBe(1);
+      expect(buffer.getLatestValue(OFFSET_CLOSE)).toBe(102);
+
+      // Insere segundo candle
+      buffer.push(1060, 102, 108, 101, 107, 75);
+      expect(buffer.length).toBe(2);
+      expect(buffer.getLatestValue(OFFSET_CLOSE)).toBe(107);
+      expect(buffer.getLatestValue(OFFSET_SMA20)).toBe(104.5); // Média de 102 e 107
+
+      // Atualiza in-place o candle em formação (novo high e novo close)
+      buffer.updateCurrentBar(110, 100, 109, 25);
+      expect(buffer.length).toBe(2); // Quantidade de candles não muda
+      expect(buffer.getLatestValue(OFFSET_CLOSE)).toBe(109);
+      expect(buffer.getLatestValue(OFFSET_SMA20)).toBe(105.5); // Média de 102 e 109
+
+      // Verifica cálculo incremental contíguo de ATR e RSI
+      expect(buffer.getLatestValue(OFFSET_ATR14)).toBeGreaterThan(0);
+      expect(buffer.getLatestValue(OFFSET_RSI14)).toBeGreaterThan(0);
+      expect(buffer.getLatestValue(OFFSET_RSI14)).toBeLessThanOrEqual(100);
+    });
+  });
+
+  describe("8. AdaptiveFrameScheduler (Focus Throttling & Frametime Tracking)", () => {
+    it("deve inicializar scheduler e rastrear frametime em microssegundos", () => {
+      const scheduler = new AdaptiveFrameScheduler();
+      let renderCount = 0;
+
+      const unsubscribe = scheduler.subscribe((frameTime) => {
+        renderCount++;
+      });
+
+      // Dispara 5 frames manuais
+      for (let i = 0; i < 5; i++) {
+        scheduler.forceTick(Date.now() + i * 16);
+      }
+
+      expect(renderCount).toBe(5);
+      const metrics = scheduler.getMetrics();
+      expect(metrics.totalFrames).toBeGreaterThanOrEqual(5);
+      expect(metrics.lastFrameDurationUs).toBeGreaterThanOrEqual(0);
+      expect(metrics.jankRatePct).toBeLessThanOrEqual(100);
+
+      unsubscribe();
+      scheduler.stop();
+    });
+  });
+
+  describe("9. SharedMemoryAtomicQueue (Zero-Copy IPC & Atomics Synchronization)", () => {
+    it("deve inicializar a fila atômica com cabeçalho de controle e capacidade correta", () => {
+      const queue = SharedMemoryAtomicQueue.create({ capacity: 64, stride: 8 });
+      const metrics = queue.getMetrics();
+
+      expect(metrics.capacity).toBe(64);
+      expect(metrics.stride).toBe(8);
+      expect(metrics.head).toBe(0);
+      expect(metrics.tail).toBe(0);
+      expect(metrics.available).toBe(0);
+      expect(metrics.isEmpty).toBe(true);
+      expect(metrics.isFull).toBe(false);
+      expect(metrics.dropped).toBe(0);
+    });
+
+    it("deve enfileirar e desenfileirar dados atomicamente preservando a ordem (FIFO)", () => {
+      const queue = SharedMemoryAtomicQueue.create({ capacity: 16, stride: 4 });
+      const slotData = [1700000000, 65000.5, 65100.0, 64900.0];
+
+      // Enfileira 1 slot
+      const enqueued = queue.enqueue(slotData);
+      expect(enqueued).toBe(true);
+
+      const metricsAfterEnqueue = queue.getMetrics();
+      expect(metricsAfterEnqueue.available).toBe(1);
+      expect(metricsAfterEnqueue.head).toBe(1);
+      expect(metricsAfterEnqueue.tail).toBe(0);
+      expect(metricsAfterEnqueue.isEmpty).toBe(false);
+
+      // Desenfileira para buffer reutilizável (zero-alloc)
+      const outBuffer = new Float64Array(4);
+      const dequeued = queue.dequeue(outBuffer);
+      expect(dequeued).toBe(true);
+      expect(outBuffer[0]).toBe(1700000000);
+      expect(outBuffer[1]).toBe(65000.5);
+      expect(outBuffer[2]).toBe(65100.0);
+      expect(outBuffer[3]).toBe(64900.0);
+
+      const metricsAfterDequeue = queue.getMetrics();
+      expect(metricsAfterDequeue.available).toBe(0);
+      expect(metricsAfterDequeue.tail).toBe(1);
+      expect(metricsAfterDequeue.isEmpty).toBe(true);
+
+      // Nova tentativa de dequeue com fila vazia
+      const emptyDequeue = queue.dequeue(outBuffer);
+      expect(emptyDequeue).toBe(false);
+    });
+
+    it("deve drenar em lote múltiplos registros via drain() e rastrear overflow de capacidade", () => {
+      const queue = SharedMemoryAtomicQueue.create({ capacity: 4, stride: 2 });
+
+      // Insere 6 itens em uma fila de capacidade 4 (causará 2 drops)
+      for (let i = 0; i < 6; i++) {
+        queue.enqueue([Date.now(), i * 10]);
+      }
+
+      const metrics = queue.getMetrics();
+      expect(metrics.dropped).toBe(2);
+
+      // Esvazia os 4 itens disponíveis via drain
+      const collected: number[] = [];
+      const drainedCount = queue.drain(10, (slot) => {
+        collected.push(slot[1]);
+      });
+
+      expect(drainedCount).toBe(4);
+      expect(collected).toEqual([20, 30, 40, 50]);
+      expect(queue.getMetrics().isEmpty).toBe(true);
+    });
+
+    it("deve permitir compartilhar o mesmo buffer subjacente entre produtor e consumidor", () => {
+      const producer = SharedMemoryAtomicQueue.create({ capacity: 8, stride: 3 });
+      const rawBuffer = producer.getRawBuffer();
+
+      // Consumidor instanciado a partir do buffer compartilhado
+      const consumer = SharedMemoryAtomicQueue.fromBuffer(rawBuffer);
+
+      producer.enqueue([100, 200, 300]);
+      expect(consumer.getMetrics().available).toBe(1);
+
+      const out = new Float64Array(3);
+      consumer.dequeue(out);
+      expect(out[0]).toBe(100);
+      expect(out[1]).toBe(200);
+      expect(out[2]).toBe(300);
+      expect(producer.getMetrics().available).toBe(0);
+    });
+  });
+
+  describe("10. WebGL 2.0 & OffscreenCanvas (Instanced Geometry & Worker Coordinator)", () => {
+    it("deve expor métodos estáticos de detecção de capacidades do ambiente", () => {
+      // No ambiente headless do Bun/Node, APIs gráficas de browser não estão presentes
+      expect(typeof WebGLCandlestickRenderer.isSupported).toBe("function");
+      expect(typeof OffscreenChartController.isOffscreenSupported).toBe("function");
+    });
+
+    it("deve instanciar WebGLCandlestickRenderer e gerenciar ciclo de vida", () => {
+      const renderer = new WebGLCandlestickRenderer();
+      expect(renderer).toBeDefined();
+
+      // Resize seguro sem crash
+      renderer.resize(1024, 600);
+
+      // Envio de dados seguro mesmo sem contexto GPU inicializado
+      renderer.setCandleData([
+        { index: 0, open: 100, high: 105, low: 98, close: 103, volume: 50 },
+        { index: 1, open: 103, high: 108, low: 101, close: 107, volume: 75 },
+      ]);
+
+      // Render seguro retorna false se contexto não estiver ativo
+      const rendered = renderer.render({
+        startIndex: 0,
+        visibleCount: 10,
+        minPrice: 90,
+        maxPrice: 110,
+      });
+      expect(rendered).toBe(false);
+
+      // Limpeza de recursos
+      renderer.destroy();
+    });
+
+    it("deve instanciar OffscreenChartController e selecionar motor com fallback", () => {
+      const controller = new OffscreenChartController({
+        candleWidthPx: 8,
+        wickWidthPx: 2,
+      });
+
+      expect(controller).toBeDefined();
+      expect(controller.getActiveEngine()).toBe("CANVAS_2D_FALLBACK");
+
+      // Atualizações de layout e dados
+      controller.resize(1200, 800);
+      controller.setCandleData([
+        { index: 0, open: 50, high: 55, low: 48, close: 52, volume: 10 },
+      ]);
+
+      // Destrói com liberação de recursos
+      controller.destroy();
+    });
+  });
 });
+
+
