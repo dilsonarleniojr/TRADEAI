@@ -422,12 +422,14 @@ export class OffscreenChartController {
     isPeerConnected: boolean;
     hasAtomicQueue: boolean;
     hasL2DepthMatrix: boolean;
+    isDoubleBuffered: boolean;
     activeEngine: RenderEngineType;
   } {
     return {
       isPeerConnected: this.isPeerConnected,
       hasAtomicQueue: this.hasAtomicQueue,
       hasL2DepthMatrix: this.l2DepthMatrix !== null,
+      isDoubleBuffered: this.l2DepthMatrix ? this.l2DepthMatrix.isDoubleBuffered() : false,
       activeEngine: this.activeEngine,
     };
   }

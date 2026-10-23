@@ -16,7 +16,7 @@ import { AdaptiveFrameScheduler } from "@/lib/performance/adaptive-frame-schedul
 import { BinanceWorkerManager } from "@/lib/performance/binance-worker-manager";
 import { SharedMemoryAtomicQueue } from "@/lib/performance/shared-memory-atomic-queue";
 import { LockFreeSPSCQueue, TOTAL_HEADER_BYTES, CACHE_LINE_SIZE_BYTES } from "@/lib/performance/lock-free-spsc-queue";
-import { SharedL2DepthMatrix } from "@/lib/performance/shared-l2-depth-matrix";
+import { SharedL2DepthMatrix, DoubleBufferedL2DepthMatrix } from "@/lib/performance/shared-l2-depth-matrix";
 import { WebGLCandlestickRenderer } from "@/lib/performance/webgl-candlestick-renderer";
 import { OffscreenChartController } from "@/lib/performance/offscreen-chart-controller";
 import { WebGLL2HeatmapRenderer } from "@/lib/performance/webgl-l2-heatmap-renderer";
@@ -2113,6 +2113,208 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       ingestionManager.destroy();
       renderController.destroy();
       expect(renderController.getL2DepthMatrix()).toBeNull();
+    });
+  });
+
+  describe("19. Double-Buffering de Matriz L2 no SharedArrayBuffer (Zero-Contention Hot Path & Delta Accumulation)", () => {
+    it("deve alocar buffer duplo de ~64 KB (64.192 bytes para 1.000 níveis) com Master Header de 64 bytes e isDoubleBuffered === true", () => {
+      const matrix = SharedL2DepthMatrix.createDoubleBuffered(1000);
+      expect(matrix).toBeDefined();
+      expect(matrix.isDoubleBuffered()).toBe(true);
+      expect(matrix.getMaxLevels()).toBe(1000);
+
+      const buffer = matrix.getRawBuffer();
+      // 64 bytes master header + 2 * (64 bytes slot header + 4 colunas * 1000 * 8 bytes) = 64 + 2 * 32064 = 64192 bytes
+      expect(buffer.byteLength).toBe(64 + 2 * (64 + 4 * 1000 * 8));
+      expect(matrix.getActiveBufferIndex()).toBe(0);
+      expect(matrix.getBackBufferIndex()).toBe(1);
+      expect(matrix.getSwapSequence()).toBe(0);
+    });
+
+    it("deve alternar atômica e ciclicamente os índices de Front/Back Buffer através de swap()", () => {
+      const matrix = SharedL2DepthMatrix.createDoubleBuffered(500);
+
+      expect(matrix.getActiveBufferIndex()).toBe(0);
+      expect(matrix.getBackBufferIndex()).toBe(1);
+      expect(matrix.getSwapSequence()).toBe(0);
+
+      const seq1 = matrix.swap();
+      expect(seq1).toBe(1);
+      expect(matrix.getActiveBufferIndex()).toBe(1);
+      expect(matrix.getBackBufferIndex()).toBe(0);
+      expect(matrix.getSwapSequence()).toBe(1);
+
+      const seq2 = matrix.swap();
+      expect(seq2).toBe(2);
+      expect(matrix.getActiveBufferIndex()).toBe(0);
+      expect(matrix.getBackBufferIndex()).toBe(1);
+      expect(matrix.getSwapSequence()).toBe(2);
+    });
+
+    it("deve sincronizar cópia zero-alloc de Front para Back Buffer via copyFrontToBack()", () => {
+      const matrix = SharedL2DepthMatrix.createDoubleBuffered(100);
+
+      // Preenche dados no slot 0 diretamente
+      matrix.writeDepthSnapshot(
+        [[69000, 10], [68990, 20]],
+        [[69010, 15], [69020, 25]],
+        1700000090000,
+        0 // fixa no slot 0
+      );
+
+      // Copia do Front (slot 0) para o Back (slot 1)
+      matrix.copyFrontToBack();
+
+      // Lê resumo do slot 1 (Back)
+      const backSummary = matrix.readSnapshotSummary(1);
+      expect(backSummary.bidsCount).toBe(2);
+      expect(backSummary.asksCount).toBe(2);
+      expect(backSummary.bestBid).toBe(69000);
+      expect(backSummary.bestAsk).toBe(69010);
+      expect(backSummary.timestamp).toBe(1700000090000);
+      expect(backSummary.totalBidVolume).toBe(30);
+      expect(backSummary.totalAskVolume).toBe(40);
+
+      const backBidPrices = matrix.getBackBidPrices();
+      const backBidVolumes = matrix.getBackBidVolumes();
+      expect(backBidPrices[0]).toBe(69000);
+      expect(backBidVolumes[0]).toBe(10);
+      expect(backBidPrices[1]).toBe(68990);
+      expect(backBidVolumes[1]).toBe(20);
+    });
+
+    it("deve acumular deltas parciais no Back Buffer mantendo o Front Buffer imutável até swap() (Zero-Contention)", () => {
+      const matrix = SharedL2DepthMatrix.createDoubleBuffered(100);
+
+      // 1. Estado inicial no Front Buffer (slot 0)
+      matrix.writeDepthSnapshot(
+        [[100, 10], [90, 20]],
+        [[110, 15], [120, 25]],
+        1700000100000,
+        0
+      );
+
+      // Prepara Back Buffer com cópia idêntica
+      matrix.copyFrontToBack();
+
+      // 2. Ingestion worker acumula deltas parciais no Back Buffer (sem tocar no Front!)
+      // Deltas:
+      // - Atualiza volume do bid 100 de 10 para 12
+      // - Insere novo bid 95 com volume 8 (entre 100 e 90)
+      // - Remove bid 90 (quantidade 0)
+      // - Atualiza volume do ask 110 para 18
+      // - Insere novo ask 115 com volume 5 (entre 110 e 120)
+      const bidsDelta: [number, number][] = [
+        [100, 12],
+        [95, 8],
+        [90, 0],
+      ];
+      const asksDelta: [number, number][] = [
+        [110, 18],
+        [115, 5],
+      ];
+
+      matrix.applyDelta(bidsDelta, asksDelta, 1700000100100);
+
+      // 3. Render Worker lê Front Buffer: estado permanece TOTALMENTE INTACTO (Zero Data Tearing)
+      const frontSummary = matrix.readSnapshotSummary(); // lê slot 0 (ativo)
+      expect(frontSummary.bidsCount).toBe(2);
+      expect(frontSummary.asksCount).toBe(2);
+      expect(frontSummary.bestBid).toBe(100);
+      expect(frontSummary.bestAsk).toBe(110);
+      expect(matrix.getBidPrices()[0]).toBe(100);
+      expect(matrix.getBidVolumes()[0]).toBe(10); // ainda o valor antigo!
+      expect(matrix.getBidPrices()[1]).toBe(90);  // ainda presente!
+
+      // 4. Ingestion Worker sinaliza que o frame de deltas está pronto e faz swap()
+      matrix.swap();
+
+      // 5. Render Worker agora lê Front Buffer (agora slot 1): reflete as alterações do delta
+      const updatedSummary = matrix.readSnapshotSummary();
+      expect(updatedSummary.bidsCount).toBe(2); // [100, 12], [95, 8]
+      expect(updatedSummary.asksCount).toBe(3); // [110, 18], [115, 5], [120, 25]
+      expect(updatedSummary.bestBid).toBe(100);
+      expect(updatedSummary.bestAsk).toBe(110);
+
+      const activeBidPrices = matrix.getBidPrices();
+      const activeBidVolumes = matrix.getBidVolumes();
+      expect(activeBidPrices[0]).toBe(100);
+      expect(activeBidVolumes[0]).toBe(12);
+      expect(activeBidPrices[1]).toBe(95);
+      expect(activeBidVolumes[1]).toBe(8);
+
+      const activeAskPrices = matrix.getAskPrices();
+      const activeAskVolumes = matrix.getAskVolumes();
+      expect(activeAskPrices[0]).toBe(110);
+      expect(activeAskVolumes[0]).toBe(18);
+      expect(activeAskPrices[1]).toBe(115);
+      expect(activeAskVolumes[1]).toBe(5);
+      expect(activeAskPrices[2]).toBe(120);
+      expect(activeAskVolumes[2]).toBe(25);
+    });
+
+    it("deve executar applyDeltaAndSwap() de forma atômica com reordenação binária zero-allocation", () => {
+      const matrix = SharedL2DepthMatrix.createDoubleBuffered(50);
+
+      // Snapshot inicial
+      matrix.writeDepthSnapshot(
+        [[50000, 1.0], [49900, 2.0]],
+        [[50100, 1.5], [50200, 2.5]],
+        1700000200000
+      );
+
+      // Inicia novo delta com applyDeltaAndSwap (copyFrontToBack + apply + swap)
+      const seq = matrix.applyDeltaAndSwap(
+        [[50050, 0.8], [49900, 0.0]], // novo bid em 50050 (topo!), remove 49900
+        [[50100, 3.0]], // atualiza volume do ask 50100
+        1700000200100
+      );
+
+      expect(seq).toBeGreaterThan(0);
+
+      const summary = matrix.readSnapshotSummary();
+      expect(summary.bestBid).toBe(50050); // novo topo de book!
+      expect(summary.bestAsk).toBe(50100);
+      expect(summary.bidsCount).toBe(2); // [50050, 0.8], [50000, 1.0]
+      expect(summary.asksCount).toBe(2); // [50100, 3.0], [50200, 2.5]
+      expect(summary.totalBidVolume).toBeCloseTo(0.8 + 1.0, 4);
+      expect(summary.totalAskVolume).toBeCloseTo(3.0 + 2.5, 4);
+    });
+
+    it("deve operar via classe utilitária DoubleBufferedL2DepthMatrix e auto-detectar em fromBuffer", () => {
+      const writer = DoubleBufferedL2DepthMatrix.create(100);
+      expect(writer.isDoubleBuffered()).toBe(true);
+
+      const rawBuffer = writer.getRawBuffer();
+      const reader = SharedL2DepthMatrix.fromBuffer(rawBuffer, 100);
+      expect(reader.isDoubleBuffered()).toBe(true);
+
+      writer.writeDepthSnapshot(
+        [[1000, 50], [990, 75]],
+        [[1010, 40], [1020, 60]],
+        1700000300000
+      );
+
+      const readerSummary = reader.readSnapshotSummary();
+      expect(readerSummary.bestBid).toBe(1000);
+      expect(readerSummary.bestAsk).toBe(1010);
+      expect(readerSummary.totalBidVolume).toBe(125);
+    });
+
+    it("deve integrar perfeitamente com BinanceWorkerManager e OffscreenChartController com telemetria isDoubleBuffered", () => {
+      const ingestionManager = new BinanceWorkerManager();
+      const renderController = new OffscreenChartController();
+
+      expect(ingestionManager.getL2DepthMatrix()?.isDoubleBuffered()).toBe(true);
+
+      OffscreenChartController.connectWorkers(ingestionManager, renderController);
+
+      const metrics = renderController.getWorkerChannelMetrics();
+      expect(metrics.hasL2DepthMatrix).toBe(true);
+      expect(metrics.isDoubleBuffered).toBe(true);
+
+      ingestionManager.destroy();
+      renderController.destroy();
     });
   });
 });

@@ -1,6 +1,35 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Double-Buffering de Matriz L2 no SharedArrayBuffer (Zero-Contention Hot Path & Delta Accumulation @100ms)",
+    "summary": "1) Double-Buffering de 1.000 níveis de Bids e Asks em SharedArrayBuffer de ~64 KB (SharedL2DepthMatrix / DoubleBufferedL2DepthMatrix): Alocação de dois slots independentes (Front Buffer e Back Buffer) de 32.064 bytes cada precedidos por um Master Header alinhado à linha de cache de 64 bytes (total 64.192 bytes ~ 62.7 KB). O Master Header gerencia atomicamente activeBufferIndex (0 | 1), swapSequence, isDoubleBuffered, maxLevels, slotSizeBytes e deltaCount; 2) Zero Contenção entre Ingestão e Renderização: O Ingestion Worker acumula deltas parciais de alta frequência (diff depth @100ms da Binance com atualizações esparsas) exclusivamente no Back Buffer, enquanto o Render Worker lê o Front Buffer para compor fatias RGBA (gl.texSubImage2D) ou vetores Float32Array (WebGPU writeTexture), eliminando qualquer risco de race conditions ou data tearing mesmo sob extrema volatilidade institucional; 3) Busca Binária Zero-Alloc & Manipulação In-Place de Deltas: Implementação de binarySearchBid (ordem decrescente) e binarySearchAsk (ordem crescente) com complexidade O(log N) e zero alocações de garbage collector. A função applyDelta(...) aplica deltas de preço/quantidade no Back Buffer executando inserção ordenada com Float64Array.copyWithin(), atualização in-place de volume ou deleção de nível quando quantity === 0, recalculando os volumes acumulados e melhores preços; 4) Alternância Atômica com swap() e applyDeltaAndSwap(): Alternância instantânea de buffer via Atomics.store no activeBufferIndex com Store-Release memory barrier e incremento atômico da sequência de swap, acompanhado de sincronização de estado via copyFrontToBack() através de Float64Array.set() sub-microssegundo; 5) Interconexão Automática e Telemetria: BinanceWorkerManager pré-aloca a matriz L2 em modo double-buffered e compartilha diretamente com o OffscreenChartController via OffscreenChartController.connectWorkers(...), expondo a flag isDoubleBuffered na telemetria de canal; 6) Validação: 79 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 607 asserções) e npx tsc --noEmit com 0 erros.",
+    "tags": [
+      "double-buffering",
+      "l2-depth-matrix",
+      "sharedarraybuffer-atomics",
+      "diff-depth-delta-stream",
+      "zero-contention-hot-path",
+      "binary-search-order-book",
+      "zero-allocation",
+      "copy-within-simd",
+      "gl-texsubimage2d",
+      "webgpu-writetexture",
+      "desktop-performance-engine"
+    ],
+    "details": {
+      "matrixPath": "src/lib/performance/shared-l2-depth-matrix.ts",
+      "workerManagerPath": "src/lib/performance/binance-worker-manager.ts",
+      "renderControllerPath": "src/lib/performance/offscreen-chart-controller.ts",
+      "testSuitePath": "tests/unit/desktop-performance-engine.test.ts",
+      "totalPassingTests": 79,
+      "totalAssertions": 607,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792564000000-double-buffered-l2-depth-matrix",
+    "timestamp": "2026-10-23T06:05:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Extensão Zero-Hop para Feeds L2 Depth Snapshot (Order Book Heatmap) via SharedL2DepthMatrix SoA e Upload Direto VRAM (gl.texSubImage2D / WebGPU)",
     "summary": "1) Matriz Colunar SoA em SharedArrayBuffer (SharedL2DepthMatrix): Criação de buffer colunar contíguo (Structure of Arrays - SoA) para até 1.000 níveis de bid e ask (64 bytes de cabeçalho alinhado à linha de cache + 4 colunas Float64Array de 1.000 slots = 32.064 bytes ~ 31.3 KB). Contém arrays tipados bidPrices, bidVolumes, askPrices e askVolumes garantindo acesso de baixa latência e total localidade espacial de memória (L1/L2 cache); 2) Sincronização Atômica Sem Travas (Store-Release): Sequenciamento via Atomics.add no cabeçalho compartilhado com Store-Release memory barrier e suporte a Atomics.notify/wait para leitura otimista (Optimistic Read) sem bloqueio ou cópia na thread receptora; 3) Empacotamento VRAM Zero-Allocation para gl.texSubImage2D: Implementação de packToSliceRGBA(...) compilando em passada única linear O(N) as fatias temporais de calor com mapeamento de intensidade nos canais R (Bids) e G (Asks) e isolamento instantâneo de ordens iceberg no canal B (255) em array pré-alocado Uint8Array(priceBins * 4); 4) Empacotamento Direto para WebGPU Storage Buffer & writeTexture: packToFloat32VRAMBuffer(...) formatando os níveis do livro em vetores contíguos vec4<f32>(bidPrice, bidVol, askPrice, askVol) para pipelines compute de desbalanceamento e Bloom Gaussiano sem passagens intermediárias de CPU; 5) Conexão Integrada de Workers: Extensão de binance-stream.worker.ts, binance-worker-manager.ts e offscreen-chart-controller.ts para troca direta de L2 SharedArrayBuffer e mensagens PEER_L2_UPDATE via MessagePort P2P. O Ingestion Worker preenche a matriz e o Render Worker aciona diretamente comandos GPU na VRAM sem tocar na Main Thread; 6) Validação: 72 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 542 asserções) e npx tsc --noEmit com 0 erros.",
     "tags": [

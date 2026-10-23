@@ -101,7 +101,7 @@ export class BinanceWorkerManager {
           capacity: 4096,
           stride: DEFAULT_TICKER_STRIDE,
         });
-        this.l2DepthMatrix = SharedL2DepthMatrix.create(1000);
+        this.l2DepthMatrix = SharedL2DepthMatrix.createDoubleBuffered(1000);
       } catch (err) {
         console.warn("[BinanceWorkerManager] SharedArrayBuffer restrito ou indisponível:", err);
       }
