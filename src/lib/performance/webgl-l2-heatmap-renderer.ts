@@ -14,6 +14,7 @@ export interface HeatmapConfig {
   historyLength?: number; // Largura da textura no tempo (ex: 256 colunas)
   priceBins?: number;     // Altura da textura em faixas de preço (ex: 128 níveis)
   alpha?: number;         // Opacidade geral do heatmap (0.0 a 1.0)
+  bloomEnabled?: boolean; // Habilita dispersão óptica e glow de iceberg no Canal B
 }
 
 export interface VolumeProfileBin {
@@ -58,6 +59,7 @@ export class WebGLL2HeatmapRenderer {
   public readonly historyLength: number;
   public readonly priceBins: number;
   public alpha: number;
+  public bloomEnabled: boolean;
 
   // Buffer de dados da textura RGBA (historyLength * priceBins * 4 bytes)
   // R: Bid Liquidity, G: Ask Liquidity, B: Iceberg Detection, A: Opacity/Weight
@@ -71,6 +73,7 @@ export class WebGLL2HeatmapRenderer {
     this.historyLength = config?.historyLength ?? 256;
     this.priceBins = config?.priceBins ?? 128;
     this.alpha = config?.alpha ?? 0.65;
+    this.bloomEnabled = config?.bloomEnabled ?? true;
 
     this.textureData = new Uint8Array(this.historyLength * this.priceBins * 4);
     this.sliceScratch = new Uint8Array(this.priceBins * 4);
@@ -146,17 +149,21 @@ export class WebGLL2HeatmapRenderer {
       // Color mapping:
       // Bids (Cyan/Emerald): vec3(0.06, 0.78, 0.52)
       // Asks (Amber/Rose): vec3(0.94, 0.32, 0.25)
-      // Iceberg (Projeção Direta Canal B - Neon Magenta / Halo Pulsante de Alta Densidade):
-      // Quando iceberg > 0.05, gera halo pulsante no nível de preço exato sem custo para CPU
-      float isIce = step(0.05, iceberg);
-      float icePulse = 1.8 + 0.35 * sin(uCoord * 62.8318); // 10 oscilações no histórico temporal
+      // Iceberg & Bloom Glow (Projeção Direta e Dispersão Óptica Canal B):
+      // texel.b contém tanto o núcleo da ordem iceberg quanto a dispersão gaussiana do Bloom Pass VRAM
+      float isIceCore = step(0.5, iceberg);
+      float isIceGlow = smoothstep(0.02, 0.5, iceberg);
+      float icePulse = 1.0 + 0.35 * sin(uCoord * 62.8318); // 10 oscilações no histórico temporal
 
       vec3 bidColor = vec3(0.06, 0.78, 0.52) * bidIntensity;
       vec3 askColor = vec3(0.94, 0.32, 0.25) * askIntensity;
-      vec3 icebergColor = vec3(0.88, 0.18, 1.00) * (isIce * icePulse);
+      // Núcleo brilhante em magenta puro + halo de dispersão óptica volumétrico
+      vec3 icebergCoreColor = vec3(1.00, 0.30, 1.00) * (isIceCore * icePulse * 1.5);
+      vec3 icebergGlowColor = vec3(0.88, 0.18, 1.00) * (isIceGlow * iceberg * 1.2);
+      vec3 icebergColor = icebergCoreColor + icebergGlowColor;
 
       vec3 finalColor = bidColor + askColor + icebergColor;
-      float totalDensity = clamp(bidIntensity + askIntensity + (isIce * 1.0), 0.0, 1.0);
+      float totalDensity = clamp(bidIntensity + askIntensity + (isIceGlow * 0.8) + (isIceCore * 0.4), 0.0, 1.0);
 
       fragColor = vec4(finalColor, totalDensity * u_alpha);
     }`;

@@ -23,6 +23,7 @@ import {
   WebGPUOrderBookComputeEngine,
   WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER,
   WGSL_ORDER_BOOK_IMBALANCE_SHADER,
+  WGSL_BLOOM_POST_PROCESSING_SHADER,
 } from "@/lib/performance/webgpu-compute-engine";
 
 describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", () => {
@@ -910,7 +911,9 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
 
       const mockDevice = {
         createShaderModule: (desc: { code: string }) => {
-          compiledShaderCode = desc.code;
+          if (desc.code.includes("LevelData")) {
+            compiledShaderCode = desc.code;
+          }
           return {};
         },
         createComputePipeline: () => ({
@@ -918,6 +921,10 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
         }),
         createBuffer: () => ({ destroy: () => {} }),
         createBindGroup: () => ({}),
+        queue: {
+          writeBuffer: () => {},
+          submit: () => {},
+        },
         destroy: () => {},
       };
 
@@ -964,7 +971,9 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
 
       const mockDevice = {
         createShaderModule: (desc: { code: string }) => {
-          compiledShaderCode = desc.code;
+          if (desc.code.includes("LevelData")) {
+            compiledShaderCode = desc.code;
+          }
           return {};
         },
         createComputePipeline: () => ({
@@ -972,6 +981,10 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
         }),
         createBuffer: () => ({ destroy: () => {} }),
         createBindGroup: () => ({}),
+        queue: {
+          writeBuffer: () => {},
+          submit: () => {},
+        },
         destroy: () => {},
       };
 
@@ -1051,7 +1064,9 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
         createBuffer: () => ({ destroy: () => {} }),
         createTexture: () => ({ destroy: () => {} }),
         createBindGroup: (desc: any) => {
-          boundEntries = desc.entries || [];
+          if (desc.entries?.some((e: any) => e.binding === 3)) {
+            boundEntries = desc.entries || [];
+          }
           return {};
         },
         destroy: () => {},
@@ -1080,6 +1095,86 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
 
         engine.destroy();
         expect(engine.hasDirectIcebergProjection()).toBe(false);
+      } finally {
+        (globalThis as any).navigator = origNavigator;
+      }
+    });
+
+    it("deve validar o shader WGSL de Bloom Pass com convolução Gaussiana 1D e isolamento do canal azul", () => {
+      expect(WGSL_BLOOM_POST_PROCESSING_SHADER).toBeDefined();
+      expect(WGSL_BLOOM_POST_PROCESSING_SHADER).toContain("struct BloomParams");
+      expect(WGSL_BLOOM_POST_PROCESSING_SHADER).toContain("s_blueChannel: array<f32, 128>");
+      // Pesos gaussianos 5-tap normalizados
+      expect(WGSL_BLOOM_POST_PROCESSING_SHADER).toContain("0.38774");
+      expect(WGSL_BLOOM_POST_PROCESSING_SHADER).toContain("0.24477");
+      expect(WGSL_BLOOM_POST_PROCESSING_SHADER).toContain("0.06136");
+      // Mascaramento atômico de bits: preserva R, G, A e atualiza exclusivamente B (bits 16..23)
+      expect(WGSL_BLOOM_POST_PROCESSING_SHADER).toContain("0xFF00FFFFu");
+      expect(WGSL_BLOOM_POST_PROCESSING_SHADER).toContain("finalBlueByte");
+    });
+
+    it("deve inicializar e despachar o Compute Pass de Bloom Gaussiano em VRAM", async () => {
+      const origNavigator = (globalThis as any).navigator;
+      let bloomPassDispatched = false;
+      let recordedPipeline: any = null;
+
+      const mockPass = {
+        setPipeline: (p: any) => { recordedPipeline = p; },
+        setBindGroup: () => {},
+        dispatchWorkgroups: () => { bloomPassDispatched = true; },
+        end: () => {},
+      };
+
+      const mockEncoder = {
+        beginComputePass: () => mockPass,
+        finish: () => ({}),
+      };
+
+      const mockDevice = {
+        createShaderModule: () => ({}),
+        createComputePipeline: () => ({
+          getBindGroupLayout: () => ({}),
+        }),
+        createBuffer: () => ({ destroy: () => {} }),
+        createTexture: () => ({ destroy: () => {} }),
+        createBindGroup: () => ({}),
+        createCommandEncoder: () => mockEncoder,
+        queue: {
+          writeBuffer: () => {},
+          submit: () => {},
+        },
+        destroy: () => {},
+      };
+
+      const mockAdapter = {
+        features: { has: () => true },
+        requestDevice: async () => mockDevice,
+      };
+
+      (globalThis as any).navigator = {
+        gpu: { requestAdapter: async () => mockAdapter },
+      };
+
+      try {
+        const engine = new WebGPUOrderBookComputeEngine(64);
+        expect(engine.hasBloomPass()).toBe(false);
+
+        const initialized = await engine.init();
+        expect(initialized).toBe(true);
+        expect(engine.hasBloomPass()).toBe(true);
+
+        // Despacha bloom pass explicitamente
+        const success = engine.applyBloomPass({
+          blurRadius: 2,
+          intensity: 1.4,
+          customEncoder: mockEncoder,
+        });
+        expect(success).toBe(true);
+        expect(bloomPassDispatched).toBe(true);
+
+        // Testa limpeza em destroy
+        engine.destroy();
+        expect(engine.hasBloomPass()).toBe(false);
       } finally {
         (globalThis as any).navigator = origNavigator;
       }

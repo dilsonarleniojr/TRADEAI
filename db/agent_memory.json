@@ -1,6 +1,32 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Shader de Post-Processing com Bloom Pass Gaussiano 1D em VRAM Aplicado Exclusivamente ao Canal Azul (B)",
+    "summary": "1) Pipeline WGSL de Bloom Pass com Convolução Gaussiana 1D (webgpu-compute-engine.ts): Implementação de WGSL_BLOOM_POST_PROCESSING_SHADER operando em workgroups de 128 threads com memória compartilhada s_blueChannel: array<f32, 128>. Executa convolução gaussiana 1D vertical (kernel 5-tap com pesos normalizados [0.06136, 0.24477, 0.38774, 0.24477, 0.06136]) exclusivamente no Canal Azul (B - bits 16..23) da fatia da textura L2 em VRAM; 2) Isolamento Atômico de Canais de Preço e Profundidade: O mascaramento de bits (origTexel & 0xFF00FFFFu) | finalBlueByte preserva integralmente os canais Red (bids), Green (asks) e Alpha (opacidade) com precisão decimal exata, impedindo qualquer derrapagem ou dispersão indesejada de níveis de liquidez de compra e venda; 3) Dispersão Óptica (Optical Glow) e Renderização Visual (webgl-l2-heatmap-renderer.ts): O fragment shader consome o gradiente gaussiano em texel.b para renderizar núcleo ultra-brilhante em Magenta saturado (1.00, 0.30, 1.00) somado a um halo volumétrico difuso (0.88, 0.18, 1.00) ao redor de muralhas iceberg, tornando a anomalia visualmente destacada e detectável por operadores institucionais mesmo com zoom macro/reduzido no book; 4) Zero Overhead para a CPU e Telemetria Integrada (render-telemetry-hud.tsx): Despachado diretamente no mesmo command encoder da GPU via applyBloomPass() antes de copyBufferToTexture(). Exposição do badge 'BLOOM PASS VRAM' em ciano no HUD de telemetria; 5) Validação Rigorosa: 44 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 271 asserções) e compilação limpa em TypeScript com 0 erros.",
+    "tags": [
+      "bloom-pass-post-processing",
+      "gaussian-blur-1d",
+      "blue-channel-glow",
+      "iceberg-optical-dispersion",
+      "vram-workgroup-shared-memory",
+      "webgpu-compute-engine",
+      "webgl-l2-heatmap-renderer",
+      "desktop-performance-engine"
+    ],
+    "details": {
+      "webgpuComputeEnginePath": "src/lib/performance/webgpu-compute-engine.ts",
+      "webglHeatmapRendererPath": "src/lib/performance/webgl-l2-heatmap-renderer.ts",
+      "renderTelemetryHudPath": "src/components/telemetry/render-telemetry-hud.tsx",
+      "testSuitePath": "tests/unit/desktop-performance-engine.test.ts",
+      "totalPassingTests": 44,
+      "totalAssertions": 271,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792554000000-webgpu-bloom-pass-blue-channel",
+    "timestamp": "2026-10-23T03:00:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Projeção Direta de Iceberg Orders no Canal Azul (B) da Textura 2D do Heatmap L2 em VRAM via Compute Shaders e copyBufferToTexture",
     "summary": "1) Pipeline WGSL com Projeção Direta no Canal Azul (B) (webgpu-compute-engine.ts): Conexão direta entre o compute shader L2 e a textura de Heatmap através do storage buffer atômico binding 3 heatmapSlice (array<atomic<u32>>) alinhado a 256 bytes por bin. No instante em que subgroupShuffleDown detecta uma anomalia de iceberg (wallRatio >= 3.0), a thread quantiza o preço e grava a flag booleana de iceberg no byte do Canal B (0x00FF0000u) via atomicOr em 1 ciclo de clock; 2) Zero Latência de Trânsito para CPU: A fatia gerada no compute pass é transferida diretamente para a textura RGBA8Unorm do Heatmap via commandEncoder.copyBufferToTexture() no mesmo command buffer, eliminando 100% das passagens pela CPU; 3) Fragment Shader com Halo Pulsante de Alta Densidade (webgl-l2-heatmap-renderer.ts): Atualização do shader de fragmento com realce visual em Neon Magenta (0.88, 0.18, 1.00) e oscilação temporal sutil (icePulse), plotando imediatamente retângulos ou halos pulsantes de alta densidade no nível exato da ordem iceberg; 4) Telemetria de Render Expandida (render-telemetry-hud.tsx): Badge visual 'BLUE-B ICEBERG' em azul/violeta neon no HUD do cockpit, método público hasDirectIcebergProjection() e métrica icebergBlueChannelProjected; 5) Validação Rigorosa: 42 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 257 asserções) e TypeScript verificado com 0 erros.",
     "tags": [

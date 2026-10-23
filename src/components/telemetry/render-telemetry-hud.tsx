@@ -123,6 +123,9 @@ export function RenderTelemetryHUD() {
         <span className="text-[8.5px] px-1 py-0.2 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30 font-semibold">
           BLUE-B ICEBERG
         </span>
+        <span className="text-[8.5px] px-1 py-0.2 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-semibold">
+          BLOOM PASS VRAM
+        </span>
       </div>
     </div>
   );

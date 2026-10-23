@@ -18,6 +18,7 @@ export interface WebGPUImbalanceMetrics extends GPUTFIImbalanceMetrics {
   detectedIcebergs?: number;
   maxWallRatio?: number;
   icebergBlueChannelProjected?: boolean;
+  bloomPassApplied?: boolean;
   computeTimeUs?: number; // Tempo de execução em microssegundos
 }
 
@@ -386,12 +387,73 @@ fn main(
 }
 `;
 
+export const WGSL_BLOOM_POST_PROCESSING_SHADER = /* wgsl */ `
+struct BloomParams {
+    priceBins: u32,
+    blurRadius: u32,
+    intensity: f32,
+    threshold: f32,
+}
+
+@group(0) @binding(0) var<uniform> params: BloomParams;
+@group(0) @binding(1) var<storage, read_write> heatmapSlice: array<u32>;
+
+// Memória compartilhada para carregar a coluna inteira de bins (128 níveis)
+var<workgroup> s_blueChannel: array<f32, 128>;
+
+// Pesos gaussianos 1D normalizados (kernel 5-tap: sigma ~ 1.2)
+const GAUSS_WEIGHTS = array<f32, 5>(0.06136, 0.24477, 0.38774, 0.24477, 0.06136);
+
+@compute @workgroup_size(128)
+fn main(
+    @builtin(local_invocation_id) local_id: vec3<u32>,
+    @builtin(global_invocation_id) global_id: vec3<u32>
+) {
+    let binIdx = local_id.x;
+
+    // 1. Carrega o canal Azul (bits 16..23) de cada bin para memória compartilhada
+    if (binIdx < params.priceBins) {
+        let texel = heatmapSlice[binIdx * 64u];
+        let blueByte = f32((texel >> 16u) & 0xFFu) / 255.0;
+        s_blueChannel[binIdx] = select(0.0, blueByte, blueByte >= params.threshold);
+    } else {
+        s_blueChannel[binIdx] = 0.0;
+    }
+
+    workgroupBarrier();
+
+    // 2. Convolução Gaussiana 1D vertical aplicada exclusivamente ao Canal Azul (B)
+    if (binIdx < params.priceBins) {
+        var blurredBlue: f32 = 0.0;
+
+        for (var k: i32 = -2; k <= 2; k = k + 1) {
+            let sampleIdx = clamp(i32(binIdx) + k, 0, i32(params.priceBins - 1u));
+            let weight = GAUSS_WEIGHTS[k + 2];
+            blurredBlue = blurredBlue + s_blueChannel[sampleIdx] * weight;
+        }
+
+        let origTexel = heatmapSlice[binIdx * 64u];
+        let origBlue = f32((origTexel >> 16u) & 0xFFu) / 255.0;
+
+        // Dispersão óptica aditiva (Bloom Glow) ao redor da muralha iceberg
+        let finalBlue = clamp(origBlue + blurredBlue * params.intensity, 0.0, 1.0);
+        let finalBlueByte = u32(finalBlue * 255.0) << 16u;
+
+        // Preserva integralmente Canais R (bits 0..7), G (bits 8..15) e A (bits 24..31)
+        heatmapSlice[binIdx * 64u] = (origTexel & 0xFF00FFFFu) | finalBlueByte;
+    }
+}
+`;
+
 export interface WebGPUComputeOptions {
   midPrice?: number;
   readbackToCpu?: boolean;       // default: true. Se false, elimina 100% de staging e mapAsync
   targetHeatmapColumn?: number;  // Se fornecido, aciona copyBufferToTexture no mesmo command buffer
   minPrice?: number;             // Faixa mínima de preço para quantização de bins na textura
   maxPrice?: number;             // Faixa máxima de preço para quantização de bins na textura
+  enableBloomPass?: boolean;     // Ativa Bloom Pass óptico no Canal B em VRAM (default: true)
+  bloomIntensity?: number;       // Intensidade da dispersão de brilho (default: 1.2)
+  bloomRadius?: number;          // Raio de blur gaussiano 1D (default: 2)
 }
 
 export class WebGPUOrderBookComputeEngine {
@@ -411,6 +473,11 @@ export class WebGPUOrderBookComputeEngine {
   public readonly heatmapHistoryLength: number = 256;
   public readonly heatmapPriceBins: number = 128;
   private currentHeatmapColumn: number = 0;
+
+  // Bloom Post-Processing Pass em VRAM (Passo de Brilho Óptico no Canal Azul)
+  private bloomPipeline: any = null;
+  private bloomParamsBuffer: any = null;
+  private bloomBindGroup: any = null;
 
   // SIMD Subgroups / Wave Intrinsics
   private hasSubgroupsSupport: boolean = false;
@@ -448,6 +515,13 @@ export class WebGPUOrderBookComputeEngine {
    */
   public hasDirectIcebergProjection(): boolean {
     return this.isInitialized && this.heatmapSliceBuffer !== null;
+  }
+
+  /**
+   * Informa se o Bloom Pass óptico em VRAM está ativo e suportado na GPU.
+   */
+  public hasBloomPass(): boolean {
+    return this.isInitialized && this.bloomPipeline !== null;
   }
 
   /**
@@ -563,6 +637,43 @@ export class WebGPUOrderBookComputeEngine {
         ],
       });
 
+      // 6. Criação do Compute Pipeline de Bloom Pass Óptico em VRAM (Passo de Brilho no Canal Azul)
+      try {
+        const bloomShaderModule = this.device.createShaderModule({
+          code: WGSL_BLOOM_POST_PROCESSING_SHADER,
+        });
+
+        this.bloomPipeline = this.device.createComputePipeline({
+          layout: "auto",
+          compute: {
+            module: bloomShaderModule,
+            entryPoint: "main",
+          },
+        });
+
+        this.bloomParamsBuffer = this.device.createBuffer({
+          size: 16,
+          usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+
+        const defaultBloomParams = new Float32Array([0, 2, 1.2, 0.05]);
+        const viewU32 = new Uint32Array(defaultBloomParams.buffer);
+        viewU32[0] = this.heatmapPriceBins;
+        if (this.device?.queue?.writeBuffer) {
+          this.device.queue.writeBuffer(this.bloomParamsBuffer, 0, defaultBloomParams);
+        }
+
+        this.bloomBindGroup = this.device.createBindGroup({
+          layout: this.bloomPipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: this.bloomParamsBuffer } },
+            { binding: 1, resource: { buffer: this.heatmapSliceBuffer } },
+          ],
+        });
+      } catch (bloomErr) {
+        console.warn("[WebGPUOrderBookComputeEngine] Bloom pipeline opcional não inicializado:", bloomErr);
+      }
+
       this.isInitialized = true;
       return true;
     } catch (err) {
@@ -611,6 +722,42 @@ export class WebGPUOrderBookComputeEngine {
    */
   public getHeatmapTexture(): any {
     return this.heatmapTexture;
+  }
+
+  /**
+   * Executa o Bloom Pass óptico em VRAM diretamente no buffer de fatias do Heatmap.
+   * Aplica blur gaussiano 1D vertical exclusivamente no Canal Azul (B), preservando
+   * os canais R (Bids), G (Asks) e A (Alpha).
+   */
+  public applyBloomPass(options?: {
+    blurRadius?: number;
+    intensity?: number;
+    customEncoder?: any;
+  }): boolean {
+    if (!this.device || !this.bloomPipeline || !this.bloomBindGroup || !this.bloomParamsBuffer) {
+      return false;
+    }
+
+    const radius = options?.blurRadius ?? 2;
+    const intensity = options?.intensity ?? 1.2;
+
+    const bloomParams = new Float32Array([0, radius, intensity, 0.05]);
+    const u32View = new Uint32Array(bloomParams.buffer);
+    u32View[0] = this.heatmapPriceBins;
+    u32View[1] = radius;
+    this.device.queue.writeBuffer(this.bloomParamsBuffer, 0, bloomParams);
+
+    const encoder = options?.customEncoder || this.device.createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(this.bloomPipeline);
+    pass.setBindGroup(0, this.bloomBindGroup);
+    pass.dispatchWorkgroups(1); // 128 threads cobrem os 128 bins
+    pass.end();
+
+    if (!options?.customEncoder) {
+      this.device.queue.submit([encoder.finish()]);
+    }
+    return true;
   }
 
   /**
@@ -763,6 +910,17 @@ export class WebGPUOrderBookComputeEngine {
         pass.dispatchWorkgroups(workgroupCount);
         pass.end();
 
+        // Bloom Pass de Post-Processing em VRAM (Passo de Brilho Óptico no Canal Azul)
+        let bloomApplied = false;
+        if (options.enableBloomPass !== false && this.bloomPipeline && this.bloomBindGroup) {
+          this.applyBloomPass({
+            blurRadius: options.bloomRadius ?? 2,
+            intensity: options.bloomIntensity ?? 1.2,
+            customEncoder: commandEncoder,
+          });
+          bloomApplied = true;
+        }
+
         // Transferência Zero-Copy direta para Textura 2D do Heatmap na VRAM (copyBufferToTexture)
         if (options.targetHeatmapColumn !== undefined && this.heatmapTexture) {
           this.copyBufferToTexture({
@@ -789,6 +947,7 @@ export class WebGPUOrderBookComputeEngine {
             detectedIcebergs: 0,
             maxWallRatio: 1.0,
             icebergBlueChannelProjected: true,
+            bloomPassApplied: bloomApplied,
           };
         }
 
@@ -827,6 +986,7 @@ export class WebGPUOrderBookComputeEngine {
           detectedIcebergs,
           maxWallRatio,
           icebergBlueChannelProjected: true,
+          bloomPassApplied: bloomApplied,
         };
       } catch (err) {
         console.warn("[WebGPUOrderBookComputeEngine] Erro no compute pass:", err);
@@ -941,6 +1101,7 @@ export class WebGPUOrderBookComputeEngine {
     if (this.stagingBuffer?.destroy) this.stagingBuffer.destroy();
     if (this.heatmapSliceBuffer?.destroy) this.heatmapSliceBuffer.destroy();
     if (this.heatmapTexture?.destroy) this.heatmapTexture.destroy();
+    if (this.bloomParamsBuffer?.destroy) this.bloomParamsBuffer.destroy();
 
     if (this.device?.destroy) {
       this.device.destroy();
@@ -956,6 +1117,9 @@ export class WebGPUOrderBookComputeEngine {
     this.bindGroup = null;
     this.heatmapTexture = null;
     this.heatmapSliceBuffer = null;
+    this.bloomPipeline = null;
+    this.bloomBindGroup = null;
+    this.bloomParamsBuffer = null;
     this.hasSubgroupsSupport = false;
     this.isInitialized = false;
   }
