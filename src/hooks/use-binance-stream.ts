@@ -7,16 +7,17 @@ import { useShallow } from "zustand/react/shallow";
 import { feedWatchdog } from "@/lib/websocket/feed-watchdog";
 import { reconnectionManager } from "@/lib/websocket/reconnection-manager";
 import { flightRecorder } from "@/lib/telemetry/flight-recorder";
+import { structuredLogger } from "@/lib/telemetry/structured-logger";
 import { TickCoalescer } from "@/lib/performance/tick-coalescer";
-import { MarketDataStreamParser } from "@/lib/performance/market-data-stream-parser";
-import { FastSelectiveParser } from "@/lib/performance/fast-selective-parser";
-import { BinanceWorkerManager } from "@/lib/performance/binance-worker-manager";
+import {
+  BinanceWorkerManager,
+  OrderBookFetchError,
+} from "@/lib/performance/binance-worker-manager";
 
 let globalSocket: Socket | null = null;
-let globalNativeWs: WebSocket | null = null;
 let globalWorkerManager: BinanceWorkerManager | null = null;
-let nativeWsReconnectTimer: any = null;
 let activeHookCount = 0;
+let atomicDrainRafId: number | null = null;
 
 // Desacoplamento de streaming: buffer de segundo plano (document.hidden) e despachante V-Sync de alta frequência (foreground)
 const backgroundTickerBuffer = new Map<string, TickerData>();
@@ -121,105 +122,115 @@ function syncSocketSubscriptions(socket: Socket) {
   });
 }
 
-function startNativeWsFallback() {
+/**
+ * Loop contínuo de drenagem atômica alinhado a requestAnimationFrame (V-Sync).
+ * Consome da LockFreeSPSCQueue / SharedMemoryAtomicQueue sem bloquear a Main Thread.
+ */
+function startAtomicQueueConsumer() {
+  if (typeof window === "undefined") return;
+  if (atomicDrainRafId !== null) return;
+
+  function drainStep() {
+    if (!globalWorkerManager) {
+      atomicDrainRafId = null;
+      return;
+    }
+
+    if (globalWorkerManager.isUsingSharedMemory()) {
+      const drained = globalWorkerManager.drainQueue((t) => {
+        handleIncomingTicker(t.symbol, t);
+      }, 256);
+
+      if (drained > 0) {
+        const store = useCryptoStore.getState();
+        if (store.connectionStatus !== "connected") {
+          store.setConnectionStatus("connected");
+          store.setSyncMode("realtime");
+        }
+      }
+    }
+
+    atomicDrainRafId = window.requestAnimationFrame(drainStep);
+  }
+
+  atomicDrainRafId = window.requestAnimationFrame(drainStep);
+}
+
+function stopAtomicQueueConsumer() {
+  if (atomicDrainRafId !== null) {
+    if (typeof window !== "undefined" && typeof window.cancelAnimationFrame === "function") {
+      window.cancelAnimationFrame(atomicDrainRafId);
+    }
+    atomicDrainRafId = null;
+  }
+}
+
+/**
+ * Inicia a ingestão em tempo real delegando estritamente para o Web Worker dedicado.
+ * Zero JSON.parse e zero decodificação de rede na Main Thread.
+ */
+function startWorkerStream() {
   if (typeof window === "undefined") return;
 
   const symbols = getNeededSymbols();
   if (symbols.length === 0) return;
 
-  // 1. Tenta inicializar via Web Worker isolado em background thread
   if (!globalWorkerManager) {
-    globalWorkerManager = new BinanceWorkerManager((batchTickers) => {
-      useCryptoStore.getState().setConnectionStatus("connected");
-      useCryptoStore.getState().setSyncMode("realtime");
-      batchTickers.forEach((t) => {
-        handleIncomingTicker(t.symbol, t);
-      });
-    });
-
-    const workerStarted = globalWorkerManager.start();
-    if (workerStarted) {
-      console.log(`[BinanceStream] Background Web Worker conectado com isolamento de thread para: ${symbols.join(", ")}`);
-      globalWorkerManager.subscribe(symbols);
-      return;
-    }
-  } else if (globalWorkerManager.isUsingWorker()) {
-    globalWorkerManager.subscribe(symbols);
-    return;
-  }
-
-  // 2. Fallback para WebSocket nativo direto na main thread com FastSelectiveParser
-  if (globalNativeWs && (globalNativeWs.readyState === WebSocket.OPEN || globalNativeWs.readyState === WebSocket.CONNECTING)) {
-    return;
-  }
-
-  const streams = symbols.map((s) => `${s.toLowerCase()}@ticker`).join("/");
-  const url = `wss://stream.binance.com:9443/stream?streams=${streams}`;
-
-  try {
-    const ws = new WebSocket(url);
-    globalNativeWs = ws;
-
-    ws.onopen = () => {
-      console.log(`[BinanceStream] Native WS Fallback (FastSelectiveParser) conectado para: ${symbols.join(", ")}`);
-      useCryptoStore.getState().setConnectionStatus("connected");
-      useCryptoStore.getState().setSyncMode("realtime");
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const raw = typeof event.data === "string" ? event.data : new TextDecoder().decode(event.data);
-        // Usa FastSelectiveParser para extração de token-level sem deserializar árvore JSON completa
-        const update = FastSelectiveParser.parseTicker(raw) || MarketDataStreamParser.parseMessage(raw);
-        if (update && update.type === "TICKER") {
-          handleIncomingTicker(update.symbol, {
-            symbol: update.symbol,
-            price: update.price,
-            priceChange: update.priceChange,
-            priceChangePercent: update.priceChangePercent,
-            high: update.high,
-            low: update.low,
-            volume: update.volume,
-            quoteVolume: update.quoteVolume,
+    globalWorkerManager = new BinanceWorkerManager(
+      // Callback para Modo B (Transferable ArrayBuffer) e Modo C (Batch Fallback)
+      (batchTickers) => {
+        const store = useCryptoStore.getState();
+        if (store.connectionStatus !== "connected") {
+          store.setConnectionStatus("connected");
+          store.setSyncMode("realtime");
+        }
+        batchTickers.forEach((t) => {
+          handleIncomingTicker(t.symbol, t);
+        });
+      },
+      // Callback para erros tipados (OrderBookFetchError / HTTP 429/418)
+      (err: OrderBookFetchError) => {
+        if (err.isRateLimit) {
+          structuredLogger.log(
+            "BINANCE_API",
+            "WARN",
+            `Rate limit de cotação detectado (HTTP ${err.statusCode}): ${err.message}`,
+            {
+              symbol: err.symbol,
+              metadata: { statusCode: err.statusCode, isRateLimit: true },
+            }
+          );
+          useCryptoStore.getState().setConnectionStatus("rate-limited" as any);
+        } else {
+          structuredLogger.log("MARKET_DATA", "WARN", `Erro na thread de worker Binance: ${err.message}`, {
+            symbol: err.symbol,
           });
         }
-      } catch {}
-    };
-
-    ws.onerror = (err) => {
-      console.warn("[BinanceStream] Native WS error:", err);
-    };
-
-    ws.onclose = () => {
-      globalNativeWs = null;
-      if (!globalSocket || !globalSocket.connected) {
-        if (nativeWsReconnectTimer) clearTimeout(nativeWsReconnectTimer);
-        nativeWsReconnectTimer = setTimeout(() => {
-          if (!globalSocket || !globalSocket.connected) {
-            startNativeWsFallback();
-          }
-        }, 3000);
       }
-    };
-  } catch (err: any) {
-    console.warn("[BinanceStream] Falha ao iniciar Native WS fallback:", err.message);
+    );
+
+    const started = globalWorkerManager.start();
+    if (started) {
+      console.log(
+        `[BinanceStream] Web Worker conectado com isolamento de rede e buffer atômico para: ${symbols.join(", ")}`
+      );
+      globalWorkerManager.subscribe(symbols);
+      startAtomicQueueConsumer();
+      return;
+    }
+  }
+
+  if (globalWorkerManager) {
+    globalWorkerManager.subscribe(symbols);
+    startAtomicQueueConsumer();
   }
 }
 
-function stopNativeWsFallback() {
-  if (nativeWsReconnectTimer) {
-    clearTimeout(nativeWsReconnectTimer);
-    nativeWsReconnectTimer = null;
-  }
+function stopWorkerStream() {
+  stopAtomicQueueConsumer();
   if (globalWorkerManager) {
     globalWorkerManager.destroy();
     globalWorkerManager = null;
-  }
-  if (globalNativeWs) {
-    try {
-      globalNativeWs.close();
-    } catch {}
-    globalNativeWs = null;
   }
 }
 
@@ -229,7 +240,14 @@ export function useBinanceStream() {
       selectedSymbol: s.selectedSymbol,
       activeBotSymbolsKey: s.bots
         .filter((b) => b.active)
-        .map((b) => (b.position?.symbol || (b.overrideSymbol && b.overrideSymbol !== "AUTO" ? b.overrideSymbol : (b.symbol === "AUTO" || b.useAutoScreener ? "AUTO" : b.symbol))))
+        .map((b) =>
+          b.position?.symbol ||
+          (b.overrideSymbol && b.overrideSymbol !== "AUTO"
+            ? b.overrideSymbol
+            : b.symbol === "AUTO" || b.useAutoScreener
+            ? "AUTO"
+            : b.symbol)
+        )
         .sort()
         .join(","),
     }))
@@ -250,12 +268,14 @@ export function useBinanceStream() {
           syncManager.onWSConnected();
           syncSocketSubscriptions(globalSocket);
         } else {
-          startNativeWsFallback();
+          startWorkerStream();
         }
         return;
       }
 
-      const isProxy = typeof window !== "undefined" && (window.location.port === "81" || window.location.search.includes("XTransformPort"));
+      const isProxy =
+        typeof window !== "undefined" &&
+        (window.location.port === "81" || window.location.search.includes("XTransformPort"));
       const socketUrl = isProxy ? "" : "http://localhost:3002";
 
       console.log("[BinanceStream] Creating new global socket connection to", socketUrl);
@@ -283,33 +303,35 @@ export function useBinanceStream() {
         feedWatchdog.start();
         syncManager.onWSConnected();
         syncSocketSubscriptions(socket);
-        stopNativeWsFallback();
       });
 
-      socket.on("ticker:update", (data: {
-        symbol: string;
-        price: string;
-        open: string;
-        high: string;
-        low: string;
-        volume: string;
-        quoteVolume: string;
-        priceChange: string;
-        priceChangePercent: string;
-        timestamp: number;
-      }) => {
-        const sym = data.symbol.toUpperCase();
-        handleIncomingTicker(sym, {
-          symbol: sym,
-          price: parseFloat(data.price),
-          priceChange: parseFloat(data.priceChange),
-          priceChangePercent: parseFloat(data.priceChangePercent),
-          high: parseFloat(data.high),
-          low: parseFloat(data.low),
-          volume: parseFloat(data.volume),
-          quoteVolume: parseFloat(data.quoteVolume),
-        });
-      });
+      socket.on(
+        "ticker:update",
+        (data: {
+          symbol: string;
+          price: string;
+          open: string;
+          high: string;
+          low: string;
+          volume: string;
+          quoteVolume: string;
+          priceChange: string;
+          priceChangePercent: string;
+          timestamp: number;
+        }) => {
+          const sym = data.symbol.toUpperCase();
+          handleIncomingTicker(sym, {
+            symbol: sym,
+            price: parseFloat(data.price),
+            priceChange: parseFloat(data.priceChange),
+            priceChangePercent: parseFloat(data.priceChangePercent),
+            high: parseFloat(data.high),
+            low: parseFloat(data.low),
+            volume: parseFloat(data.volume),
+            quoteVolume: parseFloat(data.quoteVolume),
+          });
+        }
+      );
 
       socket.on("balance-update", (data: any) => {
         console.log("[BinanceStream] Balance updated via Socket.IO:", data);
@@ -348,7 +370,7 @@ export function useBinanceStream() {
       socket.on("disconnect", (reason) => {
         console.log("[BinanceStream] Disconnected:", reason);
         syncManager.onWSDisconnected();
-        startNativeWsFallback();
+        startWorkerStream();
       });
 
       socket.on("reconnect_attempt", (attempt) => {
@@ -359,55 +381,58 @@ export function useBinanceStream() {
         if (attempt === 1) {
           useCryptoStore.getState().setConnectionStatus("connecting");
         }
-        startNativeWsFallback();
+        startWorkerStream();
       });
 
       socket.on("reconnect_failed", () => {
-        console.log("[BinanceStream] Reconnect failed — native WS fallback active");
+        console.log("[BinanceStream] Reconnect failed — Web Worker atomic stream active");
         syncManager.onWSDisconnected();
-        startNativeWsFallback();
+        startWorkerStream();
       });
 
       socket.on("connect_error", (err) => {
         const attempt = reconnectAttemptRef.current;
         if (attempt <= 1 || attempt % 10 === 0) {
-          console.warn("[BinanceStream] Connection issue (native fallback active):", err.message);
+          console.warn("[BinanceStream] Connection issue (worker stream active):", err.message);
         }
         if (attempt >= 2 && !failedRef.current) {
           failedRef.current = true;
           syncManager.onWSDisconnected();
         }
-        startNativeWsFallback();
+        startWorkerStream();
       });
     }
 
     connectSocket();
+    // Inicia stream via Web Worker em paralelo
+    startWorkerStream();
 
     return () => {
       mounted = false;
       activeHookCount--;
       if (activeHookCount <= 0) {
-        console.log("[BinanceStream] No active hooks left, cleaning up connections");
+        console.log("[BinanceStream] No active hooks left, cleaning up connections & worker");
         const socket = globalSocket;
         if (socket) {
           socket.disconnect();
           globalSocket = null;
         }
-        stopNativeWsFallback();
+        stopWorkerStream();
         setConnectionStatus("rest-api");
       }
     };
-  }, []);
+  }, [setConnectionStatus]);
 
   // Sincroniza assinaturas sempre que mudar o símbolo selecionado ou os robôs ativos
   useEffect(() => {
     const socket = globalSocket;
     if (socket && socket.connected) {
       syncSocketSubscriptions(socket);
-    } else {
-      // Re-estabelece Native WS fallback com os novos símbolos necessários
-      stopNativeWsFallback();
-      startNativeWsFallback();
+    }
+    // Re-sincroniza assinaturas no Web Worker com a tabela de símbolos atualizada
+    if (globalWorkerManager) {
+      const symbols = getNeededSymbols();
+      globalWorkerManager.subscribe(symbols);
     }
   }, [selectedSymbol, activeBotSymbolsKey]);
 

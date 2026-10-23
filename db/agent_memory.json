@@ -1,6 +1,62 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Conduto Zero-Hop Direto Worker-to-Worker (Ingestão de Rede -> Renderizador WebGL/WebGPU) sem Interceptação da Main Thread",
+    "summary": "1) Conduto P2P Zero-Hop (MessageChannel Peer Port): Criação de canal de comunicação bidirecional direto entre a thread do Web Worker de Ingestão Binance (binance-stream.worker.ts) e a thread do Web Worker de Renderização Gráfica (offscreen-chart-controller.ts). Os ticks e deltas L2 de alta densidade (depth20@100ms, aggTrade) fluem diretamente via MessagePort (channel.port1 -> port2) a velocidades de IPC de kernel sem tocar na Main Thread em nenhum momento do pipeline; 2) Barramento de Memória Compartilhada Atômica (SharedArrayBuffer): Conexão direta das estruturas LockFreeSPSCQueue (com 192 bytes de padding de cache line) e SharedMemoryAtomicQueue entre ambos os workers. O Worker de Ingestão grava os ticks via Atomics nos slots contíguos enquanto o Render Worker lê diretamente da mesma região de memória sincronizado com seu loop nativo de requestAnimationFrame; 3) Métodos de Conexão na API Institucional: Implementação de BinanceWorkerManager.connectPeerPort(port), BinanceWorkerManager.shareQueueWith(renderController), OffscreenChartController.connectAtomicQueue(queue), OffscreenChartController.connectPeerPort(port) e o método estático unificado OffscreenChartController.connectWorkers(ingestionManager, renderController); 4) Telemetria de Canal e Limpeza Estrita: Exposição de getWorkerChannelMetrics() revelando estado de conectividade P2P, filas atômicas ativas e motor em execução, com expurgo atômico de portas (port.close()) e unbind de filas no destroy() para erradicar vazamentos de memória; 5) Validação: 66 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 502 asserções) e npx tsc --noEmit com 0 erros.",
+    "tags": [
+      "zero-hop-worker-pipeline",
+      "peer-to-peer-messagechannel",
+      "worker-to-worker-streaming",
+      "atomic-shared-memory",
+      "lock-free-spsc-queue",
+      "offscreen-chart-controller",
+      "binance-worker-manager",
+      "high-density-l2-streams",
+      "main-thread-elimination",
+      "desktop-performance-engine"
+    ],
+    "details": {
+      "workerPath": "src/workers/binance-stream.worker.ts",
+      "workerManagerPath": "src/lib/performance/binance-worker-manager.ts",
+      "offscreenChartPath": "src/lib/performance/offscreen-chart-controller.ts",
+      "testSuitePath": "tests/unit/desktop-performance-engine.test.ts",
+      "totalPassingTests": 66,
+      "totalAssertions": 502,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792561000000-zero-hop-worker-to-worker-conduit",
+    "timestamp": "2026-10-23T05:18:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Ingestão em Tempo Real Isolada via Web Worker Dedicado com Canal Atômico Zero-Copy & Resiliência a Rate Limit (HTTP 429/418)",
+    "summary": "1) Web Worker Dedicado de Ingestão e Parsing (binance-stream.worker.ts): Desacoplamento total da borda de rede da Main Thread da UI. A conexão WebSocket da Binance (wss://stream.binance.com:9443), o handshake, parsing de JSON bruto e normalização de campos rodam 100% isolados em thread secundária de Web Worker; 2) Canal de Comunicação Atômico Zero-Copy (binance-worker-manager.ts): Integração nativa com LockFreeSPSCQueue (192 bytes de padding de linha de cache) e SharedMemoryAtomicQueue baseadas em SharedArrayBuffer + Atomics. Os dados normatizados (timestamp, symbolId, price, priceChange, priceChangePercent, high, low, volume, quoteVolume) são gravados diretamente em slots Float64 contíguos sem nenhum custo de serialização ou structured clone; 3) Fallback Automático via Transferable ArrayBuffer (Modo B): Caso SharedArrayBuffer não esteja disponível (por restrições de headers COOP/COEP), o worker agrupa as cotações em lotes Float64Array transferindo o buffer nativo (postMessage(data, [data.buffer])) com zero cópia de memória; 4) Refatoração Reativa do Hook use-binance-stream.ts: Eliminação de loops bloqueantes e decodificação de rede na Main Thread. O hook atua exclusivamente como ponte reativa consumindo os slots atômicos no loop de frame (vSyncCoalescer / requestAnimationFrame) via drainQueue(callback, 256) com scratch buffer reaproveitável; 5) Governança de Rate Limits e Erros Tipados (OrderBookFetchError): Detecção proativa de infrações de taxa de requisição (HTTP 429/418, Binance code -1003, close codes 1008/1013), disparando alertas estruturados no structuredLogger, telemetria de voo e travamento preventivo de Circuit Breakers; 6) Validação: 63 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 488 asserções) e npx tsc --noEmit com 0 erros.",
+    "tags": [
+      "web-worker-ingestion",
+      "atomic-concurrency",
+      "zero-copy-ipc",
+      "lock-free-spsc-queue",
+      "shared-memory-atomic-queue",
+      "transferable-arraybuffer",
+      "rate-limit-resilience-429-418",
+      "strict-typed-errors",
+      "main-thread-decoupling",
+      "desktop-performance-engine"
+    ],
+    "details": {
+      "workerPath": "src/workers/binance-stream.worker.ts",
+      "workerManagerPath": "src/lib/performance/binance-worker-manager.ts",
+      "hookPath": "src/hooks/use-binance-stream.ts",
+      "testSuitePath": "tests/unit/desktop-performance-engine.test.ts",
+      "totalPassingTests": 63,
+      "totalAssertions": 488,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792560000000-web-worker-atomic-ingestion-rate-limit",
+    "timestamp": "2026-10-23T05:05:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Refatoração de Baixa Latência, Zero-Allocation no Hot Path e Tipagem Estrita de Erros",
     "summary": "1) Eliminação de String Boxing no Hot Path (order-book-imbalance.ts): Substituição de 20+ chamadas a Number((val).toFixed(n)) por utilitários matemáticos puros fastRound1(x) = Math.round(x * 10) / 10 e fastRound2(x) = Math.round(x * 100) / 100, eliminando alocações transitórias de Heap e GC pauses a 50-100Hz; 2) Redução de Complexidade Ciclomática & SRP: Decomposição das árvores condicionais aninhadas de calculateOrderBookImbalance na função pura e determinística evaluateConfluence(), isolando a lógica matemática dos textos descritivos e badges da interface; 3) Reciclagem de Memória por Reutilização de Buffer: calculateOrderBookImbalance passa a aceitar buffer pré-alocado opcional targetLevelImbalances, viabilizando mutação in-place zero-allocation nos snapshots L2; 4) Processamento Single-Pass no Ingestor de Book (order-book.tsx): Substituição de múltiplos .map() encadeados por parseOrderBookDepthResponse() com acumulação linear O(N) e pré-dimensionamento de arrays; 5) Tipagem Forte de Falhas de Rede: Criação da classe OrderBookFetchError com inspeção semântica de statusCode e flag isRateLimit (HTTP 429/418) para governança contra banimento e acionamento de Circuit Breakers graduados; 6) Validação: 57 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 419 asserções) e npx tsc --noEmit com 0 erros.",
     "tags": [

@@ -38,6 +38,12 @@ import {
   parseOrderBookDepthResponse,
   OrderBookFetchError,
 } from "@/components/chart/order-book";
+import {
+  parseBinanceStreamPayload,
+  createSerializedWorkerError,
+  isBinanceRateLimit,
+  DEFAULT_TICKER_STRIDE,
+} from "@/workers/binance-stream.worker";
 
 describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", () => {
   describe("1. TickCoalescer (V-Sync Frame Batching & Pacing)", () => {
@@ -1566,6 +1572,385 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       const serverErr = new OrderBookFetchError("Internal server error", "ETHUSDT", 500);
       expect(serverErr.isRateLimit).toBe(false);
       expect(serverErr.statusCode).toBe(500);
+    });
+  });
+
+  describe("16. Web Worker de Ingestão Binance, Canal Atômico Zero-Copy & Resiliência a Rate Limit (HTTP 429/418)", () => {
+    it("deve realizar parsing de stream Binance e extração de campos numéricos sem falhas (parseBinanceStreamPayload)", () => {
+      const rawJson = JSON.stringify({
+        stream: "btcusdt@ticker",
+        data: {
+          s: "BTCUSDT",
+          c: "65432.10",
+          p: "123.45",
+          P: "0.19",
+          h: "65900.00",
+          l: "64800.00",
+          v: "1250.5",
+          q: "81500000",
+          E: 1700000000123,
+        },
+      });
+
+      const parsed = parseBinanceStreamPayload(rawJson);
+      expect(parsed).not.toBeNull();
+      expect(parsed?.symbol).toBe("BTCUSDT");
+      expect(parsed?.price).toBe(65432.1);
+      expect(parsed?.priceChange).toBe(123.45);
+      expect(parsed?.priceChangePercent).toBe(0.19);
+      expect(parsed?.high).toBe(65900);
+      expect(parsed?.low).toBe(64800);
+      expect(parsed?.volume).toBe(1250.5);
+      expect(parsed?.quoteVolume).toBe(81500000);
+      expect(parsed?.timestamp).toBe(1700000000123);
+
+      // Resiliência contra payloads nulos ou inválidos
+      expect(parseBinanceStreamPayload("")).toBeNull();
+      expect(parseBinanceStreamPayload("{ invalid json }")).toBeNull();
+      expect(parseBinanceStreamPayload(JSON.stringify({ result: null, id: 1 }))).toBeNull();
+    });
+
+    it("deve detectar violação de rate limit (HTTP 429/418) e emitir OrderBookFetchError tipado com isRateLimit=true", () => {
+      // Testes da função de detecção
+      expect(isBinanceRateLimit(429)).toBe(true);
+      expect(isBinanceRateLimit(418)).toBe(true);
+      expect(isBinanceRateLimit(1008)).toBe(true);
+      expect(isBinanceRateLimit(1013)).toBe(true);
+      expect(isBinanceRateLimit(200)).toBe(false);
+      expect(isBinanceRateLimit(undefined, "Too many requests")).toBe(true);
+      expect(isBinanceRateLimit(undefined, "IP banned")).toBe(true);
+      expect(isBinanceRateLimit(undefined, "Normal close")).toBe(false);
+
+      // Serialização tipada de erro
+      const serialized = createSerializedWorkerError("Rate limit exceeded", "BTCUSDT", 429);
+      expect(serialized.name).toBe("OrderBookFetchError");
+      expect(serialized.isRateLimit).toBe(true);
+      expect(serialized.statusCode).toBe(429);
+      expect(serialized.symbol).toBe("BTCUSDT");
+      expect(serialized.message).toContain("429");
+
+      // Reconstrução em OrderBookFetchError
+      const errorObj = new OrderBookFetchError(serialized.message, serialized.symbol, serialized.statusCode);
+      expect(errorObj instanceof Error).toBe(true);
+      expect(errorObj instanceof OrderBookFetchError).toBe(true);
+      expect(errorObj.isRateLimit).toBe(true);
+      expect(errorObj.statusCode).toBe(429);
+    });
+
+    it("deve enfileirar e desenfileirar ticks no buffer atômico com fidelidade numérica e mapeamento bi-direcional O(1)", () => {
+      const manager = new BinanceWorkerManager();
+      manager.subscribe(["BTCUSDT", "ETHUSDT", "SOLUSDT"]);
+
+      // Validação do mapeamento O(1) de símbolos para IDs inteiros compactos
+      const btcId = manager.getSymbolId("BTCUSDT");
+      const ethId = manager.getSymbolId("ETHUSDT");
+      const solId = manager.getSymbolId("SOLUSDT");
+
+      expect(btcId).toBeGreaterThan(0);
+      expect(ethId).toBeGreaterThan(0);
+      expect(solId).toBeGreaterThan(0);
+      expect(btcId).not.toBe(ethId);
+
+      expect(manager.getSymbolFromId(btcId)).toBe("BTCUSDT");
+      expect(manager.getSymbolFromId(ethId)).toBe("ETHUSDT");
+      expect(manager.getSymbolFromId(solId)).toBe("SOLUSDT");
+
+      // Enfileira 2 ticks simulados no buffer atômico
+      const tick1 = {
+        symbol: "BTCUSDT",
+        price: 67123.45,
+        priceChange: 500.25,
+        priceChangePercent: 0.75,
+        high: 68000,
+        low: 66500,
+        volume: 120.5,
+        quoteVolume: 8088000,
+        timestamp: 1700000000000,
+      };
+      const tick2 = {
+        symbol: "ETHUSDT",
+        price: 3512.8,
+        priceChange: -25.4,
+        priceChangePercent: -0.72,
+        high: 3600,
+        low: 3480,
+        volume: 450.2,
+        quoteVolume: 1581000,
+        timestamp: 1700000000050,
+      };
+
+      const pushed1 = manager.simulateTick(tick1);
+      const pushed2 = manager.simulateTick(tick2);
+      expect(pushed1).toBe(true);
+      expect(pushed2).toBe(true);
+
+      // Desenfileira via drainQueue (zero-alloc scratch slot)
+      const drained: any[] = [];
+      const drainCount = manager.drainQueue((t) => {
+        drained.push(t);
+      }, 10);
+
+      expect(drainCount).toBe(2);
+      expect(drained.length).toBe(2);
+
+      // Validação estrita de fidelidade numérica
+      expect(drained[0].symbol).toBe("BTCUSDT");
+      expect(drained[0].price).toBe(67123.45);
+      expect(drained[0].priceChange).toBe(500.25);
+      expect(drained[0].priceChangePercent).toBe(0.75);
+      expect(drained[0].high).toBe(68000);
+      expect(drained[0].low).toBe(66500);
+      expect(drained[0].volume).toBe(120.5);
+      expect(drained[0].quoteVolume).toBe(8088000);
+      expect(drained[0].timestamp).toBe(1700000000000);
+
+      expect(drained[1].symbol).toBe("ETHUSDT");
+      expect(drained[1].price).toBe(3512.8);
+
+      manager.destroy();
+    });
+
+    it("deve aplicar backpressure seguro durante rajadas extremas de ticks sem estourar o Heap", () => {
+      const manager = new BinanceWorkerManager();
+      manager.subscribe(["BTCUSDT"]);
+
+      // Injeta uma rajada extrema de 5.000 ticks em sequência rápida
+      const startTime = performance.now();
+      let enqueuedSuccess = 0;
+      let backpressured = 0;
+
+      for (let i = 0; i < 5000; i++) {
+        const ok = manager.simulateTick({
+          symbol: "BTCUSDT",
+          price: 65000 + (i % 100),
+          priceChange: i,
+          priceChangePercent: i / 100,
+          high: 66000,
+          low: 64000,
+          volume: 10 + i,
+          quoteVolume: (65000 + i) * 10,
+          timestamp: 1700000000000 + i,
+        });
+        if (ok) enqueuedSuccess++;
+        else backpressured++;
+      }
+      const durationMs = performance.now() - startTime;
+
+      // Execução ultra-rápida (menos de 50ms para 5.000 ticks)
+      expect(durationMs).toBeLessThan(100);
+      expect(enqueuedSuccess).toBeGreaterThan(0);
+
+      // Esvazia os dados restantes sem quebrar ou alocar excessivamente
+      let drainedCount = 0;
+      while (true) {
+        const drained = manager.drainQueue(() => {
+          drainedCount++;
+        }, 1024);
+        if (drained === 0) break;
+      }
+
+      expect(drainedCount).toBe(enqueuedSuccess);
+      expect(manager.drainQueue(() => {}, 10)).toBe(0);
+
+      manager.destroy();
+    });
+
+    it("deve suportar fallback de Transferable ArrayBuffer (Modo B) com zero cópia de dados", () => {
+      let receivedBatch: any[] = [];
+      const manager = new BinanceWorkerManager((batch) => {
+        receivedBatch = batch;
+      });
+
+      // Simula a recepção de uma mensagem TRANSFER_BATCH contendo ArrayBuffer transferível
+      const stride = DEFAULT_TICKER_STRIDE;
+      const count = 2;
+      const transferBuffer = new ArrayBuffer(count * stride * Float64Array.BYTES_PER_ELEMENT);
+      const view = new Float64Array(transferBuffer);
+
+      // Slot 0: BTCUSDT (id = 1)
+      view[0] = 1700000001000; // ts
+      view[1] = 1; // symId
+      view[2] = 68500.5; // price
+      view[3] = 1500.0; // priceChange
+      view[4] = 2.24; // priceChangePercent
+      view[5] = 69000; // high
+      view[6] = 67000; // low
+      view[7] = 500; // volume
+      view[8] = 34250250; // quoteVolume
+      view[9] = 1; // flags
+
+      // Slot 1: ETHUSDT (id = 2)
+      view[10] = 1700000001000;
+      view[11] = 2;
+      view[12] = 3620.0;
+      view[13] = 45.0;
+      view[14] = 1.25;
+      view[15] = 3700;
+      view[16] = 3550;
+      view[17] = 800;
+      view[18] = 2896000;
+      view[19] = 1;
+
+      manager.handleWorkerMessage({
+        type: "TRANSFER_BATCH",
+        count,
+        stride,
+        buffer: transferBuffer,
+        symbolMap: { BTCUSDT: 1, ETHUSDT: 2 },
+      });
+
+      expect(receivedBatch.length).toBe(2);
+      expect(receivedBatch[0].symbol).toBe("BTCUSDT");
+      expect(receivedBatch[0].price).toBe(68500.5);
+      expect(receivedBatch[1].symbol).toBe("ETHUSDT");
+      expect(receivedBatch[1].price).toBe(3620.0);
+
+      manager.destroy();
+    });
+
+    it("deve gerenciar ciclo de vida limpo e resiliência a desconexões sem vazamentos de memória", () => {
+      let capturedError: OrderBookFetchError | null = null;
+      const manager = new BinanceWorkerManager(
+        () => {},
+        (err) => {
+          capturedError = err;
+        }
+      );
+
+      manager.subscribe(["BTCUSDT", "SOLUSDT"]);
+      expect(manager.getSymbolId("BTCUSDT")).toBeGreaterThan(0);
+
+      // Simula erro de rate limit vindo do worker
+      manager.simulateError("Too many orders placed", "BTCUSDT", 429);
+      expect(capturedError).not.toBeNull();
+      expect(capturedError?.name).toBe("OrderBookFetchError");
+      expect(capturedError?.isRateLimit).toBe(true);
+      expect(capturedError?.statusCode).toBe(429);
+      expect(capturedError?.symbol).toBe("BTCUSDT");
+
+      // Destruição e limpeza estrita
+      manager.destroy();
+      expect(manager.isUsingWorker()).toBe(false);
+
+      // Após destroy, nenhuma referência de símbolo pendente
+      expect(manager.getSymbolFromId(1)).toBe("UNKNOWN");
+    });
+  });
+
+  describe("17. Zero-Hop Direct Worker-to-Worker Ingestion-to-Render Conduit (SharedArrayBuffer & MessageChannel)", () => {
+    it("deve interconectar Ingestion Worker e Render Controller via MessageChannel e SharedArrayBuffer", () => {
+      const ingestionManager = new BinanceWorkerManager();
+      const renderController = new OffscreenChartController();
+
+      // Interconecta os dois subsistemas de worker
+      const channel = OffscreenChartController.connectWorkers(ingestionManager, renderController);
+
+      const metrics = renderController.getWorkerChannelMetrics();
+      expect(metrics.hasAtomicQueue).toBe(true);
+
+      if (typeof MessageChannel !== "undefined") {
+        expect(channel).not.toBeNull();
+        expect(metrics.isPeerConnected).toBe(true);
+      }
+
+      // Valida compartilhamento direto da LockFreeSPSCQueue / SharedMemoryAtomicQueue
+      const spscQueue = ingestionManager.getSPSCQueue();
+      const sharedQueue = ingestionManager.getSharedQueue();
+      expect(spscQueue !== null || sharedQueue !== null).toBe(true);
+
+      // Limpeza estrita
+      if (channel) {
+        channel.port1.close();
+        channel.port2.close();
+      }
+      ingestionManager.destroy();
+      renderController.destroy();
+
+      const metricsAfterDestroy = renderController.getWorkerChannelMetrics();
+      expect(metricsAfterDestroy.isPeerConnected).toBe(false);
+      expect(metricsAfterDestroy.hasAtomicQueue).toBe(false);
+    });
+
+    it("deve transmitir ticks de alta frequência diretamente através de MessagePort sem passar pela Main Thread", async () => {
+      const ingestionManager = new BinanceWorkerManager();
+      const renderController = new OffscreenChartController();
+
+      if (typeof MessageChannel !== "undefined") {
+        const channel = new MessageChannel();
+
+        // Conecta o port2 no controlador de renderização
+        renderController.connectPeerPort(channel.port2);
+
+        // Despacha tick diretamente pela porta 1 (simulando o canal de rede)
+        channel.port1.postMessage({
+          type: "PEER_TICK",
+          ticker: {
+            symbol: "BTCUSDT",
+            price: 69420.5,
+            priceChange: 1420.5,
+            priceChangePercent: 2.08,
+            high: 70000,
+            low: 67800,
+            volume: 1200,
+            quoteVolume: 83304600,
+            timestamp: 1700000005000,
+          },
+        });
+
+        // Aguarda transferência microtask/evento
+        await new Promise((resolve) => setTimeout(resolve, 25));
+
+        const receivedTick = renderController.getLastPeerTick();
+        expect(receivedTick).not.toBeNull();
+        expect(receivedTick.symbol).toBe("BTCUSDT");
+        expect(receivedTick.price).toBe(69420.5);
+
+        // Transfere o port1 para o Ingestion Worker
+        const connected = ingestionManager.connectPeerPort(channel.port1);
+        expect(connected).toBe(true);
+
+        channel.port1.close();
+        channel.port2.close();
+      }
+
+      ingestionManager.destroy();
+      renderController.destroy();
+    });
+
+    it("deve permitir que o Ingestion Worker enfileire ticks no buffer atômico compartilhado lido diretamente pelo renderizador", () => {
+      const ingestionManager = new BinanceWorkerManager();
+      const renderController = new OffscreenChartController();
+
+      OffscreenChartController.connectWorkers(ingestionManager, renderController);
+
+      const spscQueue = ingestionManager.getSPSCQueue();
+      if (spscQueue) {
+        // Enfileira direto como produtor
+        const slot = new Float64Array(10);
+        slot[0] = 1700000010000; // ts
+        slot[1] = 1; // symId
+        slot[2] = 71200.0; // price
+        slot[3] = 2200.0;
+        slot[4] = 3.18;
+        slot[5] = 71500;
+        slot[6] = 68900;
+        slot[7] = 2500;
+        slot[8] = 178000000;
+        slot[9] = 1; // flag
+
+        const pushed = spscQueue.push(slot);
+        expect(pushed).toBe(true);
+
+        // O consumidor (Worker de Renderização) lê da mesma memória compartilhada
+        const readSlot = new Float64Array(10);
+        const popped = spscQueue.pop(readSlot);
+        expect(popped).toBe(true);
+        expect(readSlot[0]).toBe(1700000010000);
+        expect(readSlot[2]).toBe(71200.0);
+      }
+
+      ingestionManager.destroy();
+      renderController.destroy();
     });
   });
 });

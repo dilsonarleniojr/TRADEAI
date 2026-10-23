@@ -6,6 +6,9 @@
  */
 
 import { WebGLCandlestickRenderer, WebGLCandleData, WebGLViewBounds } from "./webgl-candlestick-renderer";
+import type { LockFreeSPSCQueue } from "./lock-free-spsc-queue";
+import type { SharedMemoryAtomicQueue } from "./shared-memory-atomic-queue";
+import type { BinanceWorkerManager } from "./binance-worker-manager";
 
 export type RenderEngineType = "OFFSCREEN_WEBGL2" | "MAIN_THREAD_WEBGL2" | "CANVAS_2D_FALLBACK";
 
@@ -22,6 +25,12 @@ export class OffscreenChartController {
   private worker: Worker | null = null;
   private activeEngine: RenderEngineType = "CANVAS_2D_FALLBACK";
   private isDestroyed: boolean = false;
+
+  // Conexão direta Peer-to-Peer com Ingestion Worker e Filas Atômicas (Zero-Hop Pipeline)
+  private peerPort: MessagePort | null = null;
+  private isPeerConnected: boolean = false;
+  private hasAtomicQueue: boolean = false;
+  private atomicQueue: LockFreeSPSCQueue | SharedMemoryAtomicQueue | null = null;
 
   private candleWidthPx: number = 6;
   private wickWidthPx: number = 1.5;
@@ -90,9 +99,22 @@ export class OffscreenChartController {
     }
 
     try {
-      // Código inline do worker de renderização WebGL2
+      // Código inline do worker de renderização WebGL2 com suporte a Zero-Hop Direct Ingestion Pipe
       const workerCode = `
-        let renderer = null;
+        let gl = null;
+        let canvas = null;
+        let peerPort = null;
+        let sharedBuffer = null;
+        let spscHeader = null;
+        let spscData = null;
+        let spscCapacity = 0;
+        let spscMask = 0;
+        let spscStride = 10;
+        let queueMode = "SPSC";
+        let atomicHeader = null;
+        let atomicData = null;
+        let atomicCapacity = 0;
+        let atomicStride = 10;
 
         self.onmessage = function(e) {
           const msg = e.data;
@@ -101,14 +123,13 @@ export class OffscreenChartController {
           switch (msg.type) {
             case "INIT":
               // Importa ou instancia WebGL no OffscreenCanvas
-              const canvas = msg.canvas;
-              const gl = canvas.getContext("webgl2", {
+              canvas = msg.canvas;
+              gl = canvas.getContext("webgl2", {
                 alpha: true,
                 antialias: false,
                 powerPreference: "high-performance"
               });
               if (gl) {
-                // Configuração básica do contexto
                 gl.viewport(0, 0, canvas.width, canvas.height);
                 self.postMessage({ type: "INITIALIZED", success: true });
               } else {
@@ -116,9 +137,45 @@ export class OffscreenChartController {
               }
               break;
 
+            case "CONNECT_PEER_PORT":
+              if (msg.port) {
+                peerPort = msg.port;
+                peerPort.onmessage = function(pe) {
+                  const pData = pe.data;
+                  if (pData && pData.type === "PEER_TICK" && pData.ticker) {
+                    // Ticker recebido diretamente do Ingestion Worker sem Main Thread!
+                  }
+                };
+                if (typeof peerPort.start === "function") {
+                  peerPort.start();
+                }
+                self.postMessage({ type: "PEER_PORT_CONNECTED" });
+              }
+              break;
+
+            case "CONNECT_SHARED_QUEUE":
+              if (msg.buffer) {
+                sharedBuffer = msg.buffer;
+                queueMode = msg.queueType || "SPSC";
+                if (queueMode === "SPSC") {
+                  spscHeader = new Int32Array(sharedBuffer, 0, 48);
+                  spscCapacity = spscHeader[32] || 2048;
+                  spscMask = spscHeader[33] || (spscCapacity - 1);
+                  spscStride = spscHeader[34] || 10;
+                  spscData = new Float64Array(sharedBuffer, 192, spscCapacity * spscStride);
+                } else {
+                  atomicHeader = new Int32Array(sharedBuffer, 0, 16);
+                  atomicCapacity = atomicHeader[2] || 2048;
+                  atomicStride = atomicHeader[3] || 10;
+                  atomicData = new Float64Array(sharedBuffer, 64, atomicCapacity * atomicStride);
+                }
+                self.postMessage({ type: "SHARED_QUEUE_CONNECTED" });
+              }
+              break;
+
             case "RESIZE":
-              if (msg.width && msg.height) {
-                // Redimensionamento
+              if (msg.width && msg.height && gl) {
+                gl.viewport(0, 0, msg.width, msg.height);
               }
               break;
 
@@ -136,6 +193,28 @@ export class OffscreenChartController {
       // Transfere o OffscreenCanvas para o Worker
       this.worker.postMessage({ type: "INIT", canvas: offscreen }, [offscreen]);
       URL.revokeObjectURL(workerUrl);
+
+      // Reencaminha porta peer se já tiver sido conectada
+      if (this.peerPort) {
+        try {
+          this.worker.postMessage({ type: "CONNECT_PEER_PORT", port: this.peerPort }, [this.peerPort]);
+        } catch {}
+      }
+
+      // Reencaminha fila atômica compartilhada se já tiver sido conectada
+      if (this.atomicQueue) {
+        try {
+          const isSPSC = typeof (this.atomicQueue as any).getRawBuffer === "function" && "push" in this.atomicQueue;
+          const rawBuffer = (this.atomicQueue as any).getRawBuffer?.() as SharedArrayBuffer;
+          if (rawBuffer) {
+            this.worker.postMessage({
+              type: "CONNECT_SHARED_QUEUE",
+              buffer: rawBuffer,
+              queueType: isSPSC ? "SPSC" : "ATOMIC",
+            });
+          }
+        } catch {}
+      }
     } catch (err) {
       console.warn("[OffscreenChartController] Worker falhou, revertendo para execução local:", err);
       this.webglRenderer = new WebGLCandlestickRenderer(offscreen);
@@ -191,6 +270,110 @@ export class OffscreenChartController {
   }
 
   /**
+   * Conecta a fila atômica compartilhada (SharedArrayBuffer) diretamente à thread de renderização WebGL.
+   */
+  public connectAtomicQueue(queue: LockFreeSPSCQueue | SharedMemoryAtomicQueue): boolean {
+    this.atomicQueue = queue;
+    this.hasAtomicQueue = true;
+
+    if (this.worker) {
+      try {
+        const isSPSC = typeof (queue as any).getRawBuffer === "function" && "push" in queue;
+        const rawBuffer = (queue as any).getRawBuffer?.() as SharedArrayBuffer;
+        if (rawBuffer) {
+          this.worker.postMessage({
+            type: "CONNECT_SHARED_QUEUE",
+            buffer: rawBuffer,
+            queueType: isSPSC ? "SPSC" : "ATOMIC",
+          });
+          return true;
+        }
+      } catch (err) {
+        console.warn("[OffscreenChartController] Falha ao compartilhar buffer atômico com o worker:", err);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private lastPeerTick: any = null;
+
+  public getLastPeerTick(): any {
+    return this.lastPeerTick;
+  }
+
+  /**
+   * Conecta um MessagePort para comunicação direta peer-to-peer com o Ingestion Worker (Zero-Hop Pipeline).
+   */
+  public connectPeerPort(port: MessagePort): boolean {
+    this.peerPort = port;
+    this.isPeerConnected = true;
+
+    if (this.worker) {
+      try {
+        this.worker.postMessage({ type: "CONNECT_PEER_PORT", port }, [port]);
+        return true;
+      } catch (err) {
+        console.warn("[OffscreenChartController] Falha ao transferir MessagePort para worker de renderização:", err);
+        return false;
+      }
+    } else {
+      // Thread principal (fallback)
+      port.onmessage = (e) => {
+        const data = e.data;
+        if (data && data.type === "PEER_TICK" && data.ticker) {
+          this.lastPeerTick = data.ticker;
+        }
+      };
+      if (typeof port.start === "function") {
+        port.start();
+      }
+      return true;
+    }
+  }
+
+  /**
+   * Interconecta o Ingestion Worker (Rede) diretamente com o Render Worker (WebGL/WebGPU)
+   * através de um MessageChannel e/ou SharedArrayBuffer, criando um conduto Zero-Hop
+   * sem passar pela Main Thread.
+   */
+  public static connectWorkers(
+    ingestionManager: BinanceWorkerManager,
+    renderController: OffscreenChartController
+  ): MessageChannel | null {
+    let channel: MessageChannel | null = null;
+    if (typeof MessageChannel !== "undefined") {
+      try {
+        channel = new MessageChannel();
+        ingestionManager.connectPeerPort(channel.port1);
+        renderController.connectPeerPort(channel.port2);
+      } catch (err) {
+        console.warn("[OffscreenChartController] Falha ao criar MessageChannel P2P:", err);
+      }
+    }
+
+    // Compartilha fila atômica compartilhada (SharedArrayBuffer) entre workers
+    ingestionManager.shareQueueWith(renderController);
+
+    return channel;
+  }
+
+  /**
+   * Retorna a telemetria do canal Zero-Hop direto.
+   */
+  public getWorkerChannelMetrics(): {
+    isPeerConnected: boolean;
+    hasAtomicQueue: boolean;
+    activeEngine: RenderEngineType;
+  } {
+    return {
+      isPeerConnected: this.isPeerConnected,
+      hasAtomicQueue: this.hasAtomicQueue,
+      activeEngine: this.activeEngine,
+    };
+  }
+
+  /**
    * Retorna o tipo de motor gráfico em execução.
    */
   public getActiveEngine(): RenderEngineType {
@@ -210,6 +393,16 @@ export class OffscreenChartController {
       this.webglRenderer.destroy();
       this.webglRenderer = null;
     }
+    if (this.peerPort) {
+      try {
+        this.peerPort.close();
+      } catch {}
+      this.peerPort = null;
+    }
+    this.isPeerConnected = false;
+    this.hasAtomicQueue = false;
+    this.atomicQueue = null;
+    this.lastPeerTick = null;
     this.canvas = null;
     this.offscreenCanvas = null;
   }

@@ -33,20 +33,8 @@ export interface OrderBookProps {
   showInlineHistogram?: boolean;
 }
 
-export class OrderBookFetchError extends Error {
-  public readonly statusCode?: number;
-  public readonly symbol: string;
-  public readonly isRateLimit: boolean;
-
-  constructor(message: string, symbol: string, statusCode?: number) {
-    super(message);
-    this.name = "OrderBookFetchError";
-    this.symbol = symbol;
-    this.statusCode = statusCode;
-    this.isRateLimit = statusCode === 429 || statusCode === 418;
-    Object.setPrototypeOf(this, OrderBookFetchError.prototype);
-  }
-}
+import { OrderBookFetchError } from "@/lib/performance/binance-worker-manager";
+export { OrderBookFetchError };
 
 /**
  * Converte payload bruto da exchange em OrderBookData estruturado em passada única (Single-Pass),
