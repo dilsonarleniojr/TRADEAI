@@ -1,6 +1,31 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Computação Vetorial Nativa via WebGPU Compute Pipelines (WGSL) com Workgroup Shared Memory e Redução Paralela O(log N)",
+    "summary": "1) Pipeline WebGPU Compute (webgpu-compute-engine.ts): Shader WGSL com @compute @workgroup_size(64), memória compartilhada (var<workgroup> s_bidVol, s_askVol, s_absorb) e redução paralela em árvore com workgroupBarrier(). Reduz a complexidade de agregação do livro de ofertas L2 para O(log N) diretamente nos Compute Units da GPU; 2) Zero Overhead de CPU para Livros Multi-Ativo: Processa até 100 níveis simultâneos para BTC, ETH e SOL na GPU, calculando volumes ponderados por decaimento exponencial (exp(-lambda * distPct)), score de absorção de ordens e índice de desbalanceamento (imbalance ratio de -1.0 a +1.0); 3) Encadeamento VRAM-to-VRAM: O buffer de redução de saída (StorageBuffer) é retido na memória da GPU para consumo direto por shaders de Heatmap e Volume Profile sem trânsito pelo Heap JavaScript; 4) Graceful Multi-Tier Fallback: Cascata automática e transparente: Tier 1 (WebGPU WGSL Compute) -> Tier 2 (WebGL 2.0 Transform Feedback) -> Tier 3 (CPU Vetorial de alta precisão); 5) Telemetria de Render Expandida: Adição do selo 'WEBGPU COMPUTE' no RenderTelemetryHUD; 6) Validação: 35 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 209 asserções) e compilação TypeScript limpa com 0 erros.",
+    "tags": [
+      "webgpu-compute",
+      "wgsl-shader",
+      "workgroup-shared-memory",
+      "workgroup-barrier",
+      "parallel-reduction-tree",
+      "order-book-imbalance-webgpu",
+      "zero-copy-vram",
+      "desktop-performance-engine"
+    ],
+    "details": {
+      "webgpuComputeEnginePath": "src/lib/performance/webgpu-compute-engine.ts",
+      "renderTelemetryHudPath": "src/components/telemetry/render-telemetry-hud.tsx",
+      "testSuitePath": "tests/unit/desktop-performance-engine.test.ts",
+      "totalPassingTests": 35,
+      "totalAssertions": 209,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792535000000-webgpu-compute-imbalance",
+    "timestamp": "2026-10-23T00:50:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Computação Paralela na GPU via WebGL 2.0 Transform Feedback para Desbalanceamento de Livro L2 Multi-Ativo e Absorção",
     "summary": "1) Pipeline Transform Feedback na GPU (gpu-transform-feedback-engine.ts): Shaders GLSL ES 3.00 com gl.transformFeedbackVaryings interceptando a saída do Vertex Shader com descarte de rasterização (gl.enable(gl.RASTERIZER_DISCARD)). Processa múltiplos livros de ofertas L2 de até 50-100 níveis simultaneamente (BTC, ETH, SOL) em microssegundos sem consumir ciclos de CPU; 2) Modelo Ponderado de Desbalanceamento (Order Book Imbalance): Ponderação exponencial calibrável (exp(-lambda * distPct)) atribuindo peso decrescente conforme a distância do spread, calculando a razão de dominância compradora/vendedora de -1.0 a +1.0 e o score de absorção de ordens no Top of Book; 3) Zero CPU Overhead e Encadeamento VRAM-to-VRAM: O buffer de saída capturado (outputBuffer) pode retroalimentar diretamente o WebGLL2HeatmapRenderer e shaders subsequentes sem necessidade de readback síncrono para a thread principal da aplicação; 4) HUD de Telemetria de Render Expandido (render-telemetry-hud.tsx): Indicador visual 'GPU TF COMPUTE' adicionado ao painel de status do motor de performance; 5) Validação Rigorosa: 31 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 191 asserções) e compilação limpa sem erros no TypeScript (tsc --noEmit).",
     "tags": [
@@ -24,6 +49,8 @@
     "id": "mem-1792530000000-transform-feedback-orderbook-gpu",
     "timestamp": "2026-10-23T00:40:00.000Z"
   },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Heatmap de Livro de Ofertas L2 em Textura 2D Dinâmica na GPU (gl.texSubImage2D) e Volume Profile com POC e Value Area",
     "summary": "1) Textura 2D Dinâmica na GPU (webgl-l2-heatmap-renderer.ts): Alocação de textura RGBA historyLength x priceBins (256x128 texels) com canais dedicados para densidade de Bids (R), Asks (G), ordens Iceberg/absorções anômalas (B) e opacidade temporal (A). O upload para a VRAM é realizado incrementalmente por coluna atômica via gl.texSubImage2D (apenas 512 bytes por fatia) com zero alocação de memória no heap JavaScript; 2) Shaders de Reamostragem e Mapeamento de Cores: Vertex e fragment shaders GLSL ES 3.00 projetando a nuvem de liquidez como plano de fundo sob os candles com reamostragem circular no eixo do tempo (fract) e interpolação proporcional de preço (clamp), colorindo liquidez passiva em ciano/esmeralda (bids), âmbar/rosa (asks) e explosões em violeta neon para icebergs; 3) Volume Profile Dinâmico: Algoritmo vetorizado de quantização de volume por faixa de preço, com identificação exata do Point of Control (POC - bin de maior volume acumulado) e delimitação automática da Área de Valor (VAH / VAL a 70% do volume negociado); 4) Composição Integrada com WebGLCandlestickRenderer: Renderização da camada de liquidez L2 antes do draw call instanciado de candles, permitindo leitura visual de suportes e resistências de book sem qualquer queda de frametime; 5) HUD de Telemetria de Render Expandido: Indicador visual em tempo real 'L2 HEATMAP GPU' adicionado ao RenderTelemetryHUD; 6) Validação: 27 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 177 asserções) e compilação TypeScript limpa com 0 erros.",
     "tags": [
