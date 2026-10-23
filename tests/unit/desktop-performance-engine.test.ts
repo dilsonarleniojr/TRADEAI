@@ -19,7 +19,11 @@ import { WebGLCandlestickRenderer } from "@/lib/performance/webgl-candlestick-re
 import { OffscreenChartController } from "@/lib/performance/offscreen-chart-controller";
 import { WebGLL2HeatmapRenderer } from "@/lib/performance/webgl-l2-heatmap-renderer";
 import { GPUTransformFeedbackEngine } from "@/lib/performance/gpu-transform-feedback-engine";
-import { WebGPUOrderBookComputeEngine } from "@/lib/performance/webgpu-compute-engine";
+import {
+  WebGPUOrderBookComputeEngine,
+  WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER,
+  WGSL_ORDER_BOOK_IMBALANCE_SHADER,
+} from "@/lib/performance/webgpu-compute-engine";
 
 describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", () => {
   describe("1. TickCoalescer (V-Sync Frame Batching & Pacing)", () => {
@@ -868,6 +872,161 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
 
       expect(zeroCopyMetrics.processedLevels).toBe(2);
       expect(zeroCopyMetrics.backend).toBeDefined();
+
+      engine.destroy();
+    });
+
+    it("deve conter diretiva enable subgroups e funções intrínsecas no WGSL de subgroups", () => {
+      expect(WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER).toContain("enable subgroups;");
+      expect(WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER).toContain("subgroupAdd(");
+      expect(WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER).toContain("subgroupElect()");
+      expect(WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER).toContain("builtin(subgroup_size)");
+      expect(WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER).toContain("builtin(subgroup_invocation_id)");
+
+      // Subgroup Shuffle Primitives para detecção de Iceberg Orders e Muralhas
+      expect(WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER).toContain("subgroupShuffleDown(rawQty, 1u)");
+      expect(WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER).toContain("subgroupBroadcastFirst(rawQty)");
+      expect(WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER).toContain("detectedIcebergs");
+      expect(WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER).toContain("maxWallRatio");
+
+      // Shader padrão não deve conter enable subgroups para compatibilidade retroativa
+      expect(WGSL_ORDER_BOOK_IMBALANCE_SHADER).not.toContain("enable subgroups;");
+      expect(WGSL_ORDER_BOOK_IMBALANCE_SHADER).toContain("workgroupBarrier()");
+      expect(WGSL_ORDER_BOOK_IMBALANCE_SHADER).toContain("detectedIcebergs");
+    });
+
+    it("deve detectar e ativar pipeline SIMD Subgroups com Shuffle Primitives quando adapter expuser 'subgroups'", async () => {
+      const origNavigator = (globalThis as any).navigator;
+      let requestedFeatures: string[] = [];
+      let compiledShaderCode = "";
+
+      const mockDevice = {
+        createShaderModule: (desc: { code: string }) => {
+          compiledShaderCode = desc.code;
+          return {};
+        },
+        createComputePipeline: () => ({
+          getBindGroupLayout: () => ({}),
+        }),
+        createBuffer: () => ({ destroy: () => {} }),
+        createBindGroup: () => ({}),
+        destroy: () => {},
+      };
+
+      const mockAdapter = {
+        features: {
+          has: (feat: string) => feat === "subgroups",
+        },
+        requestDevice: async (desc: any) => {
+          requestedFeatures = desc.requiredFeatures || [];
+          return mockDevice;
+        },
+      };
+
+      (globalThis as any).navigator = {
+        gpu: {
+          requestAdapter: async () => mockAdapter,
+        },
+      };
+
+      try {
+        const engine = new WebGPUOrderBookComputeEngine(64);
+        const initialized = await engine.init();
+        expect(initialized).toBe(true);
+        expect(engine.hasSubgroups()).toBe(true);
+        expect(engine.hasSubgroupShuffle()).toBe(true);
+        expect(requestedFeatures).toContain("subgroups");
+        expect(compiledShaderCode).toContain("enable subgroups;");
+        expect(compiledShaderCode).toContain("subgroupAdd(");
+        expect(compiledShaderCode).toContain("subgroupShuffleDown(rawQty, 1u)");
+        expect(compiledShaderCode).toContain("subgroupBroadcastFirst(rawQty)");
+
+        engine.destroy();
+        expect(engine.hasSubgroups()).toBe(false);
+        expect(engine.hasSubgroupShuffle()).toBe(false);
+      } finally {
+        (globalThis as any).navigator = origNavigator;
+      }
+    });
+
+    it("deve compilar shader padrão com fallback de árvore de redução quando subgroups não estiver disponível", async () => {
+      const origNavigator = (globalThis as any).navigator;
+      let requestedFeatures: string[] = [];
+      let compiledShaderCode = "";
+
+      const mockDevice = {
+        createShaderModule: (desc: { code: string }) => {
+          compiledShaderCode = desc.code;
+          return {};
+        },
+        createComputePipeline: () => ({
+          getBindGroupLayout: () => ({}),
+        }),
+        createBuffer: () => ({ destroy: () => {} }),
+        createBindGroup: () => ({}),
+        destroy: () => {},
+      };
+
+      const mockAdapter = {
+        features: {
+          has: (_feat: string) => false,
+        },
+        requestDevice: async (desc: any) => {
+          requestedFeatures = desc.requiredFeatures || [];
+          return mockDevice;
+        },
+      };
+
+      (globalThis as any).navigator = {
+        gpu: {
+          requestAdapter: async () => mockAdapter,
+        },
+      };
+
+      try {
+        const engine = new WebGPUOrderBookComputeEngine(64);
+        const initialized = await engine.init();
+        expect(initialized).toBe(true);
+        expect(engine.hasSubgroups()).toBe(false);
+        expect(engine.hasSubgroupShuffle()).toBe(false);
+        expect(requestedFeatures).not.toContain("subgroups");
+        expect(compiledShaderCode).toContain("workgroupBarrier()");
+        expect(compiledShaderCode).not.toContain("enable subgroups;");
+
+        engine.destroy();
+      } finally {
+        (globalThis as any).navigator = origNavigator;
+      }
+    });
+
+    it("deve detectar ordens iceberg e muralhas de liquidez anômalas via gradiente de volume", async () => {
+      const engine = new WebGPUOrderBookComputeEngine(64);
+      await engine.init();
+
+      // Livro com uma ordem iceberg anômala no nível 1 (300 BTC vs 20 BTC no vizinho)
+      const icebergBook = [
+        { price: 65000, quantity: 40, side: 1 as const, distanceFromMidPct: 0.0001 },
+        { price: 64990, quantity: 300, side: 1 as const, distanceFromMidPct: 0.0002 }, // Iceberg (7.5x top, 15x vizinho)
+        { price: 64980, quantity: 20, side: 1 as const, distanceFromMidPct: 0.0003 },
+        { price: 65010, quantity: 30, side: -1 as const, distanceFromMidPct: 0.0001 },
+        { price: 65020, quantity: 25, side: -1 as const, distanceFromMidPct: 0.0002 },
+      ];
+
+      const metrics = await engine.computeImbalance(icebergBook);
+      expect(metrics.detectedIcebergs).toBeGreaterThanOrEqual(1);
+      expect(metrics.maxWallRatio).toBeGreaterThanOrEqual(3.0);
+
+      // Livro perfeitamente liso e homogêneo (sem icebergs)
+      const flatBook = [
+        { price: 65000, quantity: 20, side: 1 as const, distanceFromMidPct: 0.0001 },
+        { price: 64990, quantity: 22, side: 1 as const, distanceFromMidPct: 0.0002 },
+        { price: 65010, quantity: 21, side: -1 as const, distanceFromMidPct: 0.0001 },
+        { price: 65020, quantity: 20, side: -1 as const, distanceFromMidPct: 0.0002 },
+      ];
+
+      const flatMetrics = await engine.computeImbalance(flatBook);
+      expect(flatMetrics.detectedIcebergs).toBe(0);
+      expect(flatMetrics.maxWallRatio).toBe(1.0);
 
       engine.destroy();
     });

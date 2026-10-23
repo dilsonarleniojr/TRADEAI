@@ -21,6 +21,8 @@ export interface GPUTFIImbalanceMetrics {
   absorptionPressure: number;
   dominantSide: "BUY_DOMINANT" | "SELL_DOMINANT" | "BALANCED";
   processedLevels: number;
+  detectedIcebergs?: number;
+  maxWallRatio?: number;
 }
 
 export class GPUTransformFeedbackEngine {

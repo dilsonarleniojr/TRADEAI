@@ -114,6 +114,12 @@ export function RenderTelemetryHUD() {
         <span className="text-[8.5px] px-1 py-0.2 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30 font-semibold">
           WEBGPU COMPUTE
         </span>
+        <span className="text-[8.5px] px-1 py-0.2 rounded bg-violet-500/15 text-violet-300 border border-violet-500/30 font-semibold">
+          SIMD SUBGROUPS
+        </span>
+        <span className="text-[8.5px] px-1 py-0.2 rounded bg-pink-500/15 text-pink-300 border border-pink-500/30 font-semibold">
+          SHUFFLE ICEBERGS
+        </span>
       </div>
     </div>
   );

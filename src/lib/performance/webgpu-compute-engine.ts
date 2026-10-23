@@ -13,6 +13,10 @@ import { DepthLevelInput, GPUTransformFeedbackEngine, GPUTFIImbalanceMetrics } f
 
 export interface WebGPUImbalanceMetrics extends GPUTFIImbalanceMetrics {
   backend: "WEBGPU_COMPUTE" | "WEBGL2_TRANSFORM_FEEDBACK" | "VECTORIZED_CPU_FALLBACK";
+  hasSubgroups?: boolean;
+  hasSubgroupShuffle?: boolean;
+  detectedIcebergs?: number;
+  maxWallRatio?: number;
   computeTimeUs?: number; // Tempo de execução em microssegundos
 }
 
@@ -54,6 +58,143 @@ export interface MinimalGPUDevice {
   destroy?(): void;
 }
 
+export const WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER = /* wgsl */ `
+enable subgroups;
+
+struct LevelData {
+    price: f32,
+    quantity: f32,
+    side: f32, // 1.0 = Bid, -1.0 = Ask
+    distPct: f32,
+}
+
+struct UniformParams {
+    midPrice: f32,
+    decayLambda: f32,
+    levelCount: u32,
+    pad: u32,
+}
+
+struct OutputReduction {
+    totalWeightedBid: f32,
+    totalWeightedAsk: f32,
+    totalAbsorption: f32,
+    imbalanceRatio: f32,
+    detectedIcebergs: f32,
+    maxWallRatio: f32,
+    pad0: f32,
+    pad1: f32,
+}
+
+@group(0) @binding(0) var<storage, read> levels: array<LevelData>;
+@group(0) @binding(1) var<uniform> params: UniformParams;
+@group(0) @binding(2) var<storage, read_write> reductionResult: OutputReduction;
+
+// Apenas 4 slots de memória compartilhada para consolidar os líderes de cada subgroup
+var<workgroup> s_subgroupBid: array<f32, 4>;
+var<workgroup> s_subgroupAsk: array<f32, 4>;
+var<workgroup> s_subgroupAbsorb: array<f32, 4>;
+var<workgroup> s_subgroupIcebergs: array<f32, 4>;
+var<workgroup> s_subgroupMaxWall: array<f32, 4>;
+
+@compute @workgroup_size(64)
+fn main(
+    @builtin(global_invocation_id) global_id: vec3<u32>,
+    @builtin(local_invocation_id) local_id: vec3<u32>,
+    @builtin(subgroup_invocation_id) sub_id: u32,
+    @builtin(subgroup_size) sub_size: u32
+) {
+    let gIdx = global_id.x;
+    var localBid: f32 = 0.0;
+    var localAsk: f32 = 0.0;
+    var localAbsorb: f32 = 0.0;
+    var rawQty: f32 = 0.0;
+
+    // 1. Carregamento cooperativo de níveis L2
+    if (gIdx < params.levelCount) {
+        let level = levels[gIdx];
+        rawQty = level.quantity;
+        let decay = exp(-params.decayLambda * level.distPct);
+        let weighted = rawQty * decay;
+
+        if (level.side > 0.0) {
+            localBid = weighted;
+        } else {
+            localAsk = weighted;
+        }
+
+        localAbsorb = (1.0 - clamp(level.distPct * 10.0, 0.0, 1.0)) * rawQty;
+    }
+
+    // 2. Subgroup Shuffle Primitives para Detecção Instantânea de Iceberg Orders (Zero-Shared-Memory)
+    // subgroupBroadcastFirst() distribui o volume do Top of Book (lane 0) para calibração de escala
+    let topOfBookQty = subgroupBroadcastFirst(rawQty);
+
+    // subgroupShuffleDown() lê diretamente o registrador da lane adjacente (sub_id + 1u) via barramento cross-lane
+    let nextQty = subgroupShuffleDown(rawQty, 1u);
+
+    // Detecção instantânea de muralhas e ordens iceberg via gradiente de liquidez
+    var isIceberg: f32 = 0.0;
+    var wallRatio: f32 = 1.0;
+    if (gIdx < params.levelCount && (sub_id + 1u) < sub_size && nextQty > 0.001) {
+        wallRatio = rawQty / nextQty;
+        if (wallRatio >= 3.0 && rawQty >= topOfBookQty * 1.5) {
+            isIceberg = 1.0;
+        }
+    }
+
+    // 3. SIMD Wave Intrinsics: Redução em 1 ciclo no nível de Registradores de Hardware do Warp
+    let waveBid = subgroupAdd(localBid);
+    let waveAsk = subgroupAdd(localAsk);
+    let waveAbsorb = subgroupAdd(localAbsorb);
+    let waveIcebergs = subgroupAdd(isIceberg);
+    let waveMaxWall = subgroupAdd(wallRatio * isIceberg);
+
+    // 4. Apenas a thread eleita (subgroupElect) escreve o resultado consolidado da wave
+    let subIdx = local_id.x / sub_size;
+    if (subgroupElect()) {
+        s_subgroupBid[subIdx] = waveBid;
+        s_subgroupAsk[subIdx] = waveAsk;
+        s_subgroupAbsorb[subIdx] = waveAbsorb;
+        s_subgroupIcebergs[subIdx] = waveIcebergs;
+        s_subgroupMaxWall[subIdx] = waveMaxWall;
+    }
+
+    // Única barreira necessária em todo o pipeline
+    workgroupBarrier();
+
+    // 5. Thread líder (local_id == 0) consolida apenas as parciais dos líderes de subgroup
+    if (local_id.x == 0u) {
+        let numSubgroups = (64u + sub_size - 1u) / sub_size;
+        var totalBid: f32 = 0.0;
+        var totalAsk: f32 = 0.0;
+        var totalAbsorb: f32 = 0.0;
+        var totalIcebergs: f32 = 0.0;
+        var maxWall: f32 = 1.0;
+
+        for (var s: u32 = 0u; s < numSubgroups; s = s + 1u) {
+            totalBid = totalBid + s_subgroupBid[s];
+            totalAsk = totalAsk + s_subgroupAsk[s];
+            totalAbsorb = totalAbsorb + s_subgroupAbsorb[s];
+            totalIcebergs = totalIcebergs + s_subgroupIcebergs[s];
+            maxWall = max(maxWall, s_subgroupMaxWall[s]);
+        }
+
+        let totalVol = totalBid + totalAsk;
+        let imbalance = select(0.0, (totalBid - totalAsk) / totalVol, totalVol > 0.00001);
+
+        reductionResult.totalWeightedBid = totalBid;
+        reductionResult.totalWeightedAsk = totalAsk;
+        reductionResult.totalAbsorption = totalAbsorb;
+        reductionResult.imbalanceRatio = imbalance;
+        reductionResult.detectedIcebergs = totalIcebergs;
+        reductionResult.maxWallRatio = maxWall;
+        reductionResult.pad0 = 0.0;
+        reductionResult.pad1 = 0.0;
+    }
+}
+`;
+
 export const WGSL_ORDER_BOOK_IMBALANCE_SHADER = /* wgsl */ `
 struct LevelData {
     price: f32,
@@ -74,6 +215,10 @@ struct OutputReduction {
     totalWeightedAsk: f32,
     totalAbsorption: f32,
     imbalanceRatio: f32,
+    detectedIcebergs: f32,
+    maxWallRatio: f32,
+    pad0: f32,
+    pad1: f32,
 }
 
 @group(0) @binding(0) var<storage, read> levels: array<LevelData>;
@@ -85,6 +230,8 @@ const WORKGROUP_SIZE: u32 = 64u;
 var<workgroup> s_bidVol: array<f32, 64>;
 var<workgroup> s_askVol: array<f32, 64>;
 var<workgroup> s_absorb: array<f32, 64>;
+var<workgroup> s_icebergs: array<f32, 64>;
+var<workgroup> s_maxWall: array<f32, 64>;
 
 @compute @workgroup_size(64)
 fn main(
@@ -110,10 +257,28 @@ fn main(
 
         let absorbScore = (1.0 - clamp(level.distPct * 10.0, 0.0, 1.0)) * level.quantity;
         s_absorb[lIdx] = absorbScore;
+
+        // Detecção de Iceberg na memória compartilhada
+        var isIceberg: f32 = 0.0;
+        var wallRatio: f32 = 1.0;
+        if (gIdx + 1u < params.levelCount) {
+            let nextLevel = levels[gIdx + 1u];
+            if (nextLevel.quantity > 0.001) {
+                wallRatio = level.quantity / nextLevel.quantity;
+                let topOfBook = levels[0].quantity;
+                if (wallRatio >= 3.0 && level.quantity >= topOfBook * 1.5) {
+                    isIceberg = 1.0;
+                }
+            }
+        }
+        s_icebergs[lIdx] = isIceberg;
+        s_maxWall[lIdx] = wallRatio * isIceberg;
     } else {
         s_bidVol[lIdx] = 0.0;
         s_askVol[lIdx] = 0.0;
         s_absorb[lIdx] = 0.0;
+        s_icebergs[lIdx] = 0.0;
+        s_maxWall[lIdx] = 0.0;
     }
 
     // 2. Barreira de Sincronização de Memória Compartilhada no Workgroup
@@ -125,6 +290,8 @@ fn main(
             s_bidVol[lIdx] = s_bidVol[lIdx] + s_bidVol[lIdx + stride];
             s_askVol[lIdx] = s_askVol[lIdx] + s_askVol[lIdx + stride];
             s_absorb[lIdx] = s_absorb[lIdx] + s_absorb[lIdx + stride];
+            s_icebergs[lIdx] = s_icebergs[lIdx] + s_icebergs[lIdx + stride];
+            s_maxWall[lIdx] = max(s_maxWall[lIdx], s_maxWall[lIdx + stride]);
         }
         workgroupBarrier();
     }
@@ -141,6 +308,10 @@ fn main(
         reductionResult.totalWeightedAsk = askSum;
         reductionResult.totalAbsorption = absorbSum;
         reductionResult.imbalanceRatio = imbalance;
+        reductionResult.detectedIcebergs = s_icebergs[0];
+        reductionResult.maxWallRatio = max(1.0, s_maxWall[0]);
+        reductionResult.pad0 = 0.0;
+        reductionResult.pad1 = 0.0;
     }
 }
 `;
@@ -169,6 +340,9 @@ export class WebGPUOrderBookComputeEngine {
   public readonly heatmapPriceBins: number = 128;
   private currentHeatmapColumn: number = 0;
 
+  // SIMD Subgroups / Wave Intrinsics
+  private hasSubgroupsSupport: boolean = false;
+
   // Parâmetros de calibração
   public readonly maxLevels: number;
   public readonly lambdaDecay: number;
@@ -180,6 +354,20 @@ export class WebGPUOrderBookComputeEngine {
   constructor(maxLevels: number = 256, lambdaDecay: number = 2.5) {
     this.maxLevels = maxLevels;
     this.lambdaDecay = lambdaDecay;
+  }
+
+  /**
+   * Informa se a GPU atual suporta extensões de subgroup (SIMD wave intrinsics).
+   */
+  public hasSubgroups(): boolean {
+    return this.hasSubgroupsSupport;
+  }
+
+  /**
+   * Informa se a GPU atual suporta primitivas de subgroup shuffle (subgroupShuffleDown / subgroupBroadcastFirst).
+   */
+  public hasSubgroupShuffle(): boolean {
+    return this.hasSubgroupsSupport;
   }
 
   /**
@@ -212,8 +400,16 @@ export class WebGPUOrderBookComputeEngine {
         return false;
       }
 
+      // Detecção de extensões de hardware de Subgroups (Vulkan/Metal/D3D12)
+      const supportsSubgroups =
+        typeof adapter.features?.has === "function" ? adapter.features.has("subgroups") : false;
+      const requiredFeatures: string[] = [];
+      if (supportsSubgroups) {
+        requiredFeatures.push("subgroups");
+      }
+
       this.device = await adapter.requestDevice({
-        requiredFeatures: [],
+        requiredFeatures,
         requiredLimits: {},
       });
 
@@ -222,9 +418,15 @@ export class WebGPUOrderBookComputeEngine {
         return false;
       }
 
-      // 1. Compilação do Módulo de Shader WGSL
+      this.hasSubgroupsSupport = supportsSubgroups;
+
+      // 1. Compilação do Módulo de Shader WGSL (Subgroups SIMD wave vs Árvore tradicional)
+      const shaderCode = supportsSubgroups
+        ? WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER
+        : WGSL_ORDER_BOOK_IMBALANCE_SHADER;
+
       const shaderModule = this.device.createShaderModule({
-        code: WGSL_ORDER_BOOK_IMBALANCE_SHADER,
+        code: shaderCode,
       });
 
       // 2. Criação do Compute Pipeline
@@ -249,15 +451,15 @@ export class WebGPUOrderBookComputeEngine {
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       });
 
-      // OutputReduction: 4 floats (16 bytes) [totalBid, totalAsk, totalAbsorb, imbalance]
+      // OutputReduction: 8 floats (32 bytes) [totalBid, totalAsk, totalAbsorb, imbalance, detectedIcebergs, maxWallRatio, pad0, pad1]
       this.resultBuffer = this.device.createBuffer({
-        size: 16,
+        size: 32,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
       });
 
       // Staging buffer para leitura assíncrona pela CPU (se solicitado)
       this.stagingBuffer = this.device.createBuffer({
-        size: 16,
+        size: 32,
         usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
       });
 
@@ -408,6 +610,10 @@ export class WebGPUOrderBookComputeEngine {
         processedLevels: 0,
         backend: this.isInitialized ? "WEBGPU_COMPUTE" : "VECTORIZED_CPU_FALLBACK",
         computeTimeUs: 0,
+        hasSubgroups: this.hasSubgroupsSupport,
+        hasSubgroupShuffle: this.hasSubgroupsSupport,
+        detectedIcebergs: 0,
+        maxWallRatio: 1.0,
       };
     }
 
@@ -466,15 +672,19 @@ export class WebGPUOrderBookComputeEngine {
             processedLevels: count,
             backend: "WEBGPU_COMPUTE",
             computeTimeUs: 0, // Zero transit CPU stall
+            hasSubgroups: this.hasSubgroupsSupport,
+            hasSubgroupShuffle: this.hasSubgroupsSupport,
+            detectedIcebergs: 0,
+            maxWallRatio: 1.0,
           };
         }
 
         // MODO DE LEITURA (CPU Readback para Telemetria/HUD)
-        commandEncoder.copyBufferToBuffer(this.resultBuffer, 0, this.stagingBuffer, 0, 16);
+        commandEncoder.copyBufferToBuffer(this.resultBuffer, 0, this.stagingBuffer, 0, 32);
         this.device.queue.submit([commandEncoder.finish()]);
 
         await this.stagingBuffer.mapAsync(1); // GPUMapMode.READ = 1
-        const copyArrayBuffer = this.stagingBuffer.getMappedRange(0, 16);
+        const copyArrayBuffer = this.stagingBuffer.getMappedRange(0, 32);
         const resultView = new Float32Array(copyArrayBuffer.slice(0));
         this.stagingBuffer.unmap();
 
@@ -482,6 +692,8 @@ export class WebGPUOrderBookComputeEngine {
         const weightedAsk = resultView[1];
         const absorption = resultView[2];
         const imbalance = resultView[3];
+        const detectedIcebergs = Math.round(resultView[4]);
+        const maxWallRatio = Number(resultView[5].toFixed(2));
 
         let dominant: "BUY_DOMINANT" | "SELL_DOMINANT" | "BALANCED" = "BALANCED";
         if (imbalance > 0.2) dominant = "BUY_DOMINANT";
@@ -497,6 +709,10 @@ export class WebGPUOrderBookComputeEngine {
           processedLevels: count,
           backend: "WEBGPU_COMPUTE",
           computeTimeUs: Math.round((endTime - startTime) * 1000),
+          hasSubgroups: this.hasSubgroupsSupport,
+          hasSubgroupShuffle: this.hasSubgroupsSupport,
+          detectedIcebergs,
+          maxWallRatio,
         };
       } catch (err) {
         console.warn("[WebGPUOrderBookComputeEngine] Erro no compute pass:", err);
@@ -511,6 +727,10 @@ export class WebGPUOrderBookComputeEngine {
         ...glMetrics,
         backend: "WEBGL2_TRANSFORM_FEEDBACK",
         computeTimeUs: Math.round((endTime - startTime) * 1000),
+        hasSubgroups: false,
+        hasSubgroupShuffle: false,
+        detectedIcebergs: glMetrics.detectedIcebergs ?? 0,
+        maxWallRatio: glMetrics.maxWallRatio ?? 1.0,
       };
     }
 
@@ -521,6 +741,8 @@ export class WebGPUOrderBookComputeEngine {
       ...metrics,
       backend: "VECTORIZED_CPU_FALLBACK",
       computeTimeUs: Math.round((endTime - startTime) * 1000),
+      hasSubgroups: false,
+      hasSubgroupShuffle: false,
     };
   }
 
@@ -542,6 +764,9 @@ export class WebGPUOrderBookComputeEngine {
     let weightedBid = 0;
     let weightedAsk = 0;
     let absorption = 0;
+    let detectedIcebergs = 0;
+    let maxWallRatio = 1.0;
+    const topOfBookQty = count > 0 ? levels[0].quantity : 0;
 
     for (let i = 0; i < count; i++) {
       const lvl = levels[i];
@@ -557,6 +782,17 @@ export class WebGPUOrderBookComputeEngine {
 
       const levelAbsorb = Math.max(0, 1.0 - Math.min(1.0, distPct * 10.0)) * lvl.quantity;
       absorption += levelAbsorb;
+
+      // Detecção de Iceberg Orders e Muralhas de Liquidez
+      if (i + 1 < count && levels[i + 1].quantity > 0.001) {
+        const wallRatio = lvl.quantity / levels[i + 1].quantity;
+        if (wallRatio >= 3.0 && lvl.quantity >= topOfBookQty * 1.5) {
+          detectedIcebergs++;
+          if (wallRatio > maxWallRatio) {
+            maxWallRatio = wallRatio;
+          }
+        }
+      }
     }
 
     const totalVol = weightedBid + weightedAsk;
@@ -576,6 +812,8 @@ export class WebGPUOrderBookComputeEngine {
       absorptionPressure: absorption,
       dominantSide,
       processedLevels: count,
+      detectedIcebergs,
+      maxWallRatio: Number(maxWallRatio.toFixed(2)),
     };
   }
 
@@ -604,6 +842,7 @@ export class WebGPUOrderBookComputeEngine {
     this.bindGroup = null;
     this.heatmapTexture = null;
     this.heatmapSliceBuffer = null;
+    this.hasSubgroupsSupport = false;
     this.isInitialized = false;
   }
 }
