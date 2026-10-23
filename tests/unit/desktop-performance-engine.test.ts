@@ -27,6 +27,17 @@ import {
   WGSL_BLOOM_POST_PROCESSING_SHADER,
   WGSL_HORIZONTAL_BLOOM_SHADER,
 } from "@/lib/performance/webgpu-compute-engine";
+import {
+  fastRound1,
+  fastRound2,
+  evaluateConfluence,
+  calculateOrderBookImbalance,
+  type LevelImbalance,
+} from "@/lib/order-book-imbalance";
+import {
+  parseOrderBookDepthResponse,
+  OrderBookFetchError,
+} from "@/components/chart/order-book";
 
 describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", () => {
   describe("1. TickCoalescer (V-Sync Frame Batching & Pacing)", () => {
@@ -1444,6 +1455,117 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       expect(typeof metrics.fps).toBe("number");
       expect(metrics.isBatterySaverMode).toBeDefined();
       expect(metrics.isThermalThrottled).toBeDefined();
+    });
+  });
+
+  describe("15. Refatoração de Baixa Latência, Zero-Allocation & Tipagem Estrita", () => {
+    it("deve realizar arredondamento matemático rápido sem alocações transitórias de string (fastRound1 & fastRound2)", () => {
+      // Arredondamento com 1 casa decimal
+      expect(fastRound1(12.3456)).toBe(12.3);
+      expect(fastRound1(12.3654)).toBe(12.4);
+      expect(fastRound1(-15.88)).toBe(-15.9);
+      expect(fastRound1(0.0)).toBe(0);
+
+      // Arredondamento com 2 casas decimais
+      expect(fastRound2(1.2345)).toBe(1.23);
+      expect(fastRound2(1.2389)).toBe(1.24);
+      expect(fastRound2(-0.856)).toBe(-0.86);
+      expect(fastRound2(99.999)).toBe(100);
+    });
+
+    it("deve classificar confluência de order book como função pura e determinística (evaluateConfluence)", () => {
+      // Predominância compradora forte
+      const strongBullish = evaluateConfluence(28.5, 1.65, 1500, 800);
+      expect(strongBullish.confluenceSignal).toBe("BULLISH");
+      expect(strongBullish.recommendedAction).toBe("MARKET_BUY_FAVORABLE");
+      expect(strongBullish.slippageScore).toBe("LOW");
+      expect(strongBullish.confluenceBadge).toContain("Bid Heavy");
+
+      // Viés de alta moderado
+      const modBullish = evaluateConfluence(14.0, 1.30, 950, 700);
+      expect(modBullish.confluenceSignal).toBe("BULLISH");
+      expect(modBullish.recommendedAction).toBe("MARKET_BUY_FAVORABLE");
+      expect(modBullish.confluenceBadge).toContain("Moderado");
+
+      // Predominância vendedora forte
+      const strongBearish = evaluateConfluence(-30.0, 0.55, 600, 1400);
+      expect(strongBearish.confluenceSignal).toBe("BEARISH");
+      expect(strongBearish.recommendedAction).toBe("MARKET_SELL_FAVORABLE");
+      expect(strongBearish.confluenceBadge).toContain("Ask Heavy");
+
+      // Livro equilibrado neutro
+      const neutral = evaluateConfluence(2.0, 1.05, 1000, 1000);
+      expect(neutral.confluenceSignal).toBe("NEUTRAL");
+      expect(neutral.recommendedAction).toBe("NEUTRAL_WAIT");
+      expect(neutral.confluenceBadge).toBe("Livro Equilibrado");
+    });
+
+    it("deve reciclar array pré-alocado em calculateOrderBookImbalance evitando realocações de Heap", () => {
+      const bids = [
+        { price: 65000, volume: 10.5 },
+        { price: 64990, volume: 20.0 },
+      ];
+      const asks = [
+        { price: 65010, volume: 8.0 },
+        { price: 65020, volume: 15.0 },
+      ];
+
+      // Buffer de reciclagem pré-alocado
+      const reusableBuffer: LevelImbalance[] = [
+        { level: 1, bidVol: 0, askVol: 0, imbalance: 0, imbalancePct: 0, bidPrice: 0, askPrice: 0 },
+        { level: 2, bidVol: 0, askVol: 0, imbalance: 0, imbalancePct: 0, bidPrice: 0, askPrice: 0 },
+      ];
+
+      const res = calculateOrderBookImbalance(bids, asks, 2, reusableBuffer);
+
+      // Garante identidade referencial (zero garbage collection allocations)
+      expect(res.levelImbalances).toBe(reusableBuffer);
+      expect(res.levelImbalances.length).toBe(2);
+      expect(res.levelImbalances[0].bidPrice).toBe(65000);
+      expect(res.levelImbalances[0].askPrice).toBe(65010);
+      expect(res.levelImbalances[0].bidVol).toBe(10.5);
+      expect(res.levelImbalances[0].askVol).toBe(8.0);
+      expect(res.totalBidVol).toBe(30.5);
+      expect(res.totalAskVol).toBe(23.0);
+    });
+
+    it("deve converter resposta de profundidade L2 em passada única (parseOrderBookDepthResponse)", () => {
+      const rawData = {
+        bids: [
+          { price: 65000, volume: 2.5 },
+          { price: 64900, volume: 3.5 },
+        ],
+        asks: [
+          { price: 65050, volume: 1.5 },
+          { price: 65100, volume: 2.0 },
+        ],
+      };
+
+      const parsed = parseOrderBookDepthResponse(rawData);
+
+      expect(parsed.bids.length).toBe(2);
+      expect(parsed.asks.length).toBe(2);
+      expect(parsed.bids[0].cumulative).toBe(2.5);
+      expect(parsed.bids[1].cumulative).toBe(6.0);
+      expect(parsed.asks[0].cumulative).toBe(1.5);
+      expect(parsed.asks[1].cumulative).toBe(3.5);
+      expect(parsed.totalBidVolume).toBe(6.0);
+      expect(parsed.totalAskVolume).toBe(3.5);
+      expect(parsed.spread).toBe(50);
+      expect(parsed.spreadPercent).toBeGreaterThan(0);
+    });
+
+    it("deve encapsular erros de consulta à exchange com tipagem forte (OrderBookFetchError)", () => {
+      const rateLimitErr = new OrderBookFetchError("Rate limited", "BTCUSDT", 429);
+      expect(rateLimitErr instanceof Error).toBe(true);
+      expect(rateLimitErr instanceof OrderBookFetchError).toBe(true);
+      expect(rateLimitErr.isRateLimit).toBe(true);
+      expect(rateLimitErr.symbol).toBe("BTCUSDT");
+      expect(rateLimitErr.statusCode).toBe(429);
+
+      const serverErr = new OrderBookFetchError("Internal server error", "ETHUSDT", 500);
+      expect(serverErr.isRateLimit).toBe(false);
+      expect(serverErr.statusCode).toBe(500);
     });
   });
 });

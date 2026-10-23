@@ -37,10 +37,82 @@ export interface OrderBookImbalanceResult {
   slippageScore: 'LOW' | 'MEDIUM' | 'HIGH';
 }
 
+/**
+ * Funções utilitárias de arredondamento matemático ultra-rápido (Zero String Allocations)
+ * Substitui Number(x.toFixed(n)), eliminando boxing/unboxing e GC churn no caminho crítico.
+ */
+export function fastRound1(val: number): number {
+  return Math.round(val * 10) / 10;
+}
+
+export function fastRound2(val: number): number {
+  return Math.round(val * 100) / 100;
+}
+
+export interface ConfluenceEvaluation {
+  confluenceSignal: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  confluenceBadge: string;
+  confluenceDescription: string;
+  recommendedAction: 'MARKET_BUY_FAVORABLE' | 'MARKET_SELL_FAVORABLE' | 'NEUTRAL_WAIT';
+  slippageScore: 'LOW' | 'MEDIUM' | 'HIGH';
+}
+
+/**
+ * Avaliador puro e determinístico de confluência do Order Book (SRP & Baixa Complexidade Ciclomática)
+ */
+export function evaluateConfluence(
+  imbalancePct: number,
+  skewRatio: number,
+  totalBidVol: number,
+  totalAskVol: number
+): ConfluenceEvaluation {
+  // Predominância compradora
+  if (imbalancePct >= 12 || skewRatio >= 1.25) {
+    const isStrong = imbalancePct >= 25 || skewRatio >= 1.5;
+    return {
+      confluenceSignal: 'BULLISH',
+      recommendedAction: 'MARKET_BUY_FAVORABLE',
+      slippageScore: totalBidVol > 0 ? 'LOW' : 'MEDIUM',
+      confluenceBadge: isStrong
+        ? 'Forte Pressão Compradora (Bid Heavy)'
+        : 'Viés de Alta Moderado',
+      confluenceDescription: isStrong
+        ? 'Forte absorção e barreira no Bid. Confluência altamente favorável para ordens de Compra a Mercado.'
+        : 'Demanda supera oferta no topo do book. Risco reduzido de slippage em compras a mercado.',
+    };
+  }
+
+  // Predominância vendedora
+  if (imbalancePct <= -12 || skewRatio <= 0.8) {
+    const isStrong = imbalancePct <= -25 || skewRatio <= 0.65;
+    return {
+      confluenceSignal: 'BEARISH',
+      recommendedAction: 'MARKET_SELL_FAVORABLE',
+      slippageScore: totalAskVol > 0 ? 'LOW' : 'MEDIUM',
+      confluenceBadge: isStrong
+        ? 'Forte Pressão Vendedora (Ask Heavy)'
+        : 'Viés de Baixa Moderado',
+      confluenceDescription: isStrong
+        ? 'Grande concentração de oferta no Ask. Confluência favorável para liquidação ou Venda a Mercado.'
+        : 'Oferta vendedora supera compradores no topo do book.',
+    };
+  }
+
+  // Equilíbrio neutro
+  return {
+    confluenceSignal: 'NEUTRAL',
+    recommendedAction: 'NEUTRAL_WAIT',
+    slippageScore: 'MEDIUM',
+    confluenceBadge: 'Livro Equilibrado',
+    confluenceDescription: 'Liquidez simétrica entre Bid e Ask. Sem viés direcional acentuado.',
+  };
+}
+
 export function calculateOrderBookImbalance(
   bids: DepthLevel[] = [],
   asks: DepthLevel[] = [],
-  maxLevels: number = 8
+  maxLevels: number = 8,
+  targetLevelImbalances?: LevelImbalance[]
 ): OrderBookImbalanceResult {
   if ((!bids || bids.length === 0) && (!asks || asks.length === 0)) {
     return {
@@ -51,7 +123,7 @@ export function calculateOrderBookImbalance(
       totalBidVol: 0,
       totalAskVol: 0,
       netVolumeDelta: 0,
-      levelImbalances: [],
+      levelImbalances: targetLevelImbalances ? (targetLevelImbalances.length = 0, targetLevelImbalances) : [],
       confluenceSignal: 'NEUTRAL',
       confluenceBadge: 'Livro Vazio',
       confluenceDescription: 'Aguardando book da exchange...',
@@ -61,7 +133,10 @@ export function calculateOrderBookImbalance(
   }
 
   const depthCount = Math.max(Math.min(bids.length, asks.length, maxLevels), 1);
-  const levelImbalances: LevelImbalance[] = [];
+  const levelImbalances: LevelImbalance[] = targetLevelImbalances || [];
+  if (targetLevelImbalances) {
+    targetLevelImbalances.length = depthCount;
+  }
 
   let totalBidVol = 0;
   let totalAskVol = 0;
@@ -77,59 +152,41 @@ export function calculateOrderBookImbalance(
 
     const sum = bVol + aVol;
     const imbalance = sum > 0 ? (bVol - aVol) / sum : 0;
-    const imbalancePct = Number((imbalance * 100).toFixed(1));
+    const imbalancePct = fastRound1(imbalance * 100);
 
-    levelImbalances.push({
-      level: i + 1,
-      bidVol: bVol,
-      askVol: aVol,
-      imbalance,
-      imbalancePct,
-      bidPrice: b?.price ?? 0,
-      askPrice: a?.price ?? 0,
-    });
+    const bPrice = b?.price ?? 0;
+    const aPrice = a?.price ?? 0;
+
+    if (targetLevelImbalances && targetLevelImbalances[i]) {
+      const entry = targetLevelImbalances[i];
+      entry.level = i + 1;
+      entry.bidVol = bVol;
+      entry.askVol = aVol;
+      entry.imbalance = imbalance;
+      entry.imbalancePct = imbalancePct;
+      entry.bidPrice = bPrice;
+      entry.askPrice = aPrice;
+    } else {
+      levelImbalances[i] = {
+        level: i + 1,
+        bidVol: bVol,
+        askVol: aVol,
+        imbalance,
+        imbalancePct,
+        bidPrice: bPrice,
+        askPrice: aPrice,
+      };
+    }
   }
 
   const totalVol = totalBidVol + totalAskVol;
-  const bidPct = totalVol > 0 ? Number(((totalBidVol / totalVol) * 100).toFixed(1)) : 50;
-  const askPct = totalVol > 0 ? Number(((totalAskVol / totalVol) * 100).toFixed(1)) : 50;
-  const imbalancePct = Number((bidPct - askPct).toFixed(1));
-  const skewRatio = totalAskVol > 0 ? Number((totalBidVol / totalAskVol).toFixed(2)) : 99.9;
+  const bidPct = totalVol > 0 ? fastRound1((totalBidVol / totalVol) * 100) : 50;
+  const askPct = totalVol > 0 ? fastRound1((totalAskVol / totalVol) * 100) : 50;
+  const imbalancePct = fastRound1(bidPct - askPct);
+  const skewRatio = totalAskVol > 0 ? fastRound2(totalBidVol / totalAskVol) : 99.9;
   const netVolumeDelta = totalBidVol - totalAskVol;
 
-  let confluenceSignal: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = 'NEUTRAL';
-  let confluenceBadge = 'Livro Equilibrado';
-  let confluenceDescription = 'Liquidez simétrica entre Bid e Ask. Sem viés direcional acentuado.';
-  let recommendedAction: 'MARKET_BUY_FAVORABLE' | 'MARKET_SELL_FAVORABLE' | 'NEUTRAL_WAIT' = 'NEUTRAL_WAIT';
-  let slippageScore: 'LOW' | 'MEDIUM' | 'HIGH' = 'MEDIUM';
-
-  // Gatilhos de confluência institucional:
-  // Skew >= 1.25 ou Imbalance >= +12% indicam predominância compradora
-  if (imbalancePct >= 12 || skewRatio >= 1.25) {
-    confluenceSignal = 'BULLISH';
-    recommendedAction = 'MARKET_BUY_FAVORABLE';
-    slippageScore = totalBidVol > 0 ? 'LOW' : 'MEDIUM';
-
-    if (imbalancePct >= 25 || skewRatio >= 1.5) {
-      confluenceBadge = 'Forte Pressão Compradora (Bid Heavy)';
-      confluenceDescription = 'Forte absorção e barreira no Bid. Confluência altamente favorável para ordens de Compra a Mercado.';
-    } else {
-      confluenceBadge = 'Viés de Alta Moderado';
-      confluenceDescription = 'Demanda supera oferta no topo do book. Risco reduzido de slippage em compras a mercado.';
-    }
-  } else if (imbalancePct <= -12 || skewRatio <= 0.8) {
-    confluenceSignal = 'BEARISH';
-    recommendedAction = 'MARKET_SELL_FAVORABLE';
-    slippageScore = totalAskVol > 0 ? 'LOW' : 'MEDIUM';
-
-    if (imbalancePct <= -25 || skewRatio <= 0.65) {
-      confluenceBadge = 'Forte Pressão Vendedora (Ask Heavy)';
-      confluenceDescription = 'Grande concentração de oferta no Ask. Confluência favorável para liquidação ou Venda a Mercado.';
-    } else {
-      confluenceBadge = 'Viés de Baixa Moderado';
-      confluenceDescription = 'Oferta vendedora supera compradores no topo do book.';
-    }
-  }
+  const confluence = evaluateConfluence(imbalancePct, skewRatio, totalBidVol, totalAskVol);
 
   return {
     bidPct,
@@ -140,11 +197,11 @@ export function calculateOrderBookImbalance(
     totalAskVol,
     netVolumeDelta,
     levelImbalances,
-    confluenceSignal,
-    confluenceBadge,
-    confluenceDescription,
-    recommendedAction,
-    slippageScore,
+    confluenceSignal: confluence.confluenceSignal,
+    confluenceBadge: confluence.confluenceBadge,
+    confluenceDescription: confluence.confluenceDescription,
+    recommendedAction: confluence.recommendedAction,
+    slippageScore: confluence.slippageScore,
   };
 }
 
@@ -211,13 +268,13 @@ export function detectLiquiditySpoofing(
   // Queda relativa no lado Bid
   let bidDropPct = 0;
   if (previous.totalBidVol > 0 && current.totalBidVol < previous.totalBidVol) {
-    bidDropPct = Number((((previous.totalBidVol - current.totalBidVol) / previous.totalBidVol) * 100).toFixed(1));
+    bidDropPct = fastRound1(((previous.totalBidVol - current.totalBidVol) / previous.totalBidVol) * 100);
   }
 
   // Queda relativa no lado Ask
   let askDropPct = 0;
   if (previous.totalAskVol > 0 && current.totalAskVol < previous.totalAskVol) {
-    askDropPct = Number((((previous.totalAskVol - current.totalAskVol) / previous.totalAskVol) * 100).toFixed(1));
+    askDropPct = fastRound1(((previous.totalAskVol - current.totalAskVol) / previous.totalAskVol) * 100);
   }
 
   if (bidDropPct >= thresholdPct) {
@@ -343,9 +400,7 @@ export function calculateWickPenetration(params: WickPenetrationParams): WickPen
 
   if (typeof customStopLossPrice === 'number' && customStopLossPrice > 0 && entryPrice > 0) {
     theoreticalStopPrice = customStopLossPrice;
-    effectiveStopLossPct = Number(
-      (Math.abs((entryPrice - theoreticalStopPrice) / entryPrice) * 100).toFixed(2)
-    );
+    effectiveStopLossPct = fastRound2((Math.abs((entryPrice - theoreticalStopPrice) / entryPrice) * 100));
   } else {
     if (isBidSide) {
       theoreticalStopPrice = entryPrice * (1 - effectiveStopLossPct / 100);
@@ -361,19 +416,19 @@ export function calculateWickPenetration(params: WickPenetrationParams): WickPen
     : manipulatedWickPrice >= theoreticalStopPrice;
 
   // Distância exata entre o pavio e o Stop Loss teórico
-  const distanceToStopUsd = Number(Math.abs(manipulatedWickPrice - theoreticalStopPrice).toFixed(2));
-  const distanceToStopPct = Number(
-    ((Math.abs(manipulatedWickPrice - theoreticalStopPrice) / (entryPrice || 1)) * 100).toFixed(2)
+  const distanceToStopUsd = fastRound2(Math.abs(manipulatedWickPrice - theoreticalStopPrice));
+  const distanceToStopPct = fastRound2(
+    ((Math.abs(manipulatedWickPrice - theoreticalStopPrice) / (entryPrice || 1)) * 100)
   );
 
   // Distância entre o pavio e o preço de entrada
-  const wickDistanceToEntryUsd = Number(Math.abs(manipulatedWickPrice - entryPrice).toFixed(2));
-  const wickDistanceToEntryPct = Number(
-    ((Math.abs(manipulatedWickPrice - entryPrice) / (entryPrice || 1)) * 100).toFixed(2)
+  const wickDistanceToEntryUsd = fastRound2(Math.abs(manipulatedWickPrice - entryPrice));
+  const wickDistanceToEntryPct = fastRound2(
+    ((Math.abs(manipulatedWickPrice - entryPrice) / (entryPrice || 1)) * 100)
   );
 
   // Perda evitada em dólares baseada no tamanho da posição nocional
-  const savedLossUsd = Number(((notionalUsd * effectiveStopLossPct) / 100).toFixed(2));
+  const savedLossUsd = fastRound2((notionalUsd * effectiveStopLossPct) / 100);
   const formattedLossUsd = savedLossUsd.toFixed(2);
   const formattedStopPct = effectiveStopLossPct.toFixed(1);
 
@@ -391,9 +446,9 @@ export function calculateWickPenetration(params: WickPenetrationParams): WickPen
     recoveryUsd = Math.max(0, candleHigh - closePrice);
   }
 
-  const absorptionPct = Number(Math.min(100, Math.max(0, (recoveryUsd / candleRange) * 100)).toFixed(1));
+  const absorptionPct = fastRound1(Math.min(100, Math.max(0, (recoveryUsd / candleRange) * 100)));
   const rejectionTimeMs = Math.max(timeDeltaMs && timeDeltaMs > 0 ? timeDeltaMs : 450, 120);
-  const rejectionVelocityUsdPerSec = Number((recoveryUsd / (rejectionTimeMs / 1000)).toFixed(2));
+  const rejectionVelocityUsdPerSec = fastRound2(recoveryUsd / (rejectionTimeMs / 1000));
 
   const tickStep = entryPrice > 0 ? entryPrice * 0.00005 : 1;
   const estimatedTicks = Math.max(Math.round((recoveryUsd / tickStep) * 2), 12);
@@ -419,35 +474,35 @@ export function calculateWickPenetration(params: WickPenetrationParams): WickPen
       if (closePrice > (params.candleOpen ?? entryPrice) && absorptionPct >= 60) {
         // Disparo agressivo a mercado (Short Squeeze instantâneo varrendo asks)
         const buyFraction = 0.68 + Math.min(0.18, (absorptionPct - 60) / 200);
-        takerBuyVol = Number((totalCandleVol * buyFraction).toFixed(2));
-        takerSellVol = Number((totalCandleVol * (1 - buyFraction)).toFixed(2));
+        takerBuyVol = fastRound2(totalCandleVol * buyFraction);
+        takerSellVol = fastRound2(totalCandleVol * (1 - buyFraction));
       } else {
         // Absorção passiva por ordens limites (Icebergs no suporte)
         const buyFraction = 0.44 + Math.min(0.06, absorptionPct / 1000);
-        takerBuyVol = Number((totalCandleVol * buyFraction).toFixed(2));
-        takerSellVol = Number((totalCandleVol * (1 - buyFraction)).toFixed(2));
+        takerBuyVol = fastRound2(totalCandleVol * buyFraction);
+        takerSellVol = fastRound2(totalCandleVol * (1 - buyFraction));
       }
     } else {
       // Tentativa de venda / topo de pavio superior
       if (closePrice < (params.candleOpen ?? entryPrice) && absorptionPct >= 60) {
         // Despejo agressivo a mercado (Long Squeeze instantâneo)
         const sellFraction = 0.68 + Math.min(0.18, (absorptionPct - 60) / 200);
-        takerSellVol = Number((totalCandleVol * sellFraction).toFixed(2));
-        takerBuyVol = Number((totalCandleVol * (1 - sellFraction)).toFixed(2));
+        takerSellVol = fastRound2(totalCandleVol * sellFraction);
+        takerBuyVol = fastRound2(totalCandleVol * (1 - sellFraction));
       } else {
         // Absorção passiva por ordens limites vendedoras (Icebergs na resistência)
         const sellFraction = 0.44 + Math.min(0.06, absorptionPct / 1000);
-        takerSellVol = Number((totalCandleVol * sellFraction).toFixed(2));
-        takerBuyVol = Number((totalCandleVol * (1 - sellFraction)).toFixed(2));
+        takerSellVol = fastRound2(totalCandleVol * sellFraction);
+        takerBuyVol = fastRound2(totalCandleVol * (1 - sellFraction));
       }
     }
   }
 
   const takerTotal = Math.max(takerBuyVol + takerSellVol, 0.001);
-  const buyPressurePct = Number(((takerBuyVol / takerTotal) * 100).toFixed(1));
-  const sellPressurePct = Number(((takerSellVol / takerTotal) * 100).toFixed(1));
-  const aggressiveDeltaRatio = Number((takerBuyVol / (takerSellVol || 0.001)).toFixed(2));
-  const volumeDeltaPct = Number((((takerBuyVol - takerSellVol) / takerTotal) * 100).toFixed(1));
+  const buyPressurePct = fastRound1((takerBuyVol / takerTotal) * 100);
+  const sellPressurePct = fastRound1((takerSellVol / takerTotal) * 100);
+  const aggressiveDeltaRatio = fastRound2(takerBuyVol / (takerSellVol || 0.001));
+  const volumeDeltaPct = fastRound1(((takerBuyVol - takerSellVol) / takerTotal) * 100);
 
   let driver: ReversalDriverType = 'BALANCED_FLOW';
   let driverTitle = '⚖️ Fluxo Agressor Equilibrado';

@@ -33,27 +33,52 @@ export interface OrderBookProps {
   showInlineHistogram?: boolean;
 }
 
-async function fetchRealOrderBook(symbol: string, limit: number): Promise<OrderBookData> {
-  const response = await fetch(`/api/market/depth?symbol=${symbol}&limit=${limit}`);
-  if (!response.ok) throw new Error("Failed to fetch order book");
+export class OrderBookFetchError extends Error {
+  public readonly statusCode?: number;
+  public readonly symbol: string;
+  public readonly isRateLimit: boolean;
 
-  const data = await response.json();
+  constructor(message: string, symbol: string, statusCode?: number) {
+    super(message);
+    this.name = "OrderBookFetchError";
+    this.symbol = symbol;
+    this.statusCode = statusCode;
+    this.isRateLimit = statusCode === 429 || statusCode === 418;
+    Object.setPrototypeOf(this, OrderBookFetchError.prototype);
+  }
+}
 
-  // Build cumulative volumes
+/**
+ * Converte payload bruto da exchange em OrderBookData estruturado em passada única (Single-Pass),
+ * evitando encadeamento de .map() e alocações desnecessárias no caminho de atualização da UI.
+ */
+export function parseOrderBookDepthResponse(data: {
+  bids?: Array<{ price: number; volume: number }>;
+  asks?: Array<{ price: number; volume: number }>;
+}): OrderBookData {
+  const rawBids = data.bids || [];
+  const rawAsks = data.asks || [];
+  const bidLen = rawBids.length;
+  const askLen = rawAsks.length;
+
+  const bids: OrderBookLevel[] = new Array(bidLen);
   let bidCumulative = 0;
-  const bids: OrderBookLevel[] = (data.bids || []).map((b: { price: number; volume: number }) => {
+  for (let i = 0; i < bidLen; i++) {
+    const b = rawBids[i];
     bidCumulative += b.volume;
-    return { price: b.price, volume: b.volume, cumulative: bidCumulative };
-  });
+    bids[i] = { price: b.price, volume: b.volume, cumulative: bidCumulative };
+  }
 
+  const asks: OrderBookLevel[] = new Array(askLen);
   let askCumulative = 0;
-  const asks: OrderBookLevel[] = (data.asks || []).map((a: { price: number; volume: number }) => {
+  for (let i = 0; i < askLen; i++) {
+    const a = rawAsks[i];
     askCumulative += a.volume;
-    return { price: a.price, volume: a.volume, cumulative: askCumulative };
-  });
+    asks[i] = { price: a.price, volume: a.volume, cumulative: askCumulative };
+  }
 
-  const bestBid = bids[0]?.price ?? 0;
-  const bestAsk = asks[0]?.price ?? 0;
+  const bestBid = bidLen > 0 ? bids[0].price : 0;
+  const bestAsk = askLen > 0 ? asks[0].price : 0;
   const spread = bestAsk - bestBid;
   const midPrice = (bestAsk + bestBid) / 2;
   const spreadPercent = midPrice > 0 ? (spread / midPrice) * 100 : 0;
@@ -66,6 +91,20 @@ async function fetchRealOrderBook(symbol: string, limit: number): Promise<OrderB
     totalBidVolume: bidCumulative,
     totalAskVolume: askCumulative,
   };
+}
+
+async function fetchRealOrderBook(symbol: string, limit: number): Promise<OrderBookData> {
+  const response = await fetch(`/api/market/depth?symbol=${symbol}&limit=${limit}`);
+  if (!response.ok) {
+    throw new OrderBookFetchError(
+      `Falha ao obter livro de ofertas para ${symbol} (HTTP ${response.status})`,
+      symbol,
+      response.status
+    );
+  }
+
+  const data = await response.json();
+  return parseOrderBookDepthResponse(data);
 }
 
 function formatBookPrice(price: number): string {
@@ -180,9 +219,13 @@ export function OrderBook({
         const imb = calculateOrderBookImbalance(data.bids, data.asks, 8);
         onImbalanceUpdate(imb);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("[OrderBook] Fetch error:", err);
-      setError("Dados indisponíveis");
+      if (err instanceof OrderBookFetchError) {
+        setError(err.isRateLimit ? "Limite de requisições atingido (HTTP 429)" : err.message);
+      } else {
+        setError("Dados indisponíveis");
+      }
     } finally {
       setTimeout(() => setIsRefreshing(false), 300);
     }

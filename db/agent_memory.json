@@ -1,6 +1,31 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Refatoração de Baixa Latência, Zero-Allocation no Hot Path e Tipagem Estrita de Erros",
+    "summary": "1) Eliminação de String Boxing no Hot Path (order-book-imbalance.ts): Substituição de 20+ chamadas a Number((val).toFixed(n)) por utilitários matemáticos puros fastRound1(x) = Math.round(x * 10) / 10 e fastRound2(x) = Math.round(x * 100) / 100, eliminando alocações transitórias de Heap e GC pauses a 50-100Hz; 2) Redução de Complexidade Ciclomática & SRP: Decomposição das árvores condicionais aninhadas de calculateOrderBookImbalance na função pura e determinística evaluateConfluence(), isolando a lógica matemática dos textos descritivos e badges da interface; 3) Reciclagem de Memória por Reutilização de Buffer: calculateOrderBookImbalance passa a aceitar buffer pré-alocado opcional targetLevelImbalances, viabilizando mutação in-place zero-allocation nos snapshots L2; 4) Processamento Single-Pass no Ingestor de Book (order-book.tsx): Substituição de múltiplos .map() encadeados por parseOrderBookDepthResponse() com acumulação linear O(N) e pré-dimensionamento de arrays; 5) Tipagem Forte de Falhas de Rede: Criação da classe OrderBookFetchError com inspeção semântica de statusCode e flag isRateLimit (HTTP 429/418) para governança contra banimento e acionamento de Circuit Breakers graduados; 6) Validação: 57 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 419 asserções) e npx tsc --noEmit com 0 erros.",
+    "tags": [
+      "code-optimization",
+      "zero-alloc-hot-path",
+      "low-latency-refactoring",
+      "srp-pure-functions",
+      "cyclomatic-complexity-reduction",
+      "strict-typed-errors",
+      "fast-math-rounding",
+      "desktop-performance-engine"
+    ],
+    "details": {
+      "orderBookImbalancePath": "src/lib/order-book-imbalance.ts",
+      "orderBookComponentPath": "src/components/chart/order-book.tsx",
+      "testSuitePath": "tests/unit/desktop-performance-engine.test.ts",
+      "totalPassingTests": 57,
+      "totalAssertions": 419,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792559000000-code-optimization-zero-alloc-strict-typing",
+    "timestamp": "2026-10-23T04:40:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Concorrência Lock-Free SPSC (64-Byte Cache Padding) & Pipeline Gráfico SoA com Batch Draw Calls",
     "summary": "1) Fila Circular Lock-Free SPSC (lock-free-spsc-queue.ts): Eliminação total de primitivos de travamento (synchronized, ReentrantLock, mutexes) na transferência de ticks da thread de rede para o pipeline de cálculo e renderização. Cabeçalho alinhado a 192 bytes (3 cache lines de 64 bytes) isolando fisicamente o ponteiro head (produtor) do ponteiro tail (consumidor) para erradicar False Sharing e invalidação de cache L1/L2. Capacidade estrita de potência de 2 com indexação por máscara de bits (head & mask em 1 ciclo) e cache local de sequências para reduzir leituras remotas em >99%; 2) Pipeline Gráfico SoA Zero-Alloc (webgl-candlestick-renderer.ts): Implementação de setCandleDataFromSoA() transmitindo diretamente dados colunares Float64Array (opens, highs, lows, closes, volumes, timestamps) para buffers da GPU sem alocar objetos intermediários no Heap. Buffers de transferência gpuScratchA e gpuScratchB reutilizáveis e persistentes, atingindo Zero-GC Churn na taxa de 60/120/144 FPS; 3) Batching de Draw Calls & Instancing: Consolidação de milhares de candles (corpos, pavios e barras de volume) em um único draw call contínuo (gl.drawArraysInstanced com 18 vértices por instância), liberando 100% da CPU do driver overhead; 4) Throttling Térmico e de Bateria Adaptativo (adaptive-frame-scheduler.ts): Monitoramento em tempo real via Battery Status API (navigator.getBattery) e Compute Pressure API (PressureObserver), engajando eco-throttling automático quando em modo bateria descarregando (<20%) ou estresse térmico crítico da CPU; 5) Validação Rigorosa: 52 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 373 asserções) e npx tsc --noEmit com 0 erros.",
     "tags": [
