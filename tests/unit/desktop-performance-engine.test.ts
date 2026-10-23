@@ -18,6 +18,7 @@ import { SharedMemoryAtomicQueue } from "@/lib/performance/shared-memory-atomic-
 import { WebGLCandlestickRenderer } from "@/lib/performance/webgl-candlestick-renderer";
 import { OffscreenChartController } from "@/lib/performance/offscreen-chart-controller";
 import { WebGLL2HeatmapRenderer } from "@/lib/performance/webgl-l2-heatmap-renderer";
+import { GPUTransformFeedbackEngine } from "@/lib/performance/gpu-transform-feedback-engine";
 
 describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", () => {
   describe("1. TickCoalescer (V-Sync Frame Batching & Pacing)", () => {
@@ -672,7 +673,80 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       expect(renderer.getMetrics().totalTextureBytes).toBeGreaterThan(0);
     });
   });
+
+  describe("12. GPUTransformFeedbackEngine (Parallel Order Book Imbalance via GLSL Transform Feedback)", () => {
+    it("deve verificar suporte do ambiente a Transform Feedback", () => {
+      expect(typeof GPUTransformFeedbackEngine.isSupported).toBe("function");
+    });
+
+    it("deve calcular o desbalanceamento cumulativo de 50 níveis L2 com ponderação exponencial", () => {
+      const engine = new GPUTransformFeedbackEngine(null, 100, 2.5);
+      const levels: Array<{ price: number; quantity: number; side: 1 | -1; distanceFromMidPct: number }> = [];
+
+      // Gera 25 níveis de Bids (compradores fortes no topo: 200 BTC)
+      for (let i = 0; i < 25; i++) {
+        levels.push({
+          price: 65000 - i * 5,
+          quantity: i === 0 ? 200 : 10,
+          side: 1,
+          distanceFromMidPct: (i * 5) / 65000,
+        });
+      }
+
+      // Gera 25 níveis de Asks (vendedores mais fracos: 10 BTC cada)
+      for (let i = 0; i < 25; i++) {
+        levels.push({
+          price: 65005 + i * 5,
+          quantity: 10,
+          side: -1,
+          distanceFromMidPct: (i * 5) / 65000,
+        });
+      }
+
+      const metrics = engine.computeImbalance(levels);
+
+      expect(metrics.processedLevels).toBe(50);
+      expect(metrics.weightedBidVolume).toBeGreaterThan(metrics.weightedAskVolume);
+      expect(metrics.imbalanceRatio).toBeGreaterThan(0.20);
+      expect(metrics.dominantSide).toBe("BUY_DOMINANT");
+      expect(metrics.absorptionPressure).toBeGreaterThan(0);
+    });
+
+    it("deve detectar dominância vendedora e equilíbrio neutro de acordo com os fluxos", () => {
+      const engine = new GPUTransformFeedbackEngine(null, 64);
+
+      // Cenário de pressão vendedora maciça
+      const sellHeavyLevels = [
+        { price: 65000, quantity: 5, side: 1 as const, distanceFromMidPct: 0.0001 },
+        { price: 65005, quantity: 150, side: -1 as const, distanceFromMidPct: 0.0001 },
+      ];
+      const sellMetrics = engine.computeImbalance(sellHeavyLevels);
+      expect(sellMetrics.dominantSide).toBe("SELL_DOMINANT");
+      expect(sellMetrics.imbalanceRatio).toBeLessThan(-0.20);
+
+      // Cenário perfeitamente simétrico
+      const balancedLevels = [
+        { price: 65000, quantity: 50, side: 1 as const, distanceFromMidPct: 0.0001 },
+        { price: 65005, quantity: 50, side: -1 as const, distanceFromMidPct: 0.0001 },
+      ];
+      const balMetrics = engine.computeImbalance(balancedLevels);
+      expect(balMetrics.dominantSide).toBe("BALANCED");
+      expect(balMetrics.imbalanceRatio).toBe(0);
+    });
+
+    it("deve retornar métricas zeradas de forma resiliente para coleções vazias", () => {
+      const engine = new GPUTransformFeedbackEngine(null);
+      const emptyMetrics = engine.computeImbalance([]);
+      expect(emptyMetrics.processedLevels).toBe(0);
+      expect(emptyMetrics.imbalanceRatio).toBe(0);
+      expect(emptyMetrics.dominantSide).toBe("BALANCED");
+
+      engine.destroy();
+      expect(engine.getOutputBuffer()).toBeNull();
+    });
+  });
 });
+
 
 
 

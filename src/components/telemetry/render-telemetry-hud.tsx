@@ -108,6 +108,9 @@ export function RenderTelemetryHUD() {
         <span className="text-[8.5px] px-1 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-semibold">
           L2 HEATMAP GPU
         </span>
+        <span className="text-[8.5px] px-1 py-0.2 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold">
+          GPU TF COMPUTE
+        </span>
       </div>
     </div>
   );
