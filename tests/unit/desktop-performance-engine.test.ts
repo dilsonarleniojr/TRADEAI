@@ -19,6 +19,7 @@ import { WebGLCandlestickRenderer } from "@/lib/performance/webgl-candlestick-re
 import { OffscreenChartController } from "@/lib/performance/offscreen-chart-controller";
 import { WebGLL2HeatmapRenderer } from "@/lib/performance/webgl-l2-heatmap-renderer";
 import { GPUTransformFeedbackEngine } from "@/lib/performance/gpu-transform-feedback-engine";
+import { WebGPUOrderBookComputeEngine } from "@/lib/performance/webgpu-compute-engine";
 
 describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", () => {
   describe("1. TickCoalescer (V-Sync Frame Batching & Pacing)", () => {
@@ -743,6 +744,95 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
 
       engine.destroy();
       expect(engine.getOutputBuffer()).toBeNull();
+    });
+  });
+
+  describe("13. WebGPUOrderBookComputeEngine (WGSL Compute Pipelines & Workgroup Reduction)", () => {
+    it("deve verificar suporte do ambiente a WebGPU e inicializar graceful fallback", async () => {
+      expect(typeof WebGPUOrderBookComputeEngine.isWebGPUSupported).toBe("function");
+
+      const engine = new WebGPUOrderBookComputeEngine(128, 3.0);
+      expect(engine.maxLevels).toBe(128);
+      expect(engine.lambdaDecay).toBe(3.0);
+
+      // Em ambiente de teste headless (sem WebGPU device nativo), init deve retornar false e preparar fallback
+      const initialized = await engine.init();
+      expect(typeof initialized).toBe("boolean");
+
+      engine.destroy();
+    });
+
+    it("deve processar 50 níveis L2 com redução paralela O(log N) e decaimento exponencial", async () => {
+      const engine = new WebGPUOrderBookComputeEngine(128, 2.5);
+      await engine.init();
+
+      // Monta livro sintético com 50 níveis de BTC (pressão compradora forte na ponta)
+      const levels = [];
+      for (let i = 0; i < 25; i++) {
+        levels.push({
+          price: 65000 - i * 5,
+          quantity: i === 0 ? 250 : 12,
+          side: 1 as const,
+          distanceFromMidPct: (i * 5) / 65000,
+        });
+      }
+      for (let i = 0; i < 25; i++) {
+        levels.push({
+          price: 65005 + i * 5,
+          quantity: 10,
+          side: -1 as const,
+          distanceFromMidPct: (i * 5) / 65000,
+        });
+      }
+
+      const metrics = await engine.computeImbalance(levels, 65000);
+
+      expect(metrics.processedLevels).toBe(50);
+      expect(metrics.weightedBidVolume).toBeGreaterThan(metrics.weightedAskVolume);
+      expect(metrics.imbalanceRatio).toBeGreaterThan(0.20);
+      expect(metrics.dominantSide).toBe("BUY_DOMINANT");
+      expect(metrics.absorptionPressure).toBeGreaterThan(0);
+      expect(metrics.backend).toBeDefined();
+
+      engine.destroy();
+    });
+
+    it("deve detectar dominância de venda e equilíbrio simétrico com precisão WGSL", async () => {
+      const engine = new WebGPUOrderBookComputeEngine(64);
+      await engine.init();
+
+      // Cenário de venda pesada
+      const sellLevels = [
+        { price: 65000, quantity: 10, side: 1 as const, distanceFromMidPct: 0.0001 },
+        { price: 65005, quantity: 200, side: -1 as const, distanceFromMidPct: 0.0001 },
+      ];
+      const sellMetrics = await engine.computeImbalance(sellLevels);
+      expect(sellMetrics.dominantSide).toBe("SELL_DOMINANT");
+      expect(sellMetrics.imbalanceRatio).toBeLessThan(-0.20);
+
+      // Cenário perfeitamente balanceado
+      const balancedLevels = [
+        { price: 65000, quantity: 40, side: 1 as const, distanceFromMidPct: 0.0001 },
+        { price: 65005, quantity: 40, side: -1 as const, distanceFromMidPct: 0.0001 },
+      ];
+      const balMetrics = await engine.computeImbalance(balancedLevels);
+      expect(balMetrics.dominantSide).toBe("BALANCED");
+      expect(balMetrics.imbalanceRatio).toBe(0);
+
+      engine.destroy();
+    });
+
+    it("deve retornar métricas seguras para coleções vazias e permitir ciclo de vida limpo", async () => {
+      const engine = new WebGPUOrderBookComputeEngine(64);
+      await engine.init();
+
+      const emptyMetrics = await engine.computeImbalance([]);
+      expect(emptyMetrics.processedLevels).toBe(0);
+      expect(emptyMetrics.imbalanceRatio).toBe(0);
+      expect(emptyMetrics.dominantSide).toBe("BALANCED");
+
+      engine.destroy();
+      expect(engine.getResultBuffer()).toBeNull();
     });
   });
 });

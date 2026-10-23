@@ -111,6 +111,9 @@ export function RenderTelemetryHUD() {
         <span className="text-[8.5px] px-1 py-0.2 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold">
           GPU TF COMPUTE
         </span>
+        <span className="text-[8.5px] px-1 py-0.2 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30 font-semibold">
+          WEBGPU COMPUTE
+        </span>
       </div>
     </div>
   );
