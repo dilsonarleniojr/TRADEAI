@@ -16,6 +16,25 @@ export interface WebGPUImbalanceMetrics extends GPUTFIImbalanceMetrics {
   computeTimeUs?: number; // Tempo de execução em microssegundos
 }
 
+export const GPUTextureUsage = {
+  COPY_SRC: 0x01,
+  COPY_DST: 0x02,
+  TEXTURE_BINDING: 0x04,
+  STORAGE_BINDING: 0x08,
+  RENDER_ATTACHMENT: 0x10,
+};
+
+export const GPUBufferUsage = {
+  MAP_READ: 1,
+  MAP_WRITE: 2,
+  COPY_SRC: 4,
+  COPY_DST: 8,
+  INDEX: 16,
+  VERTEX: 32,
+  UNIFORM: 64,
+  STORAGE: 128,
+};
+
 // Ambient Type Definitions para compatibilidade irrestrita sem depender de @types/webgpu externo
 export interface MinimalGPUDevice {
   queue: {
@@ -25,6 +44,11 @@ export interface MinimalGPUDevice {
   createShaderModule(descriptor: { code: string }): any;
   createComputePipeline(descriptor: any): any;
   createBuffer(descriptor: { size: number; usage: number; mappedAtCreation?: boolean }): any;
+  createTexture?(descriptor: {
+    size: [number, number, number] | { width: number; height: number; depthOrArrayLayers?: number };
+    format: string;
+    usage: number;
+  }): any;
   createBindGroup(descriptor: any): any;
   createCommandEncoder(descriptor?: any): any;
   destroy?(): void;
@@ -121,6 +145,12 @@ fn main(
 }
 `;
 
+export interface WebGPUComputeOptions {
+  midPrice?: number;
+  readbackToCpu?: boolean;       // default: true. Se false, elimina 100% de staging e mapAsync
+  targetHeatmapColumn?: number;  // Se fornecido, aciona copyBufferToTexture no mesmo command buffer
+}
+
 export class WebGPUOrderBookComputeEngine {
   private device: MinimalGPUDevice | null = null;
   private pipeline: any = null;
@@ -131,6 +161,13 @@ export class WebGPUOrderBookComputeEngine {
   private paramsBuffer: any = null;
   private resultBuffer: any = null;
   private stagingBuffer: any = null;
+
+  // Zero-Copy Heatmap Texture & Slice Buffer
+  private heatmapTexture: any = null;
+  private heatmapSliceBuffer: any = null;
+  public readonly heatmapHistoryLength: number = 256;
+  public readonly heatmapPriceBins: number = 128;
+  private currentHeatmapColumn: number = 0;
 
   // Parâmetros de calibração
   public readonly maxLevels: number;
@@ -185,15 +222,6 @@ export class WebGPUOrderBookComputeEngine {
         return false;
       }
 
-      // Constantes de Buffer Usage (WebGPU spec: MAP_READ = 1, MAP_WRITE = 2, COPY_SRC = 4, COPY_DST = 8, UNIFORM = 64, STORAGE = 128)
-      const GPUBufferUsage = {
-        MAP_READ: 1,
-        COPY_SRC: 4,
-        COPY_DST: 8,
-        UNIFORM: 64,
-        STORAGE: 128,
-      };
-
       // 1. Compilação do Módulo de Shader WGSL
       const shaderModule = this.device.createShaderModule({
         code: WGSL_ORDER_BOOK_IMBALANCE_SHADER,
@@ -227,7 +255,7 @@ export class WebGPUOrderBookComputeEngine {
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
       });
 
-      // Staging buffer para leitura assíncrona pela CPU (se necessário)
+      // Staging buffer para leitura assíncrona pela CPU (se solicitado)
       this.stagingBuffer = this.device.createBuffer({
         size: 16,
         usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
@@ -243,6 +271,9 @@ export class WebGPUOrderBookComputeEngine {
         ],
       });
 
+      // 5. Inicializa Textura de Heatmap e Buffer de Fatias em VRAM para copyBufferToTexture
+      this.initHeatmapTexture(this.heatmapHistoryLength, this.heatmapPriceBins);
+
       this.isInitialized = true;
       return true;
     } catch (err) {
@@ -250,6 +281,95 @@ export class WebGPUOrderBookComputeEngine {
       this.initFallbackWebGL();
       return false;
     }
+  }
+
+  /**
+   * Aloca textura 2D nativa de Heatmap e Slice Buffer alinhado a 256 bytes na VRAM.
+   */
+  public initHeatmapTexture(historyLength: number = 256, priceBins: number = 128): any {
+    if (!this.device?.createTexture) return null;
+
+    try {
+      // Formato RGBA8Unorm (4 bytes por texel)
+      this.heatmapTexture = this.device.createTexture({
+        size: [historyLength, priceBins, 1],
+        format: "rgba8unorm",
+        usage:
+          GPUTextureUsage.TEXTURE_BINDING |
+          GPUTextureUsage.COPY_DST |
+          GPUTextureUsage.COPY_SRC,
+      });
+
+      // WebGPU copyBufferToTexture exige bytesPerRow múltiplo estrito de 256 bytes
+      const bytesPerRow = 256;
+      this.heatmapSliceBuffer = this.device.createBuffer({
+        size: priceBins * bytesPerRow,
+        usage:
+          GPUBufferUsage.STORAGE |
+          GPUBufferUsage.COPY_SRC |
+          GPUBufferUsage.COPY_DST,
+      });
+
+      return this.heatmapTexture;
+    } catch (err) {
+      console.warn("[WebGPUOrderBookComputeEngine] Não foi possível alocar textura GPU:", err);
+      return null;
+    }
+  }
+
+  /**
+   * Retorna a textura de Heatmap L2 residente na VRAM da GPU.
+   */
+  public getHeatmapTexture(): any {
+    return this.heatmapTexture;
+  }
+
+  /**
+   * Executa a cópia direta de Storage Buffer para GPU Texture via copyBufferToTexture.
+   * Elimina completamente qualquer passagem pelo Heap do JavaScript ou staging buffer da CPU.
+   */
+  public copyBufferToTexture(options?: {
+    columnIdx?: number;
+    customEncoder?: any;
+    sourceBuffer?: any;
+  }): any {
+    if (!this.device || !this.heatmapTexture) return null;
+
+    const col =
+      options?.columnIdx !== undefined
+        ? options.columnIdx
+        : this.currentHeatmapColumn;
+    const encoder = options?.customEncoder || this.device.createCommandEncoder();
+    const buffer = options?.sourceBuffer || this.heatmapSliceBuffer || this.resultBuffer;
+
+    if (encoder && encoder.copyBufferToTexture && buffer) {
+      encoder.copyBufferToTexture(
+        {
+          buffer,
+          offset: 0,
+          bytesPerRow: 256, // Alinhamento obrigatório de 256 bytes
+          rowsPerImage: this.heatmapPriceBins,
+        },
+        {
+          texture: this.heatmapTexture,
+          origin: [col % this.heatmapHistoryLength, 0, 0],
+        },
+        {
+          width: 1,
+          height: this.heatmapPriceBins,
+          depthOrArrayLayers: 1,
+        }
+      );
+
+      this.currentHeatmapColumn = (col + 1) % this.heatmapHistoryLength;
+
+      if (!options?.customEncoder) {
+        this.device.queue.submit([encoder.finish()]);
+      }
+      return this.heatmapTexture;
+    }
+
+    return null;
   }
 
   /**
@@ -263,14 +383,20 @@ export class WebGPUOrderBookComputeEngine {
 
   /**
    * Executa a computação de Order Book Imbalance via WebGPU Compute Pipeline.
-   * Se WebGPU não estiver disponível no ambiente, delega automaticamente
-   * para o Transform Feedback GLSL ou fallback numérico vetorial.
+   * Suporta o modo Zero-Copy (readbackToCpu: false) transferindo a densidade diretamente
+   * para a textura do Heatmap via copyBufferToTexture com zero latência de trânsito.
    */
   public async computeImbalance(
     levels: DepthLevelInput[],
-    midPrice?: number
+    optionsOrMidPrice?: number | WebGPUComputeOptions
   ): Promise<WebGPUImbalanceMetrics> {
     const startTime = typeof performance !== "undefined" ? performance.now() : 0;
+    const options: WebGPUComputeOptions =
+      typeof optionsOrMidPrice === "number"
+        ? { midPrice: optionsOrMidPrice, readbackToCpu: true }
+        : optionsOrMidPrice || { readbackToCpu: true };
+
+    const shouldReadback = options.readbackToCpu !== false;
 
     if (levels.length === 0) {
       return {
@@ -289,7 +415,7 @@ export class WebGPUOrderBookComputeEngine {
     if (this.isInitialized && this.device && this.pipeline) {
       try {
         const count = Math.min(levels.length, this.maxLevels);
-        const autoMidPrice = midPrice ?? (levels[0].price > 0 ? levels[0].price : 1.0);
+        const autoMidPrice = options.midPrice ?? (levels[0].price > 0 ? levels[0].price : 1.0);
 
         // Prepara buffers de entrada contíguos
         const inputFloats = new Float32Array(count * 4);
@@ -319,11 +445,34 @@ export class WebGPUOrderBookComputeEngine {
         pass.dispatchWorkgroups(workgroupCount);
         pass.end();
 
-        // Cópia para staging buffer para eventual inspeção
+        // Transferência Zero-Copy direta para Textura 2D do Heatmap na VRAM (copyBufferToTexture)
+        if (options.targetHeatmapColumn !== undefined && this.heatmapTexture) {
+          this.copyBufferToTexture({
+            columnIdx: options.targetHeatmapColumn,
+            customEncoder: commandEncoder,
+            sourceBuffer: this.heatmapSliceBuffer || this.resultBuffer,
+          });
+        }
+
+        // MODO ZERO-COPY (Sem readback para CPU): Zero latência de trânsito
+        if (!shouldReadback) {
+          this.device.queue.submit([commandEncoder.finish()]);
+          return {
+            imbalanceRatio: 0,
+            weightedBidVolume: 0,
+            weightedAskVolume: 0,
+            absorptionPressure: 0,
+            dominantSide: "BALANCED",
+            processedLevels: count,
+            backend: "WEBGPU_COMPUTE",
+            computeTimeUs: 0, // Zero transit CPU stall
+          };
+        }
+
+        // MODO DE LEITURA (CPU Readback para Telemetria/HUD)
         commandEncoder.copyBufferToBuffer(this.resultBuffer, 0, this.stagingBuffer, 0, 16);
         this.device.queue.submit([commandEncoder.finish()]);
 
-        // Mapeamento e leitura do staging buffer
         await this.stagingBuffer.mapAsync(1); // GPUMapMode.READ = 1
         const copyArrayBuffer = this.stagingBuffer.getMappedRange(0, 16);
         const resultView = new Float32Array(copyArrayBuffer.slice(0));
@@ -366,7 +515,7 @@ export class WebGPUOrderBookComputeEngine {
     }
 
     // Fallback 2: Algoritmo vetorial com idêntica precisão matemática da árvore O(log N)
-    const metrics = this.computeVectorizedFallback(levels, midPrice);
+    const metrics = this.computeVectorizedFallback(levels, options.midPrice);
     const endTime = typeof performance !== "undefined" ? performance.now() : 0;
     return {
       ...metrics,
@@ -431,13 +580,15 @@ export class WebGPUOrderBookComputeEngine {
   }
 
   /**
-   * Libera todos os buffers e pipelines alocados na VRAM da GPU.
+   * Libera todos os buffers, texturas e pipelines alocados na VRAM da GPU.
    */
   public destroy(): void {
     if (this.levelsBuffer?.destroy) this.levelsBuffer.destroy();
     if (this.paramsBuffer?.destroy) this.paramsBuffer.destroy();
     if (this.resultBuffer?.destroy) this.resultBuffer.destroy();
     if (this.stagingBuffer?.destroy) this.stagingBuffer.destroy();
+    if (this.heatmapSliceBuffer?.destroy) this.heatmapSliceBuffer.destroy();
+    if (this.heatmapTexture?.destroy) this.heatmapTexture.destroy();
 
     if (this.device?.destroy) {
       this.device.destroy();
@@ -451,6 +602,8 @@ export class WebGPUOrderBookComputeEngine {
     this.device = null;
     this.pipeline = null;
     this.bindGroup = null;
+    this.heatmapTexture = null;
+    this.heatmapSliceBuffer = null;
     this.isInitialized = false;
   }
 }

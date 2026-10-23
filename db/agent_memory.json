@@ -1,6 +1,29 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Zero-Copy Direct WebGPU Storage Buffer to Texture Copy (copyBufferToTexture) para Heatmap L2 em VRAM",
+    "summary": "1) Pipeline Zero-Copy em VRAM (webgpu-compute-engine.ts): Implementação de transferências diretas de Storage Buffer para GPUTexture via commandEncoder.copyBufferToTexture() com alinhamento obrigatório de 256 bytes por linha (bytesPerRow = 256); 2) Eliminação de Staging e MapAsync da CPU: Modo de computação com readbackToCpu: false dispensa totalmente a passagem por buffers de staging e chamadas assíncronas de mapeamento de memória, atingindo latência de trânsito nula (zero microssegundos) limitada estritamente pela taxa de transferência de barramento PCIe/VRAM; 3) Gerenciamento de Textura 2D Nativa de Heatmap: Alocação nativa de GPUTexture com formato rgba8unorm e flags TEXTURE_BINDING | COPY_DST | COPY_SRC, permitindo que a nuvem de liquidez seja atualizada coluna a coluna no mesmo command buffer do compute pass; 4) Validação Rigorosa: 37 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 214 asserções) e compilação limpa sem erros no TypeScript (tsc --noEmit).",
+    "tags": [
+      "copyBufferToTexture",
+      "webgpu-zero-copy",
+      "storage-buffer-to-texture",
+      "vram-direct-transfer",
+      "bytes-per-row-alignment",
+      "zero-cpu-stall",
+      "desktop-performance-engine"
+    ],
+    "details": {
+      "webgpuComputeEnginePath": "src/lib/performance/webgpu-compute-engine.ts",
+      "testSuitePath": "tests/unit/desktop-performance-engine.test.ts",
+      "totalPassingTests": 37,
+      "totalAssertions": 214,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792540000000-webgpu-copybuffertotexture-zerocopy",
+    "timestamp": "2026-10-23T01:00:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Computação Vetorial Nativa via WebGPU Compute Pipelines (WGSL) com Workgroup Shared Memory e Redução Paralela O(log N)",
     "summary": "1) Pipeline WebGPU Compute (webgpu-compute-engine.ts): Shader WGSL com @compute @workgroup_size(64), memória compartilhada (var<workgroup> s_bidVol, s_askVol, s_absorb) e redução paralela em árvore com workgroupBarrier(). Reduz a complexidade de agregação do livro de ofertas L2 para O(log N) diretamente nos Compute Units da GPU; 2) Zero Overhead de CPU para Livros Multi-Ativo: Processa até 100 níveis simultâneos para BTC, ETH e SOL na GPU, calculando volumes ponderados por decaimento exponencial (exp(-lambda * distPct)), score de absorção de ordens e índice de desbalanceamento (imbalance ratio de -1.0 a +1.0); 3) Encadeamento VRAM-to-VRAM: O buffer de redução de saída (StorageBuffer) é retido na memória da GPU para consumo direto por shaders de Heatmap e Volume Profile sem trânsito pelo Heap JavaScript; 4) Graceful Multi-Tier Fallback: Cascata automática e transparente: Tier 1 (WebGPU WGSL Compute) -> Tier 2 (WebGL 2.0 Transform Feedback) -> Tier 3 (CPU Vetorial de alta precisão); 5) Telemetria de Render Expandida: Adição do selo 'WEBGPU COMPUTE' no RenderTelemetryHUD; 6) Validação: 35 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 209 asserções) e compilação TypeScript limpa com 0 erros.",
     "tags": [

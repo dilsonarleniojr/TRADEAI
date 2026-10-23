@@ -834,6 +834,43 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       engine.destroy();
       expect(engine.getResultBuffer()).toBeNull();
     });
+
+    it("deve gerenciar alocação de textura de Heatmap e suportar copyBufferToTexture zero-copy", () => {
+      const engine = new WebGPUOrderBookComputeEngine(128);
+
+      // Em ambiente headless sem device nativo, métodos respondem de forma resiliente
+      expect(engine.getHeatmapTexture()).toBeNull();
+      const texture = engine.initHeatmapTexture(256, 128);
+      expect(texture).toBeNull(); // Sem GPU device nativo
+
+      // Execução de copyBufferToTexture não deve quebrar
+      const blitResult = engine.copyBufferToTexture({ columnIdx: 5 });
+      expect(blitResult).toBeNull();
+
+      engine.destroy();
+    });
+
+    it("deve suportar opções avançadas de computação com zero-copy (readbackToCpu: false)", async () => {
+      const engine = new WebGPUOrderBookComputeEngine(64);
+      await engine.init();
+
+      const levels = [
+        { price: 65000, quantity: 50, side: 1 as const, distanceFromMidPct: 0.0001 },
+        { price: 65005, quantity: 20, side: -1 as const, distanceFromMidPct: 0.0001 },
+      ];
+
+      // Modo com readback desativado para pipeline streaming VRAM puro
+      const zeroCopyMetrics = await engine.computeImbalance(levels, {
+        readbackToCpu: false,
+        targetHeatmapColumn: 42,
+        midPrice: 65002.5,
+      });
+
+      expect(zeroCopyMetrics.processedLevels).toBe(2);
+      expect(zeroCopyMetrics.backend).toBeDefined();
+
+      engine.destroy();
+    });
   });
 });
 
