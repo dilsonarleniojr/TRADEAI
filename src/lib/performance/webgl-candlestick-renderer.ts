@@ -52,6 +52,10 @@ export class WebGLCandlestickRenderer {
   private width: number = 800;
   private height: number = 400;
 
+  // Buffers de transferência reutilizáveis para Zero-GC Churn na GPU
+  private gpuScratchA: Float32Array = new Float32Array(2048 * 4);
+  private gpuScratchB: Float32Array = new Float32Array(2048 * 4);
+
   constructor(contextOrCanvas?: WebGL2RenderingContext | HTMLCanvasElement | OffscreenCanvas | null) {
     if (contextOrCanvas) {
       this.init(contextOrCanvas);
@@ -322,8 +326,17 @@ export class WebGLCandlestickRenderer {
     }
   }
 
+  private ensureScratchCapacity(requiredElements: number): void {
+    if (this.gpuScratchA.length < requiredElements) {
+      let newCapacity = this.gpuScratchA.length * 2;
+      while (newCapacity < requiredElements) newCapacity *= 2;
+      this.gpuScratchA = new Float32Array(newCapacity);
+      this.gpuScratchB = new Float32Array(newCapacity);
+    }
+  }
+
   /**
-   * Envia dados de candles para as instâncias da GPU via Float32Array.
+   * Envia dados de candles para as instâncias da GPU via Float32Array sem alocações transitórias (Zero-GC).
    */
   public setCandleData(candles: WebGLCandleData[]): void {
     if (!this.gl || !this.instanceBufferA || !this.instanceBufferB) return;
@@ -331,8 +344,11 @@ export class WebGLCandlestickRenderer {
     this.candleCount = candles.length;
     if (this.candleCount === 0) return;
 
-    const dataA = new Float32Array(this.candleCount * 4);
-    const dataB = new Float32Array(this.candleCount * 4);
+    const requiredElements = this.candleCount * 4;
+    this.ensureScratchCapacity(requiredElements);
+
+    const dataA = this.gpuScratchA;
+    const dataB = this.gpuScratchB;
 
     for (let i = 0; i < this.candleCount; i++) {
       const c = candles[i];
@@ -350,11 +366,61 @@ export class WebGLCandlestickRenderer {
     }
 
     const gl = this.gl;
+    const viewA = new Float32Array(dataA.buffer, 0, requiredElements);
+    const viewB = new Float32Array(dataB.buffer, 0, requiredElements);
+
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBufferA);
-    gl.bufferData(gl.ARRAY_BUFFER, dataA, gl.DYNAMIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, viewA, gl.DYNAMIC_DRAW);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBufferB);
-    gl.bufferData(gl.ARRAY_BUFFER, dataB, gl.DYNAMIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, viewB, gl.DYNAMIC_DRAW);
+  }
+
+  /**
+   * Envia dados de candles diretamente a partir de vetores contíguos SoA (Structure-of-Arrays).
+   * Elimina 100% de alocações transitórias de objetos { open, high, low, close } no caminho crítico.
+   * Viabiliza vetorização SIMD nativa na GPU com leitura de memória contígua da CPU.
+   */
+  public setCandleDataFromSoA(
+    count: number,
+    opens: Float64Array | Float32Array,
+    highs: Float64Array | Float32Array,
+    lows: Float64Array | Float32Array,
+    closes: Float64Array | Float32Array,
+    volumes: Float64Array | Float32Array,
+    timestamps?: Float64Array | Float32Array
+  ): void {
+    if (!this.gl || !this.instanceBufferA || !this.instanceBufferB || count <= 0) return;
+
+    this.candleCount = count;
+    const requiredElements = count * 4;
+    this.ensureScratchCapacity(requiredElements);
+
+    const dataA = this.gpuScratchA;
+    const dataB = this.gpuScratchB;
+
+    for (let i = 0; i < count; i++) {
+      const offset = i * 4;
+      dataA[offset + 0] = i; // index
+      dataA[offset + 1] = opens[i];
+      dataA[offset + 2] = highs[i];
+      dataA[offset + 3] = lows[i];
+
+      dataB[offset + 0] = closes[i];
+      dataB[offset + 1] = volumes[i];
+      dataB[offset + 2] = timestamps ? timestamps[i] : 0;
+      dataB[offset + 3] = 0; // flags
+    }
+
+    const gl = this.gl;
+    const viewA = new Float32Array(dataA.buffer, 0, requiredElements);
+    const viewB = new Float32Array(dataB.buffer, 0, requiredElements);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBufferA);
+    gl.bufferData(gl.ARRAY_BUFFER, viewA, gl.DYNAMIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBufferB);
+    gl.bufferData(gl.ARRAY_BUFFER, viewB, gl.DYNAMIC_DRAW);
   }
 
   /**

@@ -69,10 +69,11 @@ export class LockFreeSPSCQueue {
   }
 
   /**
-   * Arredonda qualquer número para a próxima potência de 2.
+   * Arredonda qualquer número para a próxima potência de 2 (com piso mínimo de 16).
    */
   public static nextPowerOfTwo(val: number): number {
-    let v = Math.max(16, val - 1);
+    if (val <= 16) return 16;
+    let v = val - 1;
     v |= v >>> 1;
     v |= v >>> 2;
     v |= v >>> 4;

@@ -17,6 +17,8 @@ export interface FrameMetrics {
   jankFrames: number;
   isThrottled: boolean;
   visibilityState: "visible" | "hidden" | "blurred";
+  isBatterySaverMode?: boolean;
+  isThermalThrottled?: boolean;
 }
 
 export type RenderCallback = (frameTimestamp: number) => void;
@@ -24,6 +26,8 @@ export type RenderCallback = (frameTimestamp: number) => void;
 export class AdaptiveFrameScheduler {
   private isDocumentVisible = true;
   private isWindowFocused = true;
+  private isBatterySaverMode = false;
+  private isThermalThrottled = false;
   private isThrottled = false;
 
   private rafId: number | null = null;
@@ -68,10 +72,45 @@ export class AdaptiveFrameScheduler {
       this.isWindowFocused = false;
       this.evaluateState();
     });
+
+    // Detecção de Bateria e Economia de Energia (Battery Status API)
+    if (typeof navigator !== "undefined" && "getBattery" in navigator && typeof (navigator as any).getBattery === "function") {
+      try {
+        (navigator as any).getBattery().then((battery: any) => {
+          const updateBattery = () => {
+            this.isBatterySaverMode = !battery.charging && battery.level <= 0.20;
+            this.evaluateState();
+          };
+          updateBattery();
+          battery.addEventListener("levelchange", updateBattery);
+          battery.addEventListener("chargingchange", updateBattery);
+        }).catch(() => {});
+      } catch {
+        // Fallback gracioso
+      }
+    }
+
+    // Detecção de Pressão Térmica de CPU/GPU (Compute Pressure API)
+    if (typeof window !== "undefined" && "PressureObserver" in window) {
+      try {
+        const observer = new (window as any).PressureObserver((records: any[]) => {
+          const lastRecord = records[records.length - 1];
+          this.isThermalThrottled = lastRecord && (lastRecord.state === "critical" || lastRecord.state === "serious");
+          this.evaluateState();
+        });
+        observer.observe("cpu", { sampleInterval: 1000 });
+      } catch {
+        // Fallback gracioso
+      }
+    }
   }
 
   private evaluateState(): void {
-    const shouldThrottle = !this.isDocumentVisible || !this.isWindowFocused;
+    const shouldThrottle =
+      !this.isDocumentVisible ||
+      !this.isWindowFocused ||
+      this.isBatterySaverMode ||
+      this.isThermalThrottled;
     if (shouldThrottle !== this.isThrottled) {
       this.isThrottled = shouldThrottle;
       if (this.isStarted) {
@@ -225,6 +264,8 @@ export class AdaptiveFrameScheduler {
       jankFrames: this.jankFrames,
       isThrottled: this.isThrottled,
       visibilityState: state,
+      isBatterySaverMode: this.isBatterySaverMode,
+      isThermalThrottled: this.isThermalThrottled,
     };
   }
 }

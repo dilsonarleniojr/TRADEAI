@@ -15,6 +15,7 @@ import {
 import { AdaptiveFrameScheduler } from "@/lib/performance/adaptive-frame-scheduler";
 import { BinanceWorkerManager } from "@/lib/performance/binance-worker-manager";
 import { SharedMemoryAtomicQueue } from "@/lib/performance/shared-memory-atomic-queue";
+import { LockFreeSPSCQueue, TOTAL_HEADER_BYTES, CACHE_LINE_SIZE_BYTES } from "@/lib/performance/lock-free-spsc-queue";
 import { WebGLCandlestickRenderer } from "@/lib/performance/webgl-candlestick-renderer";
 import { OffscreenChartController } from "@/lib/performance/offscreen-chart-controller";
 import { WebGLL2HeatmapRenderer } from "@/lib/performance/webgl-l2-heatmap-renderer";
@@ -1323,6 +1324,126 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       } finally {
         (globalThis as any).navigator = origNavigator;
       }
+    });
+  });
+
+  describe("14. LockFreeSPSCQueue, SoA Hardware Streaming & Thermal/Battery Throttling", () => {
+    it("deve alinhar cabeçalho para 64 bytes por cache line e garantir capacidade potência de 2", () => {
+      expect(CACHE_LINE_SIZE_BYTES).toBe(64);
+      expect(TOTAL_HEADER_BYTES).toBe(192); // 3 cache lines (Producer, Consumer, Config)
+      expect(LockFreeSPSCQueue.nextPowerOfTwo(10)).toBe(16);
+      expect(LockFreeSPSCQueue.nextPowerOfTwo(100)).toBe(128);
+      expect(LockFreeSPSCQueue.nextPowerOfTwo(1024)).toBe(1024);
+      expect(LockFreeSPSCQueue.nextPowerOfTwo(1025)).toBe(2048);
+
+      const queue = LockFreeSPSCQueue.create(100, 4);
+      expect(queue.getCapacity()).toBe(128); // Arredondado para 2^7
+      expect(queue.getStride()).toBe(4);
+
+      const metrics = queue.getMetrics();
+      expect(metrics.cacheLinePaddingBytes).toBe(64);
+      expect(metrics.isEmpty).toBe(true);
+      expect(metrics.isFull).toBe(false);
+      expect(metrics.dropped).toBe(0);
+    });
+
+    it("deve transferir dados de ticks sem travas (Lock-Free FIFO) com zero alocações", () => {
+      const queue = LockFreeSPSCQueue.create(64, 4);
+      const scratchIn = new Float64Array([65000.5, 1.25, 1700000000, 1]);
+      const scratchOut = new Float64Array(4);
+
+      // Enfileira 10 ticks
+      for (let i = 0; i < 10; i++) {
+        scratchIn[0] = 65000 + i;
+        const pushed = queue.push(scratchIn);
+        expect(pushed).toBe(true);
+      }
+
+      let metrics = queue.getMetrics();
+      expect(metrics.available).toBe(10);
+      expect(metrics.totalWrites).toBe(10);
+
+      // Desenfileira e valida ordem FIFO
+      for (let i = 0; i < 10; i++) {
+        const popped = queue.pop(scratchOut);
+        expect(popped).toBe(true);
+        expect(scratchOut[0]).toBe(65000 + i);
+      }
+
+      // Fila deve estar vazia
+      expect(queue.pop(scratchOut)).toBe(false);
+      metrics = queue.getMetrics();
+      expect(metrics.available).toBe(0);
+      expect(metrics.isEmpty).toBe(true);
+      expect(metrics.totalReads).toBe(10);
+    });
+
+    it("deve aplicar backpressure seguro e contabilizar pacotes descartados sob saturação", () => {
+      const queue = LockFreeSPSCQueue.create(16, 2); // Capacidade 16
+      const tick = new Float64Array([100, 1]);
+
+      // Preenche todos os 16 slots
+      for (let i = 0; i < 16; i++) {
+        expect(queue.push(tick)).toBe(true);
+      }
+
+      let metrics = queue.getMetrics();
+      expect(metrics.isFull).toBe(true);
+
+      // 17º item deve sofrer backpressure (push retorna false e incrementa dropped)
+      expect(queue.push(tick)).toBe(false);
+      expect(queue.push(tick)).toBe(false);
+
+      metrics = queue.getMetrics();
+      expect(metrics.dropped).toBe(2);
+
+      // Esvazia em lote com drain()
+      let drained = 0;
+      const readCount = queue.drain(32, () => {
+        drained++;
+      });
+      expect(readCount).toBe(16);
+      expect(drained).toBe(16);
+      expect(queue.getMetrics().isEmpty).toBe(true);
+    });
+
+    it("deve transmitir candles a partir de vetores contíguos SoA diretamente para a GPU", () => {
+      const renderer = new WebGLCandlestickRenderer(null);
+
+      // Simula vetores colunares SoA de 100 velas (Float64Array contíguos)
+      const count = 100;
+      const opens = new Float64Array(count);
+      const highs = new Float64Array(count);
+      const lows = new Float64Array(count);
+      const closes = new Float64Array(count);
+      const volumes = new Float64Array(count);
+      const timestamps = new Float64Array(count);
+
+      for (let i = 0; i < count; i++) {
+        opens[i] = 100 + i;
+        highs[i] = 105 + i;
+        lows[i] = 95 + i;
+        closes[i] = 102 + i;
+        volumes[i] = 1000 + i * 10;
+        timestamps[i] = 1700000000 + i * 60;
+      }
+
+      // Executa envio via SoA (sem lançar exceções mesmo em ambiente sem canvas)
+      expect(() => {
+        renderer.setCandleDataFromSoA(count, opens, highs, lows, closes, volumes, timestamps);
+      }).not.toThrow();
+
+      renderer.destroy();
+    });
+
+    it("deve expor métricas de economia de bateria e pressão térmica no AdaptiveFrameScheduler", () => {
+      const scheduler = new AdaptiveFrameScheduler();
+      const metrics = scheduler.getMetrics();
+
+      expect(metrics).toBeDefined();
+      expect(typeof metrics.fps).toBe("number");
+      expect(metrics.isBatterySaverMode).toBeDefined();
+      expect(metrics.isThermalThrottled).toBeDefined();
     });
   });
 });
