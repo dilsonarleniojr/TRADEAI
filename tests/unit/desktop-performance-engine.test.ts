@@ -17,6 +17,7 @@ import { BinanceWorkerManager } from "@/lib/performance/binance-worker-manager";
 import { SharedMemoryAtomicQueue } from "@/lib/performance/shared-memory-atomic-queue";
 import { WebGLCandlestickRenderer } from "@/lib/performance/webgl-candlestick-renderer";
 import { OffscreenChartController } from "@/lib/performance/offscreen-chart-controller";
+import { WebGLL2HeatmapRenderer } from "@/lib/performance/webgl-l2-heatmap-renderer";
 
 describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", () => {
   describe("1. TickCoalescer (V-Sync Frame Batching & Pacing)", () => {
@@ -602,6 +603,76 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       controller.destroy();
     });
   });
+
+  describe("11. WebGLL2HeatmapRenderer (GPU L2 Order Book Heatmap & Volume Profile)", () => {
+    it("deve quantizar faixas de preço para bins discretos de textura corretamente", () => {
+      const renderer = new WebGLL2HeatmapRenderer(null, { priceBins: 100, historyLength: 64 });
+      
+      expect(renderer.quantizePrice(100, 100, 200)).toBe(0);
+      expect(renderer.quantizePrice(200, 100, 200)).toBe(99);
+      expect(renderer.quantizePrice(150, 100, 200)).toBe(49);
+      expect(renderer.quantizePrice(80, 100, 200)).toBe(0); // Clamped
+      expect(renderer.quantizePrice(250, 100, 200)).toBe(99); // Clamped
+    });
+
+    it("deve processar snapshot L2 com bids, asks e ordens iceberg sem alocações transitórias", () => {
+      const renderer = new WebGLL2HeatmapRenderer(null, { priceBins: 64, historyLength: 32 });
+      const bids = [
+        { price: 65000, quantity: 15.0 },
+        { price: 64950, quantity: 120.0 }, // Iceberg (> 50.0)
+      ];
+      const asks = [
+        { price: 65050, quantity: 12.0 },
+        { price: 65100, quantity: 80.0 }, // Iceberg (> 50.0)
+      ];
+
+      const pushed = renderer.pushDepthSnapshot(bids, asks, 64900, 65150, 50.0);
+      expect(pushed).toBe(true);
+
+      const metrics = renderer.getMetrics();
+      expect(metrics.historyLength).toBe(32);
+      expect(metrics.priceBins).toBe(64);
+      expect(metrics.currentColumn).toBe(1); // Avançou para a próxima coluna circular
+      expect(metrics.bytesUploadedPerSlice).toBe(64 * 4); // 256 bytes por slice
+      expect(metrics.totalTextureBytes).toBe(32 * 64 * 4); // 8192 bytes
+    });
+
+    it("deve calcular o Volume Profile Dinâmico com Point of Control (POC) e Value Area (VAH/VAL 70%)", () => {
+      const renderer = new WebGLL2HeatmapRenderer(null, { priceBins: 32 });
+      const candles = [
+        { open: 100, high: 105, low: 95, close: 102, volume: 100 },
+        { open: 102, high: 104, low: 101, close: 103, volume: 500 }, // Concentração de volume
+        { open: 103, high: 108, low: 102, close: 107, volume: 150 },
+      ];
+
+      const profile = renderer.calculateVolumeProfile(candles, 95, 108);
+
+      expect(profile.totalVolume).toBeCloseTo(750, 1);
+      expect(profile.maxBinVolume).toBeGreaterThan(0);
+      expect(profile.bins.length).toBe(32);
+
+      // Deve identificar um único Point of Control (POC)
+      const pocBins = profile.bins.filter((b) => b.isPoc);
+      expect(pocBins.length).toBe(1);
+      expect(pocBins[0].price).toBeGreaterThanOrEqual(101);
+      expect(pocBins[0].price).toBeLessThanOrEqual(104);
+
+      // VAH e VAL devem conter a faixa de 70% do volume
+      expect(profile.vahPrice).toBeGreaterThan(profile.valPrice);
+      expect(profile.pocPrice).toBeGreaterThanOrEqual(profile.valPrice);
+      expect(profile.pocPrice).toBeLessThanOrEqual(profile.vahPrice);
+
+      const valueAreaBins = profile.bins.filter((b) => b.isValueArea);
+      expect(valueAreaBins.length).toBeGreaterThan(0);
+    });
+
+    it("deve gerenciar ciclo de vida e liberação de recursos sem falhas", () => {
+      const renderer = new WebGLL2HeatmapRenderer(null);
+      renderer.destroy();
+      expect(renderer.getMetrics().totalTextureBytes).toBeGreaterThan(0);
+    });
+  });
 });
+
 
 

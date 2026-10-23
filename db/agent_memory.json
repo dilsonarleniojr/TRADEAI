@@ -1,6 +1,30 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Heatmap de Livro de Ofertas L2 em Textura 2D Dinâmica na GPU (gl.texSubImage2D) e Volume Profile com POC e Value Area",
+    "summary": "1) Textura 2D Dinâmica na GPU (webgl-l2-heatmap-renderer.ts): Alocação de textura RGBA historyLength x priceBins (256x128 texels) com canais dedicados para densidade de Bids (R), Asks (G), ordens Iceberg/absorções anômalas (B) e opacidade temporal (A). O upload para a VRAM é realizado incrementalmente por coluna atômica via gl.texSubImage2D (apenas 512 bytes por fatia) com zero alocação de memória no heap JavaScript; 2) Shaders de Reamostragem e Mapeamento de Cores: Vertex e fragment shaders GLSL ES 3.00 projetando a nuvem de liquidez como plano de fundo sob os candles com reamostragem circular no eixo do tempo (fract) e interpolação proporcional de preço (clamp), colorindo liquidez passiva em ciano/esmeralda (bids), âmbar/rosa (asks) e explosões em violeta neon para icebergs; 3) Volume Profile Dinâmico: Algoritmo vetorizado de quantização de volume por faixa de preço, com identificação exata do Point of Control (POC - bin de maior volume acumulado) e delimitação automática da Área de Valor (VAH / VAL a 70% do volume negociado); 4) Composição Integrada com WebGLCandlestickRenderer: Renderização da camada de liquidez L2 antes do draw call instanciado de candles, permitindo leitura visual de suportes e resistências de book sem qualquer queda de frametime; 5) HUD de Telemetria de Render Expandido: Indicador visual em tempo real 'L2 HEATMAP GPU' adicionado ao RenderTelemetryHUD; 6) Validação: 27 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 177 asserções) e compilação TypeScript limpa com 0 erros.",
+    "tags": [
+      "l2-heatmap-gpu",
+      "dynamic-texture-subimage",
+      "texSubImage2D",
+      "iceberg-order-detection",
+      "volume-profile-poc-vah-val",
+      "webgl2-texture-sampling",
+      "zero-alloc-depth-slice",
+      "desktop-performance-engine"
+    ],
+    "details": {
+      "heatmapRendererPath": "src/lib/performance/webgl-l2-heatmap-renderer.ts",
+      "webglCandlestickRendererPath": "src/lib/performance/webgl-candlestick-renderer.ts",
+      "renderTelemetryHudPath": "src/components/telemetry/render-telemetry-hud.tsx",
+      "testSuitePath": "tests/unit/desktop-performance-engine.test.ts",
+      "totalPassingTests": 27,
+      "totalAssertions": 177,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792525000000-l2-heatmap-volume-profile-gpu",
+    "timestamp": "2026-10-23T00:30:00.000Z"
+  },
     "title": "Aceleração GPU via OffscreenCanvas e WebGL 2.0 Instanced Rendering + IPC de Sub-microssegundo com SharedArrayBuffer e Atomics",
     "summary": "1) Pipeline WebGL 2.0 Instanciado (webgl-candlestick-renderer.ts): Shaders GLSL ES 3.00 com geometria unitária em 3 quads instanciados (Wick, Body e Volume Bar) desenhando de 5.000 a 50.000 candles e barras de volume simultâneos em um único draw call na GPU (gl.drawArraysInstanced) em menos de 0.2ms, descarregando 100% da tesselação geométrica da CPU; 2) Orquestração OffscreenCanvas (offscreen-chart-controller.ts): Delegação do canvas para thread secundária de renderização (Web Worker) através de transferControlToOffscreen() quando suportado, com fallback gracioso para WebGL 2.0 local ou Canvas 2D acelerado na thread principal; 3) IPC Sub-microssegundo e Lock-Free com Atomics (shared-memory-atomic-queue.ts): Fila circular zero-copy baseada em SharedArrayBuffer e primitivas de sincronização atômica (Atomics.load, Atomics.store, Atomics.add, Atomics.notify, Atomics.wait). Elimina o custo de serialização/cópia estruturada do postMessage tradicional para o streaming de cotações em tempo real; 4) Integração com Ingestão de Rede (binance-worker-manager.ts): Transmissão do SharedArrayBuffer para o worker da Binance na inicialização, gravando ticks diretamente no ring buffer compartilhado sob concorrência de alta frequência; 5) HUD de Telemetria de Render Expandido (render-telemetry-hud.tsx): Indicadores visuais em tempo real exibindo os selos 'GPU WEBGL2' e 'ATOMICS SAB'; 6) Validação Rigorosa: 23 testes unitários dedicados em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 155 asserções) e compilação limpa sem erros no TypeScript (tsc --noEmit).",
     "tags": [

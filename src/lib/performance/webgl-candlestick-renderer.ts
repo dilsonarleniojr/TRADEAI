@@ -5,6 +5,8 @@
  * Descarrega 100% da geometria para a GPU, liberando o Event Loop da CPU.
  */
 
+import { WebGLL2HeatmapRenderer } from "./webgl-l2-heatmap-renderer";
+
 export interface WebGLViewport {
   width: number;
   height: number;
@@ -17,6 +19,7 @@ export interface WebGLViewBounds {
   minPrice: number;
   maxPrice: number;
   maxVolume?: number;
+  showHeatmap?: boolean;
 }
 
 export interface WebGLCandleData {
@@ -36,6 +39,7 @@ export class WebGLCandlestickRenderer {
   private quadBuffer: WebGLBuffer | null = null;
   private instanceBufferA: WebGLBuffer | null = null;
   private instanceBufferB: WebGLBuffer | null = null;
+  private heatmapRenderer: WebGLL2HeatmapRenderer | null = null;
 
   // Uniform locations
   private uResolutionLoc: WebGLUniformLocation | null = null;
@@ -52,6 +56,10 @@ export class WebGLCandlestickRenderer {
     if (contextOrCanvas) {
       this.init(contextOrCanvas);
     }
+  }
+
+  public getHeatmapRenderer(): WebGLL2HeatmapRenderer | null {
+    return this.heatmapRenderer;
   }
 
   /**
@@ -277,6 +285,13 @@ export class WebGLCandlestickRenderer {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
+    // Inicializa renderizador de heatmap de liquidez L2 se WebGL estiver ativo
+    try {
+      this.heatmapRenderer = new WebGLL2HeatmapRenderer(gl);
+    } catch (err) {
+      console.warn("[WebGLCandlestickRenderer] Falha ao inicializar Heatmap L2:", err);
+    }
+
     return true;
   }
 
@@ -371,7 +386,17 @@ export class WebGLCandlestickRenderer {
     gl.clearColor(0.05, 0.07, 0.11, 0.0); // Transparente para composição sobre grid
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    // Draw call único para até 50.000 instâncias:
+    // 1. Renderiza plano de fundo: Heatmap de Livro de Ofertas L2 (se habilitado e ativo)
+    if (bounds.showHeatmap && this.heatmapRenderer) {
+      this.heatmapRenderer.render({
+        minPrice: bounds.minPrice,
+        maxPrice: bounds.maxPrice,
+        startIndex: bounds.startIndex,
+        visibleCount: bounds.visibleCount,
+      });
+    }
+
+    // 2. Draw call único para até 50.000 instâncias de candles e volume
     // 18 vértices (3 quads de 6 vértices) * candleCount
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 18, this.candleCount);
 
@@ -385,6 +410,11 @@ export class WebGLCandlestickRenderer {
   public destroy(): void {
     if (!this.gl) return;
     const gl = this.gl;
+
+    if (this.heatmapRenderer) {
+      this.heatmapRenderer.destroy();
+      this.heatmapRenderer = null;
+    }
 
     if (this.quadBuffer) gl.deleteBuffer(this.quadBuffer);
     if (this.instanceBufferA) gl.deleteBuffer(this.instanceBufferA);
