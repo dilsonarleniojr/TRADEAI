@@ -17,6 +17,7 @@ export interface WebGPUImbalanceMetrics extends GPUTFIImbalanceMetrics {
   hasSubgroupShuffle?: boolean;
   detectedIcebergs?: number;
   maxWallRatio?: number;
+  icebergBlueChannelProjected?: boolean;
   computeTimeUs?: number; // Tempo de execução em microssegundos
 }
 
@@ -72,7 +73,11 @@ struct UniformParams {
     midPrice: f32,
     decayLambda: f32,
     levelCount: u32,
-    pad: u32,
+    priceBins: u32,
+    minPrice: f32,
+    maxPrice: f32,
+    pad0: f32,
+    pad1: f32,
 }
 
 struct OutputReduction {
@@ -89,6 +94,7 @@ struct OutputReduction {
 @group(0) @binding(0) var<storage, read> levels: array<LevelData>;
 @group(0) @binding(1) var<uniform> params: UniformParams;
 @group(0) @binding(2) var<storage, read_write> reductionResult: OutputReduction;
+@group(0) @binding(3) var<storage, read_write> heatmapSlice: array<atomic<u32>>;
 
 // Apenas 4 slots de memória compartilhada para consolidar os líderes de cada subgroup
 var<workgroup> s_subgroupBid: array<f32, 4>;
@@ -109,11 +115,21 @@ fn main(
     var localAsk: f32 = 0.0;
     var localAbsorb: f32 = 0.0;
     var rawQty: f32 = 0.0;
+    var levelPrice: f32 = 0.0;
+    var levelSide: f32 = 0.0;
+
+    // 0. Limpeza atômica do slice da coluna de heatmap na VRAM (alinhado a 256 bytes = 64 u32 por bin)
+    if (local_id.x < params.priceBins) {
+        atomicStore(&heatmapSlice[local_id.x * 64u], 0u);
+    }
+    workgroupBarrier();
 
     // 1. Carregamento cooperativo de níveis L2
     if (gIdx < params.levelCount) {
         let level = levels[gIdx];
         rawQty = level.quantity;
+        levelPrice = level.price;
+        levelSide = level.side;
         let decay = exp(-params.decayLambda * level.distPct);
         let weighted = rawQty * decay;
 
@@ -143,14 +159,36 @@ fn main(
         }
     }
 
-    // 3. SIMD Wave Intrinsics: Redução em 1 ciclo no nível de Registradores de Hardware do Warp
+    // 3. Projeção Direta de Iceberg no Canal Azul (B) da Textura 2D do Heatmap L2 (rgba8unorm)
+    // Converte o preço contínuo do nível no bin discreto da textura e grava os canais na VRAM
+    // Canal R: Bid, Canal G: Ask, Canal B (bits 16..23): 0x00FF0000u (Iceberg), Canal A: 0xFF000000u (Opacity)
+    if (gIdx < params.levelCount && levelPrice >= params.minPrice && levelPrice <= params.maxPrice) {
+        let priceRange = max(params.maxPrice - params.minPrice, 0.0001);
+        let normalizedPrice = clamp((levelPrice - params.minPrice) / priceRange, 0.0, 1.0);
+        let bin = u32(clamp(floor(normalizedPrice * f32(params.priceBins - 1u)), 0.0, f32(params.priceBins - 1u)));
+
+        let isIceMask = select(0u, 0x00FF0000u, isIceberg > 0.5);
+        let alphaMask = 0xFF000000u;
+        let intensity = u32(clamp((rawQty / max(topOfBookQty, 0.001)) * 255.0, 10.0, 255.0));
+
+        var texelVal: u32 = 0u;
+        if (levelSide > 0.0) {
+            texelVal = intensity | isIceMask | alphaMask;
+        } else {
+            texelVal = (intensity << 8u) | isIceMask | alphaMask;
+        }
+
+        atomicOr(&heatmapSlice[bin * 64u], texelVal);
+    }
+
+    // 4. SIMD Wave Intrinsics: Redução em 1 ciclo no nível de Registradores de Hardware do Warp
     let waveBid = subgroupAdd(localBid);
     let waveAsk = subgroupAdd(localAsk);
     let waveAbsorb = subgroupAdd(localAbsorb);
     let waveIcebergs = subgroupAdd(isIceberg);
     let waveMaxWall = subgroupAdd(wallRatio * isIceberg);
 
-    // 4. Apenas a thread eleita (subgroupElect) escreve o resultado consolidado da wave
+    // 5. Apenas a thread eleita (subgroupElect) escreve o resultado consolidado da wave
     let subIdx = local_id.x / sub_size;
     if (subgroupElect()) {
         s_subgroupBid[subIdx] = waveBid;
@@ -163,7 +201,7 @@ fn main(
     // Única barreira necessária em todo o pipeline
     workgroupBarrier();
 
-    // 5. Thread líder (local_id == 0) consolida apenas as parciais dos líderes de subgroup
+    // 6. Thread líder (local_id == 0) consolida apenas as parciais dos líderes de subgroup
     if (local_id.x == 0u) {
         let numSubgroups = (64u + sub_size - 1u) / sub_size;
         var totalBid: f32 = 0.0;
@@ -207,7 +245,11 @@ struct UniformParams {
     midPrice: f32,
     decayLambda: f32,
     levelCount: u32,
-    pad: u32,
+    priceBins: u32,
+    minPrice: f32,
+    maxPrice: f32,
+    pad0: f32,
+    pad1: f32,
 }
 
 struct OutputReduction {
@@ -224,6 +266,7 @@ struct OutputReduction {
 @group(0) @binding(0) var<storage, read> levels: array<LevelData>;
 @group(0) @binding(1) var<uniform> params: UniformParams;
 @group(0) @binding(2) var<storage, read_write> reductionResult: OutputReduction;
+@group(0) @binding(3) var<storage, read_write> heatmapSlice: array<atomic<u32>>;
 
 const WORKGROUP_SIZE: u32 = 64u;
 
@@ -240,6 +283,12 @@ fn main(
 ) {
     let gIdx = global_id.x;
     let lIdx = local_id.x;
+
+    // 0. Limpeza atômica do slice da coluna de heatmap na VRAM
+    if (lIdx < params.priceBins) {
+        atomicStore(&heatmapSlice[lIdx * 64u], 0u);
+    }
+    workgroupBarrier();
 
     // 1. Carregamento cooperativo de níveis L2 com decaimento exponencial
     if (gIdx < params.levelCount) {
@@ -273,6 +322,27 @@ fn main(
         }
         s_icebergs[lIdx] = isIceberg;
         s_maxWall[lIdx] = wallRatio * isIceberg;
+
+        // Projeção Direta no Canal Azul (B) da Textura 2D do Heatmap L2
+        if (level.price >= params.minPrice && level.price <= params.maxPrice) {
+            let priceRange = max(params.maxPrice - params.minPrice, 0.0001);
+            let normalizedPrice = clamp((level.price - params.minPrice) / priceRange, 0.0, 1.0);
+            let bin = u32(clamp(floor(normalizedPrice * f32(params.priceBins - 1u)), 0.0, f32(params.priceBins - 1u)));
+
+            let isIceMask = select(0u, 0x00FF0000u, isIceberg > 0.5);
+            let alphaMask = 0xFF000000u;
+            let topOfBook = max(levels[0].quantity, 0.001);
+            let intensity = u32(clamp((level.quantity / topOfBook) * 255.0, 10.0, 255.0));
+
+            var texelVal: u32 = 0u;
+            if (level.side > 0.0) {
+                texelVal = intensity | isIceMask | alphaMask;
+            } else {
+                texelVal = (intensity << 8u) | isIceMask | alphaMask;
+            }
+
+            atomicOr(&heatmapSlice[bin * 64u], texelVal);
+        }
     } else {
         s_bidVol[lIdx] = 0.0;
         s_askVol[lIdx] = 0.0;
@@ -320,6 +390,8 @@ export interface WebGPUComputeOptions {
   midPrice?: number;
   readbackToCpu?: boolean;       // default: true. Se false, elimina 100% de staging e mapAsync
   targetHeatmapColumn?: number;  // Se fornecido, aciona copyBufferToTexture no mesmo command buffer
+  minPrice?: number;             // Faixa mínima de preço para quantização de bins na textura
+  maxPrice?: number;             // Faixa máxima de preço para quantização de bins na textura
 }
 
 export class WebGPUOrderBookComputeEngine {
@@ -368,6 +440,14 @@ export class WebGPUOrderBookComputeEngine {
    */
   public hasSubgroupShuffle(): boolean {
     return this.hasSubgroupsSupport;
+  }
+
+  /**
+   * Informa se a projeção direta de ordens iceberg no Canal Azul (B) da textura de Heatmap L2
+   * está ativa e suportada na VRAM da GPU via storage buffer atômico e copyBufferToTexture.
+   */
+  public hasDirectIcebergProjection(): boolean {
+    return this.isInitialized && this.heatmapSliceBuffer !== null;
   }
 
   /**
@@ -445,9 +525,9 @@ export class WebGPUOrderBookComputeEngine {
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       });
 
-      // UniformParams: 4 floats/uints (16 bytes) [midPrice, decayLambda, levelCount, pad]
+      // UniformParams: 8 floats/uints (32 bytes) [midPrice, decayLambda, levelCount, priceBins, minPrice, maxPrice, pad0, pad1]
       this.paramsBuffer = this.device.createBuffer({
-        size: 16,
+        size: 32,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       });
 
@@ -463,18 +543,25 @@ export class WebGPUOrderBookComputeEngine {
         usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
       });
 
-      // 4. Criação do Bind Group
+      // 4. Inicializa Textura de Heatmap e Slice Buffer em VRAM antes da criação do BindGroup
+      this.initHeatmapTexture(this.heatmapHistoryLength, this.heatmapPriceBins);
+      if (!this.heatmapSliceBuffer) {
+        this.heatmapSliceBuffer = this.device.createBuffer({
+          size: this.heatmapPriceBins * 256,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+        });
+      }
+
+      // 5. Criação do Bind Group com suporte à projeção direta no Canal Azul (B) do Heatmap L2
       this.bindGroup = this.device.createBindGroup({
         layout: this.pipeline.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: { buffer: this.levelsBuffer } },
           { binding: 1, resource: { buffer: this.paramsBuffer } },
           { binding: 2, resource: { buffer: this.resultBuffer } },
+          { binding: 3, resource: { buffer: this.heatmapSliceBuffer } },
         ],
       });
-
-      // 5. Inicializa Textura de Heatmap e Buffer de Fatias em VRAM para copyBufferToTexture
-      this.initHeatmapTexture(this.heatmapHistoryLength, this.heatmapPriceBins);
 
       this.isInitialized = true;
       return true;
@@ -637,7 +724,32 @@ export class WebGPUOrderBookComputeEngine {
         // Escreve dados na VRAM via queue.writeBuffer (Zero GC)
         this.device.queue.writeBuffer(this.levelsBuffer, 0, inputFloats);
 
-        const paramsData = new Float32Array([autoMidPrice, this.lambdaDecay, count, 0]);
+        let minP = options.minPrice;
+        let maxP = options.maxPrice;
+        if (minP === undefined || maxP === undefined) {
+          minP = Infinity;
+          maxP = -Infinity;
+          for (let i = 0; i < count; i++) {
+            const p = levels[i].price;
+            if (p > 0) {
+              if (p < minP) minP = p;
+              if (p > maxP) maxP = p;
+            }
+          }
+          if (!isFinite(minP) || minP <= 0) minP = autoMidPrice * 0.98;
+          if (!isFinite(maxP) || maxP <= minP) maxP = autoMidPrice * 1.02;
+        }
+
+        const paramsData = new Float32Array([
+          autoMidPrice,
+          this.lambdaDecay,
+          count,
+          this.heatmapPriceBins,
+          minP,
+          maxP,
+          0,
+          0,
+        ]);
         this.device.queue.writeBuffer(this.paramsBuffer, 0, paramsData);
 
         // Despacha o Compute Pass
@@ -676,6 +788,7 @@ export class WebGPUOrderBookComputeEngine {
             hasSubgroupShuffle: this.hasSubgroupsSupport,
             detectedIcebergs: 0,
             maxWallRatio: 1.0,
+            icebergBlueChannelProjected: true,
           };
         }
 
@@ -713,6 +826,7 @@ export class WebGPUOrderBookComputeEngine {
           hasSubgroupShuffle: this.hasSubgroupsSupport,
           detectedIcebergs,
           maxWallRatio,
+          icebergBlueChannelProjected: true,
         };
       } catch (err) {
         console.warn("[WebGPUOrderBookComputeEngine] Erro no compute pass:", err);

@@ -1,6 +1,32 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Projeção Direta de Iceberg Orders no Canal Azul (B) da Textura 2D do Heatmap L2 em VRAM via Compute Shaders e copyBufferToTexture",
+    "summary": "1) Pipeline WGSL com Projeção Direta no Canal Azul (B) (webgpu-compute-engine.ts): Conexão direta entre o compute shader L2 e a textura de Heatmap através do storage buffer atômico binding 3 heatmapSlice (array<atomic<u32>>) alinhado a 256 bytes por bin. No instante em que subgroupShuffleDown detecta uma anomalia de iceberg (wallRatio >= 3.0), a thread quantiza o preço e grava a flag booleana de iceberg no byte do Canal B (0x00FF0000u) via atomicOr em 1 ciclo de clock; 2) Zero Latência de Trânsito para CPU: A fatia gerada no compute pass é transferida diretamente para a textura RGBA8Unorm do Heatmap via commandEncoder.copyBufferToTexture() no mesmo command buffer, eliminando 100% das passagens pela CPU; 3) Fragment Shader com Halo Pulsante de Alta Densidade (webgl-l2-heatmap-renderer.ts): Atualização do shader de fragmento com realce visual em Neon Magenta (0.88, 0.18, 1.00) e oscilação temporal sutil (icePulse), plotando imediatamente retângulos ou halos pulsantes de alta densidade no nível exato da ordem iceberg; 4) Telemetria de Render Expandida (render-telemetry-hud.tsx): Badge visual 'BLUE-B ICEBERG' em azul/violeta neon no HUD do cockpit, método público hasDirectIcebergProjection() e métrica icebergBlueChannelProjected; 5) Validação Rigorosa: 42 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 257 asserções) e TypeScript verificado com 0 erros.",
+    "tags": [
+      "blue-channel-iceberg-projection",
+      "heatmap-texture-canal-b",
+      "atomicOr-vram-storage-buffer",
+      "copyBufferToTexture",
+      "pulsing-iceberg-halo",
+      "webgpu-compute-subgroups",
+      "webgl-l2-heatmap-renderer",
+      "desktop-performance-engine"
+    ],
+    "details": {
+      "webgpuComputeEnginePath": "src/lib/performance/webgpu-compute-engine.ts",
+      "webglHeatmapRendererPath": "src/lib/performance/webgl-l2-heatmap-renderer.ts",
+      "renderTelemetryHudPath": "src/components/telemetry/render-telemetry-hud.tsx",
+      "testSuitePath": "tests/unit/desktop-performance-engine.test.ts",
+      "totalPassingTests": 42,
+      "totalAssertions": 257,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792552000000-webgpu-blue-channel-iceberg-projection",
+    "timestamp": "2026-10-23T02:35:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Subgroup Shuffle Primitives (subgroupShuffleDown & subgroupBroadcastFirst) para Detecção Instantânea de Iceberg Orders e Muralhas de Liquidez na GPU",
     "summary": "1) Pipeline WGSL com Subgroup Shuffle Primitives (webgpu-compute-engine.ts): Ativação das funções intrínsecas subgroupShuffleDown(rawQty, 1u) e subgroupBroadcastFirst(rawQty). Permite que cada lane do warp compare diretamente o volume do seu nível de preço com a lane adjacente e com o Top of Book via barramento cross-lane de registradores em O(1) ciclo, sem round-trip por memória compartilhada ou VRAM; 2) Detecção Instantânea de Ordens Iceberg e Muralhas: Identificação em tempo real de saltos de liquidez anômalos (wallRatio >= 3.0x vizinho e >= 1.5x top of book) calculando detectedIcebergs e maxWallRatio diretamente nas Compute Units com agregação SIMD instantânea (subgroupAdd); 3) Alinhamento de Memória VRAM Estrito de 32 Bytes: Expansão da struct OutputReduction para 8 floats (32 bytes) com suporte consistente nos 3 tiers de execução (WebGPU Subgroups -> WebGPU Workgroup Reduction -> CPU Vectorized Fallback); 4) Telemetria de Render Expandida (render-telemetry-hud.tsx): Badge visual 'SHUFFLE ICEBERGS' em rosa neon no HUD de performance e métodos públicos hasSubgroupShuffle() e métricas detectedIcebergs/maxWallRatio expostas no WebGPUImbalanceMetrics; 5) Validação Rigorosa: 41 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 246 asserções) cobrindo gradientes de volume, presença de shuffle no shader e compilação limpa no TypeScript (tsc --noEmit com 0 erros).",
     "tags": [

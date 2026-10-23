@@ -146,14 +146,17 @@ export class WebGLL2HeatmapRenderer {
       // Color mapping:
       // Bids (Cyan/Emerald): vec3(0.06, 0.78, 0.52)
       // Asks (Amber/Rose): vec3(0.94, 0.32, 0.25)
-      // Iceberg (Neon Violet): vec3(0.72, 0.18, 0.95)
+      // Iceberg (Projeção Direta Canal B - Neon Magenta / Halo Pulsante de Alta Densidade):
+      // Quando iceberg > 0.05, gera halo pulsante no nível de preço exato sem custo para CPU
+      float isIce = step(0.05, iceberg);
+      float icePulse = 1.8 + 0.35 * sin(uCoord * 62.8318); // 10 oscilações no histórico temporal
 
       vec3 bidColor = vec3(0.06, 0.78, 0.52) * bidIntensity;
       vec3 askColor = vec3(0.94, 0.32, 0.25) * askIntensity;
-      vec3 icebergColor = vec3(0.72, 0.18, 0.95) * iceberg * 1.5;
+      vec3 icebergColor = vec3(0.88, 0.18, 1.00) * (isIce * icePulse);
 
       vec3 finalColor = bidColor + askColor + icebergColor;
-      float totalDensity = clamp(bidIntensity + askIntensity + iceberg, 0.0, 1.0);
+      float totalDensity = clamp(bidIntensity + askIntensity + (isIce * 1.0), 0.0, 1.0);
 
       fragColor = vec4(finalColor, totalDensity * u_alpha);
     }`;

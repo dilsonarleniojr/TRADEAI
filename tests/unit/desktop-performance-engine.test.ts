@@ -889,10 +889,18 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       expect(WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER).toContain("detectedIcebergs");
       expect(WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER).toContain("maxWallRatio");
 
+      // Projeção Direta no Canal Azul (B) da Textura 2D do Heatmap L2
+      expect(WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER).toContain("heatmapSlice: array<atomic<u32>>");
+      expect(WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER).toContain("0x00FF0000u");
+      expect(WGSL_SUBGROUPS_ORDER_BOOK_IMBALANCE_SHADER).toContain("atomicOr(&heatmapSlice");
+
       // Shader padrão não deve conter enable subgroups para compatibilidade retroativa
       expect(WGSL_ORDER_BOOK_IMBALANCE_SHADER).not.toContain("enable subgroups;");
       expect(WGSL_ORDER_BOOK_IMBALANCE_SHADER).toContain("workgroupBarrier()");
       expect(WGSL_ORDER_BOOK_IMBALANCE_SHADER).toContain("detectedIcebergs");
+      expect(WGSL_ORDER_BOOK_IMBALANCE_SHADER).toContain("heatmapSlice: array<atomic<u32>>");
+      expect(WGSL_ORDER_BOOK_IMBALANCE_SHADER).toContain("0x00FF0000u");
+      expect(WGSL_ORDER_BOOK_IMBALANCE_SHADER).toContain("atomicOr(&heatmapSlice");
     });
 
     it("deve detectar e ativar pipeline SIMD Subgroups com Shuffle Primitives quando adapter expuser 'subgroups'", async () => {
@@ -1029,6 +1037,52 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       expect(flatMetrics.maxWallRatio).toBe(1.0);
 
       engine.destroy();
+    });
+
+    it("deve gerenciar e ativar projeção direta de Iceberg Orders no Canal Azul (B) da textura VRAM", async () => {
+      const origNavigator = (globalThis as any).navigator;
+      let boundEntries: any[] = [];
+
+      const mockDevice = {
+        createShaderModule: () => ({}),
+        createComputePipeline: () => ({
+          getBindGroupLayout: () => ({}),
+        }),
+        createBuffer: () => ({ destroy: () => {} }),
+        createTexture: () => ({ destroy: () => {} }),
+        createBindGroup: (desc: any) => {
+          boundEntries = desc.entries || [];
+          return {};
+        },
+        destroy: () => {},
+      };
+
+      const mockAdapter = {
+        features: { has: () => true },
+        requestDevice: async () => mockDevice,
+      };
+
+      (globalThis as any).navigator = {
+        gpu: { requestAdapter: async () => mockAdapter },
+      };
+
+      try {
+        const engine = new WebGPUOrderBookComputeEngine(64);
+        expect(engine.hasDirectIcebergProjection()).toBe(false);
+
+        const initialized = await engine.init();
+        expect(initialized).toBe(true);
+        expect(engine.hasDirectIcebergProjection()).toBe(true);
+
+        // Deve conter binding 3 (heatmapSliceBuffer) no bindGroup
+        const sliceBinding = boundEntries.find((e) => e.binding === 3);
+        expect(sliceBinding).toBeDefined();
+
+        engine.destroy();
+        expect(engine.hasDirectIcebergProjection()).toBe(false);
+      } finally {
+        (globalThis as any).navigator = origNavigator;
+      }
     });
   });
 });
