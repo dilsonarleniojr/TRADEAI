@@ -7,18 +7,32 @@ import { useShallow } from "zustand/react/shallow";
 import { feedWatchdog } from "@/lib/websocket/feed-watchdog";
 import { reconnectionManager } from "@/lib/websocket/reconnection-manager";
 import { flightRecorder } from "@/lib/telemetry/flight-recorder";
+import { TickCoalescer } from "@/lib/performance/tick-coalescer";
+import { MarketDataStreamParser } from "@/lib/performance/market-data-stream-parser";
 
 let globalSocket: Socket | null = null;
 let globalNativeWs: WebSocket | null = null;
 let nativeWsReconnectTimer: any = null;
 let activeHookCount = 0;
 
-// Desacoplamento de streaming: buffer de segundo plano (document.hidden) e buffer de taxa controlada (foreground)
+// Desacoplamento de streaming: buffer de segundo plano (document.hidden) e despachante V-Sync de alta frequência (foreground)
 const backgroundTickerBuffer = new Map<string, TickerData>();
 let backgroundFlushTimer: any = null;
-const foregroundTickerBuffer = new Map<string, TickerData>();
-let foregroundFlushTimer: any = null;
 let isDocumentHidden = typeof document !== "undefined" ? document.hidden : false;
+
+// TickCoalescer alinhado ao V-Sync da tela (requestAnimationFrame / 60-144 FPS)
+// Elimina saturação de Event Loop e consolida rajadas de WebSocket em 1 único render por frame
+const vSyncCoalescer = new TickCoalescer((batchMap) => {
+  const batch: Record<string, TickerData> = {};
+  for (const [sym, ticker] of batchMap.entries()) {
+    batch[sym] = ticker as TickerData;
+  }
+  const store = useCryptoStore.getState();
+  store.updateTickersBatch(batch);
+  const updatedStore = useCryptoStore.getState();
+  updatedStore.updateBotPnls(updatedStore.tickers);
+  updatedStore.updateBotPositionsRealtime(updatedStore.tickers);
+});
 
 function flushBackgroundTickers() {
   if (backgroundFlushTimer) {
@@ -32,26 +46,6 @@ function flushBackgroundTickers() {
     batch[sym] = ticker;
   }
   backgroundTickerBuffer.clear();
-
-  const store = useCryptoStore.getState();
-  store.updateTickersBatch(batch);
-  const updatedStore = useCryptoStore.getState();
-  updatedStore.updateBotPnls(updatedStore.tickers);
-  updatedStore.updateBotPositionsRealtime(updatedStore.tickers);
-}
-
-function flushForegroundTickers() {
-  if (foregroundFlushTimer) {
-    clearTimeout(foregroundFlushTimer);
-    foregroundFlushTimer = null;
-  }
-  if (foregroundTickerBuffer.size === 0) return;
-
-  const batch: Record<string, TickerData> = {};
-  for (const [sym, ticker] of foregroundTickerBuffer.entries()) {
-    batch[sym] = ticker;
-  }
-  foregroundTickerBuffer.clear();
 
   const store = useCryptoStore.getState();
   store.updateTickersBatch(batch);
@@ -74,12 +68,8 @@ function handleIncomingTicker(sym: string, ticker: TickerData) {
     return;
   }
 
-  // Aba em primeiro plano: buffer com conflação O(1) e taxa controlada (50ms = 20 FPS)
-  // Evita saturação do Event Loop da Main Thread e engasgos de cliques e inputs na UI Desktop
-  foregroundTickerBuffer.set(sym, ticker);
-  if (!foregroundFlushTimer) {
-    foregroundFlushTimer = setTimeout(flushForegroundTickers, 50);
-  }
+  // Aba em primeiro plano: coalescência atômica alinhada ao V-Sync nativo da GPU
+  vSyncCoalescer.enqueue(ticker);
 }
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
@@ -88,7 +78,7 @@ if (typeof window !== "undefined" && typeof document !== "undefined") {
     if (!isDocumentHidden) {
       // Aba voltou a ficar em foco: descarrega imediatamente os tickers pendentes
       flushBackgroundTickers();
-      flushForegroundTickers();
+      vSyncCoalescer.flushNow();
     }
   });
 }
@@ -152,21 +142,19 @@ function startNativeWsFallback() {
 
     ws.onmessage = (event) => {
       try {
-        const payload = JSON.parse(event.data);
-        const data = payload?.data;
-        if (!data || !data.s) return;
-
-        const sym = data.s.toUpperCase();
-        handleIncomingTicker(sym, {
-          symbol: sym,
-          price: parseFloat(data.c),
-          priceChange: parseFloat(data.p),
-          priceChangePercent: parseFloat(data.P),
-          high: parseFloat(data.h),
-          low: parseFloat(data.l),
-          volume: parseFloat(data.v),
-          quoteVolume: parseFloat(data.q),
-        });
+        const update = MarketDataStreamParser.parseMessage(event.data);
+        if (update && update.type === "TICKER") {
+          handleIncomingTicker(update.symbol, {
+            symbol: update.symbol,
+            price: update.price,
+            priceChange: update.priceChange,
+            priceChangePercent: update.priceChangePercent,
+            high: update.high,
+            low: update.low,
+            volume: update.volume,
+            quoteVolume: update.quoteVolume,
+          });
+        }
       } catch {}
     };
 
@@ -396,3 +384,5 @@ export function useBinanceStream() {
 
   return { getSocket };
 }
+
+export { vSyncCoalescer };

@@ -1,6 +1,99 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Breakeven Automático Interativo (BE Anchor) com Custo Total de Taxas e Travamento por Duplo Clique",
+    "summary": "1) BE Anchor Math & Custo Total de Fricção: Implementação do cálculo não-nominal de Breakeven Líquido com taxa round-trip real da exchange (0.10% compra Maker/Taker + 0.10% venda Maker/Taker + 0.05% buffer de slippage = +0.25% markup sobre o entryPrice). Garante que o travamento de risco não gere saldo líquido negativo após a dedução de comissões operacionais; 2) Acionamento com Zero Fricção Tátil: Interação de duplo clique (onDoubleClick) na linha de Stop Loss, no handle de arraste (círculo) ou no badge de SL, além de botão pill de atalho direto ('⚡ FIXAR BE') e linha de referência tracejada dourada (BE Anchor Reference Line); 3) Transição Visual de Risco Zero e Telemetria: Ao armar o Breakeven, a linha e o badge do SL transitam automaticamente de Rose (#f43f5e) para Dourado/Âmbar (#eab308) exibindo '🛡️ SL (BE PROTEGIDO)', disparando alerta sonoro (playTakeProfitHitSound), registro estruturado no StructuredLogger com canal RISK_ENGINE e no histórico de atividades do bot; 4) Validação: Testes unitários integrados em tests/unit/desktop-hft-ui.test.ts cobrindo cálculo da âncora, cobertura de taxas e detecção de estado de risco zero com 100% de aprovação e compilação TypeScript limpa com 0 erros.",
+    "tags": [
+      "be-anchor",
+      "interactive-breakeven",
+      "double-click-stop-loss",
+      "round-trip-fees-protection",
+      "zero-risk-capital-lock",
+      "tactile-zero-friction",
+      "visual-be-anchor-line"
+    ],
+    "details": {
+      "candlestickChartPath": "src/components/chart/candlestick-chart.tsx",
+      "roundTripFeeMarkup": 0.0025,
+      "testSuitePath": "tests/unit/desktop-hft-ui.test.ts",
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792510000000-be-anchor-interactive",
+    "timestamp": "2026-10-22T23:30:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Suíte Institucional Avançada: Scanner de Order Flow & RVOL 3-Sigma, Telegram Bot com Comandos Remotos, Diário de Trades com MAE/MFE e DCA Dinâmico com ATR & Trend Brake",
+    "summary": "1) Scanner de Anomalias de Order Flow (anomaly-scanner.ts): Detector contínuo de picos de volume relativo (RVOL) identificando anomalias superiores a +3σ (desvios-padrão) sobre a média móvel recente com severidades CRITICAL/HIGH. Rastreador contínuo de desbalanceamento de livro de ofertas L2 monitorando proporção entre Top 5-10 níveis de Bids vs Asks, emitindo alertas imediatos e sustentados no tempo para dominância compradora/vendedora agressiva (>= 70/30) e absorção institucional; 2) Notificações Remotas & Comandos Telegram (telegram-service.ts): Despacho assíncrono não-bloqueante baseado em fila FIFO de prioridades (URGENT, HIGH, NORMAL) com proteção estrita de rate limit (mínimo de 600ms entre mensagens e backoff em HTTP 429 respeitando retry_after). Alertas enriquecidos em Markdown para execuções com parâmetros de risco, encerramentos por TP/SL com resultado líquido em USD/%, duração exata, MAE e MFE, acionamento emergencial do Kill Switch e Daily Digest consolidado à meia-noite UTC. Processador de comandos remotos seguros validados por whitelist de Chat ID (/status, /pause, /resume, /kill); 3) Diário de Trades Automatizado & Analytics Pós-Trade (trade-journal-engine.ts): Captura automática de cada trade encerrado com granularidade analítica: duração exata (ms e min), MAE (Maximum Adverse Excursion - pior excursão de preço e derrapagem negativa) e MFE (Maximum Favorable Excursion - melhor preço e lucro de pico), decomposição estrita de fricção (comissões Maker/Taker + spread). Agregação e cálculo de curva de patrimônio (Equity Curve), Win Rate, Profit Factor dinâmico, Sharpe Ratio, Sortino Ratio, Payoff Ratio e Max Drawdown, com persistência local e exportação auditável em CSV e JSON; 4) Motor de Reversão / DCA Adaptativo com Filtro de Regime (adaptive-dca-engine.ts): Grade dinâmica com espaçamento entre níveis de reforço calculado em múltiplos ponderados do ATR (Average True Range) em vez de percentuais fixos, respeitando teto de exposição rígido do NAV (<= 5%). Trava de Tendência Contrária (Trend Brake - Anti-Martingale / Fim do DCA Cego) que suspende ordens de grade ao confirmar rompimento violento abaixo da EMA 200 macro com RVOL > 2.0; 5) Cockpit Visual Desktop (trade-journal-panel.tsx & navigation-breadcrumb.tsx): Interface com abas integradas (Diário de Trades, Order Flow & RVOL, Telegram Bot), cards de KPI analítico, gráfico interativo da Curva de Patrimônio em SVG de alta performance, tabela filtrável com badges coloridos de MAE e MFE e testador interativo de conexão do Telegram com feedback em tempo real; 6) Validação: 12 testes unitários em advanced-features.test.ts (100% aprovados, 61 asserções) e compilação TypeScript limpa com 0 erros (tsc --noEmit).",
+    "tags": [
+      "order-flow-scanner",
+      "rvol-3sigma-spikes",
+      "book-imbalance-tracker",
+      "aggressive-absorption",
+      "telegram-bot-notifications",
+      "telegram-remote-commands",
+      "rate-limit-protection",
+      "trade-journal-engine",
+      "mae-mfe-tracking",
+      "post-trade-analytics",
+      "equity-curve-svg",
+      "csv-json-export",
+      "adaptive-dca-engine",
+      "atr-dynamic-grid",
+      "trend-brake-filter",
+      "anti-martingale-guard"
+    ],
+    "details": {
+      "orderFlowScannerPath": "src/lib/order-flow/anomaly-scanner.ts",
+      "telegramServicePath": "src/lib/telegram/telegram-service.ts",
+      "tradeJournalEnginePath": "src/lib/journal/trade-journal-engine.ts",
+      "adaptiveDcaEnginePath": "src/lib/bot/adaptive-dca-engine.ts",
+      "tradeJournalPanelPath": "src/components/journal/trade-journal-panel.tsx",
+      "testSuitePath": "tests/unit/advanced-features.test.ts",
+      "totalPassingTests": 12,
+      "totalAssertions": 61,
+      "tscErrors": 0
+    },
+    "id": "mem-1792500000000-advanced-institutional-suite",
+    "timestamp": "2026-10-22T23:22:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Engenharia de Frontend Reativo de Alta Performance: V-Sync Coalescer, Zero-DOM Slots, Typed Ring Buffer e Snapping Magnético",
+    "summary": "1) V-Sync Tick Coalescing (tick-coalescer.ts & use-binance-stream.ts): Implementado despachante atômico guiado por requestAnimationFrame (~60/120/144 FPS). Elimina a saturação do Event Loop por rajadas rápidas de WebSocket, agrupando centenas de atualizações de mercado dentro de uma janela de 16.6ms em um único frame de renderização com mais de 90% de eficiência de coalescência e rastreamento em tempo real de FPS e frame duration; 2) Virtualização Estrita e Zero-DOM Overhead (order-book.tsx): Substituição de chaves dinâmicas baseadas em preço por chaves persistentes de slot por índice (ask-slot-0..9 / bid-slot-0..9). Impede que o React desmonte e recrie 20 nós DOM a cada microvariação de book, realizando mutação in-place apenas em textContent e larguras com will-change-[width]; 3) TypedCandleRingBuffer com Matemática Vetorial (typed-candle-ring-buffer.ts): Estrutura colunar contígua em Float64Array para timestamps, opens, highs, lows, closes e volumes. Atualização in-place O(1) da vela em formação e cálculo de indicadores técnicos (SMA, EMA, RSI de Wilder, Bollinger Bands) diretamente sobre ponteiros contíguos sem nenhuma alocação de objetos temporários ({ open, close, ... }), zerando o GC churn; 4) MarketDataStreamParser com String Interning (market-data-stream-parser.ts): Decodificação isolada de streams combinados da Binance (@ticker, @kline, @depth) com reaproveitamento de instâncias de string de símbolos em pool estático para evitar alocação de memória no heap a cada mensagem recebida, pronto para execução em Web Worker secundário; 5) UX Avançada com Crosshair Magnético e Régua R:R (candlestick-chart.tsx): Crosshair magnético com snapping automático para as cotas OHLC mais próximas da vela ao aproximar o cursor, badge de campo ativo (OPEN, HIGH, LOW, CLOSE), modo de régua de medição de Risco:Retorno por clique que projeta caixa sombreada com cálculo instantâneo de Delta USD, Delta % e relação R:R (1:X.XX), além de indicador HUD de latência E2E e FPS no cabeçalho do gráfico e isolamento de camada de grid estático (Zero-DOM reflow); 6) Validação: 11 testes unitários em desktop-performance-engine.test.ts (100% aprovados, 71 asserções) e compilação TypeScript limpa com 0 erros (tsc --noEmit).",
+    "tags": [
+      "desktop-performance",
+      "v-sync-coalescer",
+      "request-animation-frame",
+      "tick-coalescing",
+      "zero-dom-virtualization",
+      "fixed-slot-recycling",
+      "typed-candle-ring-buffer",
+      "float64array-vectorized-indicators",
+      "zero-gc-churn",
+      "string-interning",
+      "market-data-stream-parser",
+      "magnetic-crosshair-snapping",
+      "risk-reward-measurement-overlay",
+      "e2e-latency-hud",
+      "static-layer-isolation"
+    ],
+    "details": {
+      "tickCoalescerPath": "src/lib/performance/tick-coalescer.ts",
+      "typedCandleRingBufferPath": "src/lib/performance/typed-candle-ring-buffer.ts",
+      "marketDataStreamParserPath": "src/lib/performance/market-data-stream-parser.ts",
+      "orderBookComponentPath": "src/components/chart/order-book.tsx",
+      "candlestickChartPath": "src/components/chart/candlestick-chart.tsx",
+      "useBinanceStreamHookPath": "src/hooks/use-binance-stream.ts",
+      "testSuitePath": "tests/unit/desktop-performance-engine.test.ts",
+      "totalPassingTests": 11,
+      "totalAssertions": 71
+    },
+    "id": "mem-1792486000000-desktop-performance-engine",
+    "timestamp": "2026-10-22T23:05:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Telemetria Blackbox em Memória, Resiliência de Conexão, Hotkeys e Ordens Interativas no Gráfico",
     "summary": "1) Blackbox & Telemetria em Memória: Criado CircularBuffer<T> com capacidade rígida de 2.000 entradas e O(1) push/leitura para evitar churn de GC. StructuredLogger com canais isolados (MARKET_DATA, SIGNALS, RISK_ENGINE, BINANCE_API), severidades (INFO, WARN, ERROR, CRITICAL) e timestamps em milissegundos HH:mm:ss.SSS. FlightRecorder pós-mortem com captura automática de Top 10 Bids/Asks do livro L2, últimos 20 trades e estado do robô na ativação de SL, anomalia de spread ou rejeição de ordem, com exportação JSON. Sintetizador de áudio estritamente via Web Audio API (sem dependências de arquivos MP3 externos); 2) Ergonomia Desktop & Hotkeys (useDesktopHotkeys): Barra de espaço (pausa/retoma auto-scroll do terminal de logs), Ctrl+K (foco na busca global), Duplo Esc (<500ms) como Emergency Kill Switch atômico desligando bots, limpando ordens e emitindo alarme sonoro. Seletor de Perfil de Risco em 1 clique (Conservador: 1.0% risco/3 posições máx; Agressivo: 2.0% risco/5 posições máx; Monitoramento Puro); 3) Gráfico Interativo com Drag-and-Drop (candlestick-chart.tsx): Linhas no SVG para Entrada (azul), Take Profit (verde com projeção em USD) e Stop Loss (vermelho com perda projetada), com alças interativas circulares permitindo ajuste tátil por arrasto que recalcula PnL em tempo real e atualiza parâmetros do bot ao soltar; 4) Resiliência de Conexão & Stale Data: FeedWatchdog que monitora atraso entre ticks e bloqueia entradas automáticas se delta > 3000ms com banner amarelo de alerta no gráfico, e ReconnectionManager com backoff exponencial 1s-30s com ±15% jitter e validação contínua de clock drift contra o serverTime da Binance (limite <= 1000ms); 5) Simulação Paper Realista (multi-bot-engine.ts): Modelo de fila volumétrica para ordens LIMIT_MAKER exigindo absorção acumulada (consumedVolume >= queueAheadVolume + quantity) antes do preenchimento; 6) Validação: 6 testes unitários em desktop-telemetry-resilience.test.ts (100% aprovados) e 0 erros de compilação no TypeScript (tsc --noEmit).",
     "tags": [

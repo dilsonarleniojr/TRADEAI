@@ -12,6 +12,51 @@ import { latencyTelemetry } from "./latency-telemetry";
 import { flightRecorder } from "@/lib/telemetry/flight-recorder";
 import { structuredLogger } from "@/lib/telemetry/structured-logger";
 import { playOrderExecutedSound, playTakeProfitHitSound, playStopLossOrKillSwitchSound } from "@/lib/sound/sound-effects";
+import { tradeJournalEngine } from "@/lib/journal/trade-journal-engine";
+import { telegramNotificationService } from "@/lib/telegram/telegram-service";
+import { orderFlowAnomalyScanner } from "@/lib/order-flow/anomaly-scanner";
+
+// Registro dos Comandos Remotos do Telegram (/status, /pause, /resume, /kill)
+telegramNotificationService.registerCommandHandlers({
+  onStatus: () => {
+    const s = useCryptoStore.getState();
+    const activeBots = s.bots.filter((b) => b.active);
+    const openPositions = s.bots.filter((b) => b.position && b.position.quantity > 0);
+    const totalUnrealizedPnl = openPositions.reduce((acc, b) => acc + (b.position?.unrealizedPnl || 0), 0);
+    const cbStatus = getCircuitBreakerStatus();
+    return {
+      activeBotsCount: activeBots.length,
+      openPositionsCount: openPositions.length,
+      totalUnrealizedPnl: parseFloat(totalUnrealizedPnl.toFixed(2)),
+      dailyRealizedPnl: parseFloat(s.portfolio.realizedPnl?.toFixed(2) || "0"),
+      circuitBreakerActive: cbStatus.tripped,
+      emergencyMode: cbStatus.tripped,
+    };
+  },
+  onPause: () => {
+    const s = useCryptoStore.getState();
+    s.bots.forEach((b) => {
+      if (b.active) {
+        s.updateBot(b.id, { active: false, status: "idle" });
+      }
+    });
+    s.addBotLog({ message: "⏸️ [Telegram Remoto] Todos os robôs foram pausados pelo operador.", type: "warning" });
+  },
+  onResume: () => {
+    const s = useCryptoStore.getState();
+    s.bots.forEach((b) => {
+      s.updateBot(b.id, { active: true, status: "scanning" });
+    });
+    s.addBotLog({ message: "▶️ [Telegram Remoto] Operação dos robôs retomada pelo operador.", type: "info" });
+  },
+  onKillSwitch: (reason: string) => {
+    const s = useCryptoStore.getState();
+    s.bots.forEach((b) => {
+      s.updateBot(b.id, { active: false, status: "stopped" });
+    });
+    s.addBotLog({ message: `🚨 [Telegram Remoto Kill Switch] ${reason}`, type: "error" });
+  },
+});
 
 export interface MultiBotEngineCallbacks {
   onToast?: (toast: { title: string; description: string; variant?: "default" | "destructive" }) => void;
@@ -440,6 +485,12 @@ export function checkCircuitBreaker(): boolean {
         reason: circuitBreakerState.reason || undefined,
         mode: useCryptoStore.getState().tradingMode,
         timestamp: Date.now(),
+      });
+
+      telegramNotificationService.notifyEmergencyKillSwitch({
+        reason: circuitBreakerState.reason || "Kill switch ativado",
+        dailyDrawdownPercent: (dailyLoss / (totalValue || 1)) * 100,
+        actionsTaken: "Todos os robôs foram pausados e compras suspensas para preservação de capital.",
       });
     }
     return true;
@@ -1317,11 +1368,20 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       isTakeProfitNowArmed &&
       (pullbackFromTpPeak >= effectiveTpDistance || gainPercent <= Math.max(2.0, effectiveTakeProfit - 0.3));
 
+    const lowestPrice = Math.min(pos.lowestPrice ?? pos.entryPrice, currentPrice!);
+    const maePercent = pos.entryPrice > 0 ? parseFloat((((lowestPrice - pos.entryPrice) / pos.entryPrice) * 100).toFixed(2)) : 0;
+    const mfePercent = pos.entryPrice > 0 ? parseFloat((((highestPrice - pos.entryPrice) / pos.entryPrice) * 100).toFixed(2)) : 0;
+
     // Update position mark-to-market
     const updatedPosition: BotPosition = {
       ...pos,
       currentPrice: currentPrice!,
       highestPrice,
+      lowestPrice,
+      maePrice: lowestPrice,
+      maePercent,
+      mfePrice: highestPrice,
+      mfePercent,
       unrealizedPnl: unrealizedPnlUsdt,
       unrealizedPnlPercent: parseFloat(gainPercent.toFixed(2)),
       isBreakEvenArmed: isBreakEvenNowArmed,
@@ -2504,9 +2564,15 @@ async function executeBotBuy({
     quantity: finalQty,
     totalCost: finalTotal,
     highestPrice: finalPrice,
+    lowestPrice: finalPrice,
+    maePrice: finalPrice,
+    maePercent: 0,
+    mfePrice: finalPrice,
+    mfePercent: 0,
     unrealizedPnl: 0,
     unrealizedPnlPercent: 0,
     entryTime: new Date().toISOString(),
+    entryTimestampMs: Date.now(),
     mode: tradingMode,
     dynamicTakeProfit,
     dynamicStopLoss,
@@ -2515,6 +2581,20 @@ async function executeBotBuy({
 
   store.updateBotPosition(bot.id, newPosition);
   store.recordBotTrade(bot.id, trade, 0);
+
+  // Notificação Assíncrona via Telegram
+  telegramNotificationService.notifyOrderExecution({
+    symbol: execSymbol,
+    side: "BUY",
+    price: finalPrice,
+    quantity: finalQty,
+    totalUsd: finalTotal,
+    mode: tradingMode,
+    strategy: bot.strategy,
+    riskPerTradePercent: bot.riskPerTradePercent,
+    stopLossPrice: dynamicStopLoss ? finalPrice * (1 - dynamicStopLoss / 100) : (bot.stopLoss ? finalPrice * (1 - bot.stopLoss / 100) : undefined),
+    takeProfitPrice: dynamicTakeProfit ? finalPrice * (1 + dynamicTakeProfit / 100) : (bot.takeProfit ? finalPrice * (1 + bot.takeProfit / 100) : undefined),
+  });
 
   const effectiveTarget = dynamicTakeProfit || bot.takeProfit;
   const targetProfitPrice = (buyPrice * (1 + effectiveTarget / 100)).toFixed(4);
@@ -3175,6 +3255,44 @@ async function executeBotSell({
   clearRestingMakerOrder(bot.id, execSymbol);
   store.updateBotPosition(bot.id, null);
   store.recordBotTrade(bot.id, trade, netPnl);
+
+  // Registra no Diário de Trades Automatizado (MAE, MFE, Fricção e Analytics)
+  const journalRecord = tradeJournalEngine.recordTrade({
+    id: trade.id,
+    botId: bot.id,
+    botName: bot.name,
+    symbol: execSymbol,
+    side: "BUY",
+    mode: tradingMode === "live" ? "live" : "paper",
+    strategy: bot.strategy,
+    entryPrice: position.entryPrice,
+    exitPrice: sellPrice,
+    quantity: position.quantity,
+    highestPrice: position.highestPrice || Math.max(position.entryPrice, sellPrice),
+    lowestPrice: position.lowestPrice || Math.min(position.entryPrice, sellPrice),
+    entryTime: position.entryTime,
+    exitTime: trade.timestamp,
+    entryTimestampMs: position.entryTimestampMs,
+    exitTimestampMs: Date.now(),
+    exitReason: reason,
+    commissionRate: 0.001,
+    notes: `Encerramento via ${reason}`,
+  });
+
+  // Notificação Assíncrona no Telegram (TP/SL, PnL USD/%, Duração, MAE/MFE)
+  telegramNotificationService.notifyTradeExit({
+    symbol: execSymbol,
+    side: "BUY",
+    entryPrice: position.entryPrice,
+    exitPrice: sellPrice,
+    grossPnl,
+    netPnl,
+    gainPercent: netGainPercent,
+    exitReason: reason,
+    durationFormatted: journalRecord.durationFormatted,
+    maePercent: journalRecord.maePercent,
+    mfePercent: journalRecord.mfePercent,
+  });
 
   // Governança de Risco: Registra resultado no RiskManager e avalia Circuit Breakers
   const totalNav = store.portfolio?.totalValue || store.portfolio?.cashBalance || 90.0;

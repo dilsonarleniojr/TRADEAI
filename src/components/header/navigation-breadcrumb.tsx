@@ -70,6 +70,11 @@ const SECTION_METAS: Record<ActiveSection, SectionMeta> = {
     category: "Conhecimento",
     icon: GraduationCap,
   },
+  journal: {
+    title: "Diário de Trades & Analytics",
+    category: "Pós-Operação & Risco",
+    icon: LineChart,
+  },
 };
 
 const TRADE_HUB_TAB_NAMES: Record<string, string> = {

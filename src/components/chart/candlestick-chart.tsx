@@ -6,10 +6,12 @@ import { formatPrice, formatVolume, formatTime } from '@/lib/format';
 import { calculateWickPenetration, type WickRejectionMetrics, type OrderFlowConfluence } from '@/lib/order-book-imbalance';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ZoomIn, ZoomOut, Maximize2, Zap, X, Activity, Sparkles, Gauge, Clock, Shield, Flame, Layers, AlertTriangle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { structuredLogger } from '@/lib/telemetry/structured-logger';
+import { vSyncCoalescer } from '@/hooks/use-binance-stream';
+import { playTakeProfitHitSound } from '@/lib/sound/sound-effects';
 
 export type DrawingTool = 'crosshair' | 'trendline' | 'horizontal';
 
@@ -70,6 +72,16 @@ interface ProcessedCandle {
 
 interface TooltipData {
   candle: ProcessedCandle;
+  x: number;
+  y: number;
+  snappedPrice?: number;
+  snappedField?: 'open' | 'high' | 'low' | 'close';
+  snappedY?: number;
+}
+
+interface MeasureAnchor {
+  candle: ProcessedCandle;
+  price: number;
   x: number;
   y: number;
 }
@@ -212,6 +224,7 @@ export function CandlestickChart({
   const trades = useCryptoStore((s) => s.trades);
   const bots = useCryptoStore((s) => s.bots);
   const updateBotPosition = useCryptoStore((s) => s.updateBotPosition);
+  const addBotLog = useCryptoStore((s) => s.addBotLog);
   const isMarketDataStale = useCryptoStore((s) => s.isMarketDataStale);
 
   // Bot com posição aberta no par atual
@@ -242,6 +255,32 @@ export function CandlestickChart({
   // Drawing state
   const [pendingDrawPoint, setPendingDrawPoint] = useState<{ time: number; price: number } | null>(null);
   const [drawMousePos, setDrawMousePos] = useState<{ x: number; y: number } | null>(null);
+  const [measureAnchor, setMeasureAnchor] = useState<MeasureAnchor | null>(null);
+
+  const currentTicker = useCryptoStore((s) => s.tickers[symbol]);
+  const lastMarketUpdate = useCryptoStore((s) => s.lastMarketUpdate);
+  const [renderMetrics, setRenderMetrics] = useState({ fps: 60, lastFrameDurationMs: 16.6 });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRenderMetrics(vSyncCoalescer.getMetrics());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMeasureAnchor(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const e2eLatencyMs = useMemo(() => {
+    return Math.max(1, Date.now() - (lastMarketUpdate || Date.now()));
+  }, [lastMarketUpdate]);
 
   // Stop Hunt Popover state (Velocidade de Rejeição do Pavio & Order Flow)
   const [activeStopHuntPopover, setActiveStopHuntPopover] = useState<{
@@ -496,10 +535,9 @@ export function CandlestickChart({
     [minPrice, priceRange, priceChartHeight]
   );
 
-  // Chart click handler for drawing
+  // Chart click handler for drawing and R:R measurement
   const handleChartClick = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
-      if (drawingTool === 'crosshair' || !onDrawingAdd) return;
       if (visibleCandles.length === 0) return;
 
       const rect = svgRef.current?.getBoundingClientRect();
@@ -513,6 +551,39 @@ export function CandlestickChart({
 
       const clickedPrice = yToPrice(mouseY);
       const clickedTime = visibleCandles[candleIndex].time;
+      const candle = visibleCandles[candleIndex];
+
+      if (drawingTool === 'crosshair') {
+        if (!measureAnchor) {
+          const ohlc = [
+            { level: 'open' as const, price: candle.open },
+            { level: 'high' as const, price: candle.high },
+            { level: 'low' as const, price: candle.low },
+            { level: 'close' as const, price: candle.close },
+          ];
+          let nearest = ohlc[0];
+          let minDiff = Math.abs(clickedPrice - ohlc[0].price);
+          for (let i = 1; i < ohlc.length; i++) {
+            const diff = Math.abs(clickedPrice - ohlc[i].price);
+            if (diff < minDiff) {
+              minDiff = diff;
+              nearest = ohlc[i];
+            }
+          }
+          const snappedPrice = minDiff < (priceRange * 0.08) ? nearest.price : clickedPrice;
+          setMeasureAnchor({
+            candle,
+            price: snappedPrice,
+            x: indexToX(candleIndex),
+            y: priceToY(snappedPrice),
+          });
+        } else {
+          setMeasureAnchor(null);
+        }
+        return;
+      }
+
+      if (!onDrawingAdd) return;
 
       if (drawingTool === 'horizontal') {
         onDrawingAdd({
@@ -539,10 +610,10 @@ export function CandlestickChart({
         }
       }
     },
-    [drawingTool, onDrawingAdd, visibleCandles, candleWidth, yToPrice, pendingDrawPoint]
+    [drawingTool, onDrawingAdd, visibleCandles, candleWidth, yToPrice, pendingDrawPoint, measureAnchor, priceRange, indexToX, priceToY]
   );
 
-  // Mouse handlers
+  // Mouse handlers with magnetic crosshair snapping to OHLC
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
       if (visibleCandles.length === 0) return;
@@ -568,16 +639,41 @@ export function CandlestickChart({
 
       if (candleIndex >= 0 && candleIndex < visibleCandles.length) {
         const candle = visibleCandles[candleIndex];
+        const mousePrice = yToPrice(mouseY);
+        const ohlc = [
+          { level: 'open' as const, price: candle.open },
+          { level: 'high' as const, price: candle.high },
+          { level: 'low' as const, price: candle.low },
+          { level: 'close' as const, price: candle.close },
+        ];
+        let nearest = ohlc[0];
+        let minDiff = Math.abs(mousePrice - ohlc[0].price);
+        for (let i = 1; i < ohlc.length; i++) {
+          const diff = Math.abs(mousePrice - ohlc[i].price);
+          if (diff < minDiff) {
+            minDiff = diff;
+            nearest = ohlc[i];
+          }
+        }
+        const nearestY = priceToY(nearest.price);
+        const shouldSnap = Math.abs(nearestY - mouseY) < 30;
+        const finalY = shouldSnap ? nearestY : mouseY;
+        const snappedPrice = shouldSnap ? nearest.price : mousePrice;
+        const snappedField = shouldSnap ? nearest.level : undefined;
+
         setTooltip({
           candle,
           x: indexToX(candleIndex),
-          y: priceToY(candle.close),
+          y: finalY,
+          snappedPrice,
+          snappedField,
+          snappedY: nearestY,
         });
       } else {
         setTooltip(null);
       }
     },
-    [visibleCandles, candleWidth, indexToX, priceToY, drawingTool, pendingDrawPoint, draggedOrderLine, yToPrice]
+    [visibleCandles, candleWidth, indexToX, priceToY, drawingTool, draggedOrderLine, yToPrice]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -612,6 +708,42 @@ export function CandlestickChart({
       setDraggedOrderLine(null);
     }
   }, [draggedOrderLine, bots, updateBotPosition, symbol]);
+
+  // Ativação do Breakeven Automático Interativo (BE Anchor) por Duplo Clique
+  const handleActivateBreakevenAnchor = useCallback((targetBot: any) => {
+    if (!targetBot || !targetBot.position) return;
+    const entryPrice = targetBot.position.entryPrice;
+    const qty = targetBot.position.quantity;
+
+    // Custo estimado de taxas round-trip: 0.10% compra Maker/Taker + 0.10% venda Maker/Taker + 0.05% slippage/buffer = 0.25% líquido
+    const roundTripFeePercent = 0.25;
+    const bePrice = parseFloat((entryPrice * (1 + roundTripFeePercent / 100)).toFixed(4));
+    const estimatedFeesUsd = (entryPrice * qty + bePrice * qty) * 0.001;
+
+    updateBotPosition(targetBot.id, {
+      ...targetBot.position,
+      dynamicStopLoss: bePrice,
+      isBreakEvenArmed: true,
+      breakEvenPrice: bePrice,
+    });
+
+    try {
+      playTakeProfitHitSound();
+    } catch {}
+
+    structuredLogger.info(
+      "RISK_ENGINE",
+      `🛡️ [BE ANCHOR] Stop Loss travado em Breakeven Líquido com Risco Zero para ${symbol} em $${bePrice.toFixed(4)} (+${roundTripFeePercent}% cobrindo ~$${estimatedFeesUsd.toFixed(2)} em taxas).`,
+      { symbol, botId: targetBot.id, metadata: { entryPrice, bePrice, roundTripFeePercent, estimatedFeesUsd } }
+    );
+
+    addBotLog({
+      message: `🛡️ [BE Anchor Ativado] Stop Loss de ${symbol} travado em $${bePrice.toFixed(4)} com Risco Zero (cobrindo taxas round-trip de 0.25%).`,
+      type: "info",
+      botId: targetBot.id,
+      botName: targetBot.name,
+    });
+  }, [symbol, updateBotPosition, addBotLog]);
 
   const handleMouseLeave = useCallback(() => {
     setTooltip(null);
@@ -774,6 +906,25 @@ export function CandlestickChart({
           transition={{ duration: 0.3 }}
           className="w-full h-full"
         >
+          {/* Indicador Numérico de Latência E2E e Taxa de Atualização V-Sync */}
+          <div className="absolute top-2 left-2 z-10 flex items-center gap-2 bg-background/85 backdrop-blur-md px-2.5 py-1 rounded-md border border-border/50 text-[10px] font-mono shadow-sm select-none">
+            <div className={`w-2 h-2 rounded-full ${e2eLatencyMs < 40 ? 'bg-emerald-500 animate-pulse' : e2eLatencyMs < 120 ? 'bg-amber-500' : 'bg-rose-500'}`} />
+            <span className="text-muted-foreground font-semibold">TICK E2E:</span>
+            <span className={`font-bold ${e2eLatencyMs < 40 ? 'text-emerald-400' : e2eLatencyMs < 120 ? 'text-amber-400' : 'text-rose-400'}`}>
+              {e2eLatencyMs.toFixed(0)}ms
+            </span>
+            <span className="text-muted-foreground/40">|</span>
+            <span className="text-cyan-400 font-semibold">{renderMetrics.fps} FPS</span>
+            {measureAnchor && (
+              <>
+                <span className="text-muted-foreground/40">|</span>
+                <span className="text-amber-400 font-bold bg-amber-500/10 px-1 rounded border border-amber-500/20">
+                  RÉGUA R:R ATIVA
+                </span>
+              </>
+            )}
+          </div>
+
           {/* Zoom controls */}
           <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
             <Button
@@ -876,31 +1027,33 @@ export function CandlestickChart({
               rx={8}
             />
 
-            {/* Price grid lines */}
-            {priceGridLines.map((price, i) => {
-              const y = priceToY(price);
-              return (
-                <g key={`grid-${i}`}>
-                  <line
-                    x1={CHART_PADDING.left}
-                    y1={y}
-                    x2={dimensions.width - CHART_PADDING.right}
-                    y2={y}
-                    stroke="oklch(1 0 0 / 5%)"
-                    strokeDasharray="3,3"
-                  />
-                  <text
-                    x={dimensions.width - CHART_PADDING.right + 5}
-                    y={y + 3}
-                    fill="oklch(0.55 0 0)"
-                    fontSize={10}
-                    fontFamily="monospace"
-                  >
-                    {formatPrice(price)}
-                  </text>
-                </g>
-              );
-            })}
+            {/* Static Price grid lines layer (Zero-DOM reflow) */}
+            <g className="static-grid-layer" style={{ pointerEvents: 'none' }}>
+              {priceGridLines.map((price, i) => {
+                const y = priceToY(price);
+                return (
+                  <g key={`grid-${i}`}>
+                    <line
+                      x1={CHART_PADDING.left}
+                      y1={y}
+                      x2={dimensions.width - CHART_PADDING.right}
+                      y2={y}
+                      stroke="oklch(1 0 0 / 5%)"
+                      strokeDasharray="3,3"
+                    />
+                    <text
+                      x={dimensions.width - CHART_PADDING.right + 5}
+                      y={y + 3}
+                      fill="oklch(0.55 0 0)"
+                      fontSize={10}
+                      fontFamily="monospace"
+                    >
+                      {formatPrice(price)}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
 
             {/* Ichimoku Cloud - rendered FIRST (behind everything else) */}
             {showIchimoku && (
@@ -1801,6 +1954,67 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
               </text>
             ))}
 
+            {/* R:R Measurement Box & Projection Overlay */}
+            {measureAnchor && tooltip && (() => {
+              const currentPrice = tooltip.snappedPrice ?? tooltip.candle.close;
+              const deltaPrice = currentPrice - measureAnchor.price;
+              const pctChange = (deltaPrice / measureAnchor.price) * 100;
+              const isGain = deltaPrice >= 0;
+
+              const riskDist = Math.abs(measureAnchor.price - (isGain ? tooltip.candle.low : tooltip.candle.high));
+              const safeRisk = riskDist > 0 ? riskDist : (measureAnchor.price * 0.005);
+              const rewardDist = Math.abs(deltaPrice);
+              const rrRatio = (rewardDist / safeRisk).toFixed(2);
+
+              const boxX = Math.min(measureAnchor.x, tooltip.x);
+              const boxW = Math.max(Math.abs(tooltip.x - measureAnchor.x), 2);
+              const boxY = Math.min(measureAnchor.y, tooltip.y);
+              const boxH = Math.max(Math.abs(tooltip.y - measureAnchor.y), 2);
+
+              return (
+                <g key="rr-measurement-overlay">
+                  {/* Projection fill area */}
+                  <rect
+                    x={boxX}
+                    y={boxY}
+                    width={boxW}
+                    height={boxH}
+                    fill={isGain ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)'}
+                    stroke={isGain ? '#22c55e' : '#ef4444'}
+                    strokeWidth={1}
+                    strokeDasharray="4,4"
+                  />
+                  {/* Anchor connection line */}
+                  <line
+                    x1={measureAnchor.x}
+                    y1={measureAnchor.y}
+                    x2={tooltip.x}
+                    y2={tooltip.y}
+                    stroke={isGain ? '#22c55e' : '#ef4444'}
+                    strokeWidth={1.5}
+                  />
+                  <circle cx={measureAnchor.x} cy={measureAnchor.y} r={4} fill="#fbbf24" stroke="#ffffff" strokeWidth={1} />
+                  {/* Measurement Badge */}
+                  <g transform={`translate(${Math.max(CHART_PADDING.left + 5, Math.min(dimensions.width - 240, tooltip.x + 10))}, ${Math.max(CHART_PADDING.top + 5, tooltip.y - 45)})`}>
+                    <rect
+                      width={185}
+                      height={42}
+                      fill="oklch(0.12 0.015 260 / 95%)"
+                      stroke={isGain ? '#22c55e' : '#ef4444'}
+                      strokeWidth={1}
+                      rx={4}
+                    />
+                    <text x={8} y={16} fill="white" fontSize={10} fontWeight={600} fontFamily="monospace">
+                      Δ: {deltaPrice >= 0 ? '+' : ''}{deltaPrice.toFixed(2)} ({pctChange >= 0 ? '+' : ''}{pctChange.toFixed(2)}%)
+                    </text>
+                    <text x={8} y={32} fill="#38bdf8" fontSize={9} fontFamily="monospace">
+                      R:R EST: <tspan fill="#facc15" fontWeight={700}>1 : {rrRatio}</tspan> | [ESC] limpa
+                    </text>
+                  </g>
+                </g>
+              );
+            })()}
+
             {/* Crosshair + Tooltip */}
             {tooltip && (
               <>
@@ -1830,7 +2044,7 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
                   y={tooltip.y - 10}
                   width={CHART_PADDING.right}
                   height={20}
-                  fill="#06b6d4"
+                  fill={tooltip.snappedField ? "#0284c7" : "#06b6d4"}
                   rx={3}
                 />
                 <text
@@ -1841,8 +2055,41 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
                   fontFamily="monospace"
                   fontWeight={600}
                 >
-                  {formatPrice(tooltip.candle.close)}
+                  {formatPrice(tooltip.snappedPrice ?? tooltip.candle.close)}
                 </text>
+
+                {/* Magnetic Snap Marker */}
+                {tooltip.snappedField && (
+                  <g>
+                    <circle
+                      cx={tooltip.x}
+                      cy={tooltip.y}
+                      r={4}
+                      fill="#06b6d4"
+                      stroke="#ffffff"
+                      strokeWidth={1.5}
+                    />
+                    <rect
+                      x={tooltip.x + 6}
+                      y={tooltip.y - 8}
+                      width={24}
+                      height={15}
+                      fill="#0284c7"
+                      rx={3}
+                    />
+                    <text
+                      x={tooltip.x + 18}
+                      y={tooltip.y + 3}
+                      fill="white"
+                      fontSize={8}
+                      fontWeight={700}
+                      textAnchor="middle"
+                      fontFamily="monospace"
+                    >
+                      {tooltip.snappedField.toUpperCase()}
+                    </text>
+                  </g>
+                )}
 
                 {/* Tooltip info box */}
                 <g>
@@ -1850,7 +2097,7 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
                     x={tooltip.x + 15}
                     y={CHART_PADDING.top + 5}
                     width={150}
-                    height={100}
+                    height={tooltip.snappedField ? 116 : 100}
                     fill="oklch(0.17 0.015 260 / 95%)"
                     stroke="oklch(1 0 0 / 10%)"
                     rx={6}
@@ -1873,6 +2120,11 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
                   <text x={tooltip.x + 25} y={CHART_PADDING.top + 86} fill="oklch(0.55 0 0)" fontSize={9}>
                     Vol: <tspan fill="oklch(0.95 0 0)">{formatVolume(tooltip.candle.volume)}</tspan>
                   </text>
+                  {tooltip.snappedField && (
+                    <text x={tooltip.x + 25} y={CHART_PADDING.top + 102} fill="#38bdf8" fontSize={9} fontWeight={600}>
+                      SNAP: {tooltip.snappedField.toUpperCase()} ({formatPrice(tooltip.snappedPrice!)})
+                    </text>
+                  )}
                 </g>
               </>
             )}
@@ -2035,6 +2287,18 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
               const slLossUsd = (currentSl - entryPrice) * qty;
               const slLossPct = ((currentSl - entryPrice) / entryPrice) * 100;
 
+              // Breakeven Automático Interativo (BE Anchor) com Custo Total de Taxas (0.25% líquido)
+              const roundTripFeePercent = 0.25;
+              const bePrice = pos.breakEvenPrice || parseFloat((entryPrice * (1 + roundTripFeePercent / 100)).toFixed(4));
+              const beY = priceToY(bePrice);
+              const isStopAtBreakeven = Boolean(
+                (pos.isBreakEvenArmed && currentSl >= entryPrice) ||
+                Math.abs(currentSl - bePrice) / entryPrice < 0.0008
+              );
+
+              const slBadgeWidth = isStopAtBreakeven ? 215 : 180;
+              const slBadgeX = dimensions.width - CHART_PADDING.right - slBadgeWidth - 22;
+
               return (
                 <g key="interactive-position-overlay">
                   {/* 1. LINHA DE PREÇO MÉDIO DE ENTRADA (Azul / Cyan) */}
@@ -2069,6 +2333,53 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
                   >
                     ENTRADA: {qty} @ ${formatPrice(entryPrice)}
                   </text>
+
+                  {/* 1.1 LINHA DE ÂNCORA DE BREAKEVEN (BE Anchor Reference Line - Dourado / Âmbar) */}
+                  {!isStopAtBreakeven && (
+                    <g
+                      className="cursor-pointer group"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleActivateBreakevenAnchor(activeBotWithPosition);
+                      }}
+                    >
+                      <line
+                        x1={CHART_PADDING.left + 142}
+                        y1={beY}
+                        x2={dimensions.width - CHART_PADDING.right}
+                        y2={beY}
+                        stroke="#f59e0b"
+                        strokeWidth={1.2}
+                        strokeDasharray="3,3"
+                        opacity={0.65}
+                      />
+                      {/* Badge da Âncora BE */}
+                      <rect
+                        x={CHART_PADDING.left + 142}
+                        y={beY - 9}
+                        width={132}
+                        height={18}
+                        fill="#451a03"
+                        stroke="#f59e0b"
+                        strokeWidth={1}
+                        rx={3}
+                        className="group-hover:fill-amber-900 transition-colors"
+                      />
+                      <text
+                        x={CHART_PADDING.left + 148}
+                        y={beY + 3.5}
+                        fill="#fbbf24"
+                        fontSize={9}
+                        fontFamily="monospace"
+                        fontWeight={700}
+                      >
+                        ⚓ BE ANCHOR: ${formatPrice(bePrice)}
+                      </text>
+                      <title>
+                        Âncora de Breakeven Líquido (+0.25% para cobrir taxas Maker/Taker + slippage). Dê duplo clique no Stop Loss ou clique aqui para travar risco zero instantaneamente.
+                      </title>
+                    </g>
+                  )}
 
                   {/* 2. LINHA DE TAKE-PROFIT (Verde / Emerald) */}
                   <line
@@ -2124,24 +2435,36 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
                     TP: ${formatPrice(currentTp)} (+${tpGainUsd.toFixed(2)} | +{tpGainPct.toFixed(1)}%)
                   </text>
 
-                  {/* 3. LINHA DE STOP-LOSS (Vermelha / Rose) */}
+                  {/* 3. LINHA DE STOP-LOSS (Vermelha / Rose OU Dourada se Breakeven Armado) */}
                   <line
                     x1={CHART_PADDING.left}
                     y1={slY}
                     x2={dimensions.width - CHART_PADDING.right}
                     y2={slY}
-                    stroke="#f43f5e"
-                    strokeWidth={draggedOrderLine?.type === 'SL' ? 2.5 : 1.5}
-                    strokeDasharray="6,3"
-                    opacity={0.9}
-                  />
-                  {/* Handle de Drag SL */}
+                    stroke={isStopAtBreakeven ? "#eab308" : "#f43f5e"}
+                    strokeWidth={draggedOrderLine?.type === 'SL' ? 2.5 : (isStopAtBreakeven ? 2 : 1.5)}
+                    strokeDasharray={isStopAtBreakeven ? "4,2" : "6,3"}
+                    opacity={0.95}
+                    className="cursor-ns-resize hover:opacity-100"
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      handleActivateBreakevenAnchor(activeBotWithPosition);
+                    }}
+                  >
+                    <title>
+                      {isStopAtBreakeven
+                        ? "Stop Loss travado em Breakeven Protegido (Risco Zero com taxas cobertas). Arraste para mover."
+                        : "Stop Loss. DUPLO CLIQUE para travar instantaneamente no Breakeven Líquido (+0.25% taxas). Arraste para reposicionar."}
+                    </title>
+                  </line>
+
+                  {/* Handle de Drag SL com suporte a duplo clique para BE Anchor */}
                   <circle
                     cx={dimensions.width - CHART_PADDING.right - 14}
                     cy={slY}
                     r={7}
-                    fill="#881337"
-                    stroke="#fb7185"
+                    fill={isStopAtBreakeven ? "#713f12" : "#881337"}
+                    stroke={isStopAtBreakeven ? "#facc15" : "#fb7185"}
                     strokeWidth={2}
                     className="cursor-ns-resize hover:scale-125 transition-transform"
                     onMouseDown={(e) => {
@@ -2155,28 +2478,92 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
                         quantity: qty,
                       });
                     }}
-                  />
-                  {/* Badge SL */}
-                  <rect
-                    x={dimensions.width - CHART_PADDING.right - 180}
-                    y={slY - 10}
-                    width={160}
-                    height={20}
-                    fill="#4c0519"
-                    stroke="#f43f5e"
-                    strokeWidth={1}
-                    rx={4}
-                  />
-                  <text
-                    x={dimensions.width - CHART_PADDING.right - 174}
-                    y={slY + 4}
-                    fill="#fda4af"
-                    fontSize={10}
-                    fontFamily="monospace"
-                    fontWeight={700}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      handleActivateBreakevenAnchor(activeBotWithPosition);
+                    }}
                   >
-                    SL: ${formatPrice(currentSl)} (-${Math.abs(slLossUsd).toFixed(2)} | {slLossPct.toFixed(1)}%)
-                  </text>
+                    <title>
+                      {isStopAtBreakeven
+                        ? "Stop Loss em BE (Protegido). Arraste para ajustar ou duplo clique para rearmar."
+                        : "DUPLO CLIQUE para travar no Breakeven Líquido (Risco Zero). Arraste para mover."}
+                    </title>
+                  </circle>
+
+                  {/* Botão de Atalho Rápido Pill: Fixar BE Anchor com 1 Clique ou Duplo Clique */}
+                  {!isStopAtBreakeven && (
+                    <g
+                      className="cursor-pointer group"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleActivateBreakevenAnchor(activeBotWithPosition);
+                      }}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        handleActivateBreakevenAnchor(activeBotWithPosition);
+                      }}
+                    >
+                      <rect
+                        x={slBadgeX - 68}
+                        y={slY - 10}
+                        width={62}
+                        height={20}
+                        fill="#713f12"
+                        stroke="#eab308"
+                        strokeWidth={1}
+                        rx={4}
+                        className="group-hover:fill-amber-700 transition-colors"
+                      />
+                      <text
+                        x={slBadgeX - 63}
+                        y={slY + 4}
+                        fill="#fef08a"
+                        fontSize={9}
+                        fontFamily="monospace"
+                        fontWeight={700}
+                      >
+                        ⚡ FIXAR BE
+                      </text>
+                      <title>Clique ou Duplo clique para travar o Stop Loss no Breakeven Líquido (+0.25% taxas)</title>
+                    </g>
+                  )}
+
+                  {/* Badge SL com suporte a duplo clique */}
+                  <g
+                    className="cursor-pointer"
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      handleActivateBreakevenAnchor(activeBotWithPosition);
+                    }}
+                  >
+                    <rect
+                      x={slBadgeX}
+                      y={slY - 10}
+                      width={slBadgeWidth}
+                      height={20}
+                      fill={isStopAtBreakeven ? "#422006" : "#4c0519"}
+                      stroke={isStopAtBreakeven ? "#eab308" : "#f43f5e"}
+                      strokeWidth={1}
+                      rx={4}
+                    />
+                    <text
+                      x={slBadgeX + 6}
+                      y={slY + 4}
+                      fill={isStopAtBreakeven ? "#fde047" : "#fda4af"}
+                      fontSize={10}
+                      fontFamily="monospace"
+                      fontWeight={700}
+                    >
+                      {isStopAtBreakeven
+                        ? `🛡️ SL (BE PROTEGIDO): $${formatPrice(currentSl)}`
+                        : `SL: $${formatPrice(currentSl)} (-$${Math.abs(slLossUsd).toFixed(2)} | ${slLossPct.toFixed(1)}%)`}
+                    </text>
+                    <title>
+                      {isStopAtBreakeven
+                        ? "Stop Loss protegido em Breakeven. Duplo clique para recalcular."
+                        : "DUPLO CLIQUE para travar no Breakeven Líquido (+0.25% taxas)."}
+                    </title>
+                  </g>
                 </g>
               );
             })()}

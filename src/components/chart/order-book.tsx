@@ -316,14 +316,15 @@ export function OrderBook({
         </div>
 
         {/* Asks (sells) - reversed so highest ask is on top and lowest ask is nearest to center */}
+        {/* Virtualização com nós fixos (in-place slot recycling) para Zero-DOM overhead */}
         <div className="space-y-[1px] mb-1">
-          {[...orderBook.asks].reverse().map((level) => {
+          {[...orderBook.asks].reverse().map((level, index) => {
             const barWidth = Math.min(100, Math.max(1, (level.cumulative / maxCumulative) * 100));
             const isFlashed = flashedLevels[level.price] === "ask";
 
             return (
               <div
-                key={`ask-${level.price}`}
+                key={`ask-slot-${index}`}
                 onClick={() => onExecuteMarketOrder?.("BUY")}
                 title={`Clique para preencher compra no preço $${formatBookPrice(level.price)}`}
                 className={`relative grid grid-cols-3 gap-1 px-1.5 py-[2px] rounded text-[11px] font-mono tabular-nums cursor-pointer transition-colors select-none group hover:bg-rose-500/10 ${
@@ -332,7 +333,7 @@ export function OrderBook({
               >
                 {/* Horizontal Depth Heatmap Bar */}
                 <div
-                  className="absolute inset-y-0 right-0 rounded pointer-events-none transition-[width] duration-200 ease-out"
+                  className="absolute inset-y-0 right-0 rounded pointer-events-none transition-[width] duration-150 ease-out will-change-[width]"
                   style={{
                     width: `${barWidth}%`,
                     background: "linear-gradient(90deg, transparent, rgba(244, 63, 94, 0.16))",
@@ -372,14 +373,15 @@ export function OrderBook({
         </div>
 
         {/* Bids (buys) - closest to center at top */}
+        {/* Virtualização com nós fixos (in-place slot recycling) para Zero-DOM overhead */}
         <div className="space-y-[1px] mt-1">
-          {orderBook.bids.map((level) => {
+          {orderBook.bids.map((level, index) => {
             const barWidth = Math.min(100, Math.max(1, (level.cumulative / maxCumulative) * 100));
             const isFlashed = flashedLevels[level.price] === "bid";
 
             return (
               <div
-                key={`bid-${level.price}`}
+                key={`bid-slot-${index}`}
                 onClick={() => onExecuteMarketOrder?.("SELL")}
                 title={`Clique para preencher venda no preço $${formatBookPrice(level.price)}`}
                 className={`relative grid grid-cols-3 gap-1 px-1.5 py-[2px] rounded text-[11px] font-mono tabular-nums cursor-pointer transition-colors select-none group hover:bg-emerald-500/10 ${
@@ -388,7 +390,7 @@ export function OrderBook({
               >
                 {/* Horizontal Depth Heatmap Bar */}
                 <div
-                  className="absolute inset-y-0 right-0 rounded pointer-events-none transition-[width] duration-200 ease-out"
+                  className="absolute inset-y-0 right-0 rounded pointer-events-none transition-[width] duration-150 ease-out will-change-[width]"
                   style={{
                     width: `${barWidth}%`,
                     background: "linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.16))",

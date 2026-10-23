@@ -3,6 +3,7 @@
  * 100% Production Data — Evaluates real Binance L2 Order Book Depth,
  * Bid-Ask Spread, Order Flow Imbalance (OFI) and depth liquidity.
  */
+import { orderFlowAnomalyScanner } from "@/lib/order-flow/anomaly-scanner";
 
 export interface OrderBookAnalysis {
   ok: boolean;
@@ -138,6 +139,14 @@ export async function getOrderBookAnalysis(
 
   // Order Flow Imbalance (OFI): de -1.0 (100% vendedores) a +1.0 (100% compradores)
   const orderFlowImbalance = totalVolume > 0 ? parseFloat(((bidVolume - askVolume) / totalVolume).toFixed(3)) : 0;
+
+  // Alimenta o Scanner de Anomalias de Order Flow (Absorção e Desbalanceamento L2 >= 70/30)
+  orderFlowAnomalyScanner.processOrderBook({
+    symbol,
+    bids: parsedBids.slice(0, 10).map((b) => ({ price: b.price, quantity: b.volume })),
+    asks: parsedAsks.slice(0, 10).map((a) => ({ price: a.price, quantity: a.volume })),
+    timestamp: Date.now(),
+  });
 
   // Simulação de Slippage Real por caminhada no livro para uma ordem de 100 USDT:
   let cumulativeUsdt = 0;

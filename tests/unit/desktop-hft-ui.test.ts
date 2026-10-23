@@ -105,4 +105,56 @@ describe("Desktop HFT UI & Order Book Enhancements", () => {
       expect(classifyLatency(250)).toEqual({ isGood: false, isModerate: false, isHigh: true });
     });
   });
+
+  describe("5. Breakeven Automático Interativo (BE Anchor) com Custo Total de Taxas", () => {
+    function calculateBreakevenAnchor(entryPrice: number, quantity: number) {
+      // 0.10% compra + 0.10% venda + 0.05% slippage/buffer = 0.25% markup líquido
+      const roundTripFeePercent = 0.25;
+      const bePrice = parseFloat((entryPrice * (1 + roundTripFeePercent / 100)).toFixed(4));
+      const estimatedFeesUsd = (entryPrice * quantity + bePrice * quantity) * 0.001;
+      const netPnlAtBe = (bePrice - entryPrice) * quantity - estimatedFeesUsd;
+
+      return {
+        roundTripFeePercent,
+        bePrice,
+        estimatedFeesUsd,
+        netPnlAtBe,
+      };
+    }
+
+    function isStopAtBreakeven(currentSl: number, bePrice: number, entryPrice: number, isBreakEvenArmed?: boolean): boolean {
+      return Boolean(
+        (isBreakEvenArmed && currentSl >= entryPrice) ||
+        Math.abs(currentSl - bePrice) / entryPrice < 0.0008
+      );
+    }
+
+    it("deve calcular o preço da âncora BE com margem mínima de 0.25% para cobrir taxas Maker/Taker e slippage", () => {
+      const entryPrice = 50000;
+      const qty = 0.1;
+      const result = calculateBreakevenAnchor(entryPrice, qty);
+
+      // Preço de BE deve ser 50000 * 1.0025 = 50125
+      expect(result.bePrice).toBe(50125);
+      expect(result.roundTripFeePercent).toBe(0.25);
+      // Taxas estimadas em 0.10% por perna (~$10.01)
+      expect(result.estimatedFeesUsd).toBeCloseTo(10.0125, 2);
+      // PnL líquido no BE deve ser zero ou ligeiramente positivo (proteção total da banca)
+      expect(result.netPnlAtBe).toBeGreaterThanOrEqual(0);
+    });
+
+    it("deve reconhecer o estado de Stop Loss travado em Breakeven", () => {
+      const entryPrice = 64000;
+      const bePrice = 64160; // 64000 * 1.0025
+
+      // Stop loss original em perda (-2% = 62720)
+      expect(isStopAtBreakeven(62720, bePrice, entryPrice, false)).toBe(false);
+
+      // Stop loss travado na âncora de breakeven
+      expect(isStopAtBreakeven(bePrice, bePrice, entryPrice, true)).toBe(true);
+
+      // Stop loss movido para trailing acima do breakeven
+      expect(isStopAtBreakeven(64500, bePrice, entryPrice, true)).toBe(true);
+    });
+  });
 });

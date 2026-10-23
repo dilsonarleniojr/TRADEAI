@@ -52,6 +52,10 @@ const TradeHubSection = dynamic(
   () => import("@/components/trade-hub").then((m) => m.TradeHubSection),
   { ssr: false, loading: () => <TabLoadingSkeleton /> }
 );
+const TradeJournalPanel = dynamic(
+  () => import("@/components/journal/trade-journal-panel").then((m) => m.TradeJournalPanel),
+  { ssr: false, loading: () => <TabLoadingSkeleton /> }
+);
 import { MobilePortfolioBar } from "@/components/mobile/mobile-portfolio-bar";
 import { MobileDrawer } from "@/components/mobile/mobile-drawer";
 import { AlertNotification } from "@/components/dashboard/alert-notification";
@@ -232,6 +236,20 @@ function HomePageContent() {
             className="space-y-4"
           >
             <TradeHubSection />
+          </motion.div>
+        );
+      case "journal":
+        return (
+          <motion.div
+            key="journal"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="space-y-4"
+          >
+            <SectionErrorBoundary sectionName="Diário de Trades & Analytics">
+              <TradeJournalPanel />
+            </SectionErrorBoundary>
           </motion.div>
         );
       default:

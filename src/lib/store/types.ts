@@ -80,7 +80,8 @@ export interface BotPosition {
   currentPrice: number;
   quantity: number;
   totalCost: number;
-  highestPrice: number; // For trailing stop calculation
+  highestPrice: number; // For trailing stop calculation and MFE
+  lowestPrice?: number; // Pior preço atingido durante a operação (para cálculo do MAE)
   unrealizedPnl: number;
   unrealizedPnlPercent: number;
   entryTime: string;
@@ -104,6 +105,13 @@ export interface BotPosition {
   dynamicTakeProfit?: number;
   dynamicStopLoss?: number;
   relativeAtrAtEntry?: number;
+  /** Métricas de Excursão (MAE & MFE) */
+  maePrice?: number;
+  maePercent?: number;
+  mfePrice?: number;
+  mfePercent?: number;
+  /** Timestamp de abertura em epoch ms */
+  entryTimestampMs?: number;
 }
 
 export interface BotStats {
@@ -445,7 +453,7 @@ export interface PriceAlert {
   message?: string;
 }
 
-export type ActiveSection = "dashboard" | "chart" | "ai" | "bot" | "backtest" | "history" | "education" | "institutional" | "trade-hub";
+export type ActiveSection = "dashboard" | "chart" | "ai" | "bot" | "backtest" | "history" | "education" | "institutional" | "trade-hub" | "journal";
 export type TradingMode = "paper" | "live";
 export type ConnectionStatus = "connected" | "disconnected" | "connecting" | "rest-api";
 export type SyncMode = "realtime" | "polling" | "offline";

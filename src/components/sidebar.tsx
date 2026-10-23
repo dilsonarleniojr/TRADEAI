@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Gauge,
   Sparkles,
+  LineChart,
 } from "lucide-react";
 import {
   Tooltip,
@@ -29,6 +30,7 @@ import { useShallow } from "zustand/react/shallow";
 const desktopNavItems = [
   { id: "dashboard" as const, icon: LayoutDashboard, label: "Painel Principal", desc: "Visão geral e mercado", shortcut: "1" },
   { id: "institutional" as const, icon: Gauge, label: "Cockpit Institucional", desc: "PnL Real-Time, OFI & IA", shortcut: "8" },
+  { id: "journal" as const, icon: LineChart, label: "Diário & Analytics", desc: "MAE/MFE, Telegram & Order Flow", shortcut: "0" },
   { id: "chart" as const, icon: BarChart3, label: "Gráfico & Trading", desc: "Candles e livro de ofertas", shortcut: "2" },
   { id: "bot" as const, icon: Bot, label: "Robôs de Lucro", desc: "Automação simultânea", shortcut: "3" },
   { id: "trade-hub" as const, icon: Sparkles, label: "Estúdio Quant & IA", desc: "7 Módulos de Inteligência", shortcut: "9" },
@@ -38,9 +40,10 @@ const desktopNavItems = [
   { id: "education" as const, icon: BookOpen, label: "Academia Cripto", desc: "Guias e tutoriais", shortcut: "7" },
 ];
 
-// Mobile: 6 core items
+// Mobile: 7 core items
 const mobileNavItems = [
   { id: "dashboard" as const, icon: LayoutDashboard, label: "Painel" },
+  { id: "journal" as const, icon: LineChart, label: "Diário" },
   { id: "chart" as const, icon: BarChart3, label: "Gráfico" },
   { id: "trade-hub" as const, icon: Sparkles, label: "Estúdio" },
   { id: "bot" as const, icon: Bot, label: "Robôs" },
