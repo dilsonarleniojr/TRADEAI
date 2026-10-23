@@ -1,6 +1,35 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Extensão Zero-Hop para Feeds L2 Depth Snapshot (Order Book Heatmap) via SharedL2DepthMatrix SoA e Upload Direto VRAM (gl.texSubImage2D / WebGPU)",
+    "summary": "1) Matriz Colunar SoA em SharedArrayBuffer (SharedL2DepthMatrix): Criação de buffer colunar contíguo (Structure of Arrays - SoA) para até 1.000 níveis de bid e ask (64 bytes de cabeçalho alinhado à linha de cache + 4 colunas Float64Array de 1.000 slots = 32.064 bytes ~ 31.3 KB). Contém arrays tipados bidPrices, bidVolumes, askPrices e askVolumes garantindo acesso de baixa latência e total localidade espacial de memória (L1/L2 cache); 2) Sincronização Atômica Sem Travas (Store-Release): Sequenciamento via Atomics.add no cabeçalho compartilhado com Store-Release memory barrier e suporte a Atomics.notify/wait para leitura otimista (Optimistic Read) sem bloqueio ou cópia na thread receptora; 3) Empacotamento VRAM Zero-Allocation para gl.texSubImage2D: Implementação de packToSliceRGBA(...) compilando em passada única linear O(N) as fatias temporais de calor com mapeamento de intensidade nos canais R (Bids) e G (Asks) e isolamento instantâneo de ordens iceberg no canal B (255) em array pré-alocado Uint8Array(priceBins * 4); 4) Empacotamento Direto para WebGPU Storage Buffer & writeTexture: packToFloat32VRAMBuffer(...) formatando os níveis do livro em vetores contíguos vec4<f32>(bidPrice, bidVol, askPrice, askVol) para pipelines compute de desbalanceamento e Bloom Gaussiano sem passagens intermediárias de CPU; 5) Conexão Integrada de Workers: Extensão de binance-stream.worker.ts, binance-worker-manager.ts e offscreen-chart-controller.ts para troca direta de L2 SharedArrayBuffer e mensagens PEER_L2_UPDATE via MessagePort P2P. O Ingestion Worker preenche a matriz e o Render Worker aciona diretamente comandos GPU na VRAM sem tocar na Main Thread; 6) Validação: 72 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 542 asserções) e npx tsc --noEmit com 0 erros.",
+    "tags": [
+      "l2-depth-snapshot",
+      "order-book-heatmap",
+      "shared-l2-depth-matrix",
+      "structure-of-arrays-soa",
+      "zero-hop-worker-conduit",
+      "sharedarraybuffer-atomics",
+      "gl-texsubimage2d",
+      "webgpu-writetexture",
+      "iceberg-order-detection",
+      "desktop-performance-engine"
+    ],
+    "details": {
+      "matrixPath": "src/lib/performance/shared-l2-depth-matrix.ts",
+      "workerPath": "src/workers/binance-stream.worker.ts",
+      "workerManagerPath": "src/lib/performance/binance-worker-manager.ts",
+      "renderControllerPath": "src/lib/performance/offscreen-chart-controller.ts",
+      "testSuitePath": "tests/unit/desktop-performance-engine.test.ts",
+      "totalPassingTests": 72,
+      "totalAssertions": 542,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792562000000-zero-hop-l2-depth-matrix-heatmap",
+    "timestamp": "2026-10-23T05:37:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Conduto Zero-Hop Direto Worker-to-Worker (Ingestão de Rede -> Renderizador WebGL/WebGPU) sem Interceptação da Main Thread",
     "summary": "1) Conduto P2P Zero-Hop (MessageChannel Peer Port): Criação de canal de comunicação bidirecional direto entre a thread do Web Worker de Ingestão Binance (binance-stream.worker.ts) e a thread do Web Worker de Renderização Gráfica (offscreen-chart-controller.ts). Os ticks e deltas L2 de alta densidade (depth20@100ms, aggTrade) fluem diretamente via MessagePort (channel.port1 -> port2) a velocidades de IPC de kernel sem tocar na Main Thread em nenhum momento do pipeline; 2) Barramento de Memória Compartilhada Atômica (SharedArrayBuffer): Conexão direta das estruturas LockFreeSPSCQueue (com 192 bytes de padding de cache line) e SharedMemoryAtomicQueue entre ambos os workers. O Worker de Ingestão grava os ticks via Atomics nos slots contíguos enquanto o Render Worker lê diretamente da mesma região de memória sincronizado com seu loop nativo de requestAnimationFrame; 3) Métodos de Conexão na API Institucional: Implementação de BinanceWorkerManager.connectPeerPort(port), BinanceWorkerManager.shareQueueWith(renderController), OffscreenChartController.connectAtomicQueue(queue), OffscreenChartController.connectPeerPort(port) e o método estático unificado OffscreenChartController.connectWorkers(ingestionManager, renderController); 4) Telemetria de Canal e Limpeza Estrita: Exposição de getWorkerChannelMetrics() revelando estado de conectividade P2P, filas atômicas ativas e motor em execução, com expurgo atômico de portas (port.close()) e unbind de filas no destroy() para erradicar vazamentos de memória; 5) Validação: 66 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 502 asserções) e npx tsc --noEmit com 0 erros.",
     "tags": [

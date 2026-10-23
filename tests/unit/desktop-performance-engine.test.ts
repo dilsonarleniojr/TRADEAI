@@ -16,6 +16,7 @@ import { AdaptiveFrameScheduler } from "@/lib/performance/adaptive-frame-schedul
 import { BinanceWorkerManager } from "@/lib/performance/binance-worker-manager";
 import { SharedMemoryAtomicQueue } from "@/lib/performance/shared-memory-atomic-queue";
 import { LockFreeSPSCQueue, TOTAL_HEADER_BYTES, CACHE_LINE_SIZE_BYTES } from "@/lib/performance/lock-free-spsc-queue";
+import { SharedL2DepthMatrix } from "@/lib/performance/shared-l2-depth-matrix";
 import { WebGLCandlestickRenderer } from "@/lib/performance/webgl-candlestick-renderer";
 import { OffscreenChartController } from "@/lib/performance/offscreen-chart-controller";
 import { WebGLL2HeatmapRenderer } from "@/lib/performance/webgl-l2-heatmap-renderer";
@@ -1951,6 +1952,167 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
 
       ingestionManager.destroy();
       renderController.destroy();
+    });
+  });
+
+  describe("18. Zero-Hop Shared L2 Depth Matrix (Order Book Heatmap GPU Direct Ingestion)", () => {
+    it("deve alocar a matriz SoA com alinhamento de cache e cabeçalho atômico", () => {
+      const matrix = SharedL2DepthMatrix.create(1000);
+      expect(matrix).toBeDefined();
+      expect(matrix.getMaxLevels()).toBe(1000);
+
+      const buffer = matrix.getRawBuffer();
+      // 64 bytes de cabeçalho + 4 colunas * 1000 * 8 bytes = 32064 bytes
+      expect(buffer.byteLength).toBe(64 + 4 * 1000 * 8);
+
+      const summary = matrix.readSnapshotSummary();
+      expect(summary.bidsCount).toBe(0);
+      expect(summary.asksCount).toBe(0);
+      expect(summary.writeSequence).toBe(0);
+    });
+
+    it("deve preencher níveis de bids e asks em formato SoA com zero allocations e atualizar métricas atômicas", () => {
+      const matrix = SharedL2DepthMatrix.create(500);
+
+      const bids: [number, number][] = [
+        [69000.0, 5.5],
+        [68990.0, 12.0],
+        [68980.0, 25.0],
+      ];
+      const asks: [number, number][] = [
+        [69010.0, 4.2],
+        [69020.0, 8.1],
+        [69030.0, 15.6],
+      ];
+
+      const writeSeq = matrix.writeDepthSnapshot(bids, asks, 1700000050000);
+      expect(writeSeq).toBe(1);
+
+      const summary = matrix.readSnapshotSummary();
+      expect(summary.bidsCount).toBe(3);
+      expect(summary.asksCount).toBe(3);
+      expect(summary.timestamp).toBe(1700000050000);
+      expect(summary.bestBid).toBe(69000.0);
+      expect(summary.bestAsk).toBe(69010.0);
+      expect(summary.spread).toBeCloseTo(10.0, 2);
+      expect(summary.totalBidVolume).toBeCloseTo(5.5 + 12.0 + 25.0, 4);
+      expect(summary.totalAskVolume).toBeCloseTo(4.2 + 8.1 + 15.6, 4);
+
+      // Verificação de acesso zero-copy direto aos arrays tipados
+      const bidPrices = matrix.getBidPrices();
+      const bidVolumes = matrix.getBidVolumes();
+      const askPrices = matrix.getAskPrices();
+      const askVolumes = matrix.getAskVolumes();
+
+      expect(bidPrices[0]).toBe(69000.0);
+      expect(bidVolumes[0]).toBe(5.5);
+      expect(askPrices[0]).toBe(69010.0);
+      expect(askVolumes[0]).toBe(4.2);
+    });
+
+    it("deve permitir leitura através de SharedL2DepthMatrix.fromBuffer conectada à mesma memória física", () => {
+      const writer = SharedL2DepthMatrix.create(100);
+      const reader = SharedL2DepthMatrix.fromBuffer(writer.getRawBuffer(), 100);
+
+      writer.writeDepthSnapshot(
+        [[70000, 10], [69990, 20]],
+        [[70010, 15], [70020, 30]],
+        1700000060000
+      );
+
+      const readerSummary = reader.readSnapshotSummary();
+      expect(readerSummary.bidsCount).toBe(2);
+      expect(readerSummary.asksCount).toBe(2);
+      expect(readerSummary.bestBid).toBe(70000);
+      expect(readerSummary.bestAsk).toBe(70010);
+      expect(reader.getBidPrices()[1]).toBe(69990);
+      expect(reader.getAskVolumes()[1]).toBe(30);
+    });
+
+    it("deve empacotar fatia temporal em texels RGBA para gl.texSubImage2D com detecção de icebergs", () => {
+      const matrix = SharedL2DepthMatrix.create(100);
+      matrix.writeDepthSnapshot(
+        [[100, 10], [90, 50]], // nível 90 tem 50 de volume (> threshold 25) -> Iceberg!
+        [[110, 8], [120, 12]],
+        1700000070000
+      );
+
+      const priceBins = 10;
+      const targetRGBA = new Uint8Array(priceBins * 4);
+
+      const packedBins = matrix.packToSliceRGBA(
+        targetRGBA,
+        priceBins,
+        80, // minPrice
+        130, // maxPrice
+        50.0, // maxVolume
+        25.0 // icebergVolumeThreshold
+      );
+
+      expect(packedBins).toBe(priceBins);
+      expect(targetRGBA.byteLength).toBe(priceBins * 4);
+
+      // Algum bin deve conter cor de bid (R > 0)
+      let foundBid = false;
+      let foundAsk = false;
+      let foundIceberg = false;
+
+      for (let i = 0; i < priceBins; i++) {
+        const r = targetRGBA[i * 4 + 0];
+        const g = targetRGBA[i * 4 + 1];
+        const b = targetRGBA[i * 4 + 2];
+        const a = targetRGBA[i * 4 + 3];
+
+        if (r > 0 && a > 0) foundBid = true;
+        if (g > 0 && a > 0) foundAsk = true;
+        if (b === 255) foundIceberg = true;
+      }
+
+      expect(foundBid).toBe(true);
+      expect(foundAsk).toBe(true);
+      expect(foundIceberg).toBe(true);
+    });
+
+    it("deve empacotar matriz colunar em Float32Array para WebGPU storage buffer e writeTexture", () => {
+      const matrix = SharedL2DepthMatrix.create(50);
+      matrix.writeDepthSnapshot(
+        [[69000, 1.5], [68900, 3.0]],
+        [[69100, 2.0], [69200, 4.5]],
+        1700000080000
+      );
+
+      const targetF32 = new Float32Array(50 * 4);
+      const packedCount = matrix.packToFloat32VRAMBuffer(targetF32, 50);
+
+      expect(packedCount).toBe(2); // 2 níveis de bids e asks
+      // [bidPrice, bidVol, askPrice, askVol]
+      expect(targetF32[0]).toBe(69000);
+      expect(targetF32[1]).toBeCloseTo(1.5, 2);
+      expect(targetF32[2]).toBe(69100);
+      expect(targetF32[3]).toBeCloseTo(2.0, 2);
+    });
+
+    it("deve interconectar automaticamente o SharedL2DepthMatrix através de OffscreenChartController.connectWorkers", () => {
+      const ingestionManager = new BinanceWorkerManager();
+      const renderController = new OffscreenChartController();
+
+      // Antes da conexão
+      expect(renderController.getL2DepthMatrix()).toBeNull();
+      expect(renderController.getWorkerChannelMetrics().hasL2DepthMatrix).toBe(false);
+
+      // Conexão P2P com compartilhamento atômico e L2
+      OffscreenChartController.connectWorkers(ingestionManager, renderController);
+
+      // O renderController agora tem acesso direto ao L2 Depth Matrix em memória compartilhada
+      const l2Matrix = renderController.getL2DepthMatrix();
+      if (l2Matrix) {
+        expect(l2Matrix.getMaxLevels()).toBe(1000);
+        expect(renderController.getWorkerChannelMetrics().hasL2DepthMatrix).toBe(true);
+      }
+
+      ingestionManager.destroy();
+      renderController.destroy();
+      expect(renderController.getL2DepthMatrix()).toBeNull();
     });
   });
 });

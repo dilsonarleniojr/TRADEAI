@@ -1,5 +1,6 @@
 import { SharedMemoryAtomicQueue } from "./shared-memory-atomic-queue";
 import { LockFreeSPSCQueue } from "./lock-free-spsc-queue";
+import { SharedL2DepthMatrix } from "./shared-l2-depth-matrix";
 import type {
   NormalizedTicker,
   SerializedWorkerError,
@@ -69,9 +70,10 @@ export class BinanceWorkerManager {
   private onBatchCallback: WorkerBatchCallback | null = null;
   private onErrorCallback: WorkerErrorCallback | null = null;
 
-  // Filas atômicas em memória compartilhada
+  // Filas atômicas e matrizes de profundidade L2 em memória compartilhada
   private spscQueue: LockFreeSPSCQueue | null = null;
   private sharedQueue: SharedMemoryAtomicQueue | null = null;
+  private l2DepthMatrix: SharedL2DepthMatrix | null = null;
   private useSpsc = true;
 
   // Dicionário bi-direcional O(1) de mapeamento de símbolos
@@ -99,6 +101,7 @@ export class BinanceWorkerManager {
           capacity: 4096,
           stride: DEFAULT_TICKER_STRIDE,
         });
+        this.l2DepthMatrix = SharedL2DepthMatrix.create(1000);
       } catch (err) {
         console.warn("[BinanceWorkerManager] SharedArrayBuffer restrito ou indisponível:", err);
       }
@@ -154,17 +157,34 @@ export class BinanceWorkerManager {
     return false;
   }
 
-  /**
-   * Compartilha a fila atômica em memória (SharedArrayBuffer) com o controlador de renderização gráfica.
-   */
-  public shareQueueWith(renderController: { connectAtomicQueue(queue: any): boolean }): boolean {
-    if (this.spscQueue) {
-      return renderController.connectAtomicQueue(this.spscQueue);
-    }
-    if (this.sharedQueue) {
-      return renderController.connectAtomicQueue(this.sharedQueue);
+  public getL2DepthMatrix(): SharedL2DepthMatrix | null {
+    return this.l2DepthMatrix;
+  }
+
+  public shareL2DepthWith(renderController: { connectL2DepthMatrix(matrix: SharedL2DepthMatrix): boolean }): boolean {
+    if (this.l2DepthMatrix && typeof renderController.connectL2DepthMatrix === "function") {
+      return renderController.connectL2DepthMatrix(this.l2DepthMatrix);
     }
     return false;
+  }
+
+  /**
+   * Compartilha a fila atômica e a matriz de profundidade L2 (SharedArrayBuffer) com o controlador gráfico.
+   */
+  public shareQueueWith(renderController: {
+    connectAtomicQueue(queue: any): boolean;
+    connectL2DepthMatrix?(matrix: any): boolean;
+  }): boolean {
+    let queueShared = false;
+    if (this.spscQueue) {
+      queueShared = renderController.connectAtomicQueue(this.spscQueue);
+    } else if (this.sharedQueue) {
+      queueShared = renderController.connectAtomicQueue(this.sharedQueue);
+    }
+    if (this.l2DepthMatrix && typeof renderController.connectL2DepthMatrix === "function") {
+      renderController.connectL2DepthMatrix(this.l2DepthMatrix);
+    }
+    return queueShared;
   }
 
   public getSymbolId(sym: string): number {
@@ -586,6 +606,16 @@ export class BinanceWorkerManager {
         this.worker.postMessage(initMsg);
       }
 
+      // Se temos matriz colunar de profundidade L2 (SharedArrayBuffer), envia para o worker
+      if (this.l2DepthMatrix) {
+        const depthMsg: WorkerInboundMessage = {
+          type: "INIT_L2_DEPTH_BUFFER",
+          buffer: this.l2DepthMatrix.getRawBuffer(),
+          maxLevels: this.l2DepthMatrix.getMaxLevels(),
+        };
+        this.worker.postMessage(depthMsg);
+      }
+
       this.worker.onmessage = (event: MessageEvent<WorkerOutboundMessage>) => {
         this.handleWorkerMessage(event.data);
       };
@@ -832,6 +862,7 @@ export class BinanceWorkerManager {
     this.nextSymbolId = 1;
     this.onBatchCallback = null;
     this.onErrorCallback = null;
+    this.l2DepthMatrix = null;
     this.isWorkerActive = false;
   }
 }

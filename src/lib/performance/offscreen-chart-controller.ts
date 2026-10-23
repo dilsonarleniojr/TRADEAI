@@ -8,6 +8,7 @@
 import { WebGLCandlestickRenderer, WebGLCandleData, WebGLViewBounds } from "./webgl-candlestick-renderer";
 import type { LockFreeSPSCQueue } from "./lock-free-spsc-queue";
 import type { SharedMemoryAtomicQueue } from "./shared-memory-atomic-queue";
+import type { SharedL2DepthMatrix } from "./shared-l2-depth-matrix";
 import type { BinanceWorkerManager } from "./binance-worker-manager";
 
 export type RenderEngineType = "OFFSCREEN_WEBGL2" | "MAIN_THREAD_WEBGL2" | "CANVAS_2D_FALLBACK";
@@ -31,6 +32,7 @@ export class OffscreenChartController {
   private isPeerConnected: boolean = false;
   private hasAtomicQueue: boolean = false;
   private atomicQueue: LockFreeSPSCQueue | SharedMemoryAtomicQueue | null = null;
+  private l2DepthMatrix: SharedL2DepthMatrix | null = null;
 
   private candleWidthPx: number = 6;
   private wickWidthPx: number = 1.5;
@@ -144,6 +146,8 @@ export class OffscreenChartController {
                   const pData = pe.data;
                   if (pData && pData.type === "PEER_TICK" && pData.ticker) {
                     // Ticker recebido diretamente do Ingestion Worker sem Main Thread!
+                  } else if (pData && pData.type === "PEER_L2_UPDATE") {
+                    // Notificação L2 Depth recebida diretamente do Ingestion Worker sem Main Thread!
                   }
                 };
                 if (typeof peerPort.start === "function") {
@@ -170,6 +174,13 @@ export class OffscreenChartController {
                   atomicData = new Float64Array(sharedBuffer, 64, atomicCapacity * atomicStride);
                 }
                 self.postMessage({ type: "SHARED_QUEUE_CONNECTED" });
+              }
+              break;
+
+            case "CONNECT_L2_DEPTH_BUFFER":
+              if (msg.buffer) {
+                // Buffer L2 Depth SoA recebido diretamente para upload VRAM / texSubImage2D
+                self.postMessage({ type: "L2_DEPTH_BUFFER_CONNECTED" });
               }
               break;
 
@@ -211,6 +222,20 @@ export class OffscreenChartController {
               type: "CONNECT_SHARED_QUEUE",
               buffer: rawBuffer,
               queueType: isSPSC ? "SPSC" : "ATOMIC",
+            });
+          }
+        } catch {}
+      }
+
+      // Reencaminha matriz L2 depth compartilhada se já tiver sido conectada
+      if (this.l2DepthMatrix) {
+        try {
+          const rawBuffer = this.l2DepthMatrix.getRawBuffer();
+          if (rawBuffer) {
+            this.worker.postMessage({
+              type: "CONNECT_L2_DEPTH_BUFFER",
+              buffer: rawBuffer,
+              maxLevels: this.l2DepthMatrix.getMaxLevels(),
             });
           }
         } catch {}
@@ -296,6 +321,38 @@ export class OffscreenChartController {
     return true;
   }
 
+  /**
+   * Conecta a matriz de profundidade L2 (SharedArrayBuffer) diretamente à thread de renderização WebGL/WebGPU.
+   */
+  public connectL2DepthMatrix(matrix: SharedL2DepthMatrix): boolean {
+    this.l2DepthMatrix = matrix;
+
+    if (this.worker) {
+      try {
+        const rawBuffer = matrix.getRawBuffer();
+        if (rawBuffer) {
+          this.worker.postMessage({
+            type: "CONNECT_L2_DEPTH_BUFFER",
+            buffer: rawBuffer,
+            maxLevels: matrix.getMaxLevels(),
+          });
+          return true;
+        }
+      } catch (err) {
+        console.warn("[OffscreenChartController] Falha ao compartilhar L2 Depth Buffer com o worker:", err);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Retorna a matriz de profundidade L2 conectada, se houver.
+   */
+  public getL2DepthMatrix(): SharedL2DepthMatrix | null {
+    return this.l2DepthMatrix;
+  }
+
   private lastPeerTick: any = null;
 
   public getLastPeerTick(): any {
@@ -364,11 +421,13 @@ export class OffscreenChartController {
   public getWorkerChannelMetrics(): {
     isPeerConnected: boolean;
     hasAtomicQueue: boolean;
+    hasL2DepthMatrix: boolean;
     activeEngine: RenderEngineType;
   } {
     return {
       isPeerConnected: this.isPeerConnected,
       hasAtomicQueue: this.hasAtomicQueue,
+      hasL2DepthMatrix: this.l2DepthMatrix !== null,
       activeEngine: this.activeEngine,
     };
   }
@@ -402,6 +461,7 @@ export class OffscreenChartController {
     this.isPeerConnected = false;
     this.hasAtomicQueue = false;
     this.atomicQueue = null;
+    this.l2DepthMatrix = null;
     this.lastPeerTick = null;
     this.canvas = null;
     this.offscreenCanvas = null;

@@ -74,6 +74,7 @@ export interface SerializedWorkerError {
 
 export type WorkerInboundMessage =
   | { type: "INIT_SHARED_BUFFER"; buffer: SharedArrayBuffer; queueType?: "SPSC" | "ATOMIC" }
+  | { type: "INIT_L2_DEPTH_BUFFER"; buffer: SharedArrayBuffer; maxLevels?: number }
   | { type: "SUBSCRIBE"; symbols: string[]; symbolMap?: Record<string, number> }
   | { type: "CONNECT_PEER_PORT"; port: MessagePort }
   | { type: "DISCONNECT" }
@@ -86,6 +87,7 @@ export type WorkerOutboundMessage =
   | { type: "TRANSFER_BATCH"; count: number; stride: number; buffer: ArrayBuffer; symbolMap: Record<string, number> }
   | { type: "BATCH"; tickers: NormalizedTicker[] }
   | { type: "PEER_PORT_CONNECTED" }
+  | { type: "L2_DEPTH_BUFFER_CONNECTED" }
   | { type: "PONG"; timestamp: number };
 
 /**
@@ -162,6 +164,47 @@ export function isBinanceRateLimit(code?: number, message?: string): boolean {
   return false;
 }
 
+export interface ParsedBinanceDepth {
+  bids: [number, number][];
+  asks: [number, number][];
+  timestamp: number;
+  symbol?: string;
+}
+
+/**
+ * Parser de alto desempenho de payloads de profundidade L2 (depth20, depth@100ms, depth1000).
+ */
+export function parseBinanceDepthPayload(raw: string): ParsedBinanceDepth | null {
+  if (!raw || raw.length === 0) return null;
+  try {
+    const payload = JSON.parse(raw);
+    const data = payload.data || payload;
+    if (data && (data.bids || data.b) && (data.asks || data.a)) {
+      const rawBids = data.bids || data.b;
+      const rawAsks = data.asks || data.a;
+      const bids: [number, number][] = [];
+      const asks: [number, number][] = [];
+
+      for (let i = 0; i < rawBids.length; i++) {
+        bids.push([Number(rawBids[i][0]) || 0, Number(rawBids[i][1]) || 0]);
+      }
+      for (let i = 0; i < rawAsks.length; i++) {
+        asks.push([Number(rawAsks[i][0]) || 0, Number(rawAsks[i][1]) || 0]);
+      }
+
+      return {
+        bids,
+        asks,
+        timestamp: Number(data.E) || Date.now(),
+        symbol: data.s ? String(data.s).toUpperCase() : undefined,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Execução do Worker (escopo isolado em thread secundária)
 // ---------------------------------------------------------------------------
@@ -198,6 +241,68 @@ if (typeof self !== "undefined" && typeof (self as any).postMessage === "functio
 
   // Canal direto Peer-to-Peer com o Worker de Renderização (Zero-Hop)
   let peerPort: MessagePort | null = null;
+
+  // Matriz colunar de profundidade L2 (SoA) em SharedArrayBuffer
+  let sharedDepthBuffer: SharedArrayBuffer | null = null;
+  let depthHeaderInt32: Int32Array | null = null;
+  let depthHeaderFloat64: Float64Array | null = null;
+  let depthBidPrices: Float64Array | null = null;
+  let depthBidVolumes: Float64Array | null = null;
+  let depthAskPrices: Float64Array | null = null;
+  let depthAskVolumes: Float64Array | null = null;
+  let depthMaxLevels = 1000;
+
+  function writeDepthToSharedMatrix(depth: ParsedBinanceDepth): boolean {
+    if (!sharedDepthBuffer || !depthHeaderInt32 || !depthBidPrices || !depthBidVolumes || !depthAskPrices || !depthAskVolumes) {
+      return false;
+    }
+    const bidsLen = Math.min(depthMaxLevels, depth.bids.length);
+    const asksLen = Math.min(depthMaxLevels, depth.asks.length);
+    let totalBidVol = 0;
+    let totalAskVol = 0;
+    let bestBid = 0;
+    let bestAsk = 0;
+
+    for (let i = 0; i < bidsLen; i++) {
+      const p = depth.bids[i][0];
+      const q = depth.bids[i][1];
+      depthBidPrices[i] = p;
+      depthBidVolumes[i] = q;
+      totalBidVol += q;
+      if (i === 0) bestBid = p;
+    }
+
+    for (let i = 0; i < asksLen; i++) {
+      const p = depth.asks[i][0];
+      const q = depth.asks[i][1];
+      depthAskPrices[i] = p;
+      depthAskVolumes[i] = q;
+      totalAskVol += q;
+      if (i === 0) bestAsk = p;
+    }
+
+    if (depthHeaderFloat64) {
+      depthHeaderFloat64[4] = bestBid;
+      depthHeaderFloat64[5] = bestAsk;
+      depthHeaderFloat64[6] = bestAsk > 0 && bestBid > 0 ? Math.max(0, bestAsk - bestBid) : 0;
+      depthHeaderFloat64[7] = totalBidVol;
+    }
+
+    depthHeaderInt32[1] = bidsLen;
+    depthHeaderInt32[2] = asksLen;
+    const tsLo = depth.timestamp & 0xffffffff;
+    const tsHi = Math.floor(depth.timestamp / 0x100000000);
+    depthHeaderInt32[4] = tsLo;
+    depthHeaderInt32[5] = tsHi;
+
+    Atomics.add(depthHeaderInt32, 0, 1);
+    if (typeof Atomics.notify === "function") {
+      try {
+        Atomics.notify(depthHeaderInt32, 0, 1);
+      } catch {}
+    }
+    return true;
+  }
 
   let reconnectAttempts = 0;
   let reconnectTimer: any = null;
@@ -334,6 +439,24 @@ if (typeof self !== "undefined" && typeof (self as any).postMessage === "functio
     // 1. Parsing sem alocações desnecessárias
     const ticker = parseBinanceStreamPayload(rawText);
     if (!ticker) {
+      // 1.1 Verifica se é snapshot L2 de profundidade contínua (depth20, depth@100ms)
+      const depth = parseBinanceDepthPayload(rawText);
+      if (depth) {
+        writeDepthToSharedMatrix(depth);
+        if (peerPort) {
+          try {
+            peerPort.postMessage({
+              type: "PEER_L2_UPDATE",
+              timestamp: depth.timestamp,
+              bidsCount: depth.bids.length,
+              asksCount: depth.asks.length,
+              symbol: depth.symbol,
+            });
+          } catch {}
+        }
+        return;
+      }
+
       // Verifica se é erro JSON ou rate limit retornado pela Binance
       try {
         const errObj = JSON.parse(rawText);
@@ -476,6 +599,26 @@ if (typeof self !== "undefined" && typeof (self as any).postMessage === "functio
             atomicStride = atomicHeader[ATOMIC_HEADER_STRIDE] || DEFAULT_TICKER_STRIDE;
             atomicData = new Float64Array(sharedBuffer, ATOMIC_HEADER_SIZE_BYTES, atomicCapacity * atomicStride);
           }
+        }
+        break;
+      }
+
+      case "INIT_L2_DEPTH_BUFFER": {
+        if (msg.buffer) {
+          sharedDepthBuffer = msg.buffer;
+          depthMaxLevels = msg.maxLevels || 1000;
+          depthHeaderInt32 = new Int32Array(sharedDepthBuffer, 0, 16);
+          depthHeaderFloat64 = new Float64Array(sharedDepthBuffer, 0, 8);
+          const bytesPerCol = depthMaxLevels * Float64Array.BYTES_PER_ELEMENT;
+          let off = 64; // L2_HEADER_BYTES
+          depthBidPrices = new Float64Array(sharedDepthBuffer, off, depthMaxLevels);
+          off += bytesPerCol;
+          depthBidVolumes = new Float64Array(sharedDepthBuffer, off, depthMaxLevels);
+          off += bytesPerCol;
+          depthAskPrices = new Float64Array(sharedDepthBuffer, off, depthMaxLevels);
+          off += bytesPerCol;
+          depthAskVolumes = new Float64Array(sharedDepthBuffer, off, depthMaxLevels);
+          (self as any).postMessage({ type: "L2_DEPTH_BUFFER_CONNECTED" });
         }
         break;
       }
