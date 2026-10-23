@@ -16,6 +16,7 @@ import { PilotOrderExecutor, BinanceCredentials } from './pilot-order-executor';
 import { getOrderBookAnalysis } from '@/lib/bot/order-book-cache';
 import { GraduatedCircuitBreaker } from './chaos-test-harness';
 import type { SpoofingAlert } from '@/lib/order-book-imbalance';
+import { LockFreeSPSCQueue } from '@/lib/performance/lock-free-spsc-queue';
 
 export interface DirectOperationSession {
   id: string;
@@ -279,6 +280,66 @@ export class TelegramNotifier {
 }
 
 export class DirectOperationManager {
+  // Fila circular Lock-Free SPSC para despacho atômico de ordens com zero alocações
+  private static atomicOrderQueue: LockFreeSPSCQueue | null = null;
+  private static readonly scratchOrderSlot = new Float64Array(8);
+
+  /**
+   * Inicializa ou conecta a fila atômica Lock-Free SPSC para ordens
+   */
+  public static initAtomicOrderQueue(capacity = 256): LockFreeSPSCQueue {
+    this.atomicOrderQueue = LockFreeSPSCQueue.create(capacity, 8);
+    return this.atomicOrderQueue;
+  }
+
+  /**
+   * Retorna a fila atômica de ordens atual
+   */
+  public static getAtomicOrderQueue(): LockFreeSPSCQueue | null {
+    return this.atomicOrderQueue;
+  }
+
+  /**
+   * Enfileira uma ordem de compra ou venda na fila atômica em tempo O(1) sem locks.
+   * Stride 8: [0: idNumeric, 1: symbolHash, 2: side, 3: quantity, 4: price, 5: timestamp, 6: status, 7: notional]
+   */
+  public static enqueueAtomicOrder(payload: {
+    idNumeric: number;
+    symbolHash: number;
+    side: 1 | -1;
+    quantity: number;
+    price: number;
+    timestamp?: number;
+  }): boolean {
+    if (!this.atomicOrderQueue) {
+      this.initAtomicOrderQueue();
+    }
+    const slot = this.scratchOrderSlot;
+    slot[0] = payload.idNumeric;
+    slot[1] = payload.symbolHash;
+    slot[2] = payload.side;
+    slot[3] = payload.quantity;
+    slot[4] = payload.price;
+    slot[5] = payload.timestamp ?? Date.now();
+    slot[6] = 0; // PENDING
+    slot[7] = payload.quantity * payload.price;
+
+    return this.atomicOrderQueue!.push(slot);
+  }
+
+  /**
+   * Drena ordens pendentes da fila atômica em lote sem alocação transitória
+   */
+  public static drainAtomicOrders(
+    maxCount = 32,
+    onOrder?: (order: Float64Array) => void
+  ): number {
+    if (!this.atomicOrderQueue) return 0;
+    return this.atomicOrderQueue.drain(maxCount, (data) => {
+      if (onOrder) onOrder(data);
+    });
+  }
+
   // Histórico em memória de símbolos operados recentemente para rotação de ativos
   private static recentSymbolsHistory: { symbol: string; timestamp: number }[] = [];
 
@@ -1009,11 +1070,13 @@ export class DirectOperationManager {
 
     session.currentPrice = latestPrice;
 
-    // Histórico de preços em tempo real para mini-gráfico
+    // Histórico de preços em tempo real para mini-gráfico (buffer circular sem O(N) shift)
     if (!session.priceHistory) session.priceHistory = [];
-    session.priceHistory.push({ price: latestPrice, timestamp: Date.now() });
-    if (session.priceHistory.length > 30) {
-      session.priceHistory.shift();
+    if (session.priceHistory.length >= 30) {
+      session.priceHistory.copyWithin(0, 1);
+      session.priceHistory[29] = { price: latestPrice, timestamp: Date.now() };
+    } else {
+      session.priceHistory.push({ price: latestPrice, timestamp: Date.now() });
     }
 
     // Se estiver aguardando gatilho ótimo (Radar Sniper)

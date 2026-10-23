@@ -240,9 +240,9 @@ export class GPUTransformFeedbackEngine {
       gl.useProgram(this.program);
       gl.bindVertexArray(this.inputVao);
 
-      // Atualiza VBO de entrada
+      // Atualiza VBO de entrada com zero-copy direto sem alocar view .subarray()
       gl.bindBuffer(gl.ARRAY_BUFFER, this.inputBuffer);
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.inputData.subarray(0, count * 4));
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.inputData, 0, count * 4);
 
       // Ativa Transform Feedback e descarta rasterização
       gl.enable(gl.RASTERIZER_DISCARD);
@@ -256,9 +256,9 @@ export class GPUTransformFeedbackEngine {
       gl.disable(gl.RASTERIZER_DISCARD);
       gl.bindVertexArray(null);
 
-      // Lê de volta os resultados agregados da GPU
+      // Lê de volta os resultados agregados da GPU diretamente no buffer destino pré-alocado
       gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, this.outputBuffer);
-      gl.getBufferSubData(gl.TRANSFORM_FEEDBACK_BUFFER, 0, this.outputData.subarray(0, count * 4));
+      gl.getBufferSubData(gl.TRANSFORM_FEEDBACK_BUFFER, 0, this.outputData, 0, count * 4);
       gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, null);
 
       return this.aggregateMetricsFromBuffer(this.outputData, count);
@@ -266,6 +266,94 @@ export class GPUTransformFeedbackEngine {
 
     // 3. Fallback vetorizado equivalente para testes/headless
     return this.computeVectorizedFallback(levels, count);
+  }
+
+  /**
+   * Executa cálculo de desbalanceamento diretamente a partir de vetores contíguos SoA.
+   * Elimina completamente a criação de arrays de objetos intermediários.
+   */
+  public computeImbalanceFromSoA(
+    prices: Float32Array | Float64Array,
+    quantities: Float32Array | Float64Array,
+    sides: Int8Array | Int32Array | Float64Array,
+    distances: Float32Array | Float64Array,
+    count: number
+  ): GPUTFIImbalanceMetrics {
+    const safeCount = Math.min(count, this.maxLevels, prices.length);
+    if (safeCount === 0) {
+      return {
+        imbalanceRatio: 0,
+        weightedBidVolume: 0,
+        weightedAskVolume: 0,
+        absorptionPressure: 0,
+        dominantSide: "BALANCED",
+        processedLevels: 0,
+      };
+    }
+
+    for (let i = 0; i < safeCount; i++) {
+      const offset = i * 4;
+      this.inputData[offset + 0] = prices[i];
+      this.inputData[offset + 1] = quantities[i];
+      this.inputData[offset + 2] = sides[i];
+      this.inputData[offset + 3] = distances[i];
+    }
+
+    if (this.gl && this.program && this.inputVao && this.transformFeedback && this.outputBuffer) {
+      const gl = this.gl;
+      gl.useProgram(this.program);
+      gl.bindVertexArray(this.inputVao);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.inputBuffer);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.inputData, 0, safeCount * 4);
+
+      gl.enable(gl.RASTERIZER_DISCARD);
+      gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.transformFeedback);
+      gl.beginTransformFeedback(gl.POINTS);
+      gl.drawArrays(gl.POINTS, 0, safeCount);
+      gl.endTransformFeedback();
+      gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+      gl.disable(gl.RASTERIZER_DISCARD);
+      gl.bindVertexArray(null);
+
+      gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, this.outputBuffer);
+      gl.getBufferSubData(gl.TRANSFORM_FEEDBACK_BUFFER, 0, this.outputData, 0, safeCount * 4);
+      gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, null);
+
+      return this.aggregateMetricsFromBuffer(this.outputData, safeCount);
+    }
+
+    // Fallback vetorizado equivalente sem alocações
+    let totalBidWeight = 0;
+    let totalAskWeight = 0;
+    let totalAbsorption = 0;
+    for (let i = 0; i < safeCount; i++) {
+      const qty = quantities[i];
+      const side = sides[i];
+      const dist = distances[i];
+      const weight = Math.exp(-this.lambdaDecay * Math.max(0, dist));
+      const weightedVol = qty * weight;
+      if (side > 0) {
+        totalBidWeight += weightedVol;
+      } else if (side < 0) {
+        totalAskWeight += weightedVol;
+      }
+      totalAbsorption += dist < 0.001 ? qty * 1.5 : weightedVol;
+    }
+    const totalVolume = totalBidWeight + totalAskWeight;
+    const imbalanceRatio = totalVolume > 0 ? (totalBidWeight - totalAskWeight) / totalVolume : 0;
+    let dominantSide: "BUY_DOMINANT" | "SELL_DOMINANT" | "BALANCED" = "BALANCED";
+    if (imbalanceRatio > 0.20) dominantSide = "BUY_DOMINANT";
+    else if (imbalanceRatio < -0.20) dominantSide = "SELL_DOMINANT";
+
+    return {
+      imbalanceRatio: Math.round(imbalanceRatio * 1000) / 1000,
+      weightedBidVolume: Math.round(totalBidWeight * 100) / 100,
+      weightedAskVolume: Math.round(totalAskWeight * 100) / 100,
+      absorptionPressure: Math.round(totalAbsorption * 100) / 100,
+      dominantSide,
+      processedLevels: safeCount,
+    };
   }
 
   /**

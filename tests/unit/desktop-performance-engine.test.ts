@@ -45,6 +45,25 @@ import {
   isBinanceRateLimit,
   DEFAULT_TICKER_STRIDE,
 } from "@/workers/binance-stream.worker";
+import {
+  createCandleSoA,
+  klinesToSoA,
+  fastRound6,
+  calculateEMA,
+  calculateIncrementalEMA,
+  calculateRSI,
+  initIncrementalRSI,
+  calculateIncrementalRSI,
+  calculateMACD,
+  calculateMACDFromTyped,
+  initIncrementalMACD,
+  calculateIncrementalMACD,
+  relativeATR,
+  relativeATRFromSoA,
+  calculatePivotPoints,
+} from "@/lib/bot/indicators";
+import { PilotRiskCircuitBreaker } from "@/lib/bot/pilot/pilot-circuit-breaker";
+import { DirectOperationManager } from "@/lib/bot/pilot/direct-operation-manager";
 
 describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", () => {
   describe("1. TickCoalescer (V-Sync Frame Batching & Pacing)", () => {
@@ -2645,6 +2664,171 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
       controller.destroy();
       expect(buffer.getATRListenersCount()).toBe(0);
       expect(controller.getDynamicRangeState().isBound).toBe(false);
+    });
+  });
+
+  describe("22. Otimização de Baixa Latência (SoA Indicators, Atomics Order Queue & Circuit Breaker)", () => {
+    describe("SoA & Incremental Technical Indicators", () => {
+      it("deve converter klines para Structure-of-Arrays (SoA) em Float64Array contíguos de memória", () => {
+        const klines = [
+          { time: 1000, open: 65000, high: 65200, low: 64900, close: 65100, volume: 10 },
+          { time: 2000, open: 65100, high: 65300, low: 65000, close: 65250, volume: 15 },
+        ];
+        const soa = klinesToSoA(klines);
+        expect(soa.length).toBe(2);
+        expect(soa.timestamps[0]).toBe(1000);
+        expect(soa.closes[1]).toBe(65250);
+        expect(soa.volumes[0]).toBe(10);
+      });
+
+      it("deve calcular relativeATRFromSoA com equivalência exata ao relativeATR tradicional sem alocações", () => {
+        const klines = [
+          { time: 1, open: 100, high: 105, low: 95, close: 102, volume: 100 },
+          { time: 2, open: 102, high: 108, low: 101, close: 107, volume: 110 },
+          { time: 3, open: 107, high: 110, low: 104, close: 105, volume: 120 },
+          { time: 4, open: 105, high: 106, low: 98, close: 100, volume: 130 },
+          { time: 5, open: 100, high: 103, low: 97, close: 101, volume: 140 },
+        ];
+        const soa = klinesToSoA(klines);
+        const atrObj = relativeATR(klines, 14);
+        const atrSoA = relativeATRFromSoA(soa.highs, soa.lows, soa.closes, soa.length, 14);
+
+        expect(Math.abs(atrObj - atrSoA)).toBeLessThan(1e-9);
+        expect(atrSoA).toBeGreaterThan(0);
+      });
+
+      it("deve calcular RSI incremental O(1) com precisão estrita idêntica ao RSI completo", () => {
+        const prices = [
+          44.34, 44.09, 44.15, 43.61, 44.33, 44.83, 45.10, 45.42, 45.84, 46.08,
+          45.89, 46.03, 45.61, 46.28, 46.28, 46.00, 46.03
+        ];
+        const basePrices = prices.slice(0, 15);
+        const rsiState = initIncrementalRSI(basePrices, 14);
+
+        expect(rsiState.isInitialized).toBe(true);
+        expect(rsiState.lastClose).toBe(46.28);
+
+        // Atualiza incrementalmente com tick 16
+        const step1 = calculateIncrementalRSI(46.00, rsiState, 14);
+        const expectedRsi1 = calculateRSI(prices.slice(0, 16), 14);
+        expect(Math.abs(step1.rsi - expectedRsi1)).toBeLessThan(0.01);
+
+        // Atualiza incrementalmente com tick 17
+        const step2 = calculateIncrementalRSI(46.03, step1.state, 14);
+        const expectedRsi2 = calculateRSI(prices.slice(0, 17), 14);
+        expect(Math.abs(step2.rsi - expectedRsi2)).toBeLessThan(0.01);
+      });
+
+      it("deve calcular MACD a partir de TypedArrays e incrementalmente em O(1)", () => {
+        const closes = new Float64Array(40);
+        for (let i = 0; i < 40; i++) {
+          closes[i] = 100 + Math.sin(i * 0.2) * 10 + i * 0.5;
+        }
+
+        const macdTyped = calculateMACDFromTyped(closes, 12, 26, 9);
+        expect(macdTyped).not.toBeNull();
+        expect(macdTyped!.macd).toBeDefined();
+        expect(macdTyped!.signal).toBeDefined();
+        expect(macdTyped!.histogram).toBe(macdTyped!.macd - macdTyped!.signal);
+
+        // Inicializa estado incremental
+        const macdState = initIncrementalMACD(closes, 12, 26, 9);
+        expect(macdState.isInitialized).toBe(true);
+
+        // Passo incremental
+        const nextPrice = 125.5;
+        const incrementalRes = calculateIncrementalMACD(nextPrice, macdState, 12, 26, 9);
+        expect(incrementalRes.result.macd).toBeDefined();
+        expect(incrementalRes.result.histogram).toBe(incrementalRes.result.macd - incrementalRes.result.signal);
+      });
+
+      it("deve calcular Pivot Points usando fastRound6 sem boxing de strings ou NaN", () => {
+        const pivots = calculatePivotPoints(65500.25, 64200.75, 65000.50);
+        expect(pivots.pp).toBe(fastRound6((65500.25 + 64200.75 + 65000.50) / 3));
+        expect(pivots.r1).toBe(fastRound6(2 * pivots.pp - 64200.75));
+        expect(pivots.s1).toBe(fastRound6(2 * pivots.pp - 65500.25));
+        expect(typeof pivots.pp).toBe("number");
+        expect(Number.isFinite(pivots.pp)).toBe(true);
+      });
+    });
+
+    describe("Synchronous Atomic Circuit Breaker", () => {
+      it("deve registrar trades sincronamente em O(1) e disparar freio de perdas consecutivas", () => {
+        const breaker = PilotRiskCircuitBreaker.getInstance();
+        breaker.reset(70.0);
+
+        // 1ª perda
+        const res1 = breaker.recordTradeSync(-0.50);
+        expect(res1.canContinueTrading).toBe(true);
+        expect(breaker.getState().consecutiveLossCount).toBe(1);
+
+        // 2ª perda
+        const res2 = breaker.recordTradeSync(-0.50);
+        expect(res2.canContinueTrading).toBe(true);
+        expect(breaker.getState().consecutiveLossCount).toBe(2);
+
+        // 3ª perda -> Dispara freio de perdas consecutivas (60 min cooldown)
+        const res3 = breaker.recordTradeSync(-0.50);
+        expect(res3.canContinueTrading).toBe(false);
+        expect(res3.reason).toContain("CONSECUTIVE_LOSS_BRAKE_TRIPPED");
+        expect(breaker.getState().isTripped).toBe(true);
+        expect(breaker.canOpenNewOrder().allowed).toBe(false);
+      });
+
+      it("deve disparar kill switch diário com hibernação de 24h quando perda atinge 5% ($3.50 em $70)", () => {
+        const breaker = PilotRiskCircuitBreaker.getInstance();
+        breaker.reset(70.0);
+
+        // Perda massiva de $3.60 (> 5% de $70 = $3.50)
+        const res = breaker.recordTradeSync(-3.60);
+        expect(res.canContinueTrading).toBe(false);
+        expect(res.reason).toContain("DAILY_DRAWDOWN_CIRCUIT_BREAKER_TRIPPED");
+        expect(breaker.getState().accumulatedDailyLossUsd).toBe(3.60);
+        expect(breaker.canOpenNewOrder().allowed).toBe(false);
+      });
+    });
+
+    describe("Lock-Free Atomic Order Dispatch & DirectOperationManager", () => {
+      it("deve inicializar e enfileirar ordens na fila atômica LockFreeSPSCQueue em O(1)", () => {
+        const queue = DirectOperationManager.initAtomicOrderQueue(64);
+        expect(queue).toBeDefined();
+
+        const enqueued = DirectOperationManager.enqueueAtomicOrder({
+          idNumeric: 1001,
+          symbolHash: 42,
+          side: 1,
+          quantity: 0.05,
+          price: 65000,
+        });
+        expect(enqueued).toBe(true);
+
+        const metrics = queue.getMetrics();
+        expect(metrics.available).toBe(1);
+
+        let drainedCount = 0;
+        let drainedId = 0;
+        DirectOperationManager.drainAtomicOrders(1, (order) => {
+          drainedCount++;
+          drainedId = order[0];
+        });
+
+        expect(drainedCount).toBe(1);
+        expect(drainedId).toBe(1001);
+      });
+
+      it("deve executar GPUTransformFeedbackEngine.computeImbalanceFromSoA diretamente de TypedArrays", () => {
+        const engine = new GPUTransformFeedbackEngine(null, 64);
+        const prices = new Float32Array([65000, 65005]);
+        const quantities = new Float32Array([100, 20]);
+        const sides = new Int8Array([1, -1]);
+        const distances = new Float32Array([0.0001, 0.0001]);
+
+        const metrics = engine.computeImbalanceFromSoA(prices, quantities, sides, distances, 2);
+        expect(metrics.processedLevels).toBe(2);
+        expect(metrics.dominantSide).toBe("BUY_DOMINANT");
+        expect(metrics.imbalanceRatio).toBeGreaterThan(0.20);
+        engine.destroy();
+      });
     });
   });
 });

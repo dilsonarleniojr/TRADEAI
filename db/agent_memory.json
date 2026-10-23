@@ -2104,5 +2104,39 @@
     },
     "id": "mem-1792156000000-ev-gate",
     "timestamp": "2026-10-16T13:05:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Otimização de Baixa Latência, SoA Float64Array, Atomics Order Queue e Synchronous Circuit Breaker",
+    "summary": "1) Structure-of-Arrays (SoA) & Indicadores Incrementais em indicators.ts: Inclusão de CandleSoA em Float64Array contíguos de memória, cálculo estritamente incremental O(1) de EMA, RSI e MACD eliminando recálculo completo de histórico no hot path de ticks, e cálculo de Pivot Points com fastRound6 sem alocação ou boxing de strings; 2) Fila Atômica Lock-Free SPSC em DirectOperationManager: Integração da LockFreeSPSCQueue para enfileiramento e drenagem atômica de ordens O(1) sem contenção de threads ou locks, além de buffer circular de histórico de preços eliminando O(N) shift(); 3) PilotRiskCircuitBreaker Síncrono e Zero-Allocation: Eliminação do mutex baseado em Promises encadeadas e closures em favor de trava de reentrância atômica síncrona com recordTradeSync(); 4) GPUTransformFeedbackEngine Zero-Copy: Atualização dos buffers WebGL 2.0 com bufferSubData direto (srcOffset e length) sem alocação de views .subarray(), e método computeImbalanceFromSoA direto de TypedArrays.",
+    "tags": [
+      "low-latency",
+      "structure-of-arrays",
+      "float64array",
+      "incremental-indicators",
+      "lock-free-queue",
+      "circuit-breaker",
+      "webgl2-transform-feedback",
+      "zero-allocation"
+    ],
+    "details": {
+      "files": [
+        "src/lib/bot/indicators.ts",
+        "src/lib/bot/pilot/pilot-circuit-breaker.ts",
+        "src/lib/bot/pilot/direct-operation-manager.ts",
+        "src/lib/performance/gpu-transform-feedback-engine.ts",
+        "tests/unit/desktop-performance-engine.test.ts"
+      ],
+      "improvements": [
+        "SoA CandleSoA Float64Array contiguous buffers",
+        "Incremental O(1) calculateIncrementalEMA, calculateIncrementalRSI, calculateIncrementalMACD",
+        "fastRound6 pivot points arithmetic without string parsing",
+        "LockFreeSPSCQueue atomic order dispatch pipeline",
+        "PilotRiskCircuitBreaker synchronous O(1) recordTradeSync",
+        "WebGL2 bufferSubData zero-alloc without .subarray() slice"
+      ]
+    },
+    "id": "mem-1792688000000-low-latency-soa-atomics-optimization",
+    "timestamp": "2026-10-23T07:45:00.000Z"
   }
 ]

@@ -30,8 +30,8 @@ export class PilotRiskCircuitBreaker {
   private hibernationUntil: number | null = null;
   private totalTradesRecorded: number = 0;
 
-  // Mutex para concorrência reativa
-  private lockPromise: Promise<void> = Promise.resolve();
+  // Flag de reentrância atômica síncrona (elimina microtasks e heap closures de Promises)
+  private isProcessing: boolean = false;
 
   private constructor() {}
 
@@ -40,16 +40,6 @@ export class PilotRiskCircuitBreaker {
       PilotRiskCircuitBreaker.instance = new PilotRiskCircuitBreaker();
     }
     return PilotRiskCircuitBreaker.instance;
-  }
-
-  private async acquireLock(): Promise<() => void> {
-    let release: () => void;
-    const currentLock = this.lockPromise;
-    this.lockPromise = new Promise((resolve) => {
-      release = resolve;
-    });
-    await currentLock;
-    return release!;
   }
 
   /**
@@ -63,13 +53,18 @@ export class PilotRiskCircuitBreaker {
     this.consecutiveLossCooldownUntil = null;
     this.hibernationUntil = null;
     this.totalTradesRecorded = 0;
+    this.isProcessing = false;
   }
 
   /**
-   * Registra um trade finalizado de forma atômica e atualiza os gatilhos de segurança
+   * Registra um trade finalizado de forma estritamente síncrona O(1) e Zero-Allocation.
    */
-  public async recordTrade(pnlUsd: number): Promise<{ canContinueTrading: boolean; reason?: string }> {
-    const release = await this.acquireLock();
+  public recordTradeSync(pnlUsd: number): { canContinueTrading: boolean; reason?: string } {
+    if (this.isProcessing) {
+      // Reentrância protegida
+      return { canContinueTrading: false, reason: "CONCURRENT_ACCESS_BLOCKED" };
+    }
+    this.isProcessing = true;
     try {
       this.totalTradesRecorded++;
       this.accumulatedDailyPnlUsd = PreciseMath.add(this.accumulatedDailyPnlUsd, pnlUsd);
@@ -106,8 +101,15 @@ export class PilotRiskCircuitBreaker {
 
       return { canContinueTrading: true };
     } finally {
-      release();
+      this.isProcessing = false;
     }
+  }
+
+  /**
+   * Registra um trade finalizado mantendo compatibilidade assíncrona sem overhead de encadeamento de Promises.
+   */
+  public async recordTrade(pnlUsd: number): Promise<{ canContinueTrading: boolean; reason?: string }> {
+    return this.recordTradeSync(pnlUsd);
   }
 
   /**

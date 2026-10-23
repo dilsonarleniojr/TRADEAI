@@ -3,7 +3,56 @@
 
 import type { KlineData } from "@/lib/store";
 
-export function sma(values: number[], period: number): number {
+/**
+ * Estrutura de Arrays (SoA) em Float64Array contíguos de memória.
+ * Elimina completamente a sobrecarga de objetos e ponteiros da V8 no hot path de trading.
+ */
+export interface CandleSoA {
+  timestamps: Float64Array;
+  opens: Float64Array;
+  highs: Float64Array;
+  lows: Float64Array;
+  closes: Float64Array;
+  volumes: Float64Array;
+  length: number;
+}
+
+/** Cria uma estrutura SoA pré-alocada */
+export function createCandleSoA(capacity: number): CandleSoA {
+  return {
+    timestamps: new Float64Array(capacity),
+    opens: new Float64Array(capacity),
+    highs: new Float64Array(capacity),
+    lows: new Float64Array(capacity),
+    closes: new Float64Array(capacity),
+    volumes: new Float64Array(capacity),
+    length: 0,
+  };
+}
+
+/** Converte Array de objetos KlineData para CandleSoA em passada única */
+export function klinesToSoA(klines: KlineData[]): CandleSoA {
+  const len = klines.length;
+  const soa = createCandleSoA(len);
+  for (let i = 0; i < len; i++) {
+    const k = klines[i];
+    soa.timestamps[i] = (k as any).openTime ?? k.time ?? 0;
+    soa.opens[i] = k.open;
+    soa.highs[i] = k.high;
+    soa.lows[i] = k.low;
+    soa.closes[i] = k.close;
+    soa.volumes[i] = k.volume;
+  }
+  soa.length = len;
+  return soa;
+}
+
+/** Arredondamento rápido para 6 casas decimais sem boxing de string */
+export function fastRound6(val: number): number {
+  return Math.round(val * 1000000) / 1000000;
+}
+
+export function sma(values: number[] | Float64Array, period: number): number {
   const len = values.length;
   if (len === 0) return 0;
   const n = Math.min(len, period);
@@ -15,7 +64,7 @@ export function sma(values: number[], period: number): number {
 }
 
 /** Série completa de EMA (mesmo comprimento da entrada). */
-export function emaSeries(values: number[], period: number): number[] {
+export function emaSeries(values: number[] | Float64Array, period: number): number[] {
   if (values.length === 0) return [];
   const k = 2 / (period + 1);
   const out = [values[0]];
@@ -26,7 +75,7 @@ export function emaSeries(values: number[], period: number): number[] {
 }
 
 /** Cálculo de EMA sem alocação transitória de array O(1) heap. */
-export function calculateEMA(closes: number[], period: number): number {
+export function calculateEMA(closes: number[] | Float64Array, period: number): number {
   const len = closes.length;
   if (len === 0) return 0;
   if (len < period) return closes[len - 1];
@@ -44,8 +93,92 @@ export function calculateIncrementalEMA(currentPrice: number, previousEma: numbe
   return currentPrice * k + previousEma * (1 - k);
 }
 
+/** Estado incremental de RSI para atualização O(1) contínua */
+export interface IncrementalRsiState {
+  lastClose: number;
+  avgGain: number;
+  avgLoss: number;
+  isInitialized: boolean;
+}
+
+/** Inicializa o estado de RSI a partir de uma série histórica */
+export function initIncrementalRSI(closes: number[] | Float64Array, period = 14): IncrementalRsiState {
+  const len = closes.length;
+  if (len < period + 1) {
+    return {
+      lastClose: len > 0 ? closes[len - 1] : 0,
+      avgGain: 0,
+      avgLoss: 0,
+      isInitialized: false,
+    };
+  }
+  let gains = 0;
+  let losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gains += diff;
+    else losses += Math.abs(diff);
+  }
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  for (let i = period + 1; i < len; i++) {
+    const diff = closes[i] - closes[i - 1];
+    avgGain = (avgGain * (period - 1) + (diff > 0 ? diff : 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + (diff < 0 ? -diff : 0)) / period;
+  }
+  return {
+    lastClose: closes[len - 1],
+    avgGain,
+    avgLoss,
+    isInitialized: true,
+  };
+}
+
+/**
+ * Atualização estritamente incremental O(1) de RSI de Wilder por tick.
+ * Zero alocações de arrays no loop.
+ */
+export function calculateIncrementalRSI(
+  currentClose: number,
+  prevState: IncrementalRsiState,
+  period = 14
+): { rsi: number; state: IncrementalRsiState } {
+  if (!prevState.isInitialized) {
+    return {
+      rsi: 50,
+      state: {
+        lastClose: currentClose,
+        avgGain: 0,
+        avgLoss: 0,
+        isInitialized: true,
+      },
+    };
+  }
+  const diff = currentClose - prevState.lastClose;
+  const gain = diff > 0 ? diff : 0;
+  const loss = diff < 0 ? -diff : 0;
+  const avgGain = (prevState.avgGain * (period - 1) + gain) / period;
+  const avgLoss = (prevState.avgLoss * (period - 1) + loss) / period;
+  let rsi: number;
+  if (avgLoss === 0) {
+    rsi = 100;
+  } else {
+    const rs = avgGain / avgLoss;
+    rsi = 100 - (100 / (1 + rs));
+  }
+  return {
+    rsi,
+    state: {
+      lastClose: currentClose,
+      avgGain,
+      avgLoss,
+      isInitialized: true,
+    },
+  };
+}
+
 /** RSI de Wilder. Retorna 50 (neutro) quando não há candles suficientes. */
-export function calculateRSI(closes: number[], period = 14): number {
+export function calculateRSI(closes: number[] | Float64Array, period = 14): number {
   if (closes.length < period + 1) return 50;
   let gains = 0;
   let losses = 0;
@@ -72,19 +205,169 @@ export interface MacdResult {
   prevHistogram: number;
 }
 
-export function calculateMACD(closes: number[], fast = 12, slow = 26, signalPeriod = 9): MacdResult | null {
-  if (closes.length < slow + signalPeriod) return null;
-  const fastEma = emaSeries(closes, fast);
-  const slowEma = emaSeries(closes, slow);
-  const macdLine = closes.map((_, i) => fastEma[i] - slowEma[i]);
-  const signalLine = emaSeries(macdLine, signalPeriod);
-  const n = closes.length - 1;
+/** Estado incremental de MACD para atualização O(1) contínua */
+export interface IncrementalMacdState {
+  fastEma: number;
+  slowEma: number;
+  signalEma: number;
+  prevHistogram: number;
+  isInitialized: boolean;
+}
+
+/**
+ * Cálculo de MACD sem alocações transitórias a partir de TypedArray ou array numérico.
+ */
+export function calculateMACDFromTyped(
+  closes: Float64Array | number[],
+  fast = 12,
+  slow = 26,
+  signalPeriod = 9
+): MacdResult | null {
+  const len = closes.length;
+  if (len < slow + signalPeriod) return null;
+
+  const kFast = 2 / (fast + 1);
+  const kSlow = 2 / (slow + 1);
+  const kSignal = 2 / (signalPeriod + 1);
+
+  // Calcula séries de EMA em Float64Array único contíguo
+  let fastEma = closes[0];
+  let slowEma = closes[0];
+
+  const macdBuffer = new Float64Array(len);
+  macdBuffer[0] = 0;
+
+  for (let i = 1; i < len; i++) {
+    fastEma = closes[i] * kFast + fastEma * (1 - kFast);
+    slowEma = closes[i] * kSlow + slowEma * (1 - kSlow);
+    macdBuffer[i] = fastEma - slowEma;
+  }
+
+  let signalEma = macdBuffer[0];
+  let prevSignal = macdBuffer[0];
+  for (let i = 1; i < len; i++) {
+    prevSignal = signalEma;
+    signalEma = macdBuffer[i] * kSignal + signalEma * (1 - kSignal);
+  }
+
+  const n = len - 1;
+  const currentMacd = macdBuffer[n];
+  const prevMacd = macdBuffer[n - 1];
+
   return {
-    macd: macdLine[n],
-    signal: signalLine[n],
-    histogram: macdLine[n] - signalLine[n],
-    prevHistogram: macdLine[n - 1] - signalLine[n - 1],
+    macd: currentMacd,
+    signal: signalEma,
+    histogram: currentMacd - signalEma,
+    prevHistogram: prevMacd - prevSignal,
   };
+}
+
+/** Inicializa o estado incremental de MACD a partir de série histórica */
+export function initIncrementalMACD(
+  closes: number[] | Float64Array,
+  fast = 12,
+  slow = 26,
+  signalPeriod = 9
+): IncrementalMacdState {
+  const len = closes.length;
+  if (len < slow + signalPeriod) {
+    return {
+      fastEma: len > 0 ? closes[len - 1] : 0,
+      slowEma: len > 0 ? closes[len - 1] : 0,
+      signalEma: 0,
+      prevHistogram: 0,
+      isInitialized: false,
+    };
+  }
+
+  const kFast = 2 / (fast + 1);
+  const kSlow = 2 / (slow + 1);
+  const kSignal = 2 / (signalPeriod + 1);
+
+  let fastEma = closes[0];
+  let slowEma = closes[0];
+  const macdBuffer = new Float64Array(len);
+  macdBuffer[0] = 0;
+
+  for (let i = 1; i < len; i++) {
+    fastEma = closes[i] * kFast + fastEma * (1 - kFast);
+    slowEma = closes[i] * kSlow + slowEma * (1 - kSlow);
+    macdBuffer[i] = fastEma - slowEma;
+  }
+
+  let signalEma = macdBuffer[0];
+  let prevHist = 0;
+  for (let i = 1; i < len; i++) {
+    const prevSignal = signalEma;
+    signalEma = macdBuffer[i] * kSignal + signalEma * (1 - kSignal);
+    if (i === len - 2) {
+      prevHist = macdBuffer[i] - signalEma;
+    }
+  }
+
+  return {
+    fastEma,
+    slowEma,
+    signalEma,
+    prevHistogram: prevHist,
+    isInitialized: true,
+  };
+}
+
+/**
+ * Atualização estritamente incremental O(1) de MACD por tick.
+ */
+export function calculateIncrementalMACD(
+  currentClose: number,
+  prevState: IncrementalMacdState,
+  fast = 12,
+  slow = 26,
+  signalPeriod = 9
+): { result: MacdResult; state: IncrementalMacdState } {
+  if (!prevState.isInitialized) {
+    return {
+      result: { macd: 0, signal: 0, histogram: 0, prevHistogram: 0 },
+      state: {
+        fastEma: currentClose,
+        slowEma: currentClose,
+        signalEma: 0,
+        prevHistogram: 0,
+        isInitialized: true,
+      },
+    };
+  }
+
+  const kFast = 2 / (fast + 1);
+  const kSlow = 2 / (slow + 1);
+  const kSignal = 2 / (signalPeriod + 1);
+
+  const newFast = currentClose * kFast + prevState.fastEma * (1 - kFast);
+  const newSlow = currentClose * kSlow + prevState.slowEma * (1 - kSlow);
+  const newMacd = newFast - newSlow;
+  const newSignal = newMacd * kSignal + prevState.signalEma * (1 - kSignal);
+  const newHistogram = newMacd - newSignal;
+
+  const result: MacdResult = {
+    macd: newMacd,
+    signal: newSignal,
+    histogram: newHistogram,
+    prevHistogram: prevState.prevHistogram,
+  };
+
+  return {
+    result,
+    state: {
+      fastEma: newFast,
+      slowEma: newSlow,
+      signalEma: newSignal,
+      prevHistogram: newHistogram,
+      isInitialized: true,
+    },
+  };
+}
+
+export function calculateMACD(closes: number[] | Float64Array, fast = 12, slow = 26, signalPeriod = 9): MacdResult | null {
+  return calculateMACDFromTyped(closes, fast, slow, signalPeriod);
 }
 
 export interface BollingerResult {
@@ -131,6 +414,35 @@ export function relativeATR(klines: KlineData[], period = 14): number {
   }
   const atr = trSum / windowCount;
   return atr / (klines[len - 1].close || 1);
+}
+
+/**
+ * ATR médio relativo a partir de vetores contíguos SoA em passada única.
+ * Zero alocações em heap.
+ */
+export function relativeATRFromSoA(
+  highs: Float64Array,
+  lows: Float64Array,
+  closes: Float64Array,
+  count: number,
+  period = 14
+): number {
+  if (count < 2) return 0;
+  const windowCount = Math.min(count - 1, period);
+  const start = count - windowCount;
+  let trSum = 0;
+  for (let i = start; i < count; i++) {
+    const h = highs[i];
+    const l = lows[i];
+    const prevClose = closes[i - 1];
+    const hl = h - l;
+    const hc = Math.abs(h - prevClose);
+    const lc = Math.abs(l - prevClose);
+    trSum += (hl > hc ? (hl > lc ? hl : lc) : (hc > lc ? hc : lc));
+  }
+  const atr = trSum / windowCount;
+  const lastClose = closes[count - 1];
+  return atr / (lastClose > 0 ? lastClose : 1);
 }
 
 /** ADX de Wilder (suavizado). Retorna null sem candles suficientes. */
@@ -205,6 +517,7 @@ export interface PivotPoints {
  * R1 = 2*PP - L, S1 = 2*PP - H
  * R2 = PP + (H - L), S2 = PP - (H - L)
  * R3 = H + 2*(PP - L), S3 = L - 2*(H - PP)
+ * Implementação Zero-Allocation com fastRound6 (elimina boxing de strings).
  */
 export function calculatePivotPoints(high: number, low: number, close: number): PivotPoints {
   if (high <= 0 || low <= 0 || close <= 0 || high < low) {
@@ -219,13 +532,13 @@ export function calculatePivotPoints(high: number, low: number, close: number): 
   const s3 = low - 2 * (high - pp);
 
   return {
-    pp: parseFloat(pp.toFixed(6)),
-    r1: parseFloat(r1.toFixed(6)),
-    s1: parseFloat(s1.toFixed(6)),
-    r2: parseFloat(r2.toFixed(6)),
-    s2: parseFloat(s2.toFixed(6)),
-    r3: parseFloat(r3.toFixed(6)),
-    s3: parseFloat(s3.toFixed(6)),
+    pp: fastRound6(pp),
+    r1: fastRound6(r1),
+    s1: fastRound6(s1),
+    r2: fastRound6(r2),
+    s2: fastRound6(s2),
+    r3: fastRound6(r3),
+    s3: fastRound6(s3),
   };
 }
 
