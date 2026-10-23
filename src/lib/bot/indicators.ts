@@ -855,3 +855,27 @@ export function getCryptoSector(symbol: string): { sector: string; isAlternative
   return { sector: "Altcoin Diversificada", isAlternative: false };
 }
 
+// Re-export MultiSymbolIndicatorPool para uso institucional em robôs de HFT multi-pares
+export {
+  MultiSymbolIndicatorPool,
+  STRIDE_INDICATOR_FLOATS,
+  STRIDE_INDICATOR_BYTES,
+  OFFSET_RSI_LAST_CLOSE,
+  OFFSET_RSI_AVG_GAIN,
+  OFFSET_RSI_AVG_LOSS,
+  OFFSET_RSI_VALUE,
+  OFFSET_RSI_INITIALIZED,
+  OFFSET_MACD_FAST_EMA,
+  OFFSET_MACD_SLOW_EMA,
+  OFFSET_MACD_SIGNAL_EMA,
+  OFFSET_MACD_LINE,
+  OFFSET_MACD_HISTOGRAM,
+  OFFSET_MACD_PREV_HISTOGRAM,
+  OFFSET_MACD_INITIALIZED,
+  OFFSET_EMA_9,
+  OFFSET_EMA_21,
+  OFFSET_EMA_50,
+  OFFSET_LAST_PRICE,
+} from "@/lib/performance/multi-symbol-indicator-pool";
+export type { IndicatorPoolMetrics } from "@/lib/performance/multi-symbol-indicator-pool";
+

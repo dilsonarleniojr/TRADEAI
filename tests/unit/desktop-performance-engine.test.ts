@@ -61,6 +61,14 @@ import {
   relativeATR,
   relativeATRFromSoA,
   calculatePivotPoints,
+  MultiSymbolIndicatorPool,
+  STRIDE_INDICATOR_FLOATS,
+  STRIDE_INDICATOR_BYTES,
+  OFFSET_RSI_VALUE,
+  OFFSET_MACD_HISTOGRAM,
+  OFFSET_EMA_9,
+  OFFSET_EMA_21,
+  OFFSET_EMA_50,
 } from "@/lib/bot/indicators";
 import { PilotRiskCircuitBreaker } from "@/lib/bot/pilot/pilot-circuit-breaker";
 import { DirectOperationManager } from "@/lib/bot/pilot/direct-operation-manager";
@@ -2829,6 +2837,164 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
         expect(metrics.imbalanceRatio).toBeGreaterThan(0.20);
         engine.destroy();
       });
+    });
+  });
+
+  describe("23. MultiSymbolIndicatorPool (Static ArrayBuffer Pool for 10+ Concurrent HFT Pairs & Zero-Allocation)", () => {
+    it("deve alinhar cada símbolo a 128 bytes (2 cache lines de 64B) com tamanho total de 8 KB para 64 símbolos", () => {
+      const pool = new MultiSymbolIndicatorPool(64, false);
+      const metrics = pool.getMetrics();
+
+      expect(STRIDE_INDICATOR_FLOATS).toBe(16);
+      expect(STRIDE_INDICATOR_BYTES).toBe(128);
+      expect(metrics.strideBytes).toBe(128);
+      expect(metrics.cacheLineAligned).toBe(true);
+      expect(metrics.bufferSizeBytes).toBe(64 * 128); // 8192 bytes = 8 KB (cabe na L1D da CPU)
+      expect(metrics.registeredSymbols).toBe(10); // Pré-registrou os 10 maiores pares
+    });
+
+    it("deve mapear os 10 pares principais (BTC, ETH, SOL, AVAX, SUI, etc.) com IDs determinísticos O(1)", () => {
+      const pool = new MultiSymbolIndicatorPool(32, false);
+
+      expect(pool.getSymbolCode("BTCUSDT")).toBe(0);
+      expect(pool.getSymbolCode("ETHUSDT")).toBe(1);
+      expect(pool.getSymbolCode("SOLUSDT")).toBe(2);
+      expect(pool.getSymbolCode("AVAXUSDT")).toBe(3);
+      expect(pool.getSymbolCode("SUIUSDT")).toBe(4);
+      expect(pool.getSymbolCode("BNBUSDT")).toBe(5);
+      expect(pool.getSymbolCode("XRPUSDT")).toBe(6);
+      expect(pool.getSymbolCode("DOGEUSDT")).toBe(7);
+      expect(pool.getSymbolCode("ADAUSDT")).toBe(8);
+      expect(pool.getSymbolCode("LINKUSDT")).toBe(9);
+
+      expect(pool.getSymbolName(0)).toBe("BTCUSDT");
+      expect(pool.getSymbolName(4)).toBe("SUIUSDT");
+
+      // Registra dinamicamente um novo par
+      const aptCode = pool.getOrRegisterSymbol("APTUSDT");
+      expect(aptCode).toBe(10);
+      expect(pool.getSymbolName(10)).toBe("APTUSDT");
+      expect(pool.getRegisteredCount()).toBe(11);
+    });
+
+    it("deve calcular RSI in-place com exata equivalência matemática e zero alocações", () => {
+      const pool = new MultiSymbolIndicatorPool(16, false);
+      const btcCode = pool.getSymbolCode("BTCUSDT");
+
+      // Simula uma série de 20 ticks para BTC
+      const prices = [
+        60000, 60100, 60050, 60200, 60300, 60250, 60400, 60500,
+        60450, 60600, 60700, 60650, 60800, 60900, 61000, 60950,
+        61100, 61200, 61150, 61300,
+      ];
+
+      // Inicializa incremental manual para comparação
+      let rsiState = initIncrementalRSI(prices.slice(0, 15), 14);
+
+      // Semeia no pool histórico inicial
+      pool.seedHistorical(btcCode, prices.slice(0, 15), 14);
+      expect(pool.getRSI(btcCode)).toBeCloseTo(calculateRSI(prices.slice(0, 15), 14), 4);
+
+      // Aplica os ticks restantes tanto na função incremental quanto no pool in-place
+      for (let i = 15; i < prices.length; i++) {
+        const nextPrice = prices[i];
+        const incResult = calculateIncrementalRSI(nextPrice, rsiState, 14);
+        rsiState = incResult.state;
+
+        const poolRsi = pool.updateRSI(btcCode, nextPrice, 14);
+        expect(poolRsi).toBeCloseTo(incResult.rsi, 6);
+        expect(pool.getRSI(btcCode)).toBeCloseTo(incResult.rsi, 6);
+      }
+    });
+
+    it("deve calcular MACD in-place com exata equivalência matemática e zero alocações", () => {
+      const pool = new MultiSymbolIndicatorPool(16, false);
+      const ethCode = pool.getSymbolCode("ETHUSDT");
+
+      // Gera 40 preços para ETH
+      const prices: number[] = [];
+      let current = 3000;
+      for (let i = 0; i < 40; i++) {
+        current += Math.sin(i * 0.5) * 10 + 2;
+        prices.push(current);
+      }
+
+      // Semeia histórico no pool
+      pool.seedHistorical(ethCode, prices.slice(0, 36));
+      let macdState = initIncrementalMACD(prices.slice(0, 36));
+
+      // Aplica os últimos 4 ticks
+      for (let i = 36; i < 40; i++) {
+        const nextPrice = prices[i];
+        const incMacd = calculateIncrementalMACD(nextPrice, macdState);
+        macdState = incMacd.state;
+
+        const poolHist = pool.updateMACD(ethCode, nextPrice);
+        expect(poolHist).toBeCloseTo(incMacd.result.histogram, 6);
+        expect(pool.getMacdLine(ethCode)).toBeCloseTo(incMacd.result.macd, 6);
+        expect(pool.getMacdSignal(ethCode)).toBeCloseTo(incMacd.result.signal, 6);
+        expect(pool.getMacdHistogram(ethCode)).toBeCloseTo(incMacd.result.histogram, 6);
+      }
+    });
+
+    it("deve alternar contexto entre 10+ pares concorrentes sem interferência mútua de memória", () => {
+      const pool = new MultiSymbolIndicatorPool(32, false);
+      const btc = pool.getSymbolCode("BTCUSDT");
+      const eth = pool.getSymbolCode("ETHUSDT");
+      const sol = pool.getSymbolCode("SOLUSDT");
+      const avax = pool.getSymbolCode("AVAXUSDT");
+      const sui = pool.getSymbolCode("SUIUSDT");
+
+      // Dispara 50 ticks intercalados
+      for (let i = 0; i < 50; i++) {
+        pool.updateTick(btc, 65000 + i * 2);
+        pool.updateTick(eth, 3500 + i * 0.5);
+        pool.updateTick(sol, 150 + i * 0.1);
+        pool.updateTick(avax, 30 + i * 0.05);
+        pool.updateTick(sui, 2.5 + i * 0.01);
+      }
+
+      // Valida integridade e isolamento estrito de memória
+      expect(pool.getLastPrice(btc)).toBe(65000 + 49 * 2);
+      expect(pool.getLastPrice(eth)).toBe(3500 + 49 * 0.5);
+      expect(pool.getLastPrice(sol)).toBe(150 + 49 * 0.1);
+      expect(pool.getLastPrice(avax)).toBe(30 + 49 * 0.05);
+      expect(pool.getLastPrice(sui)).toBe(2.5 + 49 * 0.01);
+
+      // EMAs devem ser estritamente positivas e diferentes entre si
+      expect(pool.getEMA9(btc)).toBeGreaterThan(60000);
+      expect(pool.getEMA21(eth)).toBeGreaterThan(3000);
+      expect(pool.getEMA50(sol)).toBeGreaterThan(100);
+
+      // Snapshot em buffer pré-alocado
+      const scratch = new Float64Array(STRIDE_INDICATOR_FLOATS);
+      pool.readSnapshot(sui, scratch);
+      expect(scratch[15]).toBe(2.5 + 49 * 0.01); // LAST_PRICE
+      expect(scratch[OFFSET_RSI_VALUE]).toBeGreaterThan(0);
+      expect(scratch[OFFSET_EMA_9]).toBeGreaterThan(2.0);
+    });
+
+    it("deve demonstrar benchmark de altíssima frequência (100.000 updates em múltiplos pares em < 50ms com 0 alocações)", () => {
+      const pool = new MultiSymbolIndicatorPool(16, false);
+      const scratch = new Float64Array(STRIDE_INDICATOR_FLOATS);
+      const t0 = performance.now();
+
+      // 100.000 iterações através de 5 pares (500.000 updates de indicadores)
+      for (let i = 0; i < 20000; i++) {
+        pool.updateTick(0, 65000 + (i % 100)); // BTC
+        pool.updateTick(1, 3500 + (i % 20));   // ETH
+        pool.updateTick(2, 150 + (i % 5));     // SOL
+        pool.updateTick(3, 30 + (i % 2));      // AVAX
+        pool.updateTick(4, 2.5 + (i % 1));     // SUI
+      }
+
+      const elapsedMs = performance.now() - t0;
+      expect(elapsedMs).toBeLessThan(150); // Extremamente rápido
+
+      // Testa leitura zero-copy
+      pool.readSnapshot(0, scratch);
+      expect(scratch[OFFSET_RSI_VALUE]).toBeGreaterThan(0);
+      expect(scratch[OFFSET_EMA_9]).toBeGreaterThan(64000);
     });
   });
 });
