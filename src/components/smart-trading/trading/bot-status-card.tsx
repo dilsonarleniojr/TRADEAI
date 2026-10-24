@@ -210,9 +210,9 @@ export function SmartBotStatusCard({
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                {typeof unrealizedPnlUsdt === "number" && (
-                  <span className={`text-xs font-mono font-bold ${unrealizedPnlUsdt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                    uPnL: {unrealizedPnlUsdt >= 0 ? "+" : ""}${unrealizedPnlUsdt.toFixed(2)}
+                {typeof unrealizedPnlUsd === "number" && (
+                  <span className={`text-xs font-mono font-bold ${unrealizedPnlUsd >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    uPnL: {unrealizedPnlUsd >= 0 ? "+" : ""}${unrealizedPnlUsd.toFixed(2)}
                   </span>
                 )}
                 {onClosePositionMarket && (
@@ -249,7 +249,7 @@ export function SmartBotStatusCard({
 
             {resolvedState === "cooldown" && onResetCooldown && (
               <SmartButton
-                variant="warning"
+                variant="outline"
                 size="sm"
                 onClick={onResetCooldown}
               >

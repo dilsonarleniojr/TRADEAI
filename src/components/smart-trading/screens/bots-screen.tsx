@@ -197,7 +197,7 @@ export const BotsScreen: React.FC = () => {
     if (bot.circuitBreakerTripped) return 'circuit_breaker';
     const now = Date.now();
     const isCooldown = (bot.consecutiveLossBrakeUntil && bot.consecutiveLossBrakeUntil > now) ||
-      (bot.stats?.consecutiveLosses ?? 0) >= 3;
+      (bot.consecutiveLossCount ?? 0) >= 3;
     if (isCooldown) return 'cooldown';
     if (!bot.active || bot.status === 'stopped') return 'paused';
     if (bot.position && bot.position.quantity > 0) return 'active';
@@ -216,17 +216,19 @@ export const BotsScreen: React.FC = () => {
       name: newBotName,
       symbol: cleanSym,
       strategy: newBotStrategy,
-      capitalAllocation: capital,
+      allocationAmount: capital,
       stopLoss: sl,
       takeProfit: tp,
       active: true,
       status: 'idle',
       stats: {
         totalTrades: 0,
-        winningTrades: 0,
-        losingTrades: 0,
+        buyTrades: 0,
+        sellTrades: 0,
+        winTrades: 0,
+        lossTrades: 0,
+        winRate: 0,
         realizedPnl: 0,
-        consecutiveLosses: 0,
         lastAction: 'Robô inicializado com sucesso via Smart Trading',
         lastActionTime: new Date().toISOString(),
       },
@@ -551,7 +553,7 @@ export const BotsScreen: React.FC = () => {
             : 0;
 
           const trades = bot.stats?.totalTrades || 0;
-          const wins = bot.stats?.winningTrades || 0;
+          const wins = bot.stats?.winTrades || 0;
           const wr = trades > 0 ? `${((wins / trades) * 100).toFixed(1)}%` : '0.0%';
 
           return (
@@ -564,11 +566,11 @@ export const BotsScreen: React.FC = () => {
               status={bot.active ? 'active' : 'paused'}
               semanticState={semanticState}
               profitToday={`${(bot.stats?.realizedPnl || 0) >= 0 ? '+' : ''}$${(bot.stats?.realizedPnl || 0).toFixed(2)}`}
-              profitPercent={parseFloat(((bot.stats?.realizedPnl || 0) / Math.max(1, bot.capitalAllocation) * 100).toFixed(2))}
-              unrealizedPnlUsdt={uPnl}
+              profitPercent={parseFloat(((bot.stats?.realizedPnl || 0) / Math.max(1, bot.allocationAmount || 15) * 100).toFixed(2))}
+              unrealizedPnlUsd={uPnl}
               tradesCount={trades}
               winRate={wr}
-              drawdown={`${(bot.stats?.consecutiveLosses || 0)} perdas seguidas`}
+              drawdown={`${(bot.consecutiveLossCount || 0)} perdas seguidas`}
               lastAction={bot.stats?.lastAction || 'Aguardando oportunidade'}
               positionInfo={hasPos && bot.position ? {
                 quantity: bot.position.quantity,

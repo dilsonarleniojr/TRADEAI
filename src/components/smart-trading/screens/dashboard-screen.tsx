@@ -1,6 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
+import { useCryptoStore } from '@/lib/store';
+import { useShallow } from 'zustand/react/shallow';
+import { manualCloseBotPosition } from '@/lib/bot/multi-bot-engine';
+import { tradeJournalEngine } from '@/lib/journal/trade-journal-engine';
 import { SmartCard, SmartCardHeader, SmartCardTitle, SmartCardDescription, SmartCardContent } from '../ui/card';
 import { SmartBadge } from '../ui/badge';
 import { SmartButton } from '../ui/button';
@@ -8,6 +12,14 @@ import { SmartPerformanceCard } from '../trading/performance-card';
 import { SmartMarketHeatmap } from '../trading/market-heatmap';
 import { SmartAssetWatchlist } from '../trading/asset-watchlist';
 import { SmartBotStatusCard } from '../trading/bot-status-card';
+import { 
+  SmartTable, 
+  SmartTableHeader, 
+  SmartTableBody, 
+  SmartTableRow, 
+  SmartTableHead, 
+  SmartTableCell 
+} from '../ui/table';
 import { 
   Wallet, 
   TrendingUp, 
@@ -20,8 +32,11 @@ import {
   Clock, 
   CheckCircle2, 
   BarChart3,
-  Layers
+  Layers,
+  Activity,
+  LineChart
 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface DashboardScreenProps {
   onNavigateTab: (tab: string) => void;
@@ -34,6 +49,16 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   onSelectSymbol,
   tradingMode = 'paper' 
 }) => {
+  const { bots, portfolio, tickers, toggleBotActive } = useCryptoStore(
+    useShallow((s) => ({
+      bots: s.bots,
+      portfolio: s.portfolio,
+      tickers: s.tickers,
+      toggleBotActive: s.toggleBotActive,
+    }))
+  );
+
+  const { toast } = useToast();
   const [accountData, setAccountData] = React.useState<any>(null);
   const [isLoading, setIsLoading] = React.useState<boolean>(false);
 
@@ -65,11 +90,40 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     };
   }, [tradingMode]);
 
-  const totalValue = accountData?.totalValue ?? (tradingMode === 'live' ? 38.85 : 9857.14);
+  const totalValue = accountData?.totalValue ?? portfolio?.totalValue ?? (tradingMode === 'live' ? 38.85 : 9857.14);
   const cashFree = accountData?.cashFree ?? accountData?.cashBalance ?? (tradingMode === 'live' ? 0.85 : 9857.14);
   const realizedPnl = accountData?.realizedPnl ?? (tradingMode === 'live' ? 62.55 : 0);
   const positions = accountData?.positions || [];
   const btcPosition = positions.find((p: any) => p.symbol.includes('BTC'));
+
+  // Posições ativas dos robôs
+  const activeBotPositions = useMemo(() => {
+    return bots
+      .filter((b) => !!b.position && b.position.quantity > 0)
+      .map((b) => {
+        const pos = b.position!;
+        const currentTicker = tickers[pos.symbol]?.price || pos.currentPrice || pos.entryPrice;
+        const uPnl = (currentTicker - pos.entryPrice) * pos.quantity;
+        const uPnlPercent = pos.entryPrice > 0 ? ((currentTicker - pos.entryPrice) / pos.entryPrice) * 100 : 0;
+        return {
+          botId: b.id,
+          botName: b.name,
+          symbol: pos.symbol.replace('USDT', '/USDT'),
+          side: pos.side || 'BUY',
+          quantity: pos.quantity,
+          entryPrice: pos.entryPrice,
+          markPrice: currentTicker,
+          unrealizedPnl: uPnl,
+          unrealizedPnlPercent: uPnlPercent,
+        };
+      });
+  }, [bots, tickers]);
+
+  // Métricas do Diário (MAE / MFE)
+  const journalMetrics = useMemo(() => {
+    const records = tradeJournalEngine.getRecords();
+    return tradeJournalEngine.calculateMetrics(records);
+  }, []);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -141,13 +195,13 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         />
 
         <SmartPerformanceCard
-          title="Sharpe Ratio Institucional"
-          value="2.84"
+          title="MFE Médio (Pico Lucro)"
+          value={`+${journalMetrics.avgMfePercent.toFixed(2)}%`}
           changePercent={0.4}
-          changePeriod="30 dias"
-          icon={<BarChart3 className="w-4 h-4 text-[var(--st-secondary)]" />}
+          changePeriod="MAE: -1.15%"
+          icon={<LineChart className="w-4 h-4 text-[var(--st-secondary)]" />}
           sparklineData={[2.4, 2.5, 2.65, 2.6, 2.72, 2.8, 2.84]}
-          subtext="Sortino: 3.45 • Max DD: -2.8%"
+          subtext={`Win Rate: ${journalMetrics.winRate.toFixed(1)}% • Profit Factor: ${journalMetrics.profitFactor.toFixed(2)}`}
         />
 
         <SmartPerformanceCard
@@ -161,9 +215,82 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         />
       </div>
 
-      {/* Row 2: AI Insights Spotlight + Mini Heatmap */}
+      {/* Row 2: Posições Ativas com Botão Market Close */}
+      {activeBotPositions.length > 0 && (
+        <SmartCard variant="elevated">
+          <SmartCardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-emerald-400" />
+                <SmartCardTitle className="text-base">Posições Ativas em Tempo Real</SmartCardTitle>
+              </div>
+              <SmartBadge variant="success" isDot>{activeBotPositions.length} em Execução</SmartBadge>
+            </div>
+          </SmartCardHeader>
+          <SmartCardContent>
+            <SmartTable>
+              <SmartTableHeader>
+                <SmartTableRow>
+                  <SmartTableHead>Par / Robô</SmartTableHead>
+                  <SmartTableHead>Lado</SmartTableHead>
+                  <SmartTableHead className="text-right">Tamanho</SmartTableHead>
+                  <SmartTableHead className="text-right">Preço Entrada</SmartTableHead>
+                  <SmartTableHead className="text-right">Preço Marcação</SmartTableHead>
+                  <SmartTableHead className="text-right">uPnL Flutuante</SmartTableHead>
+                  <SmartTableHead className="text-center">Ação</SmartTableHead>
+                </SmartTableRow>
+              </SmartTableHeader>
+              <SmartTableBody>
+                {activeBotPositions.map((pos) => (
+                  <SmartTableRow key={`${pos.botId}-${pos.symbol}`}>
+                    <SmartTableCell>
+                      <span className="font-bold text-white text-xs block">{pos.symbol}</span>
+                      <span className="text-[10px] text-neutral-400">{pos.botName}</span>
+                    </SmartTableCell>
+                    <SmartTableCell>
+                      <SmartBadge variant={pos.side === 'BUY' ? 'success' : 'danger'} size="sm">
+                        {pos.side === 'BUY' ? 'LONG' : 'SHORT'}
+                      </SmartBadge>
+                    </SmartTableCell>
+                    <SmartTableCell className="text-right font-mono text-xs text-white">
+                      {pos.quantity.toFixed(4)}
+                    </SmartTableCell>
+                    <SmartTableCell className="text-right font-mono text-xs text-neutral-300">
+                      ${pos.entryPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </SmartTableCell>
+                    <SmartTableCell className="text-right font-mono text-xs text-white font-bold">
+                      ${pos.markPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </SmartTableCell>
+                    <SmartTableCell className={`text-right font-mono text-xs font-bold ${pos.unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {pos.unrealizedPnl >= 0 ? '+' : ''}${pos.unrealizedPnl.toFixed(2)} ({pos.unrealizedPnlPercent >= 0 ? '+' : ''}{pos.unrealizedPnlPercent.toFixed(2)}%)
+                    </SmartTableCell>
+                    <SmartTableCell className="text-center">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await manualCloseBotPosition(pos.botId);
+                            toast({ title: pos.botName, description: 'Posição liquidada a mercado com sucesso.' });
+                          } catch (e: any) {
+                            toast({ variant: 'destructive', title: 'Erro ao fechar', description: e.message });
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/40 text-[11px] font-bold transition-all"
+                      >
+                        Market Close
+                      </button>
+                    </SmartTableCell>
+                  </SmartTableRow>
+                ))}
+              </SmartTableBody>
+            </SmartTable>
+          </SmartCardContent>
+        </SmartCard>
+      )}
+
+      {/* Row 3: AI Insights Spotlight + Mini Heatmap */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* AI Insights Card (Notion-style modular card) */}
+        {/* AI Insights Card */}
         <SmartCard variant="elevated" className="lg:col-span-1 flex flex-col justify-between">
           <SmartCardHeader>
             <div className="flex items-center justify-between">
@@ -219,7 +346,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               onClick={() => onNavigateTab('ai')}
               rightIcon={<ChevronRight className="w-3.5 h-3.5" />}
             >
-              Ver Todos os 8 Sinais do Comitê
+              Ver Todos os Sinais do Comitê
             </SmartButton>
           </SmartCardContent>
         </SmartCard>
@@ -233,7 +360,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         </div>
       </div>
 
-      {/* Row 3: Active Trading Bots + Asset Watchlist */}
+      {/* Row 4: Active Trading Bots + Asset Watchlist */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
@@ -249,40 +376,36 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               onClick={() => onNavigateTab('bots')}
               rightIcon={<ChevronRight className="w-3.5 h-3.5" />}
             >
-              Gerenciar Robôs
+              Gerenciar Robôs ({bots.length})
             </SmartButton>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <SmartBotStatusCard
-              name="Alpha Conformal Grid"
-              strategy="Statistical Arbitrage + Conformal Bands"
-              symbol="BTC/USDT"
-              status="active"
-              profitToday="+$1,840.20"
-              profitPercent={+4.8}
-              tradesCount={42}
-              winRate="76.2%"
-              drawdown="-1.15%"
-              lastAction="Compra executada em $67,180"
-              onToggleStatus={() => {}}
-              onConfigure={() => onNavigateTab('bots')}
-            />
+            {bots.slice(0, 4).map((bot) => {
+              const trades = bot.stats?.totalTrades || 0;
+              const wins = bot.stats?.winningTrades || 0;
+              const wr = trades > 0 ? `${((wins / trades) * 100).toFixed(1)}%` : '0.0%';
+              const pnl = bot.stats?.realizedPnl || 0;
 
-            <SmartBotStatusCard
-              name="Momentum Surge HFT"
-              strategy="Breakout VWAP + Volume Delta"
-              symbol="SOL/USDT"
-              status="active"
-              profitToday="+$1,340.50"
-              profitPercent={+7.2}
-              tradesCount={68}
-              winRate="69.1%"
-              drawdown="-2.10%"
-              lastAction="Trailing stop ajustado para $184.20"
-              onToggleStatus={() => {}}
-              onConfigure={() => onNavigateTab('bots')}
-            />
+              return (
+                <SmartBotStatusCard
+                  key={bot.id}
+                  botId={bot.id}
+                  name={bot.name}
+                  strategy={bot.strategy}
+                  symbol={bot.symbol.replace('USDT', '/USDT')}
+                  status={bot.active ? 'active' : 'paused'}
+                  profitToday={`${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`}
+                  profitPercent={parseFloat((pnl / Math.max(1, bot.capitalAllocation) * 100).toFixed(2))}
+                  tradesCount={trades}
+                  winRate={wr}
+                  drawdown={`${bot.stats?.consecutiveLosses || 0} perdas`}
+                  lastAction={bot.stats?.lastAction || 'Aguardando sinal'}
+                  onToggleStatus={() => toggleBotActive(bot.id)}
+                  onConfigure={() => onNavigateTab('bots')}
+                />
+              );
+            })}
           </div>
         </div>
 

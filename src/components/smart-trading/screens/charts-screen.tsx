@@ -49,7 +49,7 @@ export const ChartsScreen: React.FC<ChartsScreenProps> = ({
   const setSelectedStoreSymbol = useCryptoStore((s) => s.setSelectedSymbol);
 
   const [symbol, setSymbol] = useState(selectedStoreSymbol || initialSymbol);
-  const [interval, setInterval] = useState<string>('15m');
+  const [chartInterval, setChartInterval] = useState<string>('15m');
   const [activeDrawingTool, setActiveDrawingTool] = useState<DrawingTool>('crosshair');
   const [drawings, setDrawings] = useState<Drawing[]>([]);
 
@@ -98,10 +98,10 @@ export const ChartsScreen: React.FC<ChartsScreenProps> = ({
       }
     };
     fetchPrice();
-    const timer = setInterval(fetchPrice, 4000);
+    const timer = window.setInterval(fetchPrice, 4000);
     return () => {
       isMounted = false;
-      clearInterval(timer);
+      window.clearInterval(timer);
     };
   }, [cleanSymbol]);
 
@@ -131,9 +131,9 @@ export const ChartsScreen: React.FC<ChartsScreenProps> = ({
               <button
                 key={int.value}
                 type="button"
-                onClick={() => setInterval(int.value)}
+                onClick={() => setChartInterval(int.value)}
                 className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
-                  interval === int.value
+                  chartInterval === int.value
                     ? 'bg-[var(--st-primary)] text-white shadow-sm'
                     : 'text-[var(--st-text-secondary)] hover:text-white'
                 }`}
@@ -289,7 +289,7 @@ export const ChartsScreen: React.FC<ChartsScreenProps> = ({
             {/* Canvas/WebGL High-Performance Candlestick Chart */}
             <CandlestickChart
               symbol={cleanSymbol}
-              interval={interval}
+              interval={chartInterval}
               showSMA20={showSMA20}
               showSMA50={showSMA50}
               showBollinger={showBollinger}

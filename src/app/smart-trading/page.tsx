@@ -13,6 +13,13 @@ import { SettingsScreen } from '@/components/smart-trading/screens/settings-scre
 import { DesignSystemScreen } from '@/components/smart-trading/screens/design-system-screen';
 import { SmartBadge } from '@/components/smart-trading/ui/badge';
 import { SmartButton } from '@/components/smart-trading/ui/button';
+import { GlobalStatusBar } from '@/components/header/global-status-bar';
+import { GlobalCommandSearch } from '@/components/header/global-command-search';
+import { BotActivityLog } from '@/components/bot/bot-activity-log';
+import { useBinanceData } from '@/hooks/use-binance-data';
+import { useBinanceStream } from '@/hooks/use-binance-stream';
+import { useDesktopHotkeys } from '@/hooks/use-desktop-hotkeys';
+import { useCryptoStore } from '@/lib/store';
 import { 
   LayoutDashboard, 
   CandlestickChart, 
@@ -34,7 +41,11 @@ import {
   Zap,
   TrendingUp,
   Activity,
-  ArrowUpRight
+  ArrowUpRight,
+  Terminal,
+  ChevronUp,
+  ChevronDown,
+  Command
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -57,6 +68,23 @@ export default function SmartTradingPage() {
   const [selectedPair, setSelectedPair] = useState('BTC/USDT');
   const [unreadNotifications, setUnreadNotifications] = useState(3);
   const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const [isTerminalExpanded, setIsTerminalExpanded] = useState(false);
+
+  // Iniciar feeds de dados e conexões WebSocket da Binance
+  useBinanceData();
+  useBinanceStream();
+
+  // Registrar Hotkeys Globais: Duplo Esc (Kill-switch), Espaço (Auto-scroll), Ctrl+K (Command palette)
+  useDesktopHotkeys({
+    enableKillSwitch: true,
+    enableSpaceAutoScroll: true,
+    enableCommandPalette: true,
+  });
+
+  const isCommandSearchOpen = useCryptoStore((s) => s.isCommandSearchOpen);
+  const setIsCommandSearchOpen = useCryptoStore((s) => s.setIsCommandSearchOpen);
+  const isLogAutoScrollPaused = useCryptoStore((s) => s.isLogAutoScrollPaused);
+  const toggleLogAutoScroll = useCryptoStore((s) => s.toggleLogAutoScroll);
 
   // Cotações e saldo real
   const [btcPrice, setBtcPrice] = useState<number>(80935.0);
@@ -122,6 +150,9 @@ export default function SmartTradingPage() {
 
   return (
     <div className={`min-h-screen ${isDark ? 'smart-trading-dark' : 'smart-trading-light'} bg-[var(--st-bg)] text-[var(--st-text-primary)] flex flex-col font-sans transition-colors duration-200`}>
+      {/* Barra de Status Global da Exchange (Telemetria, Ping, NTP, Stale Data) */}
+      <GlobalStatusBar />
+
       {/* Topbar Fixa */}
       <header className="sticky top-0 z-40 h-16 border-b border-[var(--st-border)] bg-[var(--st-bg-surface)]/90 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between">
         {/* Left: Mobile Toggle & Brand */}
@@ -207,9 +238,21 @@ export default function SmartTradingPage() {
           </button>
         </div>
 
-        {/* Right: Actions, Notifications, Theme & Profile */}
-        <div className="flex items-center gap-2.5 sm:gap-3">
-          {/* Link back to Main TradeAI Suite */}
+        {/* Right: Actions, Command Search, Notifications, Theme & Profile */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Quick Command Palette Button (Ctrl + K) */}
+          <button
+            type="button"
+            onClick={() => setIsCommandSearchOpen(true)}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--st-border)] bg-[var(--st-bg-surface)] hover:bg-[var(--st-bg-elevated)] text-xs text-[var(--st-text-muted)] hover:text-white transition-all font-mono"
+            title="Buscar comandos e ativos (Ctrl + K / Cmd + K)"
+          >
+            <Command className="w-3.5 h-3.5 text-[var(--st-primary)]" />
+            <span>Buscar</span>
+            <kbd className="text-[10px] bg-neutral-800 px-1 py-0.5 rounded border border-neutral-700">⌘K</kbd>
+          </button>
+
+          {/* Link back to Main TradeAI Hub */}
           <Link
             href="/"
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--st-border)] bg-[var(--st-bg-surface)] hover:bg-[var(--st-bg-elevated)] text-xs text-[var(--st-text-secondary)] hover:text-[var(--st-text-primary)] transition-all font-medium"
@@ -229,24 +272,6 @@ export default function SmartTradingPage() {
               <Sun className="w-4 h-4 text-[var(--st-warning)]" />
             ) : (
               <Moon className="w-4 h-4 text-[var(--st-primary)]" />
-            )}
-          </button>
-
-          {/* Notifications Bell */}
-          <button
-            type="button"
-            onClick={() => {
-              setUnreadNotifications(0);
-              alert('Notificações: 4 robôs em execução regular. Conformal Interval calibrado para BTC/USDT.');
-            }}
-            title="Notificações do Sistema"
-            className="relative p-2 rounded-xl border border-[var(--st-border)] bg-[var(--st-bg-surface)] hover:bg-[var(--st-bg-elevated)] text-[var(--st-text-secondary)] hover:text-[var(--st-text-primary)] transition-all"
-          >
-            <Bell className="w-4 h-4" />
-            {unreadNotifications > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--st-primary)] text-white text-[10px] font-bold flex items-center justify-center animate-pulse">
-                {unreadNotifications}
-              </span>
             )}
           </button>
 
@@ -272,7 +297,7 @@ export default function SmartTradingPage() {
 
       {/* Main Body with Sidebar + Dynamic Screen Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Fixed Desktop Sidebar (Modular Notion/TradingView Style) */}
+        {/* Fixed Desktop Sidebar */}
         <aside className="hidden md:flex flex-col justify-between w-60 border-r border-[var(--st-border)] bg-[var(--st-bg-surface)]/80 backdrop-blur-sm p-3 shrink-0">
           <div className="space-y-1">
             <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[var(--st-text-muted)]">
@@ -318,21 +343,38 @@ export default function SmartTradingPage() {
             })}
           </div>
 
-          {/* Sidebar Footer: System Status & Auth */}
+          {/* Sidebar Footer: System Status, Hotkeys & Terminal Toggle */}
           <div className="space-y-3 pt-3 border-t border-[var(--st-border)]">
-            <div className="p-3 rounded-xl border border-[var(--st-border)] bg-[var(--st-bg-elevated)] space-y-1.5">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-[var(--st-text-secondary)] flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-[var(--st-success)] animate-pulse" />
-                  Binance Feed
-                </span>
-                <span className="font-mono text-[var(--st-success)] font-bold">24ms</span>
+            {/* Quick Hotkey Cheat Badge */}
+            <div className="p-2.5 rounded-xl border border-[var(--st-border)] bg-[var(--st-bg-elevated)] text-[10px] space-y-1 font-mono text-[var(--st-text-muted)]">
+              <div className="flex items-center justify-between text-neutral-300 font-bold">
+                <span>Atalhos Desktop:</span>
               </div>
-              <div className="flex items-center justify-between text-[10px] text-[var(--st-text-muted)] font-mono">
-                <span>Risco NAV:</span>
-                <span>Max 3% Trava</span>
+              <div className="flex items-center justify-between">
+                <span>Kill-Switch:</span>
+                <span className="text-red-400 font-bold">Duplo Esc</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Auto-Scroll Logs:</span>
+                <span className="text-blue-400 font-bold">Espaço</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Paleta Comandos:</span>
+                <span className="text-cyan-400 font-bold">Ctrl+K</span>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setIsTerminalExpanded(!isTerminalExpanded)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-300 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-cyan-400" />
+                <span>Terminal de Logs</span>
+              </div>
+              {isTerminalExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+            </button>
 
             <button
               type="button"
@@ -419,61 +461,102 @@ export default function SmartTradingPage() {
           </div>
         )}
 
-        {/* Active Screen Viewport */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          {activeScreen === 'login' && (
-            <LoginScreen
-              onLoginSuccess={() => {
-                setIsLoggedIn(true);
-                setActiveScreen('dashboard');
-              }}
-              isDark={isDark}
-            />
-          )}
+        {/* Active Screen Viewport + Bottom Dockable Terminal */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+            {activeScreen === 'login' && (
+              <LoginScreen
+                onLoginSuccess={() => {
+                  setIsLoggedIn(true);
+                  setActiveScreen('dashboard');
+                }}
+                isDark={isDark}
+              />
+            )}
 
-          {activeScreen === 'dashboard' && (
-            <DashboardScreen
-              onNavigateTab={(tab) => setActiveScreen(tab as ScreenId)}
-              onSelectSymbol={setSelectedPair}
-              tradingMode={tradingMode}
-            />
-          )}
+            {activeScreen === 'dashboard' && (
+              <DashboardScreen
+                onNavigateTab={(tab) => setActiveScreen(tab as ScreenId)}
+                onSelectSymbol={setSelectedPair}
+                tradingMode={tradingMode}
+              />
+            )}
 
-          {activeScreen === 'charts' && (
-            <ChartsScreen 
-              initialSymbol={selectedPair} 
-              tradingMode={tradingMode}
-            />
-          )}
+            {activeScreen === 'charts' && (
+              <ChartsScreen 
+                initialSymbol={selectedPair} 
+                tradingMode={tradingMode}
+              />
+            )}
 
-          {activeScreen === 'ai' && (
-            <AIInsightsScreen />
-          )}
+            {activeScreen === 'ai' && (
+              <AIInsightsScreen />
+            )}
 
-          {activeScreen === 'backtest' && (
-            <BacktestScreen />
-          )}
+            {activeScreen === 'backtest' && (
+              <BacktestScreen />
+            )}
 
-          {activeScreen === 'bots' && (
-            <BotsScreen />
-          )}
+            {activeScreen === 'bots' && (
+              <BotsScreen />
+            )}
 
-          {activeScreen === 'paper' && (
-            <PaperTradingScreen />
-          )}
+            {activeScreen === 'paper' && (
+              <PaperTradingScreen />
+            )}
 
-          {activeScreen === 'settings' && (
-            <SettingsScreen
-              isDark={isDark}
-              onToggleTheme={toggleTheme}
-            />
-          )}
+            {activeScreen === 'settings' && (
+              <SettingsScreen
+                isDark={isDark}
+                onToggleTheme={toggleTheme}
+              />
+            )}
 
-          {activeScreen === 'design-system' && (
-            <DesignSystemScreen />
+            {activeScreen === 'design-system' && (
+              <DesignSystemScreen />
+            )}
+          </main>
+
+          {/* Embedded Categorized Log Terminal Dock */}
+          {isTerminalExpanded && (
+            <div className="h-72 border-t border-[var(--st-border)] bg-[#0a0d14] p-3 overflow-hidden flex flex-col shrink-0 animate-in slide-in-from-bottom-6 duration-200 shadow-2xl">
+              <div className="flex items-center justify-between pb-2 border-b border-neutral-800 text-xs">
+                <div className="flex items-center gap-2">
+                  <Terminal className="w-4 h-4 text-cyan-400" />
+                  <span className="font-bold text-white tracking-wide">Terminal de Telemetria e Logs Embutido</span>
+                  <SmartBadge variant="blue" size="sm">
+                    {isLogAutoScrollPaused ? 'Auto-Scroll: PAUSADO [Espaço]' : 'Auto-Scroll: ATIVO [Espaço]'}
+                  </SmartBadge>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleLogAutoScroll}
+                    className="px-2 py-0.5 rounded text-[11px] bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-mono"
+                  >
+                    {isLogAutoScrollPaused ? '▶️ Retomar' : '⏸️ Pausar'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsTerminalExpanded(false)}
+                    className="p-1 rounded text-neutral-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-hidden pt-2">
+                <BotActivityLog />
+              </div>
+            </div>
           )}
-        </main>
+        </div>
       </div>
+
+      {/* Global Command Search Modal (Ctrl + K / Cmd + K) */}
+      <GlobalCommandSearch />
     </div>
   );
 }
