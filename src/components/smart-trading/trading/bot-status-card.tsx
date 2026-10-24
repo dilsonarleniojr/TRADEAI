@@ -67,40 +67,99 @@ const DEFAULT_BOTS: BotInstance[] = [
   },
 ];
 
+export type BotSemanticState = "active" | "cooldown" | "circuit_breaker" | "waiting_signal" | "paused";
+
 export interface SmartBotStatusCardProps {
+  botId?: string;
   name?: string;
   strategy?: string;
   symbol?: string;
   status?: "active" | "paused" | "RUNNING" | "PAUSED" | "STOPPED";
+  semanticState?: BotSemanticState;
   profitToday?: string;
   profitPercent?: number;
+  unrealizedPnlUsd?: number;
   tradesCount?: number;
   winRate?: string;
   drawdown?: string;
   lastAction?: string;
+  positionInfo?: {
+    quantity: number;
+    entryPrice: number;
+    currentPrice: number;
+    side?: "BUY" | "SELL";
+  };
   onToggleStatus?: () => void;
   onConfigure?: () => void;
   onConfigureBot?: (botId: string) => void;
+  onResetStats?: () => void;
+  onResetCooldown?: () => void;
+  onClosePositionMarket?: () => void;
 }
 
 export function SmartBotStatusCard({
+  botId,
   name,
   strategy,
   symbol,
   status = "active",
+  semanticState,
   profitToday,
   profitPercent = 0,
+  unrealizedPnlUsd,
   tradesCount = 0,
   winRate = "0%",
   drawdown = "0%",
   lastAction,
+  positionInfo,
   onToggleStatus,
   onConfigure,
   onConfigureBot,
+  onResetStats,
+  onResetCooldown,
+  onClosePositionMarket,
 }: SmartBotStatusCardProps) {
   // Modo Individual (quando name é fornecido)
   if (name) {
-    const isActive = status === "active" || status === "RUNNING";
+    const isRunning = status === "active" || status === "RUNNING";
+    const resolvedState: BotSemanticState = semanticState ?? (isRunning ? "active" : "paused");
+
+    const renderSemanticBadge = () => {
+      switch (resolvedState) {
+        case "active":
+          return (
+            <SmartBadge variant="success" size="sm" isDot>
+              Ativo
+            </SmartBadge>
+          );
+        case "cooldown":
+          return (
+            <SmartBadge variant="warning" size="sm" isDot>
+              Em Cooldown
+            </SmartBadge>
+          );
+        case "circuit_breaker":
+          return (
+            <SmartBadge variant="danger" size="sm" isDot>
+              Circuit Breaker Disparado
+            </SmartBadge>
+          );
+        case "waiting_signal":
+          return (
+            <SmartBadge variant="blue" size="sm" isDot>
+              Aguardando Sinal
+            </SmartBadge>
+          );
+        case "paused":
+        default:
+          return (
+            <SmartBadge variant="neutral" size="sm">
+              Pausado
+            </SmartBadge>
+          );
+      }
+    };
+
     return (
       <div className="w-full bg-[#141414] border border-neutral-800 rounded-2xl p-5 shadow-xl hover:border-neutral-700 transition-all flex flex-col justify-between">
         <div>
@@ -115,9 +174,7 @@ export function SmartBotStatusCard({
               </div>
             </div>
 
-            <SmartBadge variant={isActive ? "success" : "warning"} size="sm" isDot>
-              {isActive ? "Ativo 24/7" : "Pausado"}
-            </SmartBadge>
+            {renderSemanticBadge()}
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
@@ -126,7 +183,7 @@ export function SmartBotStatusCard({
               <span className="font-mono text-xs font-bold text-white">{symbol}</span>
             </div>
             <div className="p-2.5 rounded-xl bg-neutral-900 border border-neutral-800/60">
-              <span className="text-[10px] text-neutral-400 block">P/L Hoje</span>
+              <span className="text-[10px] text-neutral-400 block">P/L Realizado</span>
               <span className={`font-mono text-xs font-bold ${profitPercent >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {profitToday || `${profitPercent >= 0 ? "+" : ""}${profitPercent}%`}
               </span>
@@ -136,10 +193,40 @@ export function SmartBotStatusCard({
               <span className="font-mono text-xs font-bold text-white">{winRate}</span>
             </div>
             <div className="p-2.5 rounded-xl bg-neutral-900 border border-neutral-800/60">
-              <span className="text-[10px] text-neutral-400 block">Trades</span>
+              <span className="text-[10px] text-neutral-400 block">Trades Hoje</span>
               <span className="font-mono text-xs font-bold text-white">{tradesCount}</span>
             </div>
           </div>
+
+          {/* Se houver posição aberta */}
+          {positionInfo && positionInfo.quantity > 0 && (
+            <div className="mb-3 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs">
+                <span className="font-bold text-emerald-400 font-mono">
+                  {positionInfo.side || "LONG"} {positionInfo.quantity} {symbol?.replace("USDT", "")}
+                </span>
+                <span className="text-neutral-400 ml-2 font-mono text-[11px]">
+                  @ ${positionInfo.entryPrice.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {typeof unrealizedPnlUsdt === "number" && (
+                  <span className={`text-xs font-mono font-bold ${unrealizedPnlUsdt >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    uPnL: {unrealizedPnlUsdt >= 0 ? "+" : ""}${unrealizedPnlUsdt.toFixed(2)}
+                  </span>
+                )}
+                {onClosePositionMarket && (
+                  <button
+                    type="button"
+                    onClick={onClosePositionMarket}
+                    className="text-[11px] px-2 py-0.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/40 font-bold transition-all"
+                  >
+                    Fechar a Mercado
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {lastAction && (
             <div className="text-[11px] text-neutral-400 bg-neutral-900/50 p-2 rounded-lg border border-neutral-800 flex items-center justify-between">
@@ -149,24 +236,48 @@ export function SmartBotStatusCard({
           )}
         </div>
 
-        <div className="flex items-center justify-between pt-4 mt-4 border-t border-neutral-800/80 gap-2">
-          <SmartButton
-            variant={isActive ? "danger" : "success"}
-            size="sm"
-            onClick={onToggleStatus}
-            leftIcon={isActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-          >
-            {isActive ? "Pausar Robô" : "Retomar"}
-          </SmartButton>
+        <div className="flex flex-wrap items-center justify-between pt-4 mt-4 border-t border-neutral-800/80 gap-2">
+          <div className="flex items-center gap-2">
+            <SmartButton
+              variant={isRunning ? "danger" : "success"}
+              size="sm"
+              onClick={onToggleStatus}
+              leftIcon={isRunning ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+            >
+              {isRunning ? "Pausar" : "Iniciar"}
+            </SmartButton>
 
-          <SmartButton
-            variant="outline"
-            size="sm"
-            onClick={onConfigure}
-            leftIcon={<Settings2 className="w-3.5 h-3.5" />}
-          >
-            Configurar
-          </SmartButton>
+            {resolvedState === "cooldown" && onResetCooldown && (
+              <SmartButton
+                variant="warning"
+                size="sm"
+                onClick={onResetCooldown}
+              >
+                Zerar Cooldown
+              </SmartButton>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {onResetStats && (
+              <SmartButton
+                variant="ghost"
+                size="sm"
+                onClick={onResetStats}
+                title="Reiniciar estatísticas do robô"
+              >
+                Zerar Stats
+              </SmartButton>
+            )}
+            <SmartButton
+              variant="outline"
+              size="sm"
+              onClick={onConfigure}
+              leftIcon={<Settings2 className="w-3.5 h-3.5" />}
+            >
+              Ajustar
+            </SmartButton>
+          </div>
         </div>
       </div>
     );
