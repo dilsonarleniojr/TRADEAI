@@ -1105,6 +1105,12 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
         ? await DirectOperationManager.forceEntry(created.id)
         : created;
 
+      DirectOperationManager.setMockRunnerSpike(session.symbol, {
+        isSpike: false,
+        isExhausted: false,
+        volumeRatio: 1.0,
+      });
+
       // Define alvos distantes para permitir que o runner expanda livremente no teste sem colidir com TP3
       const tp1Dist = PreciseMath.round(session.entryPrice * 1.020, 6);
       const tp2Dist = PreciseMath.round(session.entryPrice * 1.040, 6);
@@ -1143,6 +1149,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
       // O trailing stop não pode ter regredido
       expect(afterSmallPullback.trailingStopPrice).toBeGreaterThan(initialHardFloor);
 
+      DirectOperationManager.setMockRunnerSpike(session.symbol, null);
       DirectOperationManager.clearSession(session.id);
     });
   });
