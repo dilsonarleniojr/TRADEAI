@@ -1,7 +1,7 @@
 "use client";
 
 import { useCryptoStore } from "@/lib/store";
-import { Activity, Wifi, WifiOff, Loader2, Moon, Sun, Settings, Trash2, RefreshCw, Power, Wallet, KeyRound, Brain, Zap } from "lucide-react";
+import { Activity, Wifi, WifiOff, Loader2, Moon, Sun, Settings, Trash2, RefreshCw, Power, Wallet, KeyRound, Brain, Zap, User, LogOut } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
@@ -17,6 +17,8 @@ import { DirectAiTradeModal } from "@/components/bot/direct-ai-trade-modal";
 import { RiskProfileSelector } from "@/components/bot/risk-profile-selector";
 import { useDesktopHotkeys } from "@/hooks/use-desktop-hotkeys";
 import { useToast } from "@/hooks/use-toast";
+import { useAuthStore } from "@/lib/auth/auth-store";
+import { AuthModal } from "@/components/auth/auth-modal";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -96,8 +98,15 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
   const [directTradeModalOpen, setDirectTradeModalOpen] = useState(false);
   const [aiInfo, setAiInfo] = useState<{ provider: string; model: string; configured: boolean } | null>(null);
 
+  const { user, isAuthenticated, openAuthModal, logout, checkSession } = useAuthStore();
+
   // Mapeamento e escuta global dos atalhos de teclado desktop (Espaço, Ctrl+K, Duplo Esc)
   useDesktopHotkeys();
+
+  useEffect(() => {
+    if (!mounted) return;
+    checkSession();
+  }, [mounted, checkSession]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -515,6 +524,59 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          )}
+
+          {/* User Auth Profile / Login Button */}
+          {mounted && (
+            <>
+              {isAuthenticated && user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7.5 gap-1.5 px-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-semibold shrink-0 cursor-pointer"
+                      title={`Usuário: ${user.name} (${user.email})`}
+                    >
+                      <User className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="max-w-[70px] truncate hidden sm:inline">{user.name}</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[210px] glass-card gradient-border p-1">
+                    <DropdownMenuLabel className="text-xs">
+                      <div className="font-bold text-foreground truncate">{user.name}</div>
+                      <div className="text-[10px] text-muted-foreground truncate">{user.email}</div>
+                      {user.twoFactorEnabled && (
+                        <div className="mt-1 flex items-center gap-1 text-[10px] text-emerald-400 font-mono">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          <span>2FA Ativo</span>
+                        </div>
+                      )}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator className="bg-border/40" />
+                    <DropdownMenuItem
+                      onClick={logout}
+                      className="text-xs flex items-center gap-2 py-1.5 px-2 cursor-pointer text-rose-400 focus:text-rose-400 focus:bg-rose-500/10 font-medium"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Encerrar Sessão</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={openAuthModal}
+                  className="h-7.5 gap-1.5 px-2.5 bg-slate-900/80 hover:bg-emerald-500/10 text-slate-200 hover:text-emerald-400 border border-slate-800 hover:border-emerald-500/30 rounded-lg text-xs font-semibold shrink-0 cursor-pointer transition-all"
+                  title="Acessar conta ou criar novo registro institucional"
+                >
+                  <User className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden sm:inline">Entrar</span>
+                </Button>
+              )}
+              <AuthModal />
+            </>
           )}
 
           {/* Bot active badge */}

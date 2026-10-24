@@ -1,6 +1,35 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Fase 3 & 4: Quant AI FastAPI (Conformal Prediction, Adversarial Robustness L2 & Gemini 2.5 Flash Vision), Gamificação e PWA Offline Simulator",
+    "summary": "1) Microserviço Python FastAPI (mini-services/quant-ai-service): Implementação de Split Conformal Prediction com cobertura estatística finita garantida de 95% (q_hat corrigido por ceil((n+1)(1-alpha))/n), SignalAdversarialTester com perturbações epsilon-bounded no livro L2, intervalo Wilson unilateral de 95% e Monte Carlo worst-case trials para detecção de fragilidade a spoofing/ruído de cotação (conforme skill adversarial-robustness-of-trading-signals), e analisador de visão multimodal de gráficos com Google Gemini 2.5 Flash (google-genai) com fallback determinístico local; 2) Integração TypeScript (src/lib/ai/quant-ai-client.ts, src/lib/ai/gemini-chart-vision.ts e src/app/api/quant-ai/[...path]/route.ts): Cliente assíncrono com proxy App Router e fallback matemático em memória; 3) Gamificação de Disciplina Operacional (src/lib/gamification/trader-achievements.ts, src/components/gamification/trader-level-card.tsx): Progressão de Ranks (Novice Apprentice até Institutional Titan), streak de disciplina e badges para respeito de Stop Loss (10 seguidos), combate a revenge trading e sizing conformal; 4) PWA e Simulador Offline (public/manifest.json, public/sw.js, src/lib/offline/offline-simulation-engine.ts): Simulação completa offline com Geometric Brownian Motion (GBM), casamento de ordens limite/mercado, Stop Loss/Take Profit automatizados, fricção realista (slippage + taxas maker/taker) e curvas de equity/drawdown; 5) Validação: 7 testes Python pytest aprovados (100%), 248 testes unitários Bun aprovados em 12 suítes (1.741 asserções) e npx tsc --noEmit limpo com exit code 0.",
+    "tags": [
+      "quant-ai-service",
+      "fastapi-conformal-prediction",
+      "adversarial-robustness-signals",
+      "wilson-upper-bound",
+      "gemini-2.5-flash-vision",
+      "trader-gamification-achievements",
+      "pwa-offline-simulation",
+      "geometric-brownian-motion-gbm"
+    ],
+    "details": {
+      "pythonServiceDir": "mini-services/quant-ai-service",
+      "quantAiClientPath": "src/lib/ai/quant-ai-client.ts",
+      "geminiVisionPath": "src/lib/ai/gemini-chart-vision.ts",
+      "gamificationPath": "src/lib/gamification/trader-achievements.ts",
+      "offlineSimPath": "src/lib/offline/offline-simulation-engine.ts",
+      "pwaManifestPath": "public/manifest.json",
+      "serviceWorkerPath": "public/sw.js",
+      "totalPassingTests": 248,
+      "totalAssertions": 1741,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792590000000-quant-ai-and-gamification-pwa",
+    "timestamp": "2026-10-23T21:42:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Cofre Criptográfico AES-256-GCM, 2FA TOTP RFC 6238 e Smart Portfolio com Rebalanceamento e Simulação Monte Carlo",
     "summary": "1) CredentialVault (src/lib/security/credential-vault.ts): Cofre institucional para chaves de API de exchanges com criptografia militar AES-256-GCM, derivação determinística de chaves por SHA-256, geração de IV aleatório de 12 bytes e Auth Tag de 16 bytes que previne adulterações ou ataques de padding oracle; mascaramento seguro para UI (vmPU...fsa8); 2) TwoFactorAuth (src/lib/security/two-factor-auth.ts): Implementação completa do padrão RFC 6238 TOTP com segredos Base32 de 160 bits, geração de URIs otpauth para Google Authenticator/Authy, truncamento dinâmico HMAC-SHA1 de 6 dígitos e verificação em tempo constante (timingSafeEqual) com tolerância de clock drift (±30s); 3) SmartPortfolioEngine (src/lib/portfolio/smart-portfolio-engine.ts): Motor de avaliação de desvios relativos (drift) de carteira multimodelo (BTC, ETH, SOL), despacho de ordens BUY/SELL com respeito a limites nocionais ($10 USD) e estimativa de taxas de corretagem (0.10%), além de motor de simulação Monte Carlo (Geometric Brownian Motion) de 500 trajetórias com quantis P10, P50 e P90; 4) Validação: 237 testes unitários passando em 11 suítes (1.691 asserções) com testes dedicados em tests/unit/security-and-portfolio.test.ts e tipagem TypeScript sem erros (bun x tsc --noEmit exit code 0).",
     "tags": [

@@ -65,14 +65,21 @@ export class TwoFactorAuth {
   }
 
   /**
+   * Constrói a URI padrão otpauth para aplicativos autenticadores.
+   */
+  public static generateOtpauthUri(secret: string, accountEmail = "trader@tradeai.app", issuer = "TradeAI"): string {
+    const encodedIssuer = encodeURIComponent(issuer);
+    const encodedAccount = encodeURIComponent(accountEmail);
+    return `otpauth://totp/${encodedIssuer}:${encodedAccount}?secret=${secret}&issuer=${encodedIssuer}&algorithm=SHA1&digits=6&period=30`;
+  }
+
+  /**
    * Gera um novo segredo Base32 criptograficamente seguro e a URI otpauth.
    */
   public static generateSecret(accountEmail = "trader@tradeai.app", issuer = "TradeAI"): TwoFactorSetupData {
     const randomBytes = crypto.randomBytes(20); // 160 bits (RFC 4226 recomendação)
     const secret = this.toBase32(randomBytes);
-    const encodedIssuer = encodeURIComponent(issuer);
-    const encodedAccount = encodeURIComponent(accountEmail);
-    const otpauthUri = `otpauth://totp/${encodedIssuer}:${encodedAccount}?secret=${secret}&issuer=${encodedIssuer}&algorithm=SHA1&digits=6&period=30`;
+    const otpauthUri = this.generateOtpauthUri(secret, accountEmail, issuer);
 
     return { secret, otpauthUri };
   }
@@ -124,4 +131,19 @@ export class TwoFactorAuth {
 
     return false;
   }
+
+  /**
+   * Alias de conveniência para generateCode
+   */
+  public static generateToken(secret: string, timestampMs = Date.now()): string {
+    return this.generateCode(secret, timestampMs);
+  }
+
+  /**
+   * Alias de conveniência para verifyCode
+   */
+  public static verifyToken(token: string, secret: string, windowSteps = 1, timestampMs = Date.now()): boolean {
+    return this.verifyCode(token, secret, windowSteps, timestampMs);
+  }
 }
+

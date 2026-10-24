@@ -1,0 +1,31 @@
+{
+  "name": "TradeAI Pro - Institutional Algorithmic Trading Platform",
+  "short_name": "TradeAI",
+  "description": "High-frequency & low-latency institutional trading with Conformal Prediction and Multimodal Vision",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#10b981",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "productivity", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Trading Cockpit",
+      "url": "/dashboard",
+      "description": "Open real-time algorithmic cockpit"
+    },
+    {
+      "name": "Offline Simulator",
+      "url": "/simulator",
+      "description": "Access local offline paper trading"
+    }
+  ]
+}

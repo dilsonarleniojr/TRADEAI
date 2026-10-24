@@ -1112,8 +1112,8 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
       const initialHardFloor = session.tp3HardFloorPrice!;
       expect(initialHardFloor).toBeGreaterThanOrEqual(session.entryPrice * 1.010 - 0.001);
 
-      // Runner tem forte expansão favorável (+4.0% acima da entrada)
-      const surgePrice = session.entryPrice * 1.040;
+      // Runner tem forte expansão favorável (+6.0% acima da entrada)
+      const surgePrice = session.entryPrice * 1.060;
       const afterSurge = await DirectOperationManager.processPriceTick(session.id, surgePrice);
 
       // O Trailing Stop de 0.8% abaixo da máxima de $surgePrice deve ser maior que o piso rígido inicial
