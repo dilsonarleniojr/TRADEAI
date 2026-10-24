@@ -9,11 +9,16 @@ FastAPI Microservice entrypoint for Quantitative AI:
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, List, Optional
 import numpy as np
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+# Carregar variáveis de ambiente de .env
+load_dotenv()
 
 from quant_ai.conformal_predictor import ConformalPredictor, ConformalPredictionInterval
 from quant_ai.adversarial_tester import (
