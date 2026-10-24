@@ -60,6 +60,10 @@ import {
   calculateIncrementalMACD,
   relativeATR,
   relativeATRFromSoA,
+  calculateADX,
+  calculateADXFromSoA,
+  calculateBollinger,
+  calculatePearsonCorrelation,
   calculatePivotPoints,
   MultiSymbolIndicatorPool,
   STRIDE_INDICATOR_FLOATS,
@@ -2757,6 +2761,48 @@ describe("Desktop High-Performance Engine (Low-Allocation & V-Sync Pipeline)", (
         expect(pivots.s1).toBe(fastRound6(2 * pivots.pp - 65500.25));
         expect(typeof pivots.pp).toBe("number");
         expect(Number.isFinite(pivots.pp)).toBe(true);
+      });
+
+      it("deve calcular ADX a partir de SoA Float64Array com exata equivalência e zero alocações", () => {
+        const klines = Array.from({ length: 40 }, (_, i) => ({
+          time: (i + 1) * 60000,
+          open: 100 + i * 0.5,
+          high: 105 + i * 0.6,
+          low: 98 + i * 0.4,
+          close: 102 + i * 0.5,
+          volume: 1000 + i * 10,
+        }));
+        const soa = klinesToSoA(klines);
+        const adxSoA = calculateADXFromSoA(soa.highs, soa.lows, soa.closes, soa.length, 14);
+        const adxStandard = calculateADX(klines, 14);
+
+        expect(adxSoA).not.toBeNull();
+        expect(adxStandard).not.toBeNull();
+        expect(Math.abs(adxSoA! - adxStandard!)).toBeLessThan(1e-9);
+        expect(adxSoA!).toBeGreaterThan(0);
+      });
+
+      it("deve calcular Bandas de Bollinger sobre Float64Array contíguo sem alocações transitórias", () => {
+        const closes = new Float64Array([
+          100, 102, 101, 103, 102, 104, 103, 105, 104, 106,
+          105, 107, 106, 108, 107, 109, 108, 110, 109, 111, 112
+        ]);
+        const bb = calculateBollinger(closes, 20, 2);
+        expect(bb).not.toBeNull();
+        expect(bb!.upper).toBeGreaterThan(bb!.middle);
+        expect(bb!.middle).toBeGreaterThan(bb!.lower);
+        expect(bb!.percentB).toBeGreaterThan(0.5);
+      });
+
+      it("deve calcular Correlação de Pearson com zero-slice e bounded em [-1.0, 1.0]", () => {
+        const seriesA = new Float64Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        const seriesB = new Float64Array([2, 4, 6, 8, 10, 12, 14, 16, 18, 20]);
+        const rPos = calculatePearsonCorrelation(seriesA, seriesB);
+        expect(rPos).toBe(1);
+
+        const seriesC = new Float64Array([10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
+        const rNeg = calculatePearsonCorrelation(seriesA, seriesC);
+        expect(rNeg).toBe(-1);
       });
     });
 

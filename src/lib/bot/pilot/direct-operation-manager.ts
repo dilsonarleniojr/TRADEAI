@@ -1070,11 +1070,15 @@ export class DirectOperationManager {
 
     session.currentPrice = latestPrice;
 
-    // Histórico de preços em tempo real para mini-gráfico (buffer circular sem O(N) shift)
+    // Histórico de preços em tempo real para mini-gráfico (buffer circular sem O(N) shift e zero alocações)
     if (!session.priceHistory) session.priceHistory = [];
-    if (session.priceHistory.length >= 30) {
+    const histLen = session.priceHistory.length;
+    if (histLen >= 30) {
+      const reusedSlot = session.priceHistory[0];
+      reusedSlot.price = latestPrice;
+      reusedSlot.timestamp = Date.now();
       session.priceHistory.copyWithin(0, 1);
-      session.priceHistory[29] = { price: latestPrice, timestamp: Date.now() };
+      session.priceHistory[29] = reusedSlot;
     } else {
       session.priceHistory.push({ price: latestPrice, timestamp: Date.now() });
     }

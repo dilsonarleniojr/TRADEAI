@@ -378,7 +378,7 @@ export interface BollingerResult {
   percentB: number;
 }
 
-export function calculateBollinger(closes: number[], period = 20, mult = 2): BollingerResult | null {
+export function calculateBollinger(closes: number[] | Float64Array, period = 20, mult = 2): BollingerResult | null {
   const len = closes.length;
   if (len < period) return null;
   const start = len - period;
@@ -445,56 +445,104 @@ export function relativeATRFromSoA(
   return atr / (lastClose > 0 ? lastClose : 1);
 }
 
-/** ADX de Wilder (suavizado). Retorna null sem candles suficientes. */
-export function calculateADX(klines: KlineData[], period = 14): number | null {
-  if (klines.length < period * 2 + 1) return null;
+/**
+ * ADX de Wilder a partir de vetores contíguos SoA com zero alocações transitórias.
+ */
+export function calculateADXFromSoA(
+  highs: Float64Array,
+  lows: Float64Array,
+  closes: Float64Array,
+  len: number,
+  period = 14
+): number | null {
+  if (len < period * 2 + 1) return null;
 
-  const tr: number[] = [];
-  const plusDM: number[] = [];
-  const minusDM: number[] = [];
-  for (let i = 1; i < klines.length; i++) {
-    const k = klines[i];
-    const prev = klines[i - 1];
-    tr.push(Math.max(k.high - k.low, Math.abs(k.high - prev.close), Math.abs(k.low - prev.close)));
-    const up = k.high - prev.high;
-    const down = prev.low - k.low;
-    plusDM.push(up > down && up > 0 ? up : 0);
-    minusDM.push(down > up && down > 0 ? down : 0);
+  const diffCount = len - 1;
+  const tr = new Float64Array(diffCount);
+  const plusDM = new Float64Array(diffCount);
+  const minusDM = new Float64Array(diffCount);
+
+  for (let i = 1; i < len; i++) {
+    const idx = i - 1;
+    const h = highs[i];
+    const l = lows[i];
+    const prevClose = closes[i - 1];
+    const prevHigh = highs[i - 1];
+    const prevLow = lows[i - 1];
+
+    const hl = h - l;
+    const hc = Math.abs(h - prevClose);
+    const lc = Math.abs(l - prevClose);
+    tr[idx] = (hl > hc ? (hl > lc ? hl : lc) : (hc > lc ? hc : lc));
+
+    const up = h - prevHigh;
+    const down = prevLow - l;
+    plusDM[idx] = (up > down && up > 0) ? up : 0;
+    minusDM[idx] = (down > up && down > 0) ? down : 0;
   }
 
-  const smooth = (arr: number[]) => {
-    let acc = arr.slice(0, period).reduce((s, v) => s + v, 0);
-    const out = [acc];
-    for (let i = period; i < arr.length; i++) {
-      acc = acc - acc / period + arr[i];
-      out.push(acc);
-    }
-    return out;
-  };
+  // Wilder Smoothing com acumuladores escalares
+  let sTR = 0;
+  let sPlus = 0;
+  let sMinus = 0;
+  for (let i = 0; i < period; i++) {
+    sTR += tr[i];
+    sPlus += plusDM[i];
+    sMinus += minusDM[i];
+  }
 
-  const sTR = smooth(tr);
-  const sPlus = smooth(plusDM);
-  const sMinus = smooth(minusDM);
+  const dxLen = diffCount - period + 1;
+  const dx = new Float64Array(dxLen);
+  let pdi = sTR > 0 ? (sPlus / sTR) * 100 : 0;
+  let mdi = sTR > 0 ? (sMinus / sTR) * 100 : 0;
+  let sum = pdi + mdi;
+  dx[0] = sum > 0 ? (Math.abs(pdi - mdi) / sum) * 100 : 0;
 
-  const dx = sTR.map((t, i) => {
-    const pdi = t > 0 ? (sPlus[i] / t) * 100 : 0;
-    const mdi = t > 0 ? (sMinus[i] / t) * 100 : 0;
-    const sum = pdi + mdi;
-    return sum > 0 ? (Math.abs(pdi - mdi) / sum) * 100 : 0;
-  });
+  let dxIdx = 1;
+  for (let i = period; i < diffCount; i++) {
+    sTR = sTR - (sTR / period) + tr[i];
+    sPlus = sPlus - (sPlus / period) + plusDM[i];
+    sMinus = sMinus - (sMinus / period) + minusDM[i];
 
-  if (dx.length < period) return null;
-  let adx = dx.slice(0, period).reduce((s, v) => s + v, 0) / period;
-  for (let i = period; i < dx.length; i++) {
+    pdi = sTR > 0 ? (sPlus / sTR) * 100 : 0;
+    mdi = sTR > 0 ? (sMinus / sTR) * 100 : 0;
+    sum = pdi + mdi;
+    dx[dxIdx++] = sum > 0 ? (Math.abs(pdi - mdi) / sum) * 100 : 0;
+  }
+
+  if (dxLen < period) return null;
+  let adx = 0;
+  for (let i = 0; i < period; i++) {
+    adx += dx[i];
+  }
+  adx /= period;
+
+  for (let i = period; i < dxLen; i++) {
     adx = (adx * (period - 1) + dx[i]) / period;
   }
   return adx;
 }
 
+/** ADX de Wilder (suavizado). Retorna null sem candles suficientes. */
+export function calculateADX(klines: KlineData[], period = 14): number | null {
+  if (klines.length < period * 2 + 1) return null;
+  const soa = klinesToSoA(klines);
+  return calculateADXFromSoA(soa.highs, soa.lows, soa.closes, soa.length, period);
+}
+
+/** Volume médio sem alocação transitória de array .slice() */
 export function averageVolume(klines: KlineData[], period = 20, skipLast = 1): number {
-  const slice = klines.slice(-(period + skipLast), skipLast > 0 ? -skipLast : undefined);
-  if (slice.length === 0) return 0;
-  return slice.reduce((s, k) => s + k.volume, 0) / slice.length;
+  const len = klines.length;
+  if (len === 0) return 0;
+  const start = Math.max(0, len - period - skipLast);
+  const end = Math.max(0, len - skipLast);
+  const count = end - start;
+  if (count <= 0) return 0;
+  let sum = 0;
+  for (let i = start; i < end; i++) {
+    sum += klines[i].volume;
+  }
+  return sum / count;
 }
 
 // ===========================================================================
@@ -628,9 +676,12 @@ export function calculateTechnicalScannerScore(klines: KlineData[]): TechnicalSc
 
   if (!klines || klines.length < 30) return neutralResult;
 
-  const closes = klines.map((k) => k.close);
-  const lastClose = closes[closes.length - 1];
-  const lastCandle = klines[klines.length - 1];
+  // Converte em passada única para Structure-of-Arrays contíguo Float64Array
+  const soa = klinesToSoA(klines);
+  const len = soa.length;
+  const closes = soa.closes;
+  const lastClose = closes[len - 1];
+  const lastCandle = klines[len - 1];
 
   // 1. EMA Cross (9 / 21)
   const ema9 = calculateEMA(closes, 9);
@@ -651,7 +702,7 @@ export function calculateTechnicalScannerScore(klines: KlineData[]): TechnicalSc
   else if (rsi < 45) rsiScore = -1;
 
   // 3. MACD (12, 26, 9)
-  const macd = calculateMACD(closes, 12, 26, 9);
+  const macd = calculateMACDFromTyped(closes, 12, 26, 9);
   let macdScore = 0;
   if (macd) {
     if (macd.histogram > 0 && macd.histogram > macd.prevHistogram) macdScore = 2;
@@ -670,13 +721,13 @@ export function calculateTechnicalScannerScore(klines: KlineData[]): TechnicalSc
     else if (bb.percentB < 0.2) bbScore = -2; // Pressão contra banda inferior
   }
 
-  // 5. ATR vs Média de 20 períodos
-  const relAtr = relativeATR(klines, 14);
+  // 5. ATR vs Média de 20 períodos a partir de SoA sem alocação
+  const relAtr = relativeATRFromSoA(soa.highs, soa.lows, soa.closes, len, 14);
   let atrScore = 1; // Normal por padrão
   if (relAtr > 0.04) atrScore = -1; // Volatilidade descontrolada (>4% por barra)
   else if (relAtr < 0.005) atrScore = 0; // Mercado parado
 
-  // 6. Volume vs Média de 20 períodos
+  // 6. Volume vs Média de 20 períodos sem .slice()
   const avgVol = averageVolume(klines, 20, 1);
   const volRatio = avgVol > 0 ? lastCandle.volume / avgVol : 1;
   const isGreenCandle = lastCandle.close >= lastCandle.open;
@@ -694,8 +745,8 @@ export function calculateTechnicalScannerScore(klines: KlineData[]): TechnicalSc
   else if (compositeScore <= -6) recommendation = "Strong Sell";
   else if (compositeScore <= -3) recommendation = "Sell";
 
-  // Detecção de Regime de Mercado (Skill)
-  const adx = calculateADX(klines, 14) || 20;
+  // Detecção de Regime de Mercado a partir de SoA sem alocações
+  const adx = calculateADXFromSoA(soa.highs, soa.lows, soa.closes, len, 14) ?? 20;
   let regime: TechnicalRegime = "Ranging";
   if (lastClose > ema21 && ema9 > ema21 && adx > 25) regime = "Trending Up";
   else if (lastClose < ema21 && ema9 < ema21 && adx > 25) regime = "Trending Down";
@@ -725,7 +776,7 @@ export function calculateTechnicalScannerScore(klines: KlineData[]): TechnicalSc
  * Converte uma série de preços cronológicos em retornos percentuais logarítmicos/aritméticos.
  * R_t = (P_t - P_{t-1}) / P_{t-1}
  */
-export function calculateReturns(prices: number[]): number[] {
+export function calculateReturns(prices: number[] | Float64Array): number[] {
   if (prices.length < 2) return [];
   const returns: number[] = [];
   for (let i = 1; i < prices.length; i++) {
@@ -739,25 +790,34 @@ export function calculateReturns(prices: number[]): number[] {
 /**
  * Coeficiente de Correlação Linear de Pearson (r) entre duas séries.
  * r = Cov(X, Y) / (sigma_X * sigma_Y)
- * Varia entre -1.0 e +1.0.
+ * Zero alocações de .slice() e sem conversão para string.
  */
-export function calculatePearsonCorrelation(seriesA: number[], seriesB: number[]): number {
+export function calculatePearsonCorrelation(
+  seriesA: number[] | Float64Array,
+  seriesB: number[] | Float64Array
+): number {
   const n = Math.min(seriesA.length, seriesB.length);
   if (n < 3) return 0;
 
-  const aSlice = seriesA.slice(seriesA.length - n);
-  const bSlice = seriesB.slice(seriesB.length - n);
+  const startA = seriesA.length - n;
+  const startB = seriesB.length - n;
 
-  const meanA = aSlice.reduce((s, v) => s + v, 0) / n;
-  const meanB = bSlice.reduce((s, v) => s + v, 0) / n;
+  let sumA = 0;
+  let sumB = 0;
+  for (let i = 0; i < n; i++) {
+    sumA += seriesA[startA + i];
+    sumB += seriesB[startB + i];
+  }
+  const meanA = sumA / n;
+  const meanB = sumB / n;
 
   let num = 0;
   let denA = 0;
   let denB = 0;
 
   for (let i = 0; i < n; i++) {
-    const da = aSlice[i] - meanA;
-    const db = bSlice[i] - meanB;
+    const da = seriesA[startA + i] - meanA;
+    const db = seriesB[startB + i] - meanB;
     num += da * db;
     denA += da * da;
     denB += db * db;
@@ -767,7 +827,8 @@ export function calculatePearsonCorrelation(seriesA: number[], seriesB: number[]
   if (den === 0 || isNaN(den)) return 0;
 
   const r = num / den;
-  return Math.max(-1, Math.min(1, parseFloat(r.toFixed(4))));
+  const clamped = r < -1 ? -1 : (r > 1 ? 1 : r);
+  return Math.round(clamped * 10000) / 10000;
 }
 
 /**
