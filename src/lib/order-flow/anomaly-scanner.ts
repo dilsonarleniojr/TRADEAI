@@ -268,6 +268,8 @@ export class OrderFlowAnomalyScanner {
 
   public clearAlerts(): void {
     this.recentAlerts = [];
+    this.imbalanceStates.clear();
+    this.volumeHistory.clear();
   }
 
   public subscribe(callback: (alert: AnomalyAlert) => void): () => void {

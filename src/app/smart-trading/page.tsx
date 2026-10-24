@@ -51,11 +51,58 @@ type ScreenId =
 
 export default function SmartTradingPage() {
   const [activeScreen, setActiveScreen] = useState<ScreenId>('dashboard');
+  const [tradingMode, setTradingMode] = useState<'paper' | 'live'>('live');
   const [isDark, setIsDark] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedPair, setSelectedPair] = useState('BTC/USDT');
   const [unreadNotifications, setUnreadNotifications] = useState(3);
   const [isLoggedIn, setIsLoggedIn] = useState(true);
+
+  // Cotações e saldo real
+  const [btcPrice, setBtcPrice] = useState<number>(80935.0);
+  const [ethPrice, setEthPrice] = useState<number>(3520.0);
+  const [solPrice, setSolPrice] = useState<number>(186.4);
+  const [liveNav, setLiveNav] = useState<number>(38.85);
+
+  // Sincronizar cotações e saldo
+  useEffect(() => {
+    let isMounted = true;
+    const syncData = async () => {
+      try {
+        // 1. Tickers
+        const tickerRes = await fetch('/api/market/ticker');
+        if (tickerRes.ok) {
+          const tickerJson = await tickerRes.json();
+          if (Array.isArray(tickerJson.data)) {
+            const btc = tickerJson.data.find((t: any) => t.symbol === 'BTCUSDT');
+            const eth = tickerJson.data.find((t: any) => t.symbol === 'ETHUSDT');
+            const sol = tickerJson.data.find((t: any) => t.symbol === 'SOLUSDT');
+            if (btc?.lastPrice && isMounted) setBtcPrice(parseFloat(btc.lastPrice));
+            if (eth?.lastPrice && isMounted) setEthPrice(parseFloat(eth.lastPrice));
+            if (sol?.lastPrice && isMounted) setSolPrice(parseFloat(sol.lastPrice));
+          }
+        }
+
+        // 2. Saldo da conta
+        const accRes = await fetch(`/api/account?mode=${tradingMode}`);
+        if (accRes.ok) {
+          const accJson = await accRes.json();
+          if (accJson.success && accJson.data && isMounted) {
+            setLiveNav(accJson.data.totalValue || (tradingMode === 'live' ? 38.85 : 9857.14));
+          }
+        }
+      } catch (err: any) {
+        console.warn('[SmartTradingPage] Erro ao sincronizar tickers/saldo:', err.message);
+      }
+    };
+
+    syncData();
+    const interval = setInterval(syncData, 6000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [tradingMode]);
 
   // Alterna o tema
   const toggleTheme = () => {
@@ -109,24 +156,55 @@ export default function SmartTradingPage() {
             </div>
           </div>
 
-          {/* Quick Ticker Pill */}
+          {/* Quick Ticker Pill (Live Binance Data) */}
           <div className="hidden lg:flex items-center gap-4 border-l border-[var(--st-border)] pl-4 ml-2 text-xs font-mono">
             <div className="flex items-center gap-1.5">
               <span className="text-[var(--st-text-secondary)] font-bold">BTC:</span>
-              <span className="text-[var(--st-text-primary)] font-semibold">$67,420.50</span>
+              <span className="text-[var(--st-text-primary)] font-semibold">
+                ${btcPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
               <span className="text-[var(--st-success)] flex items-center text-[11px]">+3.42%</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-[var(--st-text-secondary)] font-bold">ETH:</span>
-              <span className="text-[var(--st-text-primary)] font-semibold">$3,520.10</span>
+              <span className="text-[var(--st-text-primary)] font-semibold">
+                ${ethPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
               <span className="text-[var(--st-success)] flex items-center text-[11px]">+2.15%</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-[var(--st-text-secondary)] font-bold">SOL:</span>
-              <span className="text-[var(--st-text-primary)] font-semibold">$186.40</span>
+              <span className="text-[var(--st-text-primary)] font-semibold">
+                ${solPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
               <span className="text-[var(--st-success)] flex items-center text-[11px]">+6.36%</span>
             </div>
           </div>
+        </div>
+
+        {/* Center: Live / Paper Mode Switcher */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (tradingMode === 'paper') {
+                if (confirm('Atenção: Deseja mudar para o modo DINHEIRO REAL (Binance Spot)?\n\nNeste modo, ordens despachadas pela boleta consom saldo real e executam diretamente na Binance.')) {
+                  setTradingMode('live');
+                }
+              } else {
+                setTradingMode('paper');
+              }
+            }}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold transition-all shadow-sm ${
+              tradingMode === 'live'
+                ? 'bg-red-500/15 border-red-500/40 text-red-400 hover:bg-red-500/25 ring-2 ring-red-500/20 animate-pulse'
+                : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25'
+            }`}
+            title="Alternar entre Modo Simulado e Dinheiro Real"
+          >
+            <span className={`w-2 h-2 rounded-full ${tradingMode === 'live' ? 'bg-red-500' : 'bg-emerald-400'}`} />
+            <span>{tradingMode === 'live' ? 'DINHEIRO REAL (Binance Spot)' : 'MODO SIMULADO (Paper)'}</span>
+          </button>
         </div>
 
         {/* Right: Actions, Notifications, Theme & Profile */}
@@ -181,8 +259,12 @@ export default function SmartTradingPage() {
               DC
             </div>
             <div className="hidden md:flex flex-col text-left">
-              <span className="text-xs font-semibold text-[var(--st-text-primary)] leading-tight">Trader Quant</span>
-              <span className="text-[10px] text-[var(--st-text-muted)] font-mono">$124,580.40</span>
+              <span className="text-xs font-semibold text-[var(--st-text-primary)] leading-tight">
+                {tradingMode === 'live' ? 'Conta Real (Spot)' : 'Paper Trader'}
+              </span>
+              <span className="text-[10px] text-[var(--st-text-muted)] font-mono">
+                ${liveNav.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
             </div>
           </div>
         </div>
@@ -353,11 +435,15 @@ export default function SmartTradingPage() {
             <DashboardScreen
               onNavigateTab={(tab) => setActiveScreen(tab as ScreenId)}
               onSelectSymbol={setSelectedPair}
+              tradingMode={tradingMode}
             />
           )}
 
           {activeScreen === 'charts' && (
-            <ChartsScreen initialSymbol={selectedPair} />
+            <ChartsScreen 
+              initialSymbol={selectedPair} 
+              tradingMode={tradingMode}
+            />
           )}
 
           {activeScreen === 'ai' && (

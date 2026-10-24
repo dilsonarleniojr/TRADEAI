@@ -14,6 +14,49 @@ services:
     environment:
       - PORT=8001
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-lite-latest}
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health').read()"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  tradeai-funding-rates-mcp:
+    build:
+      context: ./mini-services/funding-rates-mcp
+      dockerfile: Dockerfile
+    container_name: tradeai_funding_rates_mcp
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+      - path: .env.local
+        required: false
+    environment:
+      - MCP_TRANSPORT=sse
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8002
+
+  tradeai-crypto-portfolio-mcp:
+    build:
+      context: ./mini-services/crypto-portfolio-mcp
+      dockerfile: Dockerfile
+    container_name: tradeai_crypto_portfolio_mcp
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./mini-services/crypto-portfolio-mcp/portfolio.db:/app/portfolio.db
+    env_file:
+      - .env
+      - path: .env.local
+        required: false
+    environment:
+      - MCP_TRANSPORT=sse
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8003
 
   tradeai-app:
     build:
@@ -28,7 +71,6 @@ services:
       - "3002:3002"
     env_file:
       - .env
-      # Segredos locais fora do git (ex.: ANTHROPIC_API_KEY). Opcional.
       - path: .env.local
         required: false
     environment:
@@ -36,10 +78,14 @@ services:
       - PORT=3000
       - DATABASE_URL=file:/app/db/custom.db
       - QUANT_AI_SERVICE_URL=http://tradeai-quant-ai:8001
+      - FUNDING_RATES_MCP_URL=http://tradeai-funding-rates-mcp:8002/sse
+      - CRYPTO_PORTFOLIO_MCP_URL=http://tradeai-crypto-portfolio-mcp:8003/sse
     volumes:
       - ./db:/app/db
     depends_on:
       - tradeai-quant-ai
+      - tradeai-funding-rates-mcp
+      - tradeai-crypto-portfolio-mcp
 
   caddy-proxy:
     image: caddy:alpine
@@ -50,3 +96,4 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
     depends_on:
       - tradeai-app
+

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SmartCandleChart } from '../trading/candle-chart';
 import { SmartOrderPanel } from '../trading/order-panel';
 import { SmartAssetWatchlist } from '../trading/asset-watchlist';
@@ -23,25 +23,50 @@ import {
 
 interface ChartsScreenProps {
   initialSymbol?: string;
+  tradingMode?: 'live' | 'paper';
 }
 
-export const ChartsScreen: React.FC<ChartsScreenProps> = ({ initialSymbol = 'BTC/USDT' }) => {
+export const ChartsScreen: React.FC<ChartsScreenProps> = ({ 
+  initialSymbol = 'BTC/USDT',
+  tradingMode = 'paper' 
+}) => {
   const [symbol, setSymbol] = useState(initialSymbol);
   const [activeDrawingTool, setActiveDrawingTool] = useState<string | null>('trendline');
   const [isOrderPanelOpen, setIsOrderPanelOpen] = useState(true);
   const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
+  const [livePrice, setLivePrice] = useState<number>(80900.0);
 
-  // Preço base simulado de acordo com o símbolo
-  const getSymbolPrice = (sym: string) => {
-    if (sym.includes('BTC')) return 67420.50;
-    if (sym.includes('ETH')) return 3520.10;
-    if (sym.includes('SOL')) return 186.40;
-    if (sym.includes('BNB')) return 592.80;
-    if (sym.includes('AVAX')) return 38.40;
-    return 100.00;
-  };
+  const cleanSymbol = symbol.replace(/[^A-Z0-9]/gi, '').toUpperCase();
 
-  const currentPrice = getSymbolPrice(symbol);
+  // Buscar cotação em tempo real da Binance
+  useEffect(() => {
+    let isMounted = true;
+    const fetchPrice = async () => {
+      try {
+        const res = await fetch(`/api/market/ticker?symbol=${cleanSymbol}`);
+        if (res.ok) {
+          const json = await res.json();
+          const item = Array.isArray(json.data) 
+            ? json.data.find((t: any) => t.symbol === cleanSymbol) 
+            : json.data;
+          if (item?.lastPrice && isMounted) {
+            const p = parseFloat(item.lastPrice);
+            if (p > 0) setLivePrice(p);
+          }
+        }
+      } catch (e: any) {
+        console.warn('[ChartsScreen] Erro ao obter ticker:', e.message);
+      }
+    };
+    fetchPrice();
+    const interval = setInterval(fetchPrice, 5000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [cleanSymbol]);
+
+  const currentPrice = livePrice;
 
   const drawingTools = [
     { id: 'trendline', icon: <TrendingUp className="w-4 h-4" />, name: 'Linha de Tendência' },
@@ -156,9 +181,7 @@ export const ChartsScreen: React.FC<ChartsScreenProps> = ({ initialSymbol = 'BTC
             <SmartOrderPanel 
               symbol={symbol}
               currentPrice={currentPrice}
-              onOrderPlaced={(order) => {
-                alert(`Ordem de ${order.side} de $${order.amountUsd} em ${symbol} (${order.type}) enviada com sucesso!`);
-              }}
+              tradingMode={tradingMode}
             />
           </div>
         )}

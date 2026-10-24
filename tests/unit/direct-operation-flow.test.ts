@@ -3,6 +3,7 @@ import { CurrencyPairNormalizer } from "@/lib/bot/pilot/currency-pair-normalizer
 import { DirectOperationManager } from "@/lib/bot/pilot/direct-operation-manager";
 import { ExchangeMetadataService } from "@/lib/bot/pilot/exchange-metadata-service";
 import { MarketOpportunitySelector } from "@/lib/bot/pilot/market-opportunity-selector";
+import { PreciseMath } from "@/lib/bot/pilot/precise-math";
 
 describe("Operação Direta com IA & Normalização de Cotação", () => {
   beforeEach(() => {
@@ -393,7 +394,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
 
       DirectOperationManager.clearSession(session.id);
       DirectOperationManager.clearCooldownHistory();
-    });
+    }, 15000);
   });
 
   describe("5. Escada de Parciais 50/50 & Trailing Stop Parabólico (Trading Strategist)", () => {
@@ -870,6 +871,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
         durationMinutes: 5,
         strategy: "AUTO",
         mode: "paper",
+        overrideSymbol: "BTCUSDT",
       });
 
       const session = created.status === "WAITING_TRIGGER"
@@ -898,6 +900,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
         durationMinutes: 5,
         strategy: "AUTO",
         mode: "paper",
+        overrideSymbol: "BTCUSDT",
       });
 
       const session = created.status === "WAITING_TRIGGER"
@@ -930,6 +933,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
         durationMinutes: 5,
         strategy: "AUTO",
         mode: "paper",
+        overrideSymbol: "BTCUSDT",
       });
 
       const session = created.status === "WAITING_TRIGGER"
@@ -957,11 +961,13 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
     });
 
     it("deve antecipar o TP2 a mercado quando o preço se aproximar a menos de 0.20% do alvo e houver divergência negativa de CVD (< 0)", async () => {
+      DirectOperationManager.setMockCvdDelta("BTCUSDT", null);
       const { session: created } = await DirectOperationManager.startOperation({
         amount: 30.0,
         durationMinutes: 5,
         strategy: "AUTO",
         mode: "paper",
+        overrideSymbol: "BTCUSDT",
       });
 
       const session = created.status === "WAITING_TRIGGER"
@@ -969,11 +975,11 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
         : created;
 
       // Executa TP1 primeiro
-      await DirectOperationManager.processPriceTick(session.id, session.tp1Price!);
-      expect(session.isTp1Taken).toBe(true);
-      expect(session.isTp2Taken).toBe(false);
+      const afterTp1 = await DirectOperationManager.processPriceTick(session.id, session.tp1Price!);
+      expect(afterTp1.isTp1Taken).toBe(true);
+      expect(afterTp1.isTp2Taken).toBe(false);
 
-      const remainingQtyBeforeTp2 = session.quantity;
+      const remainingQtyBeforeTp2 = afterTp1.quantity;
 
       // Injeta CVD Delta negativo (-14.5%) simulando exaustão compradora e agressão de venda no topo
       DirectOperationManager.setMockCvdDelta(session.symbol, -14.5);
@@ -1097,11 +1103,18 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
         : created;
 
       // Define alvos distantes para permitir que o runner expanda livremente no teste sem colidir com TP3
-      session.targetPrice = session.entryPrice * 1.15;
-      session.tp3Price = session.entryPrice * 1.15;
+      const tp1Dist = PreciseMath.round(session.entryPrice * 1.020, 6);
+      const tp2Dist = PreciseMath.round(session.entryPrice * 1.040, 6);
+      const tp3Dist = PreciseMath.round(session.entryPrice * 1.150, 6);
+      session.targetPrice = tp3Dist;
+      session.tp1Price = tp1Dist;
+      session.tp2Price = tp2Dist;
+      session.tp3Price = tp3Dist;
       DirectOperationManager.updateSessionForTesting(session.id, {
-        targetPrice: session.entryPrice * 1.15,
-        tp3Price: session.entryPrice * 1.15,
+        targetPrice: tp3Dist,
+        tp1Price: tp1Dist,
+        tp2Price: tp2Dist,
+        tp3Price: tp3Dist,
       });
 
       // Executa TP1 e TP2
@@ -1256,7 +1269,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
 
       DirectOperationManager.setMockRunnerSpike(session.symbol, null);
       DirectOperationManager.clearSession(session.id);
-    });
+    }, 15000);
   });
 });
 

@@ -88,30 +88,48 @@ class GeminiChartVisionService:
                     "}"
                 )
 
-                response = self._client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=[image_part, prompt],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        temperature=0.2,
-                    ),
-                )
-
-                if response.text:
-                    parsed = json.loads(response.text)
-                    return ChartVisionAnalysis(
-                        symbol=parsed.get("symbol", symbol),
-                        timeframe=parsed.get("timeframe", timeframe),
-                        primary_trend=parsed.get("primary_trend", "neutral"),
-                        candlestick_patterns=parsed.get("candlestick_patterns", []),
-                        chart_patterns=parsed.get("chart_patterns", []),
-                        key_levels=[KeyLevel(**lvl) for lvl in parsed.get("key_levels", [])],
-                        orderflow_imbalance=parsed.get("orderflow_imbalance"),
-                        summary=parsed.get("summary", "Gemini chart visual analysis completed."),
-                        confidence_score=float(parsed.get("confidence_score", 0.85)),
-                        risk_assessment=parsed.get("risk_assessment", "Standard volatility control."),
-                        source="gemini-2.5-flash",
-                    )
+                candidate_models = [
+                    m for m in [
+                        os.getenv("GEMINI_MODEL"),
+                        "gemini-2.5-flash",
+                        "gemini-3.8-flash",
+                        "gemini-flash-lite-latest",
+                    ] if m
+                ]
+                
+                last_err = None
+                for target_model in candidate_models:
+                    try:
+                        response = self._client.models.generate_content(
+                            model=target_model,
+                            contents=[image_part, prompt],
+                            config=types.GenerateContentConfig(
+                                response_mime_type="application/json",
+                                temperature=0.2,
+                            ),
+                        )
+                        if response.text:
+                            parsed = json.loads(response.text)
+                            return ChartVisionAnalysis(
+                                symbol=parsed.get("symbol", symbol),
+                                timeframe=parsed.get("timeframe", timeframe),
+                                primary_trend=parsed.get("primary_trend", "neutral"),
+                                candlestick_patterns=parsed.get("candlestick_patterns", []),
+                                chart_patterns=parsed.get("chart_patterns", []),
+                                key_levels=[KeyLevel(**lvl) for lvl in parsed.get("key_levels", [])],
+                                orderflow_imbalance=parsed.get("orderflow_imbalance"),
+                                summary=parsed.get("summary", "Gemini chart visual analysis completed."),
+                                confidence_score=float(parsed.get("confidence_score", 0.85)),
+                                risk_assessment=parsed.get("risk_assessment", "Standard volatility control."),
+                                source=target_model,
+                            )
+                    except Exception as mod_err:
+                        last_err = mod_err
+                        logger.warning(f"Model {target_model} failed, trying next candidate: {mod_err}")
+                        continue
+                
+                if last_err:
+                    raise last_err
             except Exception as e:
                 logger.error(f"Gemini API call failed, falling back to local heuristic: {e}")
 
