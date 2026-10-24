@@ -1,6 +1,31 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Cofre Criptográfico AES-256-GCM, 2FA TOTP RFC 6238 e Smart Portfolio com Rebalanceamento e Simulação Monte Carlo",
+    "summary": "1) CredentialVault (src/lib/security/credential-vault.ts): Cofre institucional para chaves de API de exchanges com criptografia militar AES-256-GCM, derivação determinística de chaves por SHA-256, geração de IV aleatório de 12 bytes e Auth Tag de 16 bytes que previne adulterações ou ataques de padding oracle; mascaramento seguro para UI (vmPU...fsa8); 2) TwoFactorAuth (src/lib/security/two-factor-auth.ts): Implementação completa do padrão RFC 6238 TOTP com segredos Base32 de 160 bits, geração de URIs otpauth para Google Authenticator/Authy, truncamento dinâmico HMAC-SHA1 de 6 dígitos e verificação em tempo constante (timingSafeEqual) com tolerância de clock drift (±30s); 3) SmartPortfolioEngine (src/lib/portfolio/smart-portfolio-engine.ts): Motor de avaliação de desvios relativos (drift) de carteira multimodelo (BTC, ETH, SOL), despacho de ordens BUY/SELL com respeito a limites nocionais ($10 USD) e estimativa de taxas de corretagem (0.10%), além de motor de simulação Monte Carlo (Geometric Brownian Motion) de 500 trajetórias com quantis P10, P50 e P90; 4) Validação: 237 testes unitários passando em 11 suítes (1.691 asserções) com testes dedicados em tests/unit/security-and-portfolio.test.ts e tipagem TypeScript sem erros (bun x tsc --noEmit exit code 0).",
+    "tags": [
+      "credential-vault-aes-256-gcm",
+      "two-factor-auth-totp-rfc6238",
+      "smart-portfolio-engine",
+      "monte-carlo-simulation",
+      "portfolio-drift-rebalancing",
+      "constant-time-verification",
+      "institutional-security"
+    ],
+    "details": {
+      "vaultPath": "src/lib/security/credential-vault.ts",
+      "twoFactorPath": "src/lib/security/two-factor-auth.ts",
+      "portfolioPath": "src/lib/portfolio/smart-portfolio-engine.ts",
+      "testSuitePath": "tests/unit/security-and-portfolio.test.ts",
+      "totalPassingTests": 237,
+      "totalAssertions": 1691,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792580000000-security-vault-and-smart-portfolio",
+    "timestamp": "2026-10-23T21:20:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Pool Estático Contíguo em ArrayBuffer para Robôs Multi-Pares HFT (MultiSymbolIndicatorPool)",
     "summary": "1) MultiSymbolIndicatorPool em ArrayBuffer / SharedArrayBuffer (multi-symbol-indicator-pool.ts): Pool estático contíguo indexado por symbolCode (0 a maxSymbols - 1), projetado para robôs de alta frequência que monitoram 10+ pares concorrentes (ex: BTC, ETH, SOL, AVAX, SUI, BNB, XRP, DOGE, ADA, LINK); 2) Alinhamento de Linha de Cache (128 Bytes Stride / 8 KB Total): Cada símbolo ocupa um stride de 16 floats de 64 bits (128 bytes = exatamente 2 cache lines de 64 bytes). Uma tabela de 64 pares consome apenas 8 KB de memória, cabendo inteiramente na cache L1D da CPU (32 KB - 48 KB) com 100% de cache hit rate durante a alternância entre pares; 3) Zero Heap Allocations por Milhão de Ticks: Eliminação completa dos micro-objetos de retorno ({ rsi, state }, { result, state }). Os métodos updateRSI(symbolCode, price) e updateMACD(symbolCode, price) realizam mutações in-place e retornam números primitivos diretos. O método updateTick(symbolCode, price) executa a atualização combinada de RSI, MACD, EMAs (9, 21, 50) e último preço com 0 alocações no heap; 4) Leitura Zero-Copy: O método readSnapshot(symbolCode, outScratch) copia os 16 indicadores para um Float64Array pré-alocado pelo chamador; 5) Re-exportação e Integração: Exportado via src/lib/bot/indicators.ts para consumo transparente pelos robôs e motores de trade; 6) Validação: 105 testes unitários em tests/unit/desktop-performance-engine.test.ts (100% aprovados, 1.060 asserções) com benchmark de 100.000 updates em < 20ms e npx tsc --noEmit com 0 erros.",
     "tags": [

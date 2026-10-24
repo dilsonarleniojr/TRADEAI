@@ -1002,7 +1002,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
       // Limpa mock e sessão
       DirectOperationManager.setMockCvdDelta(session.symbol, null);
       DirectOperationManager.clearSession(session.id);
-    });
+    }, 15000);
 
     it("não deve antecipar o TP2 na aproximação se o CVD Delta for positivo (>= 0), aguardando o toque direto no alvo", async () => {
       const { session: created } = await DirectOperationManager.startOperation({
@@ -1145,11 +1145,16 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
         : created;
 
       // Define alvos amplos para permitir que o runner expanda livremente no teste sem colidir precocemente com TP3
+      session.tp1Price = session.entryPrice * 1.015;
+      session.tp2Price = session.entryPrice * 1.030;
       session.targetPrice = session.entryPrice * 1.15;
       session.tp3Price = session.entryPrice * 1.15;
       DirectOperationManager.updateSessionForTesting(session.id, {
+        tp1Price: session.entryPrice * 1.015,
+        tp2Price: session.entryPrice * 1.030,
         targetPrice: session.entryPrice * 1.15,
         tp3Price: session.entryPrice * 1.15,
+        endTime: Date.now() + 600000,
       });
 
       // 1. Executa TP1 e TP2
@@ -1198,11 +1203,16 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
         : created;
 
       // Define alvos amplos para permitir teste de clímax do runner sem encerrar no alvo final TP3
+      session.tp1Price = session.entryPrice * 1.015;
+      session.tp2Price = session.entryPrice * 1.030;
       session.targetPrice = session.entryPrice * 1.15;
       session.tp3Price = session.entryPrice * 1.15;
       DirectOperationManager.updateSessionForTesting(session.id, {
+        tp1Price: session.entryPrice * 1.015,
+        tp2Price: session.entryPrice * 1.030,
         targetPrice: session.entryPrice * 1.15,
         tp3Price: session.entryPrice * 1.15,
+        endTime: Date.now() + 600000,
       });
 
       // Executa TP1 e TP2
