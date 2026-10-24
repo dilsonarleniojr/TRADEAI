@@ -23,7 +23,8 @@ export interface BotSlice {
   toggleBotActive: (botId: string, active?: boolean) => void;
   toggleAllBots: (active: boolean) => void;
   activateTopProfitableBots: (maxActive?: number) => { activated: string[]; paused: string[] };
-  pauseDeficitBots: () => { pausedCount: number; pausedNames: string[] };
+  pauseDeficitBots: (targetBotIds?: string[]) => { pausedCount: number; pausedNames: string[] };
+  autoQuarantineDeficitBots: (targetBotIds?: string[]) => { quarantinedCount: number; quarantinedNames: string[] };
 
   // Fleet Auto-Rotation (Pilar 3)
   fleetAutoRotationEnabled: boolean;
@@ -652,7 +653,7 @@ export const createBotSlice: StateCreator<
     return { activated, paused };
   },
 
-  pauseDeficitBots: () => {
+  pauseDeficitBots: (targetBotIds?: string[]) => {
     const pausedNames: string[] = [];
     const DEFICIT_SYMBOLS = new Set(["DOGEUSDT", "APTUSDT", "NEARUSDT", "FETUSDT"]);
 
@@ -661,7 +662,9 @@ export const createBotSlice: StateCreator<
         const pnl = b.stats?.realizedPnl || 0;
         const losses = b.stats?.lossTrades || 0;
         const wins = b.stats?.winTrades || 0;
+        const isExplicitTarget = Boolean(targetBotIds && targetBotIds.includes(b.id));
         const isDeficit =
+          isExplicitTarget ||
           (pnl < -0.10 && losses > wins) ||
           pnl < -0.25 ||
           (losses >= 2 && wins === 0) ||
@@ -688,6 +691,11 @@ export const createBotSlice: StateCreator<
       return { bots: updated };
     });
     return { pausedCount: pausedNames.length, pausedNames };
+  },
+
+  autoQuarantineDeficitBots: (targetBotIds?: string[]) => {
+    const res = get().pauseDeficitBots(targetBotIds);
+    return { quarantinedCount: res.pausedCount, quarantinedNames: res.pausedNames };
   },
 
   applyFleetRotation: (assignments) => {

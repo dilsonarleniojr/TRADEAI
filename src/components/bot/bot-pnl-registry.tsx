@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useCryptoStore, type BotInstance, type TradeData } from "@/lib/store";
 import { useShallow } from "zustand/react/shallow";
 import { formatPrice, formatPercent } from "@/lib/format";
@@ -72,6 +72,7 @@ export function BotPnLRegistry() {
     tradingMode,
     activateTopProfitableBots,
     pauseDeficitBots,
+    autoQuarantineDeficitBots,
     toggleBotActive,
     setOpenBinanceScannerModal,
     fleetAutoRotationEnabled,
@@ -85,6 +86,7 @@ export function BotPnLRegistry() {
       tradingMode: s.tradingMode,
       activateTopProfitableBots: s.activateTopProfitableBots,
       pauseDeficitBots: s.pauseDeficitBots,
+      autoQuarantineDeficitBots: s.autoQuarantineDeficitBots,
       toggleBotActive: s.toggleBotActive,
       setOpenBinanceScannerModal: s.setOpenBinanceScannerModal,
       fleetAutoRotationEnabled: s.fleetAutoRotationEnabled,
@@ -100,6 +102,7 @@ export function BotPnLRegistry() {
   const [expandedBotId, setExpandedBotId] = useState<string | null>(null);
   const [isRotating, setIsRotating] = useState(false);
   const [cbStatus, setCbStatus] = useState(() => getCircuitBreakerStatus());
+  const hasAutoQuarantinedRef = useRef<Set<string>>(new Set());
 
   // Polling periódico do status do circuit breaker para manter a UI em sincronia imediata
   useEffect(() => {
@@ -151,14 +154,24 @@ export function BotPnLRegistry() {
 
       const totalClosed = winCount + lossCount;
       const netPnl = grossProfit - grossLoss;
-      const winRate = totalClosed > 0 ? (winCount / totalClosed) * 100 : (bot.stats?.winRate ?? 100);
+      const winRate = totalClosed > 0 ? (winCount / totalClosed) * 100 : 0.0;
       const avgWin = winCount > 0 ? grossProfit / winCount : 0;
       const avgLoss = lossCount > 0 ? grossLoss / lossCount : 0;
       const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 99.9 : 0);
 
       const hasPosition = !!bot.position && bot.position.quantity > 0;
       const unrealizedPnl = bot.position?.unrealizedPnl || 0;
-      const profitScore = calculateBotProfitabilityScore(bot);
+
+      // Score Institucional Dinâmico: reflete o PnL real e penaliza severamente bots com saldo negativo
+      let profitScore: number;
+      if (netPnl > 0) {
+        profitScore = (netPnl * 20) + (winCount * 4) - (lossCount * 8) + (profitFactor * 3) + (winRate * 0.1);
+      } else if (netPnl < 0) {
+        profitScore = -20 + (netPnl * 30) - (lossCount * 10);
+      } else {
+        profitScore = hasPosition ? (unrealizedPnl > 0 ? 6.0 + unrealizedPnl * 10 : 3.0 + unrealizedPnl * 10) : 5.0;
+      }
+      profitScore = parseFloat(profitScore.toFixed(1));
 
       return {
         bot,
@@ -179,22 +192,49 @@ export function BotPnLRegistry() {
       };
     });
 
-    // Ordena cópia por profitScore decrescente para determinar o ranking institucional
-    const sorted = [...raw].sort((a, b) => b.profitScore - a.profitScore);
+    // Ordena por PnL líquido real e score institucional, penalizando bots deficitários para o fim da fila
+    const sorted = [...raw].sort((a, b) => {
+      const aIsDeficit = a.netPnl < 0 || (a.hasPosition && a.unrealizedPnl < -0.10);
+      const bIsDeficit = b.netPnl < 0 || (b.hasPosition && b.unrealizedPnl < -0.10);
+
+      // 1. Bots deficitários vão estritamente para o fim do ranking
+      if (aIsDeficit && !bIsDeficit) return 1;
+      if (!aIsDeficit && bIsDeficit) return -1;
+
+      // Se ambos são deficitários, o com menor perda fica à frente
+      if (aIsDeficit && bIsDeficit) {
+        if (a.netPnl !== b.netPnl) return b.netPnl - a.netPnl;
+        return b.profitScore - a.profitScore;
+      }
+
+      // 2. Prioridade por PnL real positivo
+      if (a.netPnl > 0 || b.netPnl > 0) {
+        if (a.netPnl !== b.netPnl) return b.netPnl - a.netPnl;
+      }
+
+      // 3. Desempate por PnL não realizado de posições abertas
+      if (a.hasPosition && b.hasPosition && a.unrealizedPnl !== b.unrealizedPnl) {
+        return b.unrealizedPnl - a.unrealizedPnl;
+      }
+
+      // 4. Score de lucratividade institucional
+      return b.profitScore - a.profitScore;
+    });
+
     const rankMap = new Map<string, number>();
     sorted.forEach((item, index) => {
       rankMap.set(item.bot.id, index + 1);
     });
 
-    return raw.map((r) => {
+    return sorted.map((r) => {
       const rank = rankMap.get(r.bot.id) || 99;
       let recommendation: "CHAMPION" | "PROFITABLE" | "NEUTRAL" | "DEFICIT" = "NEUTRAL";
-      if (rank === 1 && (r.netPnl > 0 || r.unrealizedPnl > 0)) {
+      if (r.netPnl < 0 || (r.hasPosition && r.unrealizedPnl < -0.10)) {
+        recommendation = "DEFICIT";
+      } else if (rank === 1 && (r.netPnl > 0 || r.unrealizedPnl > 0)) {
         recommendation = "CHAMPION";
       } else if (r.netPnl > 0 || (r.hasPosition && r.unrealizedPnl > 0) || (r.profitFactor >= 1.5 && r.winCount > 0)) {
         recommendation = "PROFITABLE";
-      } else if (r.netPnl < -0.10 && r.lossCount > r.winCount) {
-        recommendation = "DEFICIT";
       }
 
       return {
@@ -205,11 +245,38 @@ export function BotPnLRegistry() {
     });
   }, [bots, trades]);
 
+  // Gatilho automático de quarentena preventiva (Pilar 2 Safety Nets):
+  // Ao carregar ou atualizar dados, qualquer robô ativo identificado como DEFICIT (netPnl < 0)
+  // e sem posição aberta em andamento é colocado imediatamente em quarentena (pausado).
+  useEffect(() => {
+    const deficitBotsToQuarantine = botRows.filter(
+      (r) =>
+        r.bot.active &&
+        !r.hasPosition &&
+        (r.recommendation === "DEFICIT" || r.netPnl < 0) &&
+        !hasAutoQuarantinedRef.current.has(r.bot.id)
+    );
+
+    if (deficitBotsToQuarantine.length > 0) {
+      const targetIds = deficitBotsToQuarantine.map((r) => r.bot.id);
+      targetIds.forEach((id) => hasAutoQuarantinedRef.current.add(id));
+
+      const res = autoQuarantineDeficitBots(targetIds);
+      if (res.quarantinedCount > 0) {
+        toast({
+          title: "🛡️ Quarentena Preventiva Automática",
+          description: `${res.quarantinedCount} robô(s) deficitário(s) pausados automaticamente para proteção de capital (${res.quarantinedNames.join(", ")}).`,
+          variant: "destructive",
+        });
+      }
+    }
+  }, [botRows, autoQuarantineDeficitBots, toast]);
+
   // Top 3 Robôs Mais Lucrativos para Sugestão Institucional
   const topChampions = useMemo(() => {
     return [...botRows]
-      .filter((r) => r.recommendation !== "DEFICIT")
-      .sort((a, b) => b.profitScore - a.profitScore)
+      .filter((r) => r.recommendation !== "DEFICIT" && r.netPnl >= 0)
+      .sort((a, b) => a.rank - b.rank)
       .slice(0, 3);
   }, [botRows]);
 
@@ -225,7 +292,10 @@ export function BotPnLRegistry() {
   };
 
   const handlePauseDeficit = () => {
-    const res = pauseDeficitBots();
+    const deficitIds = botRows
+      .filter((r) => r.recommendation === "DEFICIT" || r.netPnl < 0)
+      .map((r) => r.bot.id);
+    const res = pauseDeficitBots(deficitIds.length > 0 ? deficitIds : undefined);
     toast({
       title: res.pausedCount > 0 ? "🛡️ Robôs Deficitários Pausados" : "Nenhum Robô Deficitário Ativo",
       description: res.pausedCount > 0
@@ -294,7 +364,7 @@ export function BotPnLRegistry() {
 
     const netPnl = totalGrossProfit - totalGrossLoss;
     const totalTrades = totalWins + totalLosses;
-    const winRate = totalTrades > 0 ? (totalWins / totalTrades) * 100 : 100;
+    const winRate = totalTrades > 0 ? (totalWins / totalTrades) * 100 : 0.0;
 
     return {
       totalGrossProfit,
@@ -330,11 +400,7 @@ export function BotPnLRegistry() {
       return true;
     });
 
-    if (filter === "top_ranked") {
-      return [...list].sort((a, b) => b.profitScore - a.profitScore);
-    }
-
-    return list;
+    return [...list].sort((a, b) => a.rank - b.rank);
   }, [botRows, search, filter]);
 
   // Exportar dados do registro para CSV
@@ -365,9 +431,9 @@ export function BotPnLRegistry() {
     ];
 
     const rows = [...botRows]
-      .sort((a, b) => b.profitScore - a.profitScore)
-      .map((r, idx) => [
-        `#${idx + 1}`,
+      .sort((a, b) => a.rank - b.rank)
+      .map((r) => [
+        `#${r.rank}`,
         r.bot.name,
         r.bot.symbol,
         r.bot.strategy,
@@ -911,7 +977,7 @@ export function BotPnLRegistry() {
                           {row.netPnl >= 0 ? "+" : ""}${formatPrice(row.netPnl)}
                         </div>
                         <span className="text-[10px] text-muted-foreground">
-                          {row.winRate.toFixed(0)}% acerto
+                          {row.winRate.toFixed(1)}% acerto
                         </span>
                       </div>
 

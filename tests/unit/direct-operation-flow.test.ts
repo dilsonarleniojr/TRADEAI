@@ -964,7 +964,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
     });
 
     it("deve antecipar o TP2 a mercado quando o preço se aproximar a menos de 0.20% do alvo e houver divergência negativa de CVD (< 0)", async () => {
-      DirectOperationManager.setMockCvdDelta("BTCUSDT", null);
+      DirectOperationManager.setMockCvdDelta("BTCUSDT", 5.0);
       const { session: created } = await DirectOperationManager.startOperation({
         amount: 30.0,
         durationMinutes: 5,

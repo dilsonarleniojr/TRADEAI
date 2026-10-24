@@ -1136,6 +1136,7 @@ export class DirectOperationManager {
       // 2. Escada Tripla de Alvos - Alvo TP1 (33% padrão ou 50% via Skew Gate):
       // Se no momento de bater TP1 o livro L2 apresentar razão Bid/Ask Depth <= 0.40 (pressão vendedora súbita),
       // a IA encerra imediatamente 50% em vez de 33% para mitigar absorção passiva antes do pull-back.
+      let isTp1JustTakenInThisTick = false;
       const tp1Target = session.tp1Price || session.partialTargetPrice;
       if (!session.isTp1Taken && tp1Target && latestPrice >= tp1Target) {
         // Avaliação de Microestrutura L2: Order Book Skew Gate
@@ -1183,6 +1184,7 @@ export class DirectOperationManager {
           const partialNetPnl = PreciseMath.roundDown(partialGross - partialFee, 2);
 
           session.isTp1Taken = true;
+          isTp1JustTakenInThisTick = true;
           session.isPartialProfitTaken = true; // Compatibilidade com testes legados
           session.tp1QuantityExecuted = tp1Qty;
           session.partialQuantityExecuted = tp1Qty;
@@ -1236,7 +1238,7 @@ export class DirectOperationManager {
       let isCvdExhaustionHit = false;
       let cvdDelta = 0;
 
-      if (session.isTp1Taken && !session.isTp2Taken && session.tp2Price) {
+      if (!isTp1JustTakenInThisTick && session.isTp1Taken && !session.isTp2Taken && session.tp2Price) {
         const isWithinProximity = latestPrice < session.tp2Price && latestPrice >= session.tp2Price * 0.998;
         if (isWithinProximity) {
           try {
@@ -1255,7 +1257,9 @@ export class DirectOperationManager {
         }
       }
 
-      const shouldExecuteTp2 = session.isTp1Taken && !session.isTp2Taken && session.tp2Price && (latestPrice >= session.tp2Price || isCvdExhaustionHit);
+      const shouldExecuteTp2 = session.isTp1Taken && !session.isTp2Taken && session.tp2Price && (
+        latestPrice >= session.tp2Price || (!isTp1JustTakenInThisTick && isCvdExhaustionHit)
+      );
 
       if (shouldExecuteTp2) {
         const tp2Qty = PreciseMath.quantizeLotDown(session.quantity * 0.5, filters.stepSize);
