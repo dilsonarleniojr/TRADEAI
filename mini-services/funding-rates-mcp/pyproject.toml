@@ -1,0 +1,21 @@
+[project]
+name = "funding-rates-mcp"
+version = "0.1.0"
+description = "An MCP server that provides real-time funding rate data across major crypto exchanges, enabling agents to detect arbitrage opportunities. "
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "cachetools>=5.5.2",
+    "ccxt>=4.4.75",
+    "dotenv>=0.9.9",
+    "mcp[cli]>=1.6.0,<2",
+    "pandas>=2.2.3",
+    "tabulate>=0.9.0",
+]
+
+[project.scripts]
+funding-rates-mcp = "funding_rates_mcp.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

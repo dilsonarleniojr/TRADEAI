@@ -1,0 +1,11 @@
+[project]
+name = "crypto-portfolio-mcp"
+version = "0.1.0"
+description = "An MCP server for tracking and managing cryptocurrency portfolio allocations."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "ccxt>=4.4.72",
+    "matplotlib>=3.10.1",
+    "mcp[cli]>=1.6.0,<2",
+]
