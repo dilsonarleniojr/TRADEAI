@@ -532,7 +532,7 @@ export default function SmartTradingPage() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={toggleLogAutoScroll}
+                    onClick={() => toggleLogAutoScroll()}
                     className="px-2 py-0.5 rounded text-[11px] bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-mono"
                   >
                     {isLogAutoScrollPaused ? '▶️ Retomar' : '⏸️ Pausar'}

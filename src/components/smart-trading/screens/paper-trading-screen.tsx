@@ -172,8 +172,8 @@ export const PaperTradingScreen: React.FC = () => {
           markPrice: currentTickerPrice,
           unrealizedPnl: uPnl,
           unrealizedPnlPercent: uPnlPercent,
-          stopLoss: pos.stopLoss || b.stopLoss,
-          takeProfit: pos.takeProfit || b.takeProfit,
+          stopLoss: b.stopLoss,
+          takeProfit: b.takeProfit,
         };
       });
   }, [bots, tickers]);
@@ -197,7 +197,7 @@ export const PaperTradingScreen: React.FC = () => {
 
   // Métricas do Diário de Trades (MAE / MFE)
   const journalRecords = useMemo(() => {
-    return tradeJournalEngine.getRecords();
+    return tradeJournalEngine.getAllRecords();
   }, []);
 
   const journalMetrics: PerformanceMetrics = useMemo(() => {
@@ -313,7 +313,7 @@ export const PaperTradingScreen: React.FC = () => {
               {journalMetrics.avgMaePercent.toFixed(2)}%
             </span>
             <span className="block text-[10px] text-[var(--st-text-muted)] font-mono">
-              R:R Médio: {journalMetrics.avgRiskRewardRatio.toFixed(2)}
+              Payoff (R:R): {journalMetrics.payoffRatio.toFixed(2)}
             </span>
           </div>
         </div>
@@ -576,7 +576,7 @@ export const PaperTradingScreen: React.FC = () => {
                 </SmartTableHeader>
                 <SmartTableBody>
                   {journalRecords.slice(0, 25).map((rec) => {
-                    const isWin = rec.pnl >= 0;
+                    const isWin = rec.netPnl >= 0;
                     return (
                       <SmartTableRow key={rec.id}>
                         <SmartTableCell className="font-bold text-white text-xs">
@@ -594,7 +594,7 @@ export const PaperTradingScreen: React.FC = () => {
                           ${rec.exitPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </SmartTableCell>
                         <SmartTableCell className={`text-right font-mono text-xs font-bold ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {isWin ? '+' : ''}${rec.pnl.toFixed(2)} ({isWin ? '+' : ''}{rec.pnlPercent.toFixed(2)}%)
+                          {isWin ? '+' : ''}${rec.netPnl.toFixed(2)} ({isWin ? '+' : ''}{rec.netGainPercent.toFixed(2)}%)
                         </SmartTableCell>
                         <SmartTableCell className="text-center font-mono text-xs font-bold text-emerald-400">
                           +{rec.mfePercent.toFixed(2)}%
@@ -606,7 +606,7 @@ export const PaperTradingScreen: React.FC = () => {
                           {rec.riskRewardRatio !== undefined ? `${rec.riskRewardRatio.toFixed(2)}x` : '-'}
                         </SmartTableCell>
                         <SmartTableCell className="text-right font-mono text-[10px] text-neutral-400">
-                          {new Date(rec.closedAt).toLocaleTimeString('pt-BR')}
+                          {new Date(rec.exitTimestampMs || rec.exitTime).toLocaleTimeString('pt-BR')}
                         </SmartTableCell>
                       </SmartTableRow>
                     );

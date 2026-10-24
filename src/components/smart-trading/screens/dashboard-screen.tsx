@@ -121,7 +121,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
   // Métricas do Diário (MAE / MFE)
   const journalMetrics = useMemo(() => {
-    const records = tradeJournalEngine.getRecords();
+    const records = tradeJournalEngine.getAllRecords();
     return tradeJournalEngine.calculateMetrics(records);
   }, []);
 
@@ -383,7 +383,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {bots.slice(0, 4).map((bot) => {
               const trades = bot.stats?.totalTrades || 0;
-              const wins = bot.stats?.winningTrades || 0;
+              const wins = bot.stats?.winTrades || 0;
               const wr = trades > 0 ? `${((wins / trades) * 100).toFixed(1)}%` : '0.0%';
               const pnl = bot.stats?.realizedPnl || 0;
 
@@ -396,10 +396,10 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                   symbol={bot.symbol.replace('USDT', '/USDT')}
                   status={bot.active ? 'active' : 'paused'}
                   profitToday={`${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`}
-                  profitPercent={parseFloat((pnl / Math.max(1, bot.capitalAllocation) * 100).toFixed(2))}
+                  profitPercent={parseFloat((pnl / Math.max(1, bot.allocationAmount || 15) * 100).toFixed(2))}
                   tradesCount={trades}
                   winRate={wr}
-                  drawdown={`${bot.stats?.consecutiveLosses || 0} perdas`}
+                  drawdown={`${bot.stats?.lossTrades || 0} perdas`}
                   lastAction={bot.stats?.lastAction || 'Aguardando sinal'}
                   onToggleStatus={() => toggleBotActive(bot.id)}
                   onConfigure={() => onNavigateTab('bots')}

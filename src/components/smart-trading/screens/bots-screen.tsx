@@ -119,7 +119,7 @@ export const BotsScreen: React.FC = () => {
   }, [bots]);
 
   const totalWinningTrades = useMemo(() => {
-    return bots.reduce((sum, b) => sum + (b.stats?.winningTrades || 0), 0);
+    return bots.reduce((sum, b) => sum + (b.stats?.winTrades || 0), 0);
   }, [bots]);
 
   const fleetWinRateFormatted = useMemo(() => {
@@ -194,10 +194,9 @@ export const BotsScreen: React.FC = () => {
 
   // Resolução Semântica do Estado do Bot
   const getBotSemanticState = useCallback((bot: BotInstance): BotSemanticState => {
-    if (bot.circuitBreakerTripped) return 'circuit_breaker';
-    const now = Date.now();
-    const isCooldown = (bot.consecutiveLossBrakeUntil && bot.consecutiveLossBrakeUntil > now) ||
-      (bot.consecutiveLossCount ?? 0) >= 3;
+    const isCb = bot.stats?.lastAction?.includes('Circuit Breaker') || bot.stats?.lastAction?.includes('Kill Switch');
+    if (isCb) return 'circuit_breaker';
+    const isCooldown = bot.stats?.lastAction?.includes('Cooldown') || (bot.stats?.lossTrades ?? 0) >= 3;
     if (isCooldown) return 'cooldown';
     if (!bot.active || bot.status === 'stopped') return 'paused';
     if (bot.position && bot.position.quantity > 0) return 'active';
@@ -570,7 +569,7 @@ export const BotsScreen: React.FC = () => {
               unrealizedPnlUsd={uPnl}
               tradesCount={trades}
               winRate={wr}
-              drawdown={`${(bot.consecutiveLossCount || 0)} perdas seguidas`}
+              drawdown={`${(bot.stats?.lossTrades || 0)} perdas seguidas`}
               lastAction={bot.stats?.lastAction || 'Aguardando oportunidade'}
               positionInfo={hasPos && bot.position ? {
                 quantity: bot.position.quantity,
