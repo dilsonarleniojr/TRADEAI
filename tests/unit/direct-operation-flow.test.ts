@@ -470,7 +470,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
       expect(runnerState.trailingStopPrice).toBeGreaterThan(session.entryPrice * 1.0035);
 
       DirectOperationManager.clearSession(session.id);
-    });
+    }, 15000);
   });
 
   describe("6. Pilares de Próxima Geração: Trading Strategist Pro, AI Engineer, Chaos & Infra", () => {

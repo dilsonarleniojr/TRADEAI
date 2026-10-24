@@ -1,0 +1,112 @@
+/**
+ * Smart Trading Design System - CSS Variables & Utility Styles
+ */
+
+/* Dark Theme (Default) */
+.smart-trading-dark {
+  --st-bg: #0D0D0D;
+  --st-surface: #141414;
+  --st-surface-elevated: #1A1A1A;
+  --st-border: #2E2E2E;
+  --st-border-subtle: rgba(255, 255, 255, 0.08);
+  --st-text-primary: #FFFFFF;
+  --st-text-secondary: #A1A1AA;
+  --st-text-tertiary: #71717A;
+  --st-primary: #3B82F6;
+  --st-primary-hover: #2563EB;
+  --st-secondary: #8B5CF6;
+  --st-secondary-hover: #7C3AED;
+  --st-success: #22C55E;
+  --st-danger: #EF4444;
+  --st-warning: #F59E0B;
+  --st-glass-bg: rgba(20, 20, 20, 0.75);
+  --st-glass-border: rgba(255, 255, 255, 0.1);
+  --st-grid-line: rgba(255, 255, 255, 0.03);
+}
+
+/* Light Theme */
+.smart-trading-light {
+  --st-bg: #F8FAFC;
+  --st-surface: #FFFFFF;
+  --st-surface-elevated: #F1F5F9;
+  --st-border: #E2E8F0;
+  --st-border-subtle: rgba(0, 0, 0, 0.08);
+  --st-text-primary: #0A0A0A;
+  --st-text-secondary: #475569;
+  --st-text-tertiary: #94A3B8;
+  --st-primary: #2563EB;
+  --st-primary-hover: #1D4ED8;
+  --st-secondary: #7C3AED;
+  --st-secondary-hover: #6D28D9;
+  --st-success: #16A34A;
+  --st-danger: #DC2626;
+  --st-warning: #D97706;
+  --st-glass-bg: rgba(255, 255, 255, 0.85);
+  --st-glass-border: rgba(0, 0, 0, 0.08);
+  --st-grid-line: rgba(0, 0, 0, 0.03);
+}
+
+/* Glassmorphism & High-Tech Cards */
+.st-card {
+  background: var(--st-surface);
+  border: 1px solid var(--st-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.25);
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.smart-trading-light .st-card {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06);
+}
+
+.st-card-hover:hover {
+  border-color: rgba(59, 130, 246, 0.35);
+  box-shadow: 0 8px 30px -4px rgba(59, 130, 246, 0.15);
+  transform: translateY(-1px);
+}
+
+.st-glass {
+  background: var(--st-glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--st-glass-border);
+}
+
+/* Numeric Emphasis */
+.st-numeric {
+  font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+  font-feature-settings: 'tnum' on, 'zero' on;
+}
+
+/* Glowing Accent Borders */
+.st-glow-primary {
+  box-shadow: 0 0 25px -3px rgba(59, 130, 246, 0.35);
+}
+
+.st-glow-purple {
+  box-shadow: 0 0 25px -3px rgba(139, 92, 246, 0.35);
+}
+
+.st-glow-success {
+  box-shadow: 0 0 20px -3px rgba(34, 197, 94, 0.35);
+}
+
+.st-glow-danger {
+  box-shadow: 0 0 20px -3px rgba(239, 68, 68, 0.35);
+}
+
+/* Custom Scrollbar for Trading Tables */
+.st-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.st-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.st-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--st-border);
+  border-radius: 9999px;
+}
+.st-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--st-text-tertiary);
+}

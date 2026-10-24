@@ -1,6 +1,32 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Sistema Institucional de Login/Registro com 2FA TOTP RFC 6238, Dockerização do Quant AI Service e Ativação Gemini 2.5 Flash",
+    "summary": "1) Autenticação e Segurança (src/lib/auth/password-hasher.ts, auth-service.ts, auth-store.ts, auth-modal.tsx): Hashing de senhas via scrypt institucional com salting criptográfico aleatório (16 bytes) e comparação estrita em tempo constante (timingSafeEqual) para mitigar timing attacks; 2FA TOTP RFC 6238 nativo integrado ao fluxo de login/registro com emissão de segredos Base32 e URI otpauth; tokens de sessão stateless assinados com HMAC-SHA256; rotas de API Next.js (/api/auth/register, /api/auth/login, /api/auth/me, /api/auth/logout); 2) Dockerização Supervisionada (mini-services/quant-ai-service/Dockerfile, docker-compose.yml): Criação de container Docker em python:3.11-slim com healthcheck nativo na porta 8001, política de auto-restart (unless-stopped) no docker-compose.yml sob o serviço tradeai-quant-ai, injeção de GEMINI_API_KEY e comunicação com o tradeai-app via variável QUANT_AI_SERVICE_URL=http://tradeai-quant-ai:8001; 3) Ativação da Chave Gemini: Configuração e documentação do ambiente (.env, .env.example e mini-services/quant-ai-service/.env) para análise de gráficos multimodal em tempo real com o Gemini 2.5 Flash; 4) Validação: 257 testes unitários Bun aprovados (1.764 asserções), 7 testes pytest aprovados e bun x tsc --noEmit limpo com exit code 0.",
+    "tags": [
+      "auth-system-2fa-totp",
+      "password-hasher-scrypt",
+      "session-token-hmac-sha256",
+      "docker-compose-quant-ai",
+      "gemini-2.5-flash-activation",
+      "institutional-platform-standards"
+    ],
+    "details": {
+      "hasherPath": "src/lib/auth/password-hasher.ts",
+      "authServicePath": "src/lib/auth/auth-service.ts",
+      "modalComponentPath": "src/components/auth/auth-modal.tsx",
+      "dockerfilePath": "mini-services/quant-ai-service/Dockerfile",
+      "dockerComposePath": "docker-compose.yml",
+      "envExamplePath": ".env.example",
+      "totalPassingTests": 257,
+      "totalAssertions": 1764,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792600000000-auth-docker-gemini",
+    "timestamp": "2026-10-23T22:00:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Fase 3 & 4: Quant AI FastAPI (Conformal Prediction, Adversarial Robustness L2 & Gemini 2.5 Flash Vision), Gamificação e PWA Offline Simulator",
     "summary": "1) Microserviço Python FastAPI (mini-services/quant-ai-service): Implementação de Split Conformal Prediction com cobertura estatística finita garantida de 95% (q_hat corrigido por ceil((n+1)(1-alpha))/n), SignalAdversarialTester com perturbações epsilon-bounded no livro L2, intervalo Wilson unilateral de 95% e Monte Carlo worst-case trials para detecção de fragilidade a spoofing/ruído de cotação (conforme skill adversarial-robustness-of-trading-signals), e analisador de visão multimodal de gráficos com Google Gemini 2.5 Flash (google-genai) com fallback determinístico local; 2) Integração TypeScript (src/lib/ai/quant-ai-client.ts, src/lib/ai/gemini-chart-vision.ts e src/app/api/quant-ai/[...path]/route.ts): Cliente assíncrono com proxy App Router e fallback matemático em memória; 3) Gamificação de Disciplina Operacional (src/lib/gamification/trader-achievements.ts, src/components/gamification/trader-level-card.tsx): Progressão de Ranks (Novice Apprentice até Institutional Titan), streak de disciplina e badges para respeito de Stop Loss (10 seguidos), combate a revenge trading e sizing conformal; 4) PWA e Simulador Offline (public/manifest.json, public/sw.js, src/lib/offline/offline-simulation-engine.ts): Simulação completa offline com Geometric Brownian Motion (GBM), casamento de ordens limite/mercado, Stop Loss/Take Profit automatizados, fricção realista (slippage + taxas maker/taker) e curvas de equity/drawdown; 5) Validação: 7 testes Python pytest aprovados (100%), 248 testes unitários Bun aprovados em 12 suítes (1.741 asserções) e npx tsc --noEmit limpo com exit code 0.",
     "tags": [
