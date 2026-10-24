@@ -25,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
+import Link from "next/link";
 
 // Desktop items with descriptive labels, subtitles and shortcut indicators
 const desktopNavItems = [
@@ -191,6 +192,33 @@ export function Sidebar() {
             );
           })}
         </nav>
+
+        {/* Smart Trading Suite Quick Access */}
+        <div className="my-2">
+          <Link
+            href="/smart-trading"
+            className={cn(
+              "flex items-center gap-2 rounded-xl p-2 bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 hover:border-blue-400 text-blue-400 transition-all group shadow-sm",
+              isExpanded ? "justify-between" : "justify-center w-10 h-10 mx-auto"
+            )}
+            title="Abrir Smart Trading UI (Nova Interface Fintech com IA)"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform shrink-0" />
+              {isExpanded && (
+                <div className="flex flex-col text-left leading-tight">
+                  <span className="text-xs font-bold text-white tracking-wide">Smart Trading</span>
+                  <span className="text-[9px] text-blue-300">Nova UI Fintech & IA</span>
+                </div>
+              )}
+            </div>
+            {isExpanded && (
+              <span className="text-[9px] font-mono font-bold bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/30">
+                NOVO
+              </span>
+            )}
+          </Link>
+        </div>
 
         {/* Bottom system status */}
         <div className={cn("mt-auto pt-2.5 border-t border-white/[0.07] flex items-center gap-2", isExpanded ? "px-1 justify-between" : "justify-center")}>

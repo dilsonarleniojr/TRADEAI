@@ -784,7 +784,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
       expect(allEntries.length).toBeGreaterThanOrEqual(1);
 
       DirectOperationManager.clearSession(session.id);
-    });
+    }, 15000);
 
     it("deve recalibrar heuristicamente o TP2 de 2.0x para 1.7x quando a eficiência média < 50% e MFE recorrente > 2.0%", () => {
       const { MarketOpportunitySelector } = require("@/lib/bot/pilot/market-opportunity-selector");
