@@ -878,6 +878,9 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
         ? await DirectOperationManager.forceEntry(created.id)
         : created;
 
+      // Garante margem do Stop Loss inicial para registrar a excursão sem violar o stop antecipadamente
+      session.stopLossPrice = session.entryPrice * 0.98;
+
       // 1. Simula recuo superficial limpo: MAE de apenas -0.2% (> -0.60%)
       await DirectOperationManager.processPriceTick(session.id, session.entryPrice * 0.998);
 
