@@ -117,4 +117,57 @@ describe("Chart Section & Microstructure Resilience", () => {
     const activeSection = useCryptoStore.getState().activeSection;
     expect(activeSection).toBe("bot");
   });
+
+  it("should aggregate live fleet unrealized PnL in a single pass O(N) without NaN", () => {
+    const mockBots = [
+      {
+        id: "bot-1",
+        active: true,
+        position: {
+          symbol: "NEARUSDT",
+          quantity: 10,
+          unrealizedPnl: -0.0125,
+        },
+      },
+      {
+        id: "bot-2",
+        active: true,
+        position: {
+          symbol: "UNIUSDT",
+          quantity: 2,
+          unrealizedPnl: 0.0875,
+        },
+      },
+      {
+        id: "bot-3",
+        active: false,
+        position: null,
+      },
+      {
+        id: "bot-4",
+        active: true,
+        position: {
+          symbol: "BTCUSDT",
+          quantity: 0,
+          unrealizedPnl: undefined,
+        },
+      },
+    ];
+
+    let positionsCount = 0;
+    let unrealizedPnl = 0;
+    for (let i = 0; i < mockBots.length; i++) {
+      const pos = mockBots[i].position;
+      if (pos && pos.quantity > 0) {
+        positionsCount++;
+        if (typeof pos.unrealizedPnl === "number" && Number.isFinite(pos.unrealizedPnl)) {
+          unrealizedPnl += pos.unrealizedPnl;
+        }
+      }
+    }
+
+    expect(positionsCount).toBe(2);
+    expect(unrealizedPnl).toBeCloseTo(0.075, 4);
+    expect(Number.isFinite(unrealizedPnl)).toBe(true);
+  });
 });

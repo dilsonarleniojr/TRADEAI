@@ -1,12 +1,12 @@
 "use client";
 
 import { useCryptoStore } from "@/lib/store";
-import { Activity, Wifi, WifiOff, Loader2, Moon, Sun, Settings, Trash2, RefreshCw, Power, Wallet, KeyRound, Brain, Zap, User, LogOut } from "lucide-react";
+import { Activity, Wifi, WifiOff, Loader2, Moon, Sun, Settings, Trash2, RefreshCw, Power, Wallet, KeyRound, Brain, Zap, User, LogOut, Bot } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { useTheme } from "next-themes";
-import { useSyncExternalStore, useState, useEffect } from "react";
+import { useSyncExternalStore, useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { CryptoSelector } from "./header/crypto-selector";
 import { GlobalCommandSearch } from "./header/global-command-search";
@@ -46,6 +46,7 @@ interface HeaderProps {
 
 export function Header({ onOpenMobileDrawer }: HeaderProps) {
   const {
+    bots,
     tradingMode,
     setTradingMode,
     botActive,
@@ -64,6 +65,7 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
     setOpenAiSettingsModal,
   } = useCryptoStore(
   useShallow((s) => ({
+    bots: s.bots,
     tradingMode: s.tradingMode,
     setTradingMode: s.setTradingMode,
     botActive: s.botActive,
@@ -102,6 +104,22 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
 
   // Mapeamento e escuta global dos atalhos de teclado desktop (Espaço, Ctrl+K, Duplo Esc)
   useDesktopHotkeys();
+
+  // Agregação em passagem única O(N) do PnL Não Realizado da Frota ao Vivo
+  const fleetMetrics = useMemo(() => {
+    let positionsCount = 0;
+    let unrealizedPnl = 0;
+    for (let i = 0; i < bots.length; i++) {
+      const pos = bots[i].position;
+      if (pos && pos.quantity > 0) {
+        positionsCount++;
+        if (typeof pos.unrealizedPnl === "number" && Number.isFinite(pos.unrealizedPnl)) {
+          unrealizedPnl += pos.unrealizedPnl;
+        }
+      }
+    }
+    return { positionsCount, unrealizedPnl };
+  }, [bots]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -245,6 +263,77 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
               <span className="hidden sm:inline">Operação Direta IA</span>
               <span className="sm:hidden">Direto</span>
             </Button>
+          )}
+
+          {/* Indicador Visual do Total de PnL Não Realizado da Frota ao Vivo */}
+          {mounted && (
+            <button
+              type="button"
+              onClick={() => setActiveSection("bot")}
+              title={`PnL Não Realizado da Frota: ${fleetMetrics.unrealizedPnl >= 0 ? '+' : '-'}$${formatPrice(Math.abs(fleetMetrics.unrealizedPnl))} (${fleetMetrics.positionsCount} ${fleetMetrics.positionsCount === 1 ? 'posição ativa' : 'posições ativas'}) — Clique para abrir a Central de Robôs`}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all cursor-pointer shrink-0 select-none active:scale-95",
+                fleetMetrics.positionsCount > 0
+                  ? fleetMetrics.unrealizedPnl >= 0
+                    ? "bg-emerald-500/[0.08] border-emerald-500/35 hover:bg-emerald-500/15 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
+                    : "bg-rose-500/[0.08] border-rose-500/35 hover:bg-rose-500/15 shadow-[0_0_12px_rgba(244,63,94,0.15)]"
+                  : "bg-white/[0.03] border-white/[0.07] hover:bg-white/[0.06]"
+              )}
+            >
+              <div className="relative shrink-0 flex items-center justify-center">
+                <Bot
+                  className={cn(
+                    "w-3.5 h-3.5",
+                    fleetMetrics.positionsCount > 0
+                      ? fleetMetrics.unrealizedPnl >= 0
+                        ? "text-emerald-400"
+                        : "text-rose-400"
+                      : "text-slate-400"
+                  )}
+                />
+                {fleetMetrics.positionsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                    <span
+                      className={cn(
+                        "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
+                        fleetMetrics.unrealizedPnl >= 0 ? "bg-emerald-400" : "bg-rose-400"
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "relative inline-flex rounded-full h-2 w-2",
+                        fleetMetrics.unrealizedPnl >= 0 ? "bg-emerald-500" : "bg-rose-500"
+                      )}
+                    />
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-col text-left leading-tight">
+                <span className="hidden sm:flex text-[9px] uppercase tracking-wider text-slate-400 font-medium items-center gap-1">
+                  <span>PnL Frota</span>
+                  {fleetMetrics.positionsCount > 0 && (
+                    <span className="text-[8px] font-mono text-cyan-400 font-bold">
+                      ({fleetMetrics.positionsCount})
+                    </span>
+                  )}
+                </span>
+                <span
+                  className={cn(
+                    "text-xs font-bold font-mono tabular-nums",
+                    fleetMetrics.positionsCount === 0
+                      ? "text-slate-400"
+                      : fleetMetrics.unrealizedPnl >= 0
+                      ? "text-emerald-400"
+                      : "text-rose-400"
+                  )}
+                  suppressHydrationWarning
+                >
+                  {fleetMetrics.positionsCount === 0
+                    ? "$0.00"
+                    : `${fleetMetrics.unrealizedPnl >= 0 ? "+" : "-"}$${formatPrice(Math.abs(fleetMetrics.unrealizedPnl))}`}
+                </span>
+              </div>
+            </button>
           )}
 
           {/* Saldo da Conta */}
