@@ -7,6 +7,15 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  async redirects() {
+    return [
+      {
+        source: "/smart-trading",
+        destination: "/",
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {
