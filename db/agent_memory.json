@@ -1,6 +1,34 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Heatmap de Profundidade L2 P2P com Paleta 1D de Textura em Shader GLSL ES 3.00 e Zero Heap Allocations",
+    "summary": "1) Shader GLSL ES 3.00 & Paleta 1D de Textura em VRAM (src/lib/performance/l2-heatmap-shader.ts): Mapeamento institucional contínuo em 256x1 RGBA na TEXTURE1 (Bids em gradiente Esmeralda/Ciano [0.0..0.48], Asks em gradiente Âmbar/Rubi [0.52..1.0] e spread neutro transparente), eliminando branches condicionais na GPU e tone-mapping na CPU; 2) Zero-Heap Slice Upload na GPU (src/lib/performance/webgl-l2-heatmap-renderer.ts): Adição do método pushDepthSliceFromMatrix acoplado ao SharedL2DepthMatrix.packToSliceRGBA, permitindo transferência direta de memória compartilhada para VRAM via gl.texSubImage2D com zero alocações de heap durante todo o pregão; 3) Canal Peer-to-Peer MessagePort PEER_L2_UPDATE (src/workers/ticker-worker.ts, offscreen-chart-controller.ts e binance-worker-manager.ts): Transmissão direta de snapshots e deltas de profundidade L2 entre o Ingestion Worker e o Render Worker sem intervenção da Main Thread; 4) Validação Rigorosa: Suíte dedicada em tests/unit/l2-heatmap-p2p.test.ts com 9 testes unitários (100% pass), 122 testes de regressão aprovados e tipagem estrita bun x tsc --noEmit limpa com exit code 0.",
+    "tags": [
+      "l2-heatmap-glsl",
+      "1d-texture-palette",
+      "peer-to-peer-l2-update",
+      "zero-heap-allocation",
+      "webgl-offscreen-canvas",
+      "shared-l2-depth-matrix",
+      "binance-worker-manager",
+      "pilar-1-event-driven",
+      "pilar-4-observability"
+    ],
+    "details": {
+      "shaderPath": "src/lib/performance/l2-heatmap-shader.ts",
+      "rendererPath": "src/lib/performance/webgl-l2-heatmap-renderer.ts",
+      "controllerPath": "src/lib/performance/offscreen-chart-controller.ts",
+      "workerPath": "src/workers/ticker-worker.ts",
+      "managerPath": "src/lib/performance/binance-worker-manager.ts",
+      "testSuitePath": "tests/unit/l2-heatmap-p2p.test.ts",
+      "totalPassingTests": 9,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792620000000-l2-heatmap-p2p-paleta-1d",
+    "timestamp": "2026-10-25T02:50:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Worker de Microestrutura Binance com SharedArrayBuffer (128B Stride) e Conexão Direta Peer-to-Peer (MessagePort) com Render Worker (Zero-Hop Pipeline)",
     "summary": "1) Worker de Ingestão de Microestrutura (src/workers/ticker-worker.ts): Desacoplamento integral de rede e parsing JSON da UI, ingestão de @bookTicker (<10ms) e 24hr @ticker, cálculo em tempo real de midPrice e spreadBps; 2) Memória Compartilhada de 128 Bytes (2 Cache Lines de 64B): Stride de 16 Float64 (timestamp, symId, price, priceChange, priceChangePct, high, low, volume, quoteVolume, bidPrice, bidQty, askPrice, askQty, spreadBps, flags, updateId) em SharedArrayBuffer alinhado com LockFreeSPSCQueue e headers de padding para eliminar false sharing em x86-64/ARM64; 3) Conexão Direta Peer-to-Peer (Zero-Hop Pipeline): Ativação de canal MessageChannel direto entre o Ingestion Worker (ticker-worker.ts) e o Render Worker (offscreen-chart-controller.ts) via connectWorkers, permitindo envio de PEER_TICK sem acordar a Main Thread e alimentando a GPU/OffscreenCanvas em menos de 10µs; 4) Utilitários e Hooks: getGlobalWorkerManager e connectChartToWorker em src/hooks/use-binance-stream.ts, callbacks reativos onPeerTick no OffscreenChartController e headers COOP/COEP no next.config.ts; 5) Validação: 14 testes unitários dedicados em tests/unit/ticker-microstructure-worker.test.ts (100% pass), 108 testes em desktop-performance-engine.test.ts e bun x tsc --noEmit com 0 erros.",
     "tags": [
