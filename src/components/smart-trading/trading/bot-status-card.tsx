@@ -31,9 +31,9 @@ export interface SemanticBadgeDescriptor {
  * Elimina blocos switch/case aninhados e criação repetitiva de closures no render loop.
  */
 export const SEMANTIC_BADGE_CONFIG: Readonly<Record<BotSemanticState, SemanticBadgeDescriptor>> = Object.freeze({
-  active: Object.freeze({ variant: "success", label: "Ativo", isDot: true }),
+  active: Object.freeze({ variant: "success", label: "Ativo 24/7", isDot: true }),
   cooldown: Object.freeze({ variant: "warning", label: "Em Cooldown", isDot: true }),
-  circuit_breaker: Object.freeze({ variant: "danger", label: "Circuit Breaker Disparado", isDot: true }),
+  circuit_breaker: Object.freeze({ variant: "danger", label: "Circuit Breaker", isDot: true }),
   waiting_signal: Object.freeze({ variant: "blue", label: "Aguardando Sinal", isDot: true }),
   paused: Object.freeze({ variant: "neutral", label: "Pausado", isDot: false }),
 });
@@ -196,7 +196,7 @@ export const SmartBotStatusCard: React.FC<SmartBotStatusCardProps> = React.memo(
             onClick={onToggleStatus}
             leftIcon={isRunning ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
           >
-            {isRunning ? "Pausar" : "Iniciar"}
+            {isRunning ? "Pausar Robô" : "Iniciar Robô"}
           </SmartButton>
 
           {resolvedState === "cooldown" && onResetCooldown && (
@@ -227,7 +227,7 @@ export const SmartBotStatusCard: React.FC<SmartBotStatusCardProps> = React.memo(
             onClick={onConfigure}
             leftIcon={<Settings2 className="w-3.5 h-3.5" />}
           >
-            Ajustar
+            Configurar
           </SmartButton>
         </div>
       </div>

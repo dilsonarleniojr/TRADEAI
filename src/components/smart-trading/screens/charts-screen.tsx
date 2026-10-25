@@ -351,10 +351,13 @@ export const ChartsScreen: React.FC<ChartsScreenProps> = ({
 
           {activeSidePanel === 'watchlist' && (
             <div className="animate-in fade-in duration-200">
-              <SmartAssetWatchlist onSelectPair={(pair) => {
-                handleSelectSymbol(pair);
-                setActiveSidePanel('orderbook');
-              }} />
+              <SmartAssetWatchlist 
+                activeSymbol={symbol.replace('USDT', '/USDT')}
+                onSelectPair={(pair) => {
+                  handleSelectSymbol(pair);
+                  setActiveSidePanel('orderbook');
+                }} 
+              />
             </div>
           )}
         </div>

@@ -30,7 +30,8 @@ export const SmartInput = React.forwardRef<HTMLInputElement, SmartInputProps>(
     },
     ref
   ) => {
-    const inputId = id || React.useId();
+    const generatedId = React.useId();
+    const inputId = id || generatedId;
     const [showPassword, setShowPassword] = React.useState(false);
     const isPassword = type === "password";
     const resolvedType = isPassword ? (showPassword ? "text" : "password") : type;

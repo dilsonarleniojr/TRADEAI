@@ -27,9 +27,16 @@ import {
 interface SettingsScreenProps {
   isDark: boolean;
   onToggleTheme: () => void;
+  onOpenApiSettings?: () => void;
+  onOpenAiSettings?: () => void;
 }
 
-export const SettingsScreen: React.FC<SettingsScreenProps> = ({ isDark, onToggleTheme }) => {
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({ 
+  isDark, 
+  onToggleTheme,
+  onOpenApiSettings,
+  onOpenAiSettings,
+}) => {
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKey, setApiKey] = useState('vm208349028490284092840928409284029482');
   const [apiSecret, setApiSecret] = useState('••••••••••••••••••••••••••••••••••••••••••••');
@@ -221,43 +228,67 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ isDark, onToggle
               </div>
             </div>
 
-            {/* Test Connection Button & Live Ping */}
+            {/* Action Buttons: Gerenciar Chaves e Test Connection */}
             <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-t border-[var(--st-border)]">
               <div className="text-xs text-[var(--st-text-secondary)]">
-                Valide a resposta de rede e verifique o saldo real lido dos livros da Binance
+                Gerencie credenciais oficiais ou teste a resposta dos livros da Binance Spot
               </div>
 
-              <SmartButton
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  try {
-                    const res = await fetch('/api/account?mode=live');
-                    const json = await res.json();
-                    if (json.success && json.data) {
-                      const free = json.data.cashFree ?? json.data.cashBalance;
-                      const total = json.data.totalValue;
-                      const posCount = json.data.positions?.length || 0;
-                      alert(
-                        `✓ Conexão com a Binance Spot Verificada com Sucesso!\n\n` +
-                        `• Fonte Autorizada: ${json.data.source.toUpperCase()}\n` +
-                        `• Saldo Total (NAV): $${total.toFixed(2)} USD\n` +
-                        `• Saldo Livre (USDT): $${free.toFixed(2)} USDT\n` +
-                        `• Posições Abertas: ${posCount} ativo(s) em custódia\n` +
-                        `• Permissões: Trading Ativo | Saques Bloqueados\n` +
-                        `• Latência: ~24ms (OK)`
-                      );
-                    } else {
-                      alert(`Falha no teste: ${json.error || 'Não foi possível ler a carteira.'}`);
+              <div className="flex items-center gap-2 flex-wrap">
+                {onOpenApiSettings && (
+                  <SmartButton
+                    variant="primary"
+                    size="sm"
+                    onClick={onOpenApiSettings}
+                    leftIcon={<Key className="w-3.5 h-3.5" />}
+                  >
+                    Gerenciar Chaves Binance
+                  </SmartButton>
+                )}
+
+                {onOpenAiSettings && (
+                  <SmartButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={onOpenAiSettings}
+                    leftIcon={<Sliders className="w-3.5 h-3.5" />}
+                  >
+                    Provedores de IA
+                  </SmartButton>
+                )}
+
+                <SmartButton
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/account?mode=live');
+                      const json = await res.json();
+                      if (json.success && json.data) {
+                        const free = json.data.cashFree ?? json.data.cashBalance;
+                        const total = json.data.totalValue;
+                        const posCount = json.data.positions?.length || 0;
+                        alert(
+                          `✓ Conexão com a Binance Spot Verificada com Sucesso!\n\n` +
+                          `• Fonte Autorizada: ${json.data.source.toUpperCase()}\n` +
+                          `• Saldo Total (NAV): $${total.toFixed(2)} USD\n` +
+                          `• Saldo Livre (USDT): $${free.toFixed(2)} USDT\n` +
+                          `• Posições Abertas: ${posCount} ativo(s) em custódia\n` +
+                          `• Permissões: Trading Ativo | Saques Bloqueados\n` +
+                          `• Latência: ~24ms (OK)`
+                        );
+                      } else {
+                        alert(`Falha no teste: ${json.error || 'Não foi possível ler a carteira.'}`);
+                      }
+                    } catch (e: any) {
+                      alert(`Erro de conexão: ${e.message}`);
                     }
-                  } catch (e: any) {
-                    alert(`Erro de conexão: ${e.message}`);
-                  }
-                }}
-                leftIcon={<Zap className="w-3.5 h-3.5 text-[var(--st-primary)]" />}
-              >
-                Testar Comunicação com Binance Spot (Ping & Saldo Real)
-              </SmartButton>
+                  }}
+                  leftIcon={<Zap className="w-3.5 h-3.5 text-[var(--st-primary)]" />}
+                >
+                  Testar Saldo Real
+                </SmartButton>
+              </div>
             </div>
           </SmartCardContent>
         </SmartCard>

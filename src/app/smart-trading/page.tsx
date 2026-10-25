@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import '../../design-system/smart-trading.css';
 import { LoginScreen } from '@/components/smart-trading/screens/login-screen';
 import { DashboardScreen } from '@/components/smart-trading/screens/dashboard-screen';
@@ -16,10 +17,22 @@ import { SmartButton } from '@/components/smart-trading/ui/button';
 import { GlobalStatusBar } from '@/components/header/global-status-bar';
 import { GlobalCommandSearch } from '@/components/header/global-command-search';
 import { BotActivityLog } from '@/components/bot/bot-activity-log';
+import { BotBackgroundRunner } from '@/components/bot/bot-background-runner';
+import { HistoryBootstrap } from '@/components/bot/history-bootstrap';
+import { BotReadinessWatcher } from '@/components/bot/bot-readiness';
+import { BotExecutionReportDialog } from '@/components/bot/bot-execution-report-dialog';
+import { AlertNotification } from '@/components/dashboard/alert-notification';
+import { ApiSettingsDialog } from '@/components/header/api-settings-dialog';
+import { AiSettingsDialog } from '@/components/header/ai-settings-dialog';
+import { DirectAiTradeModal } from '@/components/bot/direct-ai-trade-modal';
+import { RiskProfileSelector } from '@/components/bot/risk-profile-selector';
+import { DataProvider, useDataProvider } from '@/lib/data-provider';
 import { useBinanceData } from '@/hooks/use-binance-data';
 import { useBinanceStream } from '@/hooks/use-binance-stream';
 import { useDesktopHotkeys } from '@/hooks/use-desktop-hotkeys';
 import { useCryptoStore } from '@/lib/store';
+import { useToast } from '@/hooks/use-toast';
+import { useShallow } from 'zustand/react/shallow';
 import { 
   LayoutDashboard, 
   CandlestickChart, 
@@ -37,38 +50,95 @@ import {
   ShieldCheck, 
   ChevronRight, 
   Menu, 
-  X,
-  Zap,
-  TrendingUp,
-  Activity,
-  ArrowUpRight,
-  Terminal,
-  ChevronUp,
-  ChevronDown,
-  Command
+  X, 
+  Zap, 
+  TrendingUp, 
+  Activity, 
+  ArrowUpRight, 
+  Terminal, 
+  ChevronUp, 
+  ChevronDown, 
+  Command, 
+  RefreshCw, 
+  KeyRound, 
+  Brain, 
+  Gauge, 
+  LineChart, 
+  BookOpen, 
+  FileText,
+  Loader2
 } from 'lucide-react';
 import Link from 'next/link';
 
+function ModuleLoadingSkeleton() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[50vh] gap-3">
+      <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      <span className="text-xs text-neutral-400 font-mono animate-pulse">Carregando módulo avançado...</span>
+    </div>
+  );
+}
+
+// Módulos da Primeira UI integrados com code-splitting
+const InstitutionalCockpit = dynamic(
+  () => import('@/components/institutional/institutional-cockpit').then((m) => m.InstitutionalCockpit),
+  { ssr: false, loading: () => <ModuleLoadingSkeleton /> }
+);
+const TradeJournalPanel = dynamic(
+  () => import('@/components/journal/trade-journal-panel').then((m) => m.TradeJournalPanel),
+  { ssr: false, loading: () => <ModuleLoadingSkeleton /> }
+);
+const TradeHubSection = dynamic(
+  () => import('@/components/trade-hub').then((m) => m.TradeHubSection),
+  { ssr: false, loading: () => <ModuleLoadingSkeleton /> }
+);
+const HistorySection = dynamic(
+  () => import('@/components/history/history-section').then((m) => m.HistorySection),
+  { ssr: false, loading: () => <ModuleLoadingSkeleton /> }
+);
+const EducationSection = dynamic(
+  () => import('@/components/education/education-section').then((m) => m.EducationSection),
+  { ssr: false, loading: () => <ModuleLoadingSkeleton /> }
+);
+const ChatSection = dynamic(
+  () => import('@/components/ai/chat-section').then((m) => m.ChatSection),
+  { ssr: false, loading: () => <ModuleLoadingSkeleton /> }
+);
+
 type ScreenId = 
   | 'dashboard' 
+  | 'institutional'
   | 'charts' 
-  | 'ai' 
+  | 'journal'
   | 'bots' 
+  | 'trade-hub'
+  | 'ai' 
+  | 'ai-chat'
   | 'backtest' 
+  | 'history'
   | 'paper' 
+  | 'education'
   | 'settings' 
   | 'design-system' 
   | 'login';
 
-export default function SmartTradingPage() {
+function SmartTradingPageContent() {
   const [activeScreen, setActiveScreen] = useState<ScreenId>('dashboard');
   const [tradingMode, setTradingMode] = useState<'paper' | 'live'>('live');
   const [isDark, setIsDark] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedPair, setSelectedPair] = useState('BTC/USDT');
-  const [unreadNotifications, setUnreadNotifications] = useState(3);
   const [isLoggedIn, setIsLoggedIn] = useState(true);
   const [isTerminalExpanded, setIsTerminalExpanded] = useState(false);
+  const [isSyncingBinance, setIsSyncingBinance] = useState(false);
+
+  // Modais de Governança
+  const [apiDialogOpen, setApiDialogOpen] = useState(false);
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [directTradeModalOpen, setDirectTradeModalOpen] = useState(false);
+
+  const { toast } = useToast();
+  const { syncBinanceCoins } = useDataProvider();
 
   // Iniciar feeds de dados e conexões WebSocket da Binance
   useBinanceData();
@@ -81,10 +151,27 @@ export default function SmartTradingPage() {
     enableCommandPalette: true,
   });
 
-  const isCommandSearchOpen = useCryptoStore((s) => s.isCommandSearchOpen);
-  const setIsCommandSearchOpen = useCryptoStore((s) => s.setIsCommandSearchOpen);
-  const isLogAutoScrollPaused = useCryptoStore((s) => s.isLogAutoScrollPaused);
-  const toggleLogAutoScroll = useCryptoStore((s) => s.toggleLogAutoScroll);
+  const {
+    activeExecutionReport,
+    setActiveExecutionReport,
+    isCommandSearchOpen,
+    setIsCommandSearchOpen,
+    isLogAutoScrollPaused,
+    toggleLogAutoScroll,
+    binanceConnected,
+    tickers,
+  } = useCryptoStore(
+    useShallow((s) => ({
+      activeExecutionReport: s.activeExecutionReport,
+      setActiveExecutionReport: s.setActiveExecutionReport,
+      isCommandSearchOpen: s.isCommandSearchOpen,
+      setIsCommandSearchOpen: s.setIsCommandSearchOpen,
+      isLogAutoScrollPaused: s.isLogAutoScrollPaused,
+      toggleLogAutoScroll: s.toggleLogAutoScroll,
+      binanceConnected: s.binanceConnected,
+      tickers: s.tickers,
+    }))
+  );
 
   // Cotações e saldo real
   const [btcPrice, setBtcPrice] = useState<number>(80935.0);
@@ -97,19 +184,10 @@ export default function SmartTradingPage() {
     let isMounted = true;
     const syncData = async () => {
       try {
-        // 1. Tickers
-        const tickerRes = await fetch('/api/market/ticker');
-        if (tickerRes.ok) {
-          const tickerJson = await tickerRes.json();
-          if (Array.isArray(tickerJson.data)) {
-            const btc = tickerJson.data.find((t: any) => t.symbol === 'BTCUSDT');
-            const eth = tickerJson.data.find((t: any) => t.symbol === 'ETHUSDT');
-            const sol = tickerJson.data.find((t: any) => t.symbol === 'SOLUSDT');
-            if (btc?.lastPrice && isMounted) setBtcPrice(parseFloat(btc.lastPrice));
-            if (eth?.lastPrice && isMounted) setEthPrice(parseFloat(eth.lastPrice));
-            if (sol?.lastPrice && isMounted) setSolPrice(parseFloat(sol.lastPrice));
-          }
-        }
+        // 1. Tickers em tempo real
+        if (tickers['BTCUSDT']?.price) setBtcPrice(tickers['BTCUSDT'].price);
+        if (tickers['ETHUSDT']?.price) setEthPrice(tickers['ETHUSDT'].price);
+        if (tickers['SOLUSDT']?.price) setSolPrice(tickers['SOLUSDT'].price);
 
         // 2. Saldo da conta
         const accRes = await fetch(`/api/account?mode=${tradingMode}`);
@@ -130,7 +208,41 @@ export default function SmartTradingPage() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [tradingMode]);
+  }, [tradingMode, tickers]);
+
+  // Handler de sincronização global com a Binance
+  const handleSyncBinanceAll = async () => {
+    if (isSyncingBinance) return;
+    setIsSyncingBinance(true);
+    toast({
+      title: "🔄 Sincronizando com a Binance...",
+      description: "Carregando todos os pares Spot USDT, livro de ofertas e status de trading.",
+    });
+
+    try {
+      const result = await syncBinanceCoins();
+      if (result.success) {
+        toast({
+          title: "✅ Sincronização Concluída!",
+          description: `${result.count} pares e binários Spot USDT sincronizados diretamente da Binance.`,
+        });
+      } else {
+        toast({
+          title: "⚠️ Erro na Sincronização",
+          description: "Não foi possível sincronizar agora. Exibindo dados locais.",
+          variant: "destructive",
+        });
+      }
+    } catch (e: any) {
+      toast({
+        title: "Erro de Conexão",
+        description: e.message || "Falha na comunicação com a Binance",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncingBinance(false);
+    }
+  };
 
   // Alterna o tema
   const toggleTheme = () => {
@@ -139,17 +251,41 @@ export default function SmartTradingPage() {
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
-    { id: 'charts', label: 'Gráficos L2', icon: <CandlestickChart className="w-4 h-4" />, badge: 'Ao Vivo' },
-    { id: 'ai', label: 'IA Insights', icon: <Sparkles className="w-4 h-4" />, badge: 'Markov' },
+    { id: 'institutional', label: 'Cockpit Institucional', icon: <Gauge className="w-4 h-4" />, badge: 'PnL L2' },
+    { id: 'charts', label: 'Gráficos & Boleta', icon: <CandlestickChart className="w-4 h-4" />, badge: 'Ao Vivo' },
+    { id: 'journal', label: 'Diário & Analytics', icon: <LineChart className="w-4 h-4" />, badge: 'MAE/MFE' },
     { id: 'bots', label: 'Robôs Quant', icon: <Bot className="w-4 h-4" /> },
+    { id: 'trade-hub', label: 'Estúdio Quant & IA', icon: <Sparkles className="w-4 h-4" />, badge: '7 Módulos' },
+    { id: 'ai', label: 'IA Insights', icon: <Brain className="w-4 h-4" />, badge: 'Markov' },
+    { id: 'ai-chat', label: 'Assistente IA', icon: <Sparkles className="w-4 h-4" /> },
     { id: 'backtest', label: 'Backtesting', icon: <History className="w-4 h-4" /> },
+    { id: 'history', label: 'Histórico & Ordens', icon: <FileText className="w-4 h-4" /> },
     { id: 'paper', label: 'Paper Trading', icon: <Wallet className="w-4 h-4" />, badge: '$100k' },
+    { id: 'education', label: 'Academia Cripto', icon: <BookOpen className="w-4 h-4" /> },
     { id: 'settings', label: 'Configurações', icon: <Settings className="w-4 h-4" /> },
     { id: 'design-system', label: 'Design System', icon: <Palette className="w-4 h-4" /> },
   ];
 
   return (
     <div className={`min-h-screen ${isDark ? 'smart-trading-dark' : 'smart-trading-light'} bg-[var(--st-bg)] text-[var(--st-text-primary)] flex flex-col font-sans transition-colors duration-200`}>
+      {/* Runners e Notificadores em Background da Primeira UI */}
+      <AlertNotification />
+      <BotBackgroundRunner />
+      <HistoryBootstrap />
+      <BotReadinessWatcher />
+      <BotExecutionReportDialog
+        report={activeExecutionReport}
+        open={!!activeExecutionReport}
+        onOpenChange={(open) => {
+          if (!open) setActiveExecutionReport(null);
+        }}
+      />
+
+      {/* Diálogos de Governança e Configurações */}
+      <ApiSettingsDialog open={apiDialogOpen} onOpenChange={setApiDialogOpen} />
+      <AiSettingsDialog open={aiDialogOpen} onOpenChange={setAiDialogOpen} />
+      <DirectAiTradeModal open={directTradeModalOpen} onOpenChange={setDirectTradeModalOpen} />
+
       {/* Barra de Status Global da Exchange (Telemetria, Ping, NTP, Stale Data) */}
       <GlobalStatusBar />
 
@@ -188,33 +324,42 @@ export default function SmartTradingPage() {
           </div>
 
           {/* Quick Ticker Pill (Live Binance Data) */}
-          <div className="hidden lg:flex items-center gap-4 border-l border-[var(--st-border)] pl-4 ml-2 text-xs font-mono">
+          <div className="hidden xl:flex items-center gap-4 border-l border-[var(--st-border)] pl-4 ml-2 text-xs font-mono">
             <div className="flex items-center gap-1.5">
               <span className="text-[var(--st-text-secondary)] font-bold">BTC:</span>
               <span className="text-[var(--st-text-primary)] font-semibold">
                 ${btcPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
-              <span className="text-[var(--st-success)] flex items-center text-[11px]">+3.42%</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-[var(--st-text-secondary)] font-bold">ETH:</span>
               <span className="text-[var(--st-text-primary)] font-semibold">
                 ${ethPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
-              <span className="text-[var(--st-success)] flex items-center text-[11px]">+2.15%</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-[var(--st-text-secondary)] font-bold">SOL:</span>
               <span className="text-[var(--st-text-primary)] font-semibold">
                 ${solPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
-              <span className="text-[var(--st-success)] flex items-center text-[11px]">+6.36%</span>
             </div>
           </div>
         </div>
 
-        {/* Center: Live / Paper Mode Switcher */}
+        {/* Center: Live / Paper Mode Switcher & Sync Button */}
         <div className="flex items-center gap-2">
+          {/* Botão Sincronizar Binance */}
+          <button
+            type="button"
+            onClick={handleSyncBinanceAll}
+            disabled={isSyncingBinance}
+            title="Sincronizar todos os binários e livros de ofertas com a Binance"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-xs font-bold text-blue-400 transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingBinance ? 'animate-spin text-blue-300' : 'text-blue-400'}`} />
+            <span className="hidden sm:inline">{isSyncingBinance ? 'Sincronizando...' : 'Sincronizar Binance'}</span>
+          </button>
+
           <button
             type="button"
             onClick={() => {
@@ -234,12 +379,44 @@ export default function SmartTradingPage() {
             title="Alternar entre Modo Simulado e Dinheiro Real"
           >
             <span className={`w-2 h-2 rounded-full ${tradingMode === 'live' ? 'bg-red-500' : 'bg-emerald-400'}`} />
-            <span>{tradingMode === 'live' ? 'DINHEIRO REAL (Binance Spot)' : 'MODO SIMULADO (Paper)'}</span>
+            <span>{tradingMode === 'live' ? 'DINHEIRO REAL' : 'SIMULADO'}</span>
           </button>
         </div>
 
-        {/* Right: Actions, Command Search, Notifications, Theme & Profile */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        {/* Right: Actions, API Dialog, AI Dialog, Command Search, Theme & Profile */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Botão Boleta IA Rápida */}
+          <button
+            type="button"
+            onClick={() => setDirectTradeModalOpen(true)}
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-xs text-purple-300 font-semibold transition-all"
+            title="Boleta Expressa com Análise de IA"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <span>Trade IA</span>
+          </button>
+
+          {/* Botão Chaves Binance API */}
+          <button
+            type="button"
+            onClick={() => setApiDialogOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--st-border)] bg-[var(--st-bg-surface)] hover:bg-[var(--st-bg-elevated)] text-xs text-[var(--st-text-secondary)] hover:text-white transition-all font-medium"
+            title="Configurar Chaves da API Binance"
+          >
+            <KeyRound className={`w-3.5 h-3.5 ${binanceConnected ? 'text-emerald-400' : 'text-neutral-400'}`} />
+            <span className="hidden md:inline">{binanceConnected ? 'Binance OK' : 'API Key'}</span>
+          </button>
+
+          {/* Botão Provedores de IA */}
+          <button
+            type="button"
+            onClick={() => setAiDialogOpen(true)}
+            className="p-2 rounded-lg border border-[var(--st-border)] bg-[var(--st-bg-surface)] hover:bg-[var(--st-bg-elevated)] text-[var(--st-text-secondary)] hover:text-white transition-all"
+            title="Configurar Provedores de IA (Gemini, OpenAI, Groq, Ollama)"
+          >
+            <Brain className="w-4 h-4 text-purple-400" />
+          </button>
+
           {/* Quick Command Palette Button (Ctrl + K) */}
           <button
             type="button"
@@ -248,14 +425,13 @@ export default function SmartTradingPage() {
             title="Buscar comandos e ativos (Ctrl + K / Cmd + K)"
           >
             <Command className="w-3.5 h-3.5 text-[var(--st-primary)]" />
-            <span>Buscar</span>
             <kbd className="text-[10px] bg-neutral-800 px-1 py-0.5 rounded border border-neutral-700">⌘K</kbd>
           </button>
 
           {/* Link back to Main TradeAI Hub */}
           <Link
             href="/"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--st-border)] bg-[var(--st-bg-surface)] hover:bg-[var(--st-bg-elevated)] text-xs text-[var(--st-text-secondary)] hover:text-[var(--st-text-primary)] transition-all font-medium"
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--st-border)] bg-[var(--st-bg-surface)] hover:bg-[var(--st-bg-elevated)] text-xs text-[var(--st-text-secondary)] hover:text-[var(--st-text-primary)] transition-all font-medium"
           >
             <span>TradeAI Hub</span>
             <ArrowUpRight className="w-3.5 h-3.5 text-[var(--st-primary)]" />
@@ -278,12 +454,12 @@ export default function SmartTradingPage() {
           {/* User Profile Capsule */}
           <div 
             onClick={() => setActiveScreen('settings')}
-            className="flex items-center gap-2.5 pl-2 py-1 pr-3 rounded-full border border-[var(--st-border)] bg-[var(--st-bg-surface)] hover:border-[var(--st-primary)] cursor-pointer transition-all"
+            className="flex items-center gap-2 pl-2 py-1 pr-2.5 rounded-full border border-[var(--st-border)] bg-[var(--st-bg-surface)] hover:border-[var(--st-primary)] cursor-pointer transition-all"
           >
             <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[var(--st-primary)] to-[var(--st-secondary)] flex items-center justify-center text-white font-bold text-xs ring-2 ring-[var(--st-bg)]">
               DC
             </div>
-            <div className="hidden md:flex flex-col text-left">
+            <div className="hidden lg:flex flex-col text-left">
               <span className="text-xs font-semibold text-[var(--st-text-primary)] leading-tight">
                 {tradingMode === 'live' ? 'Conta Real (Spot)' : 'Paper Trader'}
               </span>
@@ -298,10 +474,10 @@ export default function SmartTradingPage() {
       {/* Main Body with Sidebar + Dynamic Screen Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Fixed Desktop Sidebar */}
-        <aside className="hidden md:flex flex-col justify-between w-60 border-r border-[var(--st-border)] bg-[var(--st-bg-surface)]/80 backdrop-blur-sm p-3 shrink-0">
+        <aside className="hidden md:flex flex-col justify-between w-64 border-r border-[var(--st-border)] bg-[var(--st-bg-surface)]/80 backdrop-blur-sm p-3 shrink-0 overflow-y-auto st-scrollbar">
           <div className="space-y-1">
             <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[var(--st-text-muted)]">
-              Navegação Principal
+              Módulos da Plataforma
             </div>
 
             {navItems.map((item) => {
@@ -316,7 +492,7 @@ export default function SmartTradingPage() {
                       setIsLoggedIn(true);
                     }
                   }}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-all ${
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all ${
                     isActive
                       ? 'bg-[var(--st-primary)] text-white font-semibold shadow-[0_0_15px_rgba(59,130,246,0.3)]'
                       : 'text-[var(--st-text-secondary)] hover:text-[var(--st-text-primary)] hover:bg-[var(--st-bg-elevated)]'
@@ -344,7 +520,7 @@ export default function SmartTradingPage() {
           </div>
 
           {/* Sidebar Footer: System Status, Hotkeys & Terminal Toggle */}
-          <div className="space-y-3 pt-3 border-t border-[var(--st-border)]">
+          <div className="space-y-3 pt-3 border-t border-[var(--st-border)] mt-4">
             {/* Quick Hotkey Cheat Badge */}
             <div className="p-2.5 rounded-xl border border-[var(--st-border)] bg-[var(--st-bg-elevated)] text-[10px] space-y-1 font-mono text-[var(--st-text-muted)]">
               <div className="flex items-center justify-between text-neutral-300 font-bold">
@@ -407,7 +583,7 @@ export default function SmartTradingPage() {
         {/* Mobile Flyout Drawer */}
         {isMobileMenuOpen && (
           <div className="fixed inset-0 z-50 md:hidden bg-black/60 backdrop-blur-sm animate-in fade-in">
-            <div className="w-72 h-full bg-[var(--st-bg-surface)] p-4 flex flex-col justify-between border-r border-[var(--st-border)] animate-in slide-in-from-left">
+            <div className="w-72 h-full bg-[var(--st-bg-surface)] p-4 flex flex-col justify-between border-r border-[var(--st-border)] animate-in slide-in-from-left overflow-y-auto">
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-[var(--st-border)] pb-3">
                   <span className="font-bold text-sm text-[var(--st-text-primary)]">Smart Trading Menu</span>
@@ -449,7 +625,7 @@ export default function SmartTradingPage() {
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-[var(--st-border)]">
+              <div className="pt-3 border-t border-[var(--st-border)] mt-4">
                 <Link
                   href="/"
                   className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-[var(--st-border)] text-xs text-[var(--st-text-primary)]"
@@ -482,6 +658,12 @@ export default function SmartTradingPage() {
               />
             )}
 
+            {activeScreen === 'institutional' && (
+              <div className="space-y-4">
+                <InstitutionalCockpit />
+              </div>
+            )}
+
             {activeScreen === 'charts' && (
               <ChartsScreen 
                 initialSymbol={selectedPair} 
@@ -489,26 +671,58 @@ export default function SmartTradingPage() {
               />
             )}
 
-            {activeScreen === 'ai' && (
-              <AIInsightsScreen />
-            )}
-
-            {activeScreen === 'backtest' && (
-              <BacktestScreen />
+            {activeScreen === 'journal' && (
+              <div className="space-y-4">
+                <TradeJournalPanel />
+              </div>
             )}
 
             {activeScreen === 'bots' && (
               <BotsScreen />
             )}
 
+            {activeScreen === 'trade-hub' && (
+              <div className="space-y-4">
+                <TradeHubSection />
+              </div>
+            )}
+
+            {activeScreen === 'ai' && (
+              <AIInsightsScreen />
+            )}
+
+            {activeScreen === 'ai-chat' && (
+              <div className="space-y-4">
+                <ChatSection />
+              </div>
+            )}
+
+            {activeScreen === 'backtest' && (
+              <BacktestScreen />
+            )}
+
+            {activeScreen === 'history' && (
+              <div className="space-y-4">
+                <HistorySection />
+              </div>
+            )}
+
             {activeScreen === 'paper' && (
               <PaperTradingScreen />
+            )}
+
+            {activeScreen === 'education' && (
+              <div className="space-y-4">
+                <EducationSection />
+              </div>
             )}
 
             {activeScreen === 'settings' && (
               <SettingsScreen
                 isDark={isDark}
                 onToggleTheme={toggleTheme}
+                onOpenApiSettings={() => setApiDialogOpen(true)}
+                onOpenAiSettings={() => setAiDialogOpen(true)}
               />
             )}
 
@@ -558,5 +772,13 @@ export default function SmartTradingPage() {
       {/* Global Command Search Modal (Ctrl + K / Cmd + K) */}
       <GlobalCommandSearch />
     </div>
+  );
+}
+
+export default function SmartTradingPage() {
+  return (
+    <DataProvider>
+      <SmartTradingPageContent />
+    </DataProvider>
   );
 }

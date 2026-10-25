@@ -380,33 +380,55 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             </SmartButton>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {bots.slice(0, 4).map((bot) => {
-              const trades = bot.stats?.totalTrades || 0;
-              const wins = bot.stats?.winTrades || 0;
-              const wr = trades > 0 ? `${((wins / trades) * 100).toFixed(1)}%` : '0.0%';
-              const pnl = bot.stats?.realizedPnl || 0;
+          {bots.length === 0 ? (
+            <div className="p-8 rounded-2xl border border-dashed border-neutral-800 text-center space-y-3 bg-neutral-900/40">
+              <Bot className="w-8 h-8 text-neutral-500 mx-auto" />
+              <p className="text-sm font-semibold text-neutral-300">Nenhum robô configurado no momento</p>
+              <p className="text-xs text-neutral-500 max-w-sm mx-auto">
+                Crie um novo robô de trading algorítmico com guardrails institucionais ou explore a frota na Binance.
+              </p>
+              <SmartButton variant="primary" size="sm" onClick={() => onNavigateTab('bots')}>
+                Abrir Construtor de Robôs
+              </SmartButton>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {bots.slice(0, 4).map((bot) => {
+                const trades = bot.stats?.totalTrades || 0;
+                const wins = bot.stats?.winTrades || 0;
+                const wr = trades > 0 ? `${((wins / trades) * 100).toFixed(1)}%` : '0.0%';
+                const pnl = bot.stats?.realizedPnl || 0;
 
-              return (
-                <SmartBotStatusCard
-                  key={bot.id}
-                  botId={bot.id}
-                  name={bot.name}
-                  strategy={bot.strategy}
-                  symbol={bot.symbol.replace('USDT', '/USDT')}
-                  status={bot.active ? 'active' : 'paused'}
-                  profitToday={`${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`}
-                  profitPercent={parseFloat((pnl / Math.max(1, bot.allocationAmount || 15) * 100).toFixed(2))}
-                  tradesCount={trades}
-                  winRate={wr}
-                  drawdown={`${bot.stats?.lossTrades || 0} perdas`}
-                  lastAction={bot.stats?.lastAction || 'Aguardando sinal'}
-                  onToggleStatus={() => toggleBotActive(bot.id)}
-                  onConfigure={() => onNavigateTab('bots')}
-                />
-              );
-            })}
-          </div>
+                return (
+                  <SmartBotStatusCard
+                    key={bot.id}
+                    botId={bot.id}
+                    name={bot.name}
+                    strategy={bot.strategy}
+                    symbol={bot.symbol.replace('USDT', '/USDT')}
+                    status={bot.active ? 'active' : 'paused'}
+                    profitToday={`${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`}
+                    profitPercent={parseFloat((pnl / Math.max(1, bot.allocationAmount || 15) * 100).toFixed(2))}
+                    tradesCount={trades}
+                    winRate={wr}
+                    drawdown={`${bot.stats?.lossTrades || 0} perdas`}
+                    lastAction={bot.stats?.lastAction || 'Aguardando sinal'}
+                    onToggleStatus={() => {
+                      const nextActive = !bot.active;
+                      toggleBotActive(bot.id);
+                      toast({
+                        title: nextActive ? `Robô ${bot.name} Ativado` : `Robô ${bot.name} Pausado`,
+                        description: nextActive
+                          ? `O robô foi iniciado e está monitorando o par ${bot.symbol.replace('USDT', '/USDT')}.`
+                          : `O robô foi pausado com sucesso. Nenhuma nova ordem será aberta.`,
+                      });
+                    }}
+                    onConfigure={() => onNavigateTab('bots')}
+                  />
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Asset Watchlist */}

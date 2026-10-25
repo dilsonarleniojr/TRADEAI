@@ -12,6 +12,8 @@ import { SmartInput } from '../ui/input';
 import { SmartBadge } from '../ui/badge';
 import { SmartSwitch } from '../ui/switch';
 import { SmartBotStatusCard, type BotSemanticState } from '../trading/bot-status-card';
+import { ALL_SYMBOLS, CRYPTO_BY_SYMBOL, type CryptoMeta } from '@/lib/crypto-meta';
+import { useDataProvider } from '@/lib/data-provider';
 import { 
   Bot, 
   Plus, 
@@ -33,7 +35,11 @@ import {
   Play,
   Pause,
   Layers,
-  Fuel
+  Fuel,
+  Search,
+  RefreshCw,
+  Check,
+  ChevronDown
 } from 'lucide-react';
 
 export interface FleetMetricsAggregate {
@@ -138,6 +144,7 @@ export const BotsScreen: React.FC = () => {
   );
 
   const { toast } = useToast();
+  const { syncBinanceCoins } = useDataProvider();
 
   // Estados locais para criação de bot
   const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -147,6 +154,47 @@ export const BotsScreen: React.FC = () => {
   const [capitalAllocation, setCapitalAllocation] = useState('15');
   const [stopLossPercent, setStopLossPercent] = useState('1.5');
   const [takeProfitPercent, setTakeProfitPercent] = useState('3.8');
+
+  // Estados para seleção e busca de pares da Binance
+  const [isSyncingCoins, setIsSyncingCoins] = useState(false);
+  const [pairSearchQuery, setPairSearchQuery] = useState('');
+  const [isPairDropdownOpen, setIsPairDropdownOpen] = useState(false);
+  const [selectedPairCategory, setSelectedPairCategory] = useState<string>('Todos');
+  const pairDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Fecha dropdown ao clicar fora
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (pairDropdownRef.current && !pairDropdownRef.current.contains(event.target as Node)) {
+        setIsPairDropdownOpen(false);
+      }
+    }
+    if (isPairDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isPairDropdownOpen]);
+
+  const handleSyncCoins = async () => {
+    setIsSyncingCoins(true);
+    try {
+      const res = await syncBinanceCoins();
+      toast({
+        title: 'Binance Sincronizada',
+        description: `${res.count} pares Spot USDT disponíveis para trading algorítmico.`,
+      });
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Erro na Sincronização',
+        description: 'Falha ao sincronizar pares com a Binance.',
+      });
+    } finally {
+      setIsSyncingCoins(false);
+    }
+  };
 
   // Parâmetros Operacionais Globais
   const [riskPerTradeUsd, setRiskPerTradeUsd] = useState<number>(1.25); // faixa $1.05 - $1.40 USD
@@ -177,6 +225,42 @@ export const BotsScreen: React.FC = () => {
     totalWinningTrades,
     fleetWinRateFormatted,
   } = fleetMetrics;
+
+  // Lista dinâmica de todos os pares e binários disponíveis na Binance
+  const availableBinancePairs = useMemo(() => {
+    const set = new Set<string>(ALL_SYMBOLS);
+    Object.keys(tickers).forEach((sym) => {
+      if (sym.endsWith('USDT')) set.add(sym);
+    });
+    return Array.from(set).sort((a, b) => {
+      const volA = tickers[a]?.quoteVolume || 0;
+      const volB = tickers[b]?.quoteVolume || 0;
+      return volB - volA;
+    });
+  }, [tickers]);
+
+  // Pares filtrados por busca e categoria para o seletor institucional
+  const filteredPairs = useMemo(() => {
+    let list = availableBinancePairs;
+    if (selectedPairCategory !== 'Todos') {
+      list = list.filter((sym) => {
+        const meta = CRYPTO_BY_SYMBOL[sym];
+        return meta?.category === selectedPairCategory;
+      });
+    }
+    if (pairSearchQuery.trim()) {
+      const q = pairSearchQuery.toLowerCase().trim();
+      list = list.filter((sym) => {
+        const meta = CRYPTO_BY_SYMBOL[sym];
+        return (
+          sym.toLowerCase().includes(q) ||
+          (meta?.name && meta.name.toLowerCase().includes(q)) ||
+          (meta?.short && meta.short.toLowerCase().includes(q))
+        );
+      });
+    }
+    return list;
+  }, [availableBinancePairs, selectedPairCategory, pairSearchQuery]);
 
   // Circuit Breaker Diário: cálculo da perda consumida vs teto
   const navTotal = Math.max(10, portfolio?.totalValue || 38.85);
@@ -308,7 +392,13 @@ export const BotsScreen: React.FC = () => {
           <SmartButton
             variant="outline"
             size="sm"
-            onClick={() => toggleAllBots(true)}
+            onClick={() => {
+              toggleAllBots(true);
+              toast({
+                title: 'Frota Ativada',
+                description: `Todos os ${bots.length} robôs da frota foram iniciados com sucesso.`,
+              });
+            }}
             leftIcon={<Play className="w-3.5 h-3.5 text-emerald-400" />}
           >
             Iniciar Todos
@@ -317,7 +407,13 @@ export const BotsScreen: React.FC = () => {
           <SmartButton
             variant="outline"
             size="sm"
-            onClick={() => toggleAllBots(false)}
+            onClick={() => {
+              toggleAllBots(false);
+              toast({
+                title: 'Frota Pausada',
+                description: `Todos os ${bots.length} robôs da frota foram pausados imediatamente.`,
+              });
+            }}
             leftIcon={<Pause className="w-3.5 h-3.5 text-amber-400" />}
           >
             Pausar Todos
@@ -503,19 +599,159 @@ export const BotsScreen: React.FC = () => {
                   required
                 />
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[var(--st-text-secondary)]">Par de Ativos</label>
+                <div className="space-y-1.5 relative" ref={pairDropdownRef}>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-[var(--st-text-secondary)]">Par de Ativos (Binance Spot)</label>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleSyncCoins}
+                        disabled={isSyncingCoins}
+                        className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 font-mono font-semibold transition-colors disabled:opacity-50"
+                        title="Sincronizar todos os pares Spot USDT da Binance"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${isSyncingCoins ? 'animate-spin' : ''}`} />
+                        <span>{availableBinancePairs.length} pares</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Botão trigger do Seletor Interativo com Fundo Escuro Seguro */}
+                  <div 
+                    onClick={() => setIsPairDropdownOpen(!isPairDropdownOpen)}
+                    className="w-full h-10 px-3 rounded-lg border border-[var(--st-border)] bg-[#18181b] hover:border-[var(--st-primary)] text-xs text-white cursor-pointer flex items-center justify-between transition-colors font-mono select-none"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="font-bold text-white tracking-wide">
+                        {newBotSymbol.replace('USDT', '/USDT')}
+                      </span>
+                      <span className="text-[11px] text-neutral-400 truncate">
+                        ({CRYPTO_BY_SYMBOL[newBotSymbol]?.name || newBotSymbol.replace('USDT', '')})
+                      </span>
+                      {tickers[newBotSymbol] && (
+                        <span className="text-[11px] text-emerald-400 font-bold ml-1">
+                          ${tickers[newBotSymbol].price < 1 
+                            ? tickers[newBotSymbol].price.toFixed(4) 
+                            : tickers[newBotSymbol].price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        </span>
+                      )}
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-neutral-400 transition-transform ${isPairDropdownOpen ? 'rotate-180' : ''}`} />
+                  </div>
+
+                  {/* Popover Suspenso Customizado com Busca e Contraste Institucional */}
+                  {isPairDropdownOpen && (
+                    <div className="absolute left-0 right-0 top-full mt-1.5 z-50 p-2.5 rounded-xl border border-neutral-700 bg-[#141416] shadow-[0_12px_32px_rgba(0,0,0,0.85)] backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
+                      {/* Campo de Busca Rápida */}
+                      <div className="relative mb-2">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+                        <input
+                          type="text"
+                          value={pairSearchQuery}
+                          onChange={(e) => setPairSearchQuery(e.target.value)}
+                          placeholder="Buscar por símbolo ou nome (ex: BTC, SOL, PEPE, SUI)..."
+                          autoFocus
+                          className="w-full h-8 pl-8 pr-3 text-xs rounded-lg border border-neutral-700 bg-neutral-900 text-white placeholder-neutral-500 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      {/* Pills de Categoria */}
+                      <div className="flex items-center gap-1 overflow-x-auto pb-1.5 mb-2 text-[10px] scrollbar-thin">
+                        {['Todos', 'Layer 1', 'Layer 2', 'DeFi', 'Meme', 'AI', 'Inovação'].map((cat) => (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => setSelectedPairCategory(cat)}
+                            className={`px-2 py-0.5 rounded-md font-semibold whitespace-nowrap transition-colors ${
+                              selectedPairCategory === cat 
+                                ? 'bg-blue-600 text-white' 
+                                : 'bg-neutral-800 text-neutral-400 hover:text-white'
+                            }`}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Lista de Pares com Fundo Escuro Perfeito */}
+                      <div className="max-h-56 overflow-y-auto space-y-0.5 pr-1 text-xs scrollbar-thin">
+                        {filteredPairs.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-neutral-500">
+                            Nenhum par encontrado para &quot;{pairSearchQuery}&quot;
+                          </div>
+                        ) : (
+                          filteredPairs.map((sym) => {
+                            const t = tickers[sym];
+                            const meta = CRYPTO_BY_SYMBOL[sym];
+                            const name = meta?.name || sym.replace('USDT', '');
+                            const isSelected = newBotSymbol === sym;
+                            const isPos = (t?.priceChangePercent || 0) >= 0;
+
+                            return (
+                              <div
+                                key={sym}
+                                onClick={() => {
+                                  setNewBotSymbol(sym);
+                                  setIsPairDropdownOpen(false);
+                                  setPairSearchQuery('');
+                                }}
+                                className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                                  isSelected 
+                                    ? 'bg-blue-600/30 border border-blue-500/50 text-white' 
+                                    : 'hover:bg-neutral-800/80 text-neutral-200'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  {isSelected ? (
+                                    <Check className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                                  ) : (
+                                    <div className="w-1.5 h-1.5 rounded-full bg-neutral-600" />
+                                  )}
+                                  <div>
+                                    <span className="font-mono font-bold text-white">
+                                      {sym.replace('USDT', '/USDT')}
+                                    </span>
+                                    <span className="text-[10px] text-neutral-400 ml-1.5">
+                                      {name}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="text-right font-mono text-[11px]">
+                                  {t ? (
+                                    <div>
+                                      <span className="text-neutral-200 font-semibold">
+                                        ${t.price < 1 ? t.price.toFixed(4) : t.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                      </span>
+                                      <span className={`block text-[10px] ${isPos ? 'text-emerald-400' : 'text-red-400'}`}>
+                                        {isPos ? '+' : ''}{(t.priceChangePercent || 0).toFixed(2)}%
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-neutral-500 text-[10px]">Spot</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Fallback nativo oculto/acessível com estilos dark forçados */}
                   <select
                     value={newBotSymbol}
                     onChange={(e) => setNewBotSymbol(e.target.value)}
-                    className="w-full h-10 px-3 rounded-lg border border-[var(--st-border)] bg-[var(--st-bg-surface)] text-xs text-[var(--st-text-primary)] focus:outline-none focus:border-[var(--st-primary)]"
+                    className="sr-only"
+                    tabIndex={-1}
+                    aria-hidden="true"
                   >
-                    <option value="BTCUSDT">BTC/USDT</option>
-                    <option value="ETHUSDT">ETH/USDT</option>
-                    <option value="SOLUSDT">SOL/USDT</option>
-                    <option value="BNBUSDT">BNB/USDT</option>
-                    <option value="NEARUSDT">NEAR/USDT</option>
-                    <option value="AVAXUSDT">AVAX/USDT</option>
+                    {availableBinancePairs.map((sym) => (
+                      <option key={sym} value={sym} style={{ backgroundColor: '#18181b', color: '#ffffff' }}>
+                        {sym}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -524,12 +760,13 @@ export const BotsScreen: React.FC = () => {
                   <select
                     value={newBotStrategy}
                     onChange={(e) => setNewBotStrategy(e.target.value as BotStrategy)}
-                    className="w-full h-10 px-3 rounded-lg border border-[var(--st-border)] bg-[var(--st-bg-surface)] text-xs text-[var(--st-text-primary)] focus:outline-none focus:border-[var(--st-primary)]"
+                    style={{ backgroundColor: '#18181b', color: '#f8fafc' }}
+                    className="w-full h-10 px-3 rounded-lg border border-[var(--st-border)] bg-[#18181b] text-xs text-white focus:outline-none focus:border-[var(--st-primary)]"
                   >
-                    <option value="momentum_rsi">Momentum RSI + Volume Delta</option>
-                    <option value="trend_following">Trend Following VWAP + Ribbon</option>
-                    <option value="mean_reversion">Ornstein-Uhlenbeck Mean Reversion</option>
-                    <option value="conformal_arbitrage">Conformal Bands (95% CI)</option>
+                    <option value="momentum_rsi" style={{ backgroundColor: '#18181b', color: '#f8fafc' }}>Momentum RSI + Volume Delta</option>
+                    <option value="trend_following" style={{ backgroundColor: '#18181b', color: '#f8fafc' }}>Trend Following VWAP + Ribbon</option>
+                    <option value="mean_reversion" style={{ backgroundColor: '#18181b', color: '#f8fafc' }}>Ornstein-Uhlenbeck Mean Reversion</option>
+                    <option value="conformal_arbitrage" style={{ backgroundColor: '#18181b', color: '#f8fafc' }}>Conformal Bands (95% CI)</option>
                   </select>
                 </div>
               </div>
@@ -617,7 +854,16 @@ export const BotsScreen: React.FC = () => {
                 currentPrice: currentPrice,
                 side: bot.position.side,
               } : undefined}
-              onToggleStatus={() => toggleBotActive(bot.id)}
+              onToggleStatus={() => {
+                const willBeActive = !bot.active;
+                toggleBotActive(bot.id);
+                toast({
+                  title: willBeActive ? `Robô ${bot.name} Ativado` : `Robô ${bot.name} Pausado`,
+                  description: willBeActive
+                    ? `O robô foi iniciado e está monitorando o par ${bot.symbol.replace('USDT', '/USDT')}.`
+                    : `O robô foi pausado com sucesso. Nenhuma nova ordem será aberta.`,
+                });
+              }}
               onResetStats={() => {
                 resetBotStats(bot.id);
                 toast({ title: bot.name, description: 'Estatísticas zeradas com sucesso.' });
