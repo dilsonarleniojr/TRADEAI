@@ -80,6 +80,7 @@ export type WorkerInboundMessage =
   | { type: "INIT_L2_DEPTH_BUFFER"; buffer: SharedArrayBuffer; maxLevels?: number }
   | { type: "SUBSCRIBE"; symbols: string[]; symbolMap?: Record<string, number> }
   | { type: "CONNECT_PEER_PORT"; port: MessagePort }
+  | { type: "DISPATCH_L2_UPDATE"; symbol: string; bids: [number, number][]; asks: [number, number][]; timestamp?: number }
   | { type: "DISCONNECT" }
   | { type: "PING" };
 
@@ -358,10 +359,30 @@ if (typeof self !== "undefined" && typeof (self as any).postMessage === "functio
     const ticker = parseBinanceMicrostructurePayload(rawText, cacheMap);
     if (!ticker) {
       try {
-        const errObj = JSON.parse(rawText);
-        if (errObj && (errObj.code === -1003 || isBinanceRateLimit(errObj.code, errObj.msg))) {
+        const payload = JSON.parse(rawText);
+        const data = payload.data || payload;
+
+        // Suporte a Depth Snapshot / Update (@depth20@100ms ou @depth@100ms)
+        if (data && data.bids && data.asks) {
+          const sym = String(data.s || (payload.stream ? payload.stream.split("@")[0] : "")).toUpperCase();
+          const ts = Number(data.E) || Date.now();
+          if (peerPort) {
+            try {
+              peerPort.postMessage({
+                type: "PEER_L2_UPDATE",
+                symbol: sym,
+                bids: data.bids,
+                asks: data.asks,
+                timestamp: ts,
+              });
+            } catch {}
+          }
+          return;
+        }
+
+        if (payload && (payload.code === -1003 || isBinanceRateLimit(payload.code, payload.msg))) {
           const serialized = createSerializedWorkerError(
-            errObj.msg || "Binance Rate limit reached (-1003)",
+            payload.msg || "Binance Rate limit reached (-1003)",
             "ALL",
             429
           );
@@ -533,6 +554,21 @@ if (typeof self !== "undefined" && typeof (self as any).postMessage === "functio
             peerPort.start();
           }
           (self as any).postMessage({ type: "PEER_PORT_CONNECTED" });
+        }
+        break;
+      }
+
+      case "DISPATCH_L2_UPDATE": {
+        if (peerPort) {
+          try {
+            peerPort.postMessage({
+              type: "PEER_L2_UPDATE",
+              symbol: msg.symbol,
+              bids: msg.bids,
+              asks: msg.asks,
+              timestamp: msg.timestamp || Date.now(),
+            });
+          } catch {}
         }
         break;
       }

@@ -161,7 +161,13 @@ export class OffscreenChartController {
                     self.postMessage({ type: "PEER_TICK_PROCESSED", ticker: pData.ticker });
                   } else if (pData && pData.type === "PEER_L2_UPDATE") {
                     lastL2Update = pData;
-                    self.postMessage({ type: "PEER_L2_PROCESSED", symbol: pData.symbol });
+                    self.postMessage({
+                      type: "PEER_L2_PROCESSED",
+                      symbol: pData.symbol,
+                      bidsCount: pData.bids ? pData.bids.length : 0,
+                      asksCount: pData.asks ? pData.asks.length : 0,
+                      timestamp: pData.timestamp || Date.now(),
+                    });
                   }
                 };
                 if (typeof peerPort.start === "function") {
@@ -229,6 +235,11 @@ export class OffscreenChartController {
           this.lastPeerTick = msg.ticker;
           if (this.onPeerTickCallback) {
             this.onPeerTickCallback(msg.ticker);
+          }
+        } else if (msg.type === "PEER_L2_PROCESSED") {
+          this.lastL2Update = msg;
+          if (this.onPeerL2UpdateCallback) {
+            this.onPeerL2UpdateCallback(msg);
           }
         }
       };
@@ -397,9 +408,15 @@ export class OffscreenChartController {
 
   private lastPeerTick: any = null;
   private onPeerTickCallback: ((ticker: any) => void) | null = null;
+  private lastL2Update: any = null;
+  private onPeerL2UpdateCallback: ((update: any) => void) | null = null;
 
   public getLastPeerTick(): any {
     return this.lastPeerTick;
+  }
+
+  public getLastL2Update(): any {
+    return this.lastL2Update;
   }
 
   /**
@@ -410,13 +427,32 @@ export class OffscreenChartController {
   }
 
   /**
-   * Registra um listener e retorna uma função para cancelamento.
+   * Registra um callback para ser notificado de updates L2 recebidos via canal Peer-to-Peer.
+   */
+  public setOnPeerL2Update(callback: ((update: any) => void) | null): void {
+    this.onPeerL2UpdateCallback = callback;
+  }
+
+  /**
+   * Registra um listener de cotação e retorna uma função para cancelamento.
    */
   public onPeerTick(callback: (ticker: any) => void): () => void {
     this.onPeerTickCallback = callback;
     return () => {
       if (this.onPeerTickCallback === callback) {
         this.onPeerTickCallback = null;
+      }
+    };
+  }
+
+  /**
+   * Registra um listener de profundidade L2 e retorna uma função para cancelamento.
+   */
+  public onPeerL2Update(callback: (update: any) => void): () => void {
+    this.onPeerL2UpdateCallback = callback;
+    return () => {
+      if (this.onPeerL2UpdateCallback === callback) {
+        this.onPeerL2UpdateCallback = null;
       }
     };
   }
@@ -444,6 +480,11 @@ export class OffscreenChartController {
           this.lastPeerTick = data.ticker;
           if (this.onPeerTickCallback) {
             this.onPeerTickCallback(data.ticker);
+          }
+        } else if (data && data.type === "PEER_L2_UPDATE") {
+          this.lastL2Update = data;
+          if (this.onPeerL2UpdateCallback) {
+            this.onPeerL2UpdateCallback(data);
           }
         }
       };
@@ -643,6 +684,8 @@ export class OffscreenChartController {
     this.l2DepthMatrix = null;
     this.lastPeerTick = null;
     this.onPeerTickCallback = null;
+    this.lastL2Update = null;
+    this.onPeerL2UpdateCallback = null;
     this.canvas = null;
     this.offscreenCanvas = null;
   }

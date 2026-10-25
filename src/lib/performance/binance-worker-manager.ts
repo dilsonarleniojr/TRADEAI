@@ -99,9 +99,27 @@ export class BinanceWorkerManager {
   // Buffer de scratch para leitura de slot sem alocações
   private readonly scratchSlot = new Float64Array(DEFAULT_TICKER_STRIDE);
   private workerBlobUrl: string | null = null;
+  private peerPort: MessagePort | null = null;
 
-  constructor(onBatch?: WorkerBatchCallback, onError?: WorkerErrorCallback) {
-    if (onBatch) this.onBatchCallback = onBatch;
+  constructor(
+    onBatchOrOptions?: WorkerBatchCallback | {
+      symbols?: string[];
+      queueCapacity?: number;
+      spscStride?: number;
+      onBatch?: WorkerBatchCallback;
+      onError?: WorkerErrorCallback;
+    },
+    onError?: WorkerErrorCallback
+  ) {
+    if (typeof onBatchOrOptions === "function") {
+      this.onBatchCallback = onBatchOrOptions;
+    } else if (onBatchOrOptions && typeof onBatchOrOptions === "object") {
+      if (onBatchOrOptions.onBatch) this.onBatchCallback = onBatchOrOptions.onBatch;
+      if (onBatchOrOptions.onError) this.onErrorCallback = onBatchOrOptions.onError;
+      if (onBatchOrOptions.symbols) {
+        onBatchOrOptions.symbols.forEach((s) => this.subscribedSymbols.add(s.toUpperCase()));
+      }
+    }
     if (onError) this.onErrorCallback = onError;
 
     this.initQueues();
@@ -156,12 +174,13 @@ export class BinanceWorkerManager {
    * (ex: OffscreenChartController Worker), permitindo transmissão zero-hop sem tocar na Main Thread.
    */
   public connectPeerPort(port: MessagePort): boolean {
+    this.peerPort = port;
     if (!this.worker) {
       this.start();
     }
     if (this.worker && port) {
       try {
-        const msg: WorkerInboundMessage = { type: "CONNECT_PEER_PORT", port };
+        const msg: any = { type: "CONNECT_PEER_PORT", port };
         this.worker.postMessage(msg, [port]);
         return true;
       } catch (err) {
@@ -169,7 +188,55 @@ export class BinanceWorkerManager {
         return false;
       }
     }
-    return false;
+    return port !== null;
+  }
+
+  /**
+   * Despacha snapshot ou delta de profundidade L2 diretamente para o canal P2P e SharedL2DepthMatrix.
+   * Se o worker estiver rodando com peerPort conectado ao OffscreenChartController,
+   * a transmissão é realizada sem overhead na Main Thread.
+   */
+  public dispatchL2DepthSnapshot(
+    symbol: string,
+    bids: [number, number][],
+    asks: [number, number][],
+    timestamp: number = Date.now()
+  ): void {
+    // 1. Grava na matriz de profundidade em memória compartilhada, se disponível
+    if (this.l2DepthMatrix) {
+      this.l2DepthMatrix.writeDepthSnapshot(bids, asks, timestamp);
+    }
+
+    // 2. Se o worker estiver ativo, delega o envio para a thread isolada
+    if (this.worker) {
+      try {
+        this.worker.postMessage({
+          type: "DISPATCH_L2_UPDATE",
+          symbol,
+          bids,
+          asks,
+          timestamp,
+        });
+        return;
+      } catch (err) {
+        console.warn("[BinanceWorkerManager] Erro ao despachar DISPATCH_L2_UPDATE para o worker:", err);
+      }
+    }
+
+    // 3. Fallback: Despacha diretamente pelo peerPort local se o worker não estiver isolado
+    if (this.peerPort) {
+      try {
+        this.peerPort.postMessage({
+          type: "PEER_L2_UPDATE",
+          symbol,
+          bids,
+          asks,
+          timestamp,
+        });
+      } catch (err) {
+        console.warn("[BinanceWorkerManager] Erro ao despachar PEER_L2_UPDATE no fallback peerPort:", err);
+      }
+    }
   }
 
   public getL2DepthMatrix(): SharedL2DepthMatrix | null {
@@ -397,6 +464,23 @@ export class BinanceWorkerManager {
           var payload = JSON.parse(raw);
           var stream = payload.stream || "";
           var data = payload.data || payload;
+
+          if (data && data.bids && data.asks) {
+            var depthSym = String(data.s || (stream ? stream.split("@")[0] : "")).toUpperCase();
+            var depthTs = parseFloat(data.E) || Date.now();
+            if (peerPort) {
+              try {
+                peerPort.postMessage({
+                  type: "PEER_L2_UPDATE",
+                  symbol: depthSym,
+                  bids: data.bids,
+                  asks: data.asks,
+                  timestamp: depthTs
+                });
+              } catch(e) {}
+            }
+            return;
+          }
 
           if (stream.indexOf("@bookTicker") !== -1 || (data && data.b && data.a && !data.c)) {
             var sym = String(data.s).toUpperCase();
@@ -661,6 +745,18 @@ export class BinanceWorkerManager {
               peerPort.start();
             }
             self.postMessage({ type: "PEER_PORT_CONNECTED" });
+          }
+        } else if (msg.type === "DISPATCH_L2_UPDATE") {
+          if (peerPort) {
+            try {
+              peerPort.postMessage({
+                type: "PEER_L2_UPDATE",
+                symbol: msg.symbol,
+                bids: msg.bids,
+                asks: msg.asks,
+                timestamp: msg.timestamp || Date.now()
+              });
+            } catch(e) {}
           }
         } else if (msg.type === "PING") {
           self.postMessage({ type: "PONG", timestamp: Date.now() });
