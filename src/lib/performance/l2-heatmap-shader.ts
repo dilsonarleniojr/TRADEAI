@@ -144,32 +144,37 @@ export function generate1DHeatmapPaletteData(): Uint8Array {
   const data = new Uint8Array(PALETTE_1D_WIDTH * 4);
 
   // 1. Metade Bids (0 a 127) -> Base Cyan/Emerald vec3(0.06, 0.78, 0.52)
+  // Index 0 = volume zero (alpha 0); Index 127 = volume máximo (alpha 255, verde/ciano brilhante)
   for (let i = 0; i < 128; i++) {
     const t = i / 127;
-    // Curva perceptual gama 1.4
     const curve = Math.pow(t, 1.4);
-    const r = Math.min(255, Math.floor(15 * curve + 30 * Math.pow(t, 3)));
-    const g = Math.min(255, Math.floor(200 * curve));
-    const b = Math.min(255, Math.floor(135 * curve + 120 * Math.pow(t, 2)));
+    const r = Math.min(255, Math.floor(15 * curve + 35 * Math.pow(t, 3)));
+    const g = Math.min(255, Math.floor(220 * curve));
+    const b = Math.min(255, Math.floor(140 * curve + 115 * Math.pow(t, 2)));
+    const a = Math.min(255, Math.floor(255 * Math.pow(t, 0.8)));
+
     const offset = i * 4;
     data[offset + 0] = r;
     data[offset + 1] = g;
     data[offset + 2] = b;
-    data[offset + 3] = 255;
+    data[offset + 3] = a;
   }
 
   // 2. Metade Asks (128 a 255) -> Base Amber/Rose vec3(0.94, 0.32, 0.25)
+  // Index 128 = volume zero (alpha 0); Index 255 = volume máximo (alpha 255, âmbar/vermelho brilhante)
   for (let i = 0; i < 128; i++) {
     const t = i / 127;
     const curve = Math.pow(t, 1.4);
-    const r = Math.min(255, Math.floor(240 * curve));
-    const g = Math.min(255, Math.floor(82 * curve));
-    const b = Math.min(255, Math.floor(64 * curve));
+    const r = Math.min(255, Math.floor(245 * curve + 10 * Math.pow(t, 2)));
+    const g = Math.min(255, Math.floor(95 * curve));
+    const b = Math.min(255, Math.floor(65 * curve));
+    const a = Math.min(255, Math.floor(255 * Math.pow(t, 0.8)));
+
     const offset = (128 + i) * 4;
     data[offset + 0] = r;
     data[offset + 1] = g;
     data[offset + 2] = b;
-    data[offset + 3] = 255;
+    data[offset + 3] = a;
   }
 
   return data;
