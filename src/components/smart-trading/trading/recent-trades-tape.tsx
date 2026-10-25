@@ -1,8 +1,21 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { SmartBadge } from '../ui/badge';
-import { Activity, ArrowUpRight, ArrowDownRight, Clock, Zap } from 'lucide-react';
+import React, { useState, useEffect, useMemo, memo } from 'react';
+import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
+
+/**
+ * Interface estrita para o payload de trades agregados da Binance (REST /api/v3/aggTrades).
+ */
+export interface BinanceAggTradeRaw {
+  a: number;   // Aggregate tradeId
+  p: string;   // Preço
+  q: string;   // Quantidade
+  f?: number;  // Primeiro tradeId
+  l?: number;  // Último tradeId
+  T: number;   // Timestamp (ms)
+  m: boolean;  // Buyer is maker (m = true => seller é taker/vendedor ativo => SELL)
+  M?: boolean; // Best price match
+}
 
 export interface MarketTapeTrade {
   id: string;
@@ -11,6 +24,9 @@ export interface MarketTapeTrade {
   amountUsd: number;
   side: 'BUY' | 'SELL';
   timestamp: number;
+  formattedPrice: string;
+  formattedAmount: string;
+  formattedTime: string;
 }
 
 interface RecentTradesTapeProps {
@@ -18,19 +34,82 @@ interface RecentTradesTapeProps {
   maxRows?: number;
 }
 
-function formatMsTime(ts: number): string {
+/**
+ * Formatação de timestamp com resolução de milissegundos sem overhead excessivo.
+ */
+export function formatMsTime(ts: number): string {
   const d = new Date(ts);
-  const pad = (n: number, z = 2) => String(n).padStart(z, '0');
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+  const h = d.getHours().toString().padStart(2, '0');
+  const m = d.getMinutes().toString().padStart(2, '0');
+  const s = d.getSeconds().toString().padStart(2, '0');
+  const ms = d.getMilliseconds().toString().padStart(3, '0');
+  return `${h}:${m}:${s}.${ms}`;
 }
 
-export const RecentTradesTape: React.FC<RecentTradesTapeProps> = ({
+/**
+ * Parser de trades agregados com varredura reversa em passagem única (Single-Pass O(N)).
+ * Elimina .map().sort().slice() e precalcula strings na ingestão para manter o hot-path da UI Zero-Alloc.
+ */
+export function parseBinanceAggTrades(raw: unknown, maxRows: number): MarketTapeTrade[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return [];
+  }
+
+  const rawLength = raw.length;
+  const count = Math.min(rawLength, maxRows);
+  const result: MarketTapeTrade[] = new Array(count);
+
+  // Binance retorna trades cronologicamente (T ascendente).
+  // Percorrendo de trás para frente pegamos os mais recentes primeiro sem sort()
+  let outIdx = 0;
+  for (let i = rawLength - 1; i >= 0 && outIdx < count; i--) {
+    const item = raw[i] as Partial<BinanceAggTradeRaw> | null;
+    if (!item || typeof item !== 'object') continue;
+
+    const price = typeof item.p === 'string' ? parseFloat(item.p) : (Number(item.p) || 0);
+    const amount = typeof item.q === 'string' ? parseFloat(item.q) : (Number(item.q) || 0);
+    const timestamp = typeof item.T === 'number' ? item.T : Date.now();
+    const id = item.a != null ? String(item.a) : `${timestamp}-${outIdx}`;
+    const side: 'BUY' | 'SELL' = item.m ? 'SELL' : 'BUY';
+    const amountUsd = price * amount;
+
+    // Pré-formatação imutável para eliminar alocações no loop de renderização (60Hz+)
+    const formattedPrice = price >= 1000
+      ? price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : price.toFixed(4);
+    const formattedAmount = amount.toFixed(4);
+    const formattedTime = formatMsTime(timestamp);
+
+    result[outIdx++] = {
+      id,
+      price,
+      amount,
+      amountUsd,
+      side,
+      timestamp,
+      formattedPrice,
+      formattedAmount,
+      formattedTime,
+    };
+  }
+
+  // Ajusta o tamanho caso algum item tenha sido pulado
+  if (outIdx < count) {
+    result.length = outIdx;
+  }
+
+  return result;
+}
+
+const FILTER_THRESHOLDS = [0, 1000, 10000] as const;
+
+export const RecentTradesTape: React.FC<RecentTradesTapeProps> = memo(({
   symbol,
   maxRows = 30,
 }) => {
   const [trades, setTrades] = useState<MarketTapeTrade[]>([]);
   const [filterMinUsd, setFilterMinUsd] = useState<number>(0);
-  const cleanSymbol = symbol.toUpperCase().replace('/', '');
+  const cleanSymbol = useMemo(() => symbol.toUpperCase().replace('/', ''), [symbol]);
 
   useEffect(() => {
     let isMounted = true;
@@ -39,29 +118,14 @@ export const RecentTradesTape: React.FC<RecentTradesTapeProps> = ({
       try {
         const res = await fetch(`https://api.binance.com/api/v3/aggTrades?symbol=${cleanSymbol}&limit=${maxRows}`);
         if (res.ok) {
-          const raw = await res.json();
-          if (Array.isArray(raw) && isMounted) {
-            const parsed: MarketTapeTrade[] = raw
-              .map((t: any) => {
-                const price = parseFloat(t.p);
-                const amount = parseFloat(t.q);
-                return {
-                  id: String(t.a),
-                  price,
-                  amount,
-                  amountUsd: price * amount,
-                  side: t.m ? ('SELL' as const) : ('BUY' as const), // m = buyer is maker => seller is taker
-                  timestamp: t.T,
-                };
-              })
-              .sort((a, b) => b.timestamp - a.timestamp)
-              .slice(0, maxRows);
-
+          const raw: unknown = await res.json();
+          if (isMounted) {
+            const parsed = parseBinanceAggTrades(raw, maxRows);
             setTrades(parsed);
           }
         }
-      } catch (err) {
-        // Ignora erros transitórios de rede
+      } catch {
+        // Falhas de rede transitórias são absorvidas pelo próximo ciclo de polling
       }
     };
 
@@ -90,7 +154,7 @@ export const RecentTradesTape: React.FC<RecentTradesTapeProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 text-[10px]">
-          {[0, 1000, 10000].map((threshold) => (
+          {FILTER_THRESHOLDS.map((threshold) => (
             <button
               key={threshold}
               type="button"
@@ -127,19 +191,19 @@ export const RecentTradesTape: React.FC<RecentTradesTapeProps> = ({
             >
               <div className="flex items-center gap-1 font-bold">
                 {isBuy ? (
-                  <ArrowUpRight className="w-3 h-3 text-emerald-400" />
+                  <ArrowUpRight className="w-3 h-3 text-emerald-400 shrink-0" />
                 ) : (
-                  <ArrowDownRight className="w-3 h-3 text-red-400" />
+                  <ArrowDownRight className="w-3 h-3 text-red-400 shrink-0" />
                 )}
-                <span>${t.price >= 1000 ? t.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : t.price.toFixed(4)}</span>
+                <span>${t.formattedPrice}</span>
               </div>
 
               <div className="text-right text-neutral-300">
-                {t.amount.toFixed(4)}
+                {t.formattedAmount}
               </div>
 
               <div className="text-right text-neutral-500 text-[10px]">
-                {formatMsTime(t.timestamp)}
+                {t.formattedTime}
               </div>
             </div>
           );
@@ -153,4 +217,6 @@ export const RecentTradesTape: React.FC<RecentTradesTapeProps> = ({
       </div>
     </div>
   );
-};
+});
+
+RecentTradesTape.displayName = 'RecentTradesTape';

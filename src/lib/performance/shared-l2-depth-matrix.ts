@@ -67,6 +67,31 @@ export interface DynamicQuantizationOptions {
 }
 
 /**
+ * Nível L2 bruto em formato de tupla [preço, quantidade].
+ */
+export type L2DepthTuple = readonly [price: number, quantity: number];
+
+/**
+ * Nível L2 bruto em formato de objeto { price, quantity }.
+ */
+export interface L2DepthObject {
+  readonly price: number;
+  readonly quantity: number;
+}
+
+/**
+ * União estrita dos formatos suportados de nível L2 no caminho de ingestão.
+ */
+export type L2DepthInput = L2DepthTuple | L2DepthObject;
+
+/**
+ * Type guard puro para determinar se o nível L2 é representado como tupla array.
+ */
+export function isL2Tuple(item: unknown): item is L2DepthTuple {
+  return Array.isArray(item);
+}
+
+/**
  * Busca binária para livro de compra (Bids) ordenado de forma DECRESCENTE (maior preço primeiro).
  */
 export function binarySearchBid(prices: Float64Array, count: number, target: number): { found: boolean; index: number } {
@@ -342,8 +367,8 @@ export class SharedL2DepthMatrix {
    * no Back Buffer de forma incremental com complexidade O(K log N) e zero alocações.
    */
   public applyDelta(
-    bidsDelta: ArrayLike<[number, number]> | Array<any>,
-    asksDelta: ArrayLike<[number, number]> | Array<any>,
+    bidsDelta: ArrayLike<L2DepthInput>,
+    asksDelta: ArrayLike<L2DepthInput>,
     timestamp: number = Date.now(),
     options?: DeltaOptions
   ): number {
@@ -365,15 +390,15 @@ export class SharedL2DepthMatrix {
     // 1. Processa deltas de Bids
     const bidsLen = bidsDelta.length;
     for (let i = 0; i < bidsLen; i++) {
-      const item = bidsDelta[i] as any;
+      const item = bidsDelta[i];
       let p = 0;
       let q = 0;
       if (Array.isArray(item)) {
         p = item[0] || 0;
         q = item[1] || 0;
       } else if (item && typeof item === "object") {
-        p = item.price || 0;
-        q = item.quantity || 0;
+        p = (item as L2DepthObject).price || 0;
+        q = (item as L2DepthObject).quantity || 0;
       }
       if (p <= 0) continue;
 
@@ -411,15 +436,15 @@ export class SharedL2DepthMatrix {
     // 2. Processa deltas de Asks
     const asksLen = asksDelta.length;
     for (let i = 0; i < asksLen; i++) {
-      const item = asksDelta[i] as any;
+      const item = asksDelta[i];
       let p = 0;
       let q = 0;
       if (Array.isArray(item)) {
         p = item[0] || 0;
         q = item[1] || 0;
       } else if (item && typeof item === "object") {
-        p = item.price || 0;
-        q = item.quantity || 0;
+        p = (item as L2DepthObject).price || 0;
+        q = (item as L2DepthObject).quantity || 0;
       }
       if (p <= 0) continue;
 
@@ -491,8 +516,8 @@ export class SharedL2DepthMatrix {
    * Acumula delta e executa swap atômico em chamada combinada.
    */
   public applyDeltaAndSwap(
-    bidsDelta: ArrayLike<[number, number]> | Array<any>,
-    asksDelta: ArrayLike<[number, number]> | Array<any>,
+    bidsDelta: ArrayLike<L2DepthInput>,
+    asksDelta: ArrayLike<L2DepthInput>,
     timestamp: number = Date.now(),
     autoSync: boolean = true
   ): number {
@@ -504,8 +529,8 @@ export class SharedL2DepthMatrix {
    * Em modo double-buffered, grava no Back Buffer e executa swap atômico para o Front Buffer.
    */
   public writeDepthSnapshot(
-    bids: ArrayLike<[number, number]> | ArrayLike<number> | Array<any>,
-    asks: ArrayLike<[number, number]> | ArrayLike<number> | Array<any>,
+    bids: ArrayLike<L2DepthInput>,
+    asks: ArrayLike<L2DepthInput>,
     timestamp: number = Date.now(),
     targetBufferIndex?: number
   ): number {
@@ -531,7 +556,7 @@ export class SharedL2DepthMatrix {
 
     // 1. Grava Bids (Preço decrescente)
     for (let i = 0; i < bidsLen; i++) {
-      const item = bids[i] as any;
+      const item = bids[i];
       let p = 0;
       let q = 0;
 
@@ -539,8 +564,8 @@ export class SharedL2DepthMatrix {
         p = item[0] || 0;
         q = item[1] || 0;
       } else if (typeof item === "object" && item !== null) {
-        p = item.price || 0;
-        q = item.quantity || 0;
+        p = (item as L2DepthObject).price || 0;
+        q = (item as L2DepthObject).quantity || 0;
       }
 
       targetBidPrices[i] = p;
@@ -551,7 +576,7 @@ export class SharedL2DepthMatrix {
 
     // 2. Grava Asks (Preço crescente)
     for (let i = 0; i < asksLen; i++) {
-      const item = asks[i] as any;
+      const item = asks[i];
       let p = 0;
       let q = 0;
 
@@ -559,8 +584,8 @@ export class SharedL2DepthMatrix {
         p = item[0] || 0;
         q = item[1] || 0;
       } else if (typeof item === "object" && item !== null) {
-        p = item.price || 0;
-        q = item.quantity || 0;
+        p = (item as L2DepthObject).price || 0;
+        q = (item as L2DepthObject).quantity || 0;
       }
 
       targetAskPrices[i] = p;

@@ -36,6 +36,78 @@ import {
   Fuel
 } from 'lucide-react';
 
+export interface FleetMetricsAggregate {
+  activeBotsCount: number;
+  inPositionBots: BotInstance[];
+  totalRealizedPnl: number;
+  totalUnrealizedPnl: number;
+  totalTradesCount: number;
+  totalWinningTrades: number;
+  fleetWinRateFormatted: string;
+}
+
+/**
+ * Agregação das métricas da frota em passagem única O(N), eliminando múltiplos loops e chamadas de filter/reduce.
+ */
+export function calculateFleetMetrics(bots: readonly BotInstance[]): FleetMetricsAggregate {
+  let activeBotsCount = 0;
+  const inPositionBots: BotInstance[] = [];
+  let totalRealizedPnl = 0;
+  let totalUnrealizedPnl = 0;
+  let totalTradesCount = 0;
+  let totalWinningTrades = 0;
+
+  for (let i = 0; i < bots.length; i++) {
+    const b = bots[i];
+    if (b.active) activeBotsCount++;
+    if (b.position && b.position.quantity > 0) {
+      inPositionBots.push(b);
+      if (typeof b.position.unrealizedPnl === 'number') {
+        totalUnrealizedPnl += b.position.unrealizedPnl;
+      }
+    }
+    if (b.stats) {
+      totalRealizedPnl += b.stats.realizedPnl || 0;
+      totalTradesCount += b.stats.totalTrades || 0;
+      totalWinningTrades += b.stats.winTrades || 0;
+    }
+  }
+
+  const winRatePct = totalTradesCount > 0 ? (totalWinningTrades / totalTradesCount) * 100 : 0;
+  const fleetWinRateFormatted = totalTradesCount > 0 ? `${winRatePct.toFixed(1)}%` : '0.0%';
+
+  return {
+    activeBotsCount,
+    inPositionBots,
+    totalRealizedPnl,
+    totalUnrealizedPnl,
+    totalTradesCount,
+    totalWinningTrades,
+    fleetWinRateFormatted,
+  };
+}
+
+/**
+ * Resolução pura e determinística do estado semântico de um bot com hierarquia estrita de precedência:
+ * Circuit Breaker -> Cooldown -> Pausado -> Em Posição -> Aguardando Sinal
+ */
+export function resolveBotSemanticState(bot: BotInstance): BotSemanticState {
+  const lastAction = bot.stats?.lastAction;
+  if (lastAction?.includes('Circuit Breaker') || lastAction?.includes('Kill Switch')) {
+    return 'circuit_breaker';
+  }
+  if (lastAction?.includes('Cooldown') || (bot.stats?.lossTrades ?? 0) >= 3) {
+    return 'cooldown';
+  }
+  if (!bot.active || bot.status === 'stopped') {
+    return 'paused';
+  }
+  if (bot.position && bot.position.quantity > 0) {
+    return 'active';
+  }
+  return 'waiting_signal';
+}
+
 export const BotsScreen: React.FC = () => {
   const {
     bots,
@@ -94,39 +166,17 @@ export const BotsScreen: React.FC = () => {
     };
   }, []);
 
-  // 1. Métricas Agregadas da Frota em Tempo Real
-  const activeBots = useMemo(() => bots.filter((b) => b.active), [bots]);
-  const inPositionBots = useMemo(
-    () => bots.filter((b) => !!b.position && b.position.quantity > 0),
-    [bots]
-  );
-
-  const totalRealizedPnl = useMemo(() => {
-    return bots.reduce((sum, b) => sum + (b.stats?.realizedPnl || 0), 0);
-  }, [bots]);
-
-  const totalUnrealizedPnl = useMemo(() => {
-    return bots.reduce((sum, b) => {
-      if (b.position && typeof b.position.unrealizedPnl === 'number') {
-        return sum + b.position.unrealizedPnl;
-      }
-      return sum;
-    }, 0);
-  }, [bots]);
-
-  const totalTradesCount = useMemo(() => {
-    return bots.reduce((sum, b) => sum + (b.stats?.totalTrades || 0), 0);
-  }, [bots]);
-
-  const totalWinningTrades = useMemo(() => {
-    return bots.reduce((sum, b) => sum + (b.stats?.winTrades || 0), 0);
-  }, [bots]);
-
-  const fleetWinRateFormatted = useMemo(() => {
-    if (totalTradesCount === 0) return '0.0%';
-    const pct = (totalWinningTrades / totalTradesCount) * 100;
-    return `${pct.toFixed(1)}%`;
-  }, [totalTradesCount, totalWinningTrades]);
+  // 1. Métricas Agregadas da Frota em Passagem Única O(N)
+  const fleetMetrics = useMemo(() => calculateFleetMetrics(bots), [bots]);
+  const {
+    activeBotsCount,
+    inPositionBots,
+    totalRealizedPnl,
+    totalUnrealizedPnl,
+    totalTradesCount,
+    totalWinningTrades,
+    fleetWinRateFormatted,
+  } = fleetMetrics;
 
   // Circuit Breaker Diário: cálculo da perda consumida vs teto
   const navTotal = Math.max(10, portfolio?.totalValue || 38.85);
@@ -179,8 +229,9 @@ export const BotsScreen: React.FC = () => {
         try {
           await manualCloseBotPosition(bot.id);
           closed++;
-        } catch (e: any) {
-          console.error(`[BotsScreen] Erro ao fechar posição de ${bot.name}:`, e.message);
+        } catch (err: unknown) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          console.error(`[BotsScreen] Erro ao fechar posição de ${bot.name}:`, errorMsg);
         }
       }
 
@@ -191,17 +242,6 @@ export const BotsScreen: React.FC = () => {
       });
     }
   }, [closeAllConfirm, inPositionBots, toast]);
-
-  // Resolução Semântica do Estado do Bot
-  const getBotSemanticState = useCallback((bot: BotInstance): BotSemanticState => {
-    const isCb = bot.stats?.lastAction?.includes('Circuit Breaker') || bot.stats?.lastAction?.includes('Kill Switch');
-    if (isCb) return 'circuit_breaker';
-    const isCooldown = bot.stats?.lastAction?.includes('Cooldown') || (bot.stats?.lossTrades ?? 0) >= 3;
-    if (isCooldown) return 'cooldown';
-    if (!bot.active || bot.status === 'stopped') return 'paused';
-    if (bot.position && bot.position.quantity > 0) return 'active';
-    return 'waiting_signal';
-  }, []);
 
   // Handler de Criação de Robô
   const handleCreateBot = (e: React.FormEvent) => {
@@ -358,7 +398,7 @@ export const BotsScreen: React.FC = () => {
             <span className="text-[11px] text-[var(--st-text-muted)] font-medium">Status da Frota</span>
             <div className="mt-2">
               <span className="text-lg font-bold font-mono text-emerald-400">
-                {activeBots.length}/{bots.length} Ativos
+                {activeBotsCount}/{bots.length} Ativos
               </span>
               <span className="block text-[10px] text-[var(--st-text-muted)] font-mono">
                 Uptime: 99.98%
@@ -544,7 +584,7 @@ export const BotsScreen: React.FC = () => {
       {/* Grid de Robôs da Frota */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {bots.map((bot) => {
-          const semanticState = getBotSemanticState(bot);
+          const semanticState = resolveBotSemanticState(bot);
           const currentPrice = tickers[bot.symbol]?.price ?? (bot.position?.currentPrice || 0);
           const hasPos = !!bot.position && bot.position.quantity > 0;
           const uPnl = hasPos && bot.position
