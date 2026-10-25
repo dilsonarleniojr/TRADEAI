@@ -91,7 +91,7 @@ export function SmartBacktestMetricsCard() {
       </div>
 
       {/* Equity Curve SVG */}
-      <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800/80">
+      <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800/80 cyan-border-glow">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-semibold text-neutral-300">Curva de Patrimônio Líquido (Equity Curve)</span>
           <span className="text-xs font-mono text-emerald-400 font-bold">$14,860.00 USD</span>
@@ -112,16 +112,8 @@ export function SmartBacktestMetricsCard() {
               />
             ))}
 
-            {/* Gradient fill */}
-            <defs>
-              <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.4" />
-                <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.0" />
-              </linearGradient>
-            </defs>
-
             <polygon
-              fill="url(#equityGrad)"
+              className="svg-fill-blue"
               points={`0,${height} ${pointsSvg} ${width},${height}`}
             />
 

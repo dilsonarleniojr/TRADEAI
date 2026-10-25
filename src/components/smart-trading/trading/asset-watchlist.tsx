@@ -233,7 +233,7 @@ export function SmartAssetWatchlist({
       </div>
 
       {/* Category Pills */}
-      <div className="flex items-center gap-1 overflow-x-auto pb-2 mb-2 st-scrollbar">
+      <div className="flex items-center gap-1 overflow-x-auto pb-2 mb-2 cyan-scrollbar">
         {categories.map((c) => (
           <button
             key={c.id}
@@ -252,7 +252,7 @@ export function SmartAssetWatchlist({
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto space-y-1 pr-1 st-scrollbar">
+      <div className="flex-1 overflow-y-auto space-y-1 pr-1 cyan-scrollbar">
         {filteredAssets.length === 0 ? (
           <div className="py-8 text-center text-xs text-neutral-500">
             Nenhum par encontrado para a busca.

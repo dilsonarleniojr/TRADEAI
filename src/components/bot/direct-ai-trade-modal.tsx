@@ -778,13 +778,6 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
             className="w-full h-full overflow-visible"
             preserveAspectRatio="none"
           >
-            <defs>
-              <linearGradient id="chartGradientDirect" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={isProfitable ? "#10b981" : "#f43f5e"} stopOpacity="0.35" />
-                <stop offset="100%" stopColor={isProfitable ? "#10b981" : "#f43f5e"} stopOpacity="0.0" />
-              </linearGradient>
-            </defs>
-
             {/* Linha guia central */}
             <line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="#ffffff" strokeOpacity="0.05" strokeDasharray="3 3" />
 
@@ -831,7 +824,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
             {/* Área sombreada */}
             <path
               d={`${pathData} L ${getX(points.length - 1, points.length).toFixed(1)} ${height - padding} L ${getX(0, points.length).toFixed(1)} ${height - padding} Z`}
-              fill="url(#chartGradientDirect)"
+              className={isProfitable ? "svg-fill-emerald" : "svg-fill-rose"}
             />
 
             {/* Linha da trajetória */}
@@ -999,7 +992,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[580px] w-[calc(100vw-1.5rem)] max-h-[92vh] flex flex-col bg-[#090d14]/95 backdrop-blur-2xl border border-white/[0.1] text-foreground p-0 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] rounded-2xl">
+      <DialogContent className="sm:max-w-[580px] w-[calc(100vw-1.5rem)] max-h-[92vh] flex flex-col bg-[#090d14]/95 backdrop-blur-2xl border border-white/[0.1] cyan-border-glow text-foreground p-0 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] rounded-2xl">
         {/* Header Decorativo com Gradiente */}
         <div className="relative px-5 sm:px-6 pt-5 pb-3.5 border-b border-white/[0.08] bg-gradient-to-r from-cyan-950/40 via-background to-emerald-950/40 shrink-0 pr-16">
           <div className="flex items-center justify-between gap-3">

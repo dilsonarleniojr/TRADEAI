@@ -159,7 +159,7 @@ export function JournalAnalyzerTab() {
         <div className="space-y-6">
           {/* Performance Overview Badges */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-            <Card className="border-border/40 bg-card/60 backdrop-blur-md">
+            <Card className="border-border/40 bg-card/60 backdrop-blur-md emerald-border-glow">
               <CardContent className="p-3 space-y-1">
                 <div className="text-[10px] text-muted-foreground uppercase">PnL Consolidado</div>
                 <div className="text-lg font-bold font-mono text-emerald-400">
@@ -168,7 +168,7 @@ export function JournalAnalyzerTab() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/40 bg-card/60 backdrop-blur-md">
+            <Card className="border-border/40 bg-card/60 backdrop-blur-md cyan-border-glow">
               <CardContent className="p-3 space-y-1">
                 <div className="text-[10px] text-muted-foreground uppercase">Taxa de Acerto</div>
                 <div className="text-lg font-bold font-mono text-cyan-400">
@@ -177,7 +177,7 @@ export function JournalAnalyzerTab() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/40 bg-card/60 backdrop-blur-md">
+            <Card className="border-border/40 bg-card/60 backdrop-blur-md cyan-glow-sm">
               <CardContent className="p-3 space-y-1">
                 <div className="text-[10px] text-muted-foreground uppercase">Fator de Lucro</div>
                 <div className="text-lg font-bold font-mono text-foreground">
@@ -186,7 +186,7 @@ export function JournalAnalyzerTab() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/40 bg-card/60 backdrop-blur-md">
+            <Card className="border-border/40 bg-card/60 backdrop-blur-md emerald-border-glow">
               <CardContent className="p-3 space-y-1">
                 <div className="text-[10px] text-muted-foreground uppercase">Ganho Médio</div>
                 <div className="text-lg font-bold font-mono text-emerald-400">
@@ -195,7 +195,7 @@ export function JournalAnalyzerTab() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/40 bg-card/60 backdrop-blur-md">
+            <Card className="border-border/40 bg-card/60 backdrop-blur-md rose-border-glow">
               <CardContent className="p-3 space-y-1">
                 <div className="text-[10px] text-muted-foreground uppercase">Perda Média</div>
                 <div className="text-lg font-bold font-mono text-rose-400">

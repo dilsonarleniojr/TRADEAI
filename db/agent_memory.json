@@ -1,6 +1,38 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Consolidação de SVGs e Ícones: Migração de Gradientes Inline para Classes Utilitárias no globals.css",
+    "summary": "1) Eliminação de Definições Inline de Gradientes SVG: Removidos blocos redundantes <defs><linearGradient id='equityGrad'|'chartGradientDirect'> nos componentes de gráficos de curvas de patrimônio e modais em src/components/journal/trade-journal-panel.tsx, src/components/smart-trading/trading/backtest-metrics-card.tsx e src/components/bot/direct-ai-trade-modal.tsx, eliminando colisões de ID no DOM e reduzindo o volume de HTML gerado em SSR; 2) Classes Utilitárias de Preenchimento SVG e Brilho Semântico: Adição e padronização em src/app/globals.css de .cyan-glow, .emerald-border-glow, .cyan-border-glow, .rose-border-glow, .svg-fill-emerald, .svg-fill-cyan, .svg-fill-rose e .svg-fill-blue; 3) Purga de Classes Legadas Órfãs: Substituição sistemática de referências legadas .st-scrollbar por .cyan-scrollbar em src/components/smart-trading/ui/modal.tsx, src/components/smart-trading/ui/table.tsx e src/components/smart-trading/trading/asset-watchlist.tsx; 4) Aplicação nos Cards de Métricas do Estúdio Quant: Cards de PnL, Win Rate, Profit Factor, Ganho/Perda Média e Risco em src/components/trade-hub/journal-analyzer-tab.tsx e portfolio-risk-tab.tsx modernizados com as classes utilitárias; 5) Validação: Tipagem estrita com bun x tsc --noEmit (0 erros), 6/6 testes unitários passando em bun test e servidor operacional respondendo HTTP 200.",
+    "tags": [
+      "svg-consolidation",
+      "clean-ssr",
+      "globals-css-utilities",
+      "cyan-glow",
+      "emerald-border-glow",
+      "cyan-scrollbar",
+      "quant-studio",
+      "trade-journal",
+      "zero-css-debt"
+    ],
+    "details": {
+      "globalsCssPath": "src/app/globals.css",
+      "journalPanelPath": "src/components/journal/trade-journal-panel.tsx",
+      "modalPath": "src/components/smart-trading/ui/modal.tsx",
+      "tablePath": "src/components/smart-trading/ui/table.tsx",
+      "backtestCardPath": "src/components/smart-trading/trading/backtest-metrics-card.tsx",
+      "watchlistPath": "src/components/smart-trading/trading/asset-watchlist.tsx",
+      "directTradeModalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "quantStudioTabs": [
+        "src/components/trade-hub/journal-analyzer-tab.tsx",
+        "src/components/trade-hub/portfolio-risk-tab.tsx"
+      ],
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792621000000-svg-css-consolidation",
+    "timestamp": "2026-10-25T03:12:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Heatmap de Profundidade L2 P2P com Paleta 1D de Textura em Shader GLSL ES 3.00 e Zero Heap Allocations",
     "summary": "1) Shader GLSL ES 3.00 & Paleta 1D de Textura em VRAM (src/lib/performance/l2-heatmap-shader.ts): Mapeamento institucional contínuo em 256x1 RGBA na TEXTURE1 (Bids em gradiente Esmeralda/Ciano [0.0..0.48], Asks em gradiente Âmbar/Rubi [0.52..1.0] e spread neutro transparente), eliminando branches condicionais na GPU e tone-mapping na CPU; 2) Zero-Heap Slice Upload na GPU (src/lib/performance/webgl-l2-heatmap-renderer.ts): Adição do método pushDepthSliceFromMatrix acoplado ao SharedL2DepthMatrix.packToSliceRGBA, permitindo transferência direta de memória compartilhada para VRAM via gl.texSubImage2D com zero alocações de heap durante todo o pregão; 3) Canal Peer-to-Peer MessagePort PEER_L2_UPDATE (src/workers/ticker-worker.ts, offscreen-chart-controller.ts e binance-worker-manager.ts): Transmissão direta de snapshots e deltas de profundidade L2 entre o Ingestion Worker e o Render Worker sem intervenção da Main Thread; 4) Validação Rigorosa: Suíte dedicada em tests/unit/l2-heatmap-p2p.test.ts com 9 testes unitários (100% pass), 122 testes de regressão aprovados e tipagem estrita bun x tsc --noEmit limpa com exit code 0.",
     "tags": [

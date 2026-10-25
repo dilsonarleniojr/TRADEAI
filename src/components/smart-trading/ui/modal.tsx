@@ -59,7 +59,7 @@ export function SmartModal({
       {/* Modal Dialog */}
       <div
         className={cn(
-          "relative w-full rounded-2xl bg-[#141414] border border-neutral-800 shadow-2xl z-10 overflow-hidden transform transition-all animate-scaleUp",
+          "relative w-full rounded-2xl bg-[#141414] border border-neutral-800 cyan-glow-sm shadow-2xl z-10 overflow-hidden transform transition-all animate-scaleUp",
           maxWidthStyles[activeWidth]
         )}
       >
@@ -80,7 +80,7 @@ export function SmartModal({
         )}
 
         {/* Body */}
-        <div className="p-6 max-h-[80vh] overflow-y-auto st-scrollbar">{children}</div>
+        <div className="p-6 max-h-[80vh] overflow-y-auto cyan-scrollbar">{children}</div>
 
         {/* Footer */}
         {footer && (

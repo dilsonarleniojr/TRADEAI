@@ -228,38 +228,66 @@
 /* ========================
    Glow Effects (Subtle & Crisp)
    ======================== */
-.glow-cyan {
+.glow-cyan, .cyan-glow {
   box-shadow: 0 0 16px rgba(6, 182, 212, 0.12), 0 0 2px rgba(6, 182, 212, 0.2);
 }
-.glow-green {
+.glow-green, .emerald-glow {
   box-shadow: 0 0 16px rgba(16, 185, 129, 0.12), 0 0 2px rgba(16, 185, 129, 0.2);
 }
-.glow-red {
+.glow-red, .rose-glow {
   box-shadow: 0 0 16px rgba(244, 63, 94, 0.12), 0 0 2px rgba(244, 63, 94, 0.2);
 }
 .glow-gold {
   box-shadow: 0 0 16px rgba(245, 158, 11, 0.12), 0 0 2px rgba(245, 158, 11, 0.2);
 }
 
+/* Border Glow Combinations */
+.cyan-border-glow {
+  border-color: rgba(6, 182, 212, 0.4) !important;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.16);
+}
+.emerald-border-glow {
+  border-color: rgba(16, 185, 129, 0.4) !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.16);
+}
+.rose-border-glow {
+  border-color: rgba(244, 63, 94, 0.4) !important;
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.16);
+}
+
 /* Small subtle glow variants */
-.glow-cyan-sm {
+.glow-cyan-sm, .cyan-glow-sm {
   box-shadow: 0 0 8px rgba(6, 182, 212, 0.15);
 }
-.glow-green-sm {
+.glow-green-sm, .emerald-glow-sm {
   box-shadow: 0 0 8px rgba(16, 185, 129, 0.15);
 }
-.glow-red-sm {
+.glow-red-sm, .rose-glow-sm {
   box-shadow: 0 0 8px rgba(244, 63, 94, 0.15);
 }
 
+/* SVG Fill Utilities for Clean SSR (no inline defs needed) */
+.svg-fill-emerald {
+  fill: rgba(16, 185, 129, 0.18);
+}
+.svg-fill-cyan {
+  fill: rgba(6, 182, 212, 0.18);
+}
+.svg-fill-rose {
+  fill: rgba(244, 63, 94, 0.18);
+}
+.svg-fill-blue {
+  fill: rgba(59, 130, 246, 0.18);
+}
+
 /* Light theme: glow becomes subtle shadow with color tint */
-:root .glow-cyan-sm {
+:root .glow-cyan-sm, :root .cyan-glow-sm {
   box-shadow: 0 1px 4px rgba(14, 116, 144, 0.1);
 }
-:root .glow-green-sm {
+:root .glow-green-sm, :root .emerald-glow-sm {
   box-shadow: 0 1px 4px rgba(21, 128, 61, 0.1);
 }
-:root .glow-red-sm {
+:root .glow-red-sm, :root .rose-glow-sm {
   box-shadow: 0 1px 4px rgba(185, 28, 28, 0.1);
 }
 

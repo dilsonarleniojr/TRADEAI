@@ -116,7 +116,7 @@ export function PortfolioRiskTab() {
         <div className="space-y-6">
           {/* Top Risk Metrics */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="border-border/40 bg-card/60 backdrop-blur-md">
+            <Card className="border-border/40 bg-card/60 backdrop-blur-md cyan-glow-sm">
               <CardContent className="p-4 space-y-1">
                 <div className="text-[11px] text-muted-foreground uppercase">Índice de Risco Global</div>
                 <div className="text-2xl font-bold font-mono text-amber-400">
@@ -136,7 +136,7 @@ export function PortfolioRiskTab() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/40 bg-card/60 backdrop-blur-md">
+            <Card className="border-border/40 bg-card/60 backdrop-blur-md emerald-border-glow">
               <CardContent className="p-4 space-y-1">
                 <div className="text-[11px] text-muted-foreground uppercase">Alavancagem Efetiva</div>
                 <div className="text-sm font-bold text-emerald-400">
@@ -146,7 +146,7 @@ export function PortfolioRiskTab() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/40 bg-card/60 backdrop-blur-md">
+            <Card className="border-border/40 bg-card/60 backdrop-blur-md cyan-border-glow">
               <CardContent className="p-4 space-y-1">
                 <div className="text-[11px] text-muted-foreground uppercase">Valor Auditado</div>
                 <div className="text-2xl font-bold font-mono text-cyan-400">

@@ -328,7 +328,7 @@ export function TradeJournalPanel() {
                 </span>
               </div>
 
-              <div className="w-full h-44 relative bg-[#090d16] rounded-lg border border-[#1a2333] p-2 flex items-center justify-center overflow-hidden">
+              <div className="w-full h-44 relative bg-[#090d16] rounded-lg border border-[#1a2333] emerald-border-glow p-2 flex items-center justify-center overflow-hidden">
                 {metrics.equityCurve.length <= 1 ? (
                   <div className="text-xs text-slate-500 flex items-center gap-2">
                     <Clock className="w-4 h-4" />
@@ -336,12 +336,6 @@ export function TradeJournalPanel() {
                   </div>
                 ) : (
                   <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 160">
-                    <defs>
-                      <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#10b981" stopOpacity="0.3" />
-                        <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
-                      </linearGradient>
-                    </defs>
                     {/* Linha Zero / Base */}
                     <line
                       x1="0"
@@ -375,7 +369,7 @@ export function TradeJournalPanel() {
 
                       return (
                         <g>
-                          <path d={areaD} fill="url(#equityGrad)" />
+                          <path d={areaD} className="svg-fill-emerald" />
                           <path
                             d={pathD}
                             fill="none"

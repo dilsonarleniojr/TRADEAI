@@ -7,7 +7,7 @@ export function SmartTable({
   ...props
 }: React.TableHTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="w-full overflow-x-auto st-scrollbar">
+    <div className="w-full overflow-x-auto cyan-scrollbar">
       <table className={cn("w-full text-left border-collapse text-sm", className)} {...props}>
         {children}
       </table>
