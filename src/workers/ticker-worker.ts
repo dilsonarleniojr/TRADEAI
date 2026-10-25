@@ -245,6 +245,7 @@ if (typeof self !== "undefined" && typeof (self as any).postMessage === "functio
   let spscCapacity = 0;
   let spscMask = 0;
   let spscStride = MICROSTRUCTURE_STRIDE;
+  let l2DepthBuffer: SharedArrayBuffer | null = null;
 
   // Fallback Transferable ArrayBuffer
   const TRANSFER_BATCH_SIZE = 64;
@@ -488,6 +489,13 @@ if (typeof self !== "undefined" && typeof (self as any).postMessage === "functio
           spscMask = spscHeader[SPSC_CONFIG_MASK_INDEX] || (spscCapacity - 1);
           spscStride = spscHeader[SPSC_CONFIG_STRIDE_INDEX] || MICROSTRUCTURE_STRIDE;
           spscData = new Float64Array(sharedBuffer, SPSC_HEADER_BYTES, spscCapacity * spscStride);
+        }
+        break;
+      }
+
+      case "INIT_L2_DEPTH_BUFFER": {
+        if (msg.buffer) {
+          l2DepthBuffer = msg.buffer;
         }
         break;
       }

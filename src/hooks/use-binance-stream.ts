@@ -13,6 +13,7 @@ import {
   BinanceWorkerManager,
   OrderBookFetchError,
 } from "@/lib/performance/binance-worker-manager";
+import { OffscreenChartController } from "@/lib/performance/offscreen-chart-controller";
 
 let globalSocket: Socket | null = null;
 let globalWorkerManager: BinanceWorkerManager | null = null;
@@ -456,3 +457,19 @@ export function useBinanceStream() {
 }
 
 export { vSyncCoalescer };
+
+/**
+ * Retorna a instância global ativa do BinanceWorkerManager (Worker de Ingestão de Microestrutura).
+ */
+export function getGlobalWorkerManager(): BinanceWorkerManager | null {
+  return globalWorkerManager;
+}
+
+/**
+ * Conecta diretamente um OffscreenChartController ao Ingestion Worker ativo via MessagePort Peer-to-Peer.
+ */
+export function connectChartToWorker(renderController: OffscreenChartController): MessageChannel | null {
+  if (!globalWorkerManager) return null;
+  return OffscreenChartController.connectWorkers(globalWorkerManager, renderController);
+}
+

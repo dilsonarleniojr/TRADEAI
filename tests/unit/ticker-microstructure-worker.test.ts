@@ -26,6 +26,8 @@ import {
   OrderBookFetchError,
 } from "@/lib/performance/binance-worker-manager";
 import { LockFreeSPSCQueue } from "@/lib/performance/lock-free-spsc-queue";
+import { OffscreenChartController } from "@/lib/performance/offscreen-chart-controller";
+import { connectChartToWorker, getGlobalWorkerManager } from "@/hooks/use-binance-stream";
 
 describe("Worker de Microestrutura com SharedArrayBuffer (Pilar 1 Institucional)", () => {
   describe("Constantes e Alinhamento de Memória (128-byte Stride / 2 Cache Lines)", () => {
@@ -402,4 +404,91 @@ describe("Worker de Microestrutura com SharedArrayBuffer (Pilar 1 Institucional)
       manager.destroy();
     });
   });
+
+  describe("Conexão Direta Peer-to-Peer (MessagePort) com Render Worker (Zero-Hop Pipeline)", () => {
+    it("deve interconectar BinanceWorkerManager e OffscreenChartController via MessageChannel", () => {
+      const manager = new BinanceWorkerManager({
+        symbols: ["BTCUSDT"],
+        queueCapacity: 64,
+        spscStride: 16,
+      });
+
+      const controller = new OffscreenChartController();
+
+      const channel = OffscreenChartController.connectWorkers(manager, controller);
+      expect(channel).not.toBeNull();
+
+      const metrics = controller.getPeerMetrics();
+      expect(metrics.isPeerConnected).toBe(true);
+      expect(metrics.hasAtomicQueue).toBe(true);
+
+      manager.destroy();
+      controller.destroy();
+    });
+
+    it("deve receber cotações via canal Peer-to-Peer sem acordar a Main Thread e atualizar getLastPeerTick()", async () => {
+      const controller = new OffscreenChartController();
+
+      let callbackReceived: any = null;
+      const unbind = controller.onPeerTick((t) => {
+        callbackReceived = t;
+      });
+
+      // Cria um MessageChannel simulando a conexão entre Ingestion Worker e Render Controller
+      const channel = new MessageChannel();
+      controller.connectPeerPort(channel.port2);
+
+      const mockTicker = {
+        symbol: "BTCUSDT",
+        price: 65120.5,
+        bidPrice: 65120.0,
+        bidQty: 3.5,
+        askPrice: 65121.0,
+        askQty: 4.2,
+        spreadBps: 0.1535,
+        midPrice: 65120.5,
+        flags: 3,
+        updateId: 998877,
+        timestamp: Date.now(),
+      };
+
+      // Despacha na porta 1 (como o Ingestion Worker faria)
+      channel.port1.postMessage({
+        type: "PEER_TICK",
+        ticker: mockTicker,
+      });
+
+      // Aguarda o ciclo de evento assíncrono do MessagePort
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      expect(controller.getLastPeerTick()).not.toBeNull();
+      expect(controller.getLastPeerTick().symbol).toBe("BTCUSDT");
+      expect(controller.getLastPeerTick().price).toBe(65120.5);
+      expect(controller.getLastPeerTick().bidPrice).toBe(65120.0);
+      expect(controller.getLastPeerTick().askPrice).toBe(65121.0);
+      expect(controller.getLastPeerTick().spreadBps).toBe(0.1535);
+
+      expect(callbackReceived).not.toBeNull();
+      expect(callbackReceived.symbol).toBe("BTCUSDT");
+      expect(callbackReceived.price).toBe(65120.5);
+
+      unbind();
+      channel.port1.close();
+      channel.port2.close();
+      controller.destroy();
+    });
+
+    it("deve fornecer utilitários connectChartToWorker e getGlobalWorkerManager integrados ao hook", () => {
+      expect(typeof getGlobalWorkerManager).toBe("function");
+      expect(typeof connectChartToWorker).toBe("function");
+
+      const controller = new OffscreenChartController();
+      // Sem globalWorkerManager ativo no início, deve retornar null com segurança
+      const channel = connectChartToWorker(controller);
+      expect(channel).toBeNull();
+
+      controller.destroy();
+    });
+  });
 });
+

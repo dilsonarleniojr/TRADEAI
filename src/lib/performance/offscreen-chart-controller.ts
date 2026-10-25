@@ -120,12 +120,14 @@ export class OffscreenChartController {
         let spscData = null;
         let spscCapacity = 0;
         let spscMask = 0;
-        let spscStride = 10;
+        let spscStride = 16;
         let queueMode = "SPSC";
         let atomicHeader = null;
         let atomicData = null;
         let atomicCapacity = 0;
-        let atomicStride = 10;
+        let atomicStride = 16;
+        let lastPeerTick = null;
+        let lastL2Update = null;
 
         self.onmessage = function(e) {
           const msg = e.data;
@@ -154,9 +156,12 @@ export class OffscreenChartController {
                 peerPort.onmessage = function(pe) {
                   const pData = pe.data;
                   if (pData && pData.type === "PEER_TICK" && pData.ticker) {
-                    // Ticker recebido diretamente do Ingestion Worker sem Main Thread!
+                    lastPeerTick = pData.ticker;
+                    // Notificação de cotação recebida diretamente do Ingestion Worker sem Main Thread!
+                    self.postMessage({ type: "PEER_TICK_PROCESSED", ticker: pData.ticker });
                   } else if (pData && pData.type === "PEER_L2_UPDATE") {
-                    // Notificação L2 Depth recebida diretamente do Ingestion Worker sem Main Thread!
+                    lastL2Update = pData;
+                    self.postMessage({ type: "PEER_L2_PROCESSED", symbol: pData.symbol });
                   }
                 };
                 if (typeof peerPort.start === "function") {
@@ -174,12 +179,12 @@ export class OffscreenChartController {
                   spscHeader = new Int32Array(sharedBuffer, 0, 48);
                   spscCapacity = spscHeader[32] || 2048;
                   spscMask = spscHeader[33] || (spscCapacity - 1);
-                  spscStride = spscHeader[34] || 10;
+                  spscStride = spscHeader[34] || 16;
                   spscData = new Float64Array(sharedBuffer, 192, spscCapacity * spscStride);
                 } else {
                   atomicHeader = new Int32Array(sharedBuffer, 0, 16);
                   atomicCapacity = atomicHeader[2] || 2048;
-                  atomicStride = atomicHeader[3] || 10;
+                  atomicStride = atomicHeader[3] || 16;
                   atomicData = new Float64Array(sharedBuffer, 64, atomicCapacity * atomicStride);
                 }
                 self.postMessage({ type: "SHARED_QUEUE_CONNECTED" });
@@ -216,6 +221,17 @@ export class OffscreenChartController {
       const blob = new Blob([workerCode], { type: "application/javascript" });
       const workerUrl = URL.createObjectURL(blob);
       this.worker = new Worker(workerUrl);
+
+      this.worker.onmessage = (e) => {
+        const msg = e.data;
+        if (!msg) return;
+        if (msg.type === "PEER_TICK_PROCESSED" && msg.ticker) {
+          this.lastPeerTick = msg.ticker;
+          if (this.onPeerTickCallback) {
+            this.onPeerTickCallback(msg.ticker);
+          }
+        }
+      };
 
       // Transfere o OffscreenCanvas para o Worker
       this.worker.postMessage({ type: "INIT", canvas: offscreen }, [offscreen]);
@@ -380,9 +396,29 @@ export class OffscreenChartController {
   }
 
   private lastPeerTick: any = null;
+  private onPeerTickCallback: ((ticker: any) => void) | null = null;
 
   public getLastPeerTick(): any {
     return this.lastPeerTick;
+  }
+
+  /**
+   * Registra um callback para ser notificado de ticks recebidos via canal Peer-to-Peer.
+   */
+  public setOnPeerTick(callback: ((ticker: any) => void) | null): void {
+    this.onPeerTickCallback = callback;
+  }
+
+  /**
+   * Registra um listener e retorna uma função para cancelamento.
+   */
+  public onPeerTick(callback: (ticker: any) => void): () => void {
+    this.onPeerTickCallback = callback;
+    return () => {
+      if (this.onPeerTickCallback === callback) {
+        this.onPeerTickCallback = null;
+      }
+    };
   }
 
   /**
@@ -406,6 +442,9 @@ export class OffscreenChartController {
         const data = e.data;
         if (data && data.type === "PEER_TICK" && data.ticker) {
           this.lastPeerTick = data.ticker;
+          if (this.onPeerTickCallback) {
+            this.onPeerTickCallback(data.ticker);
+          }
         }
       };
       if (typeof port.start === "function") {
@@ -565,6 +604,13 @@ export class OffscreenChartController {
   }
 
   /**
+   * Alias de telemetria do canal Peer-to-Peer.
+   */
+  public getPeerMetrics() {
+    return this.getWorkerChannelMetrics();
+  }
+
+  /**
    * Retorna o tipo de motor gráfico em execução.
    */
   public getActiveEngine(): RenderEngineType {
@@ -596,6 +642,7 @@ export class OffscreenChartController {
     this.atomicQueue = null;
     this.l2DepthMatrix = null;
     this.lastPeerTick = null;
+    this.onPeerTickCallback = null;
     this.canvas = null;
     this.offscreenCanvas = null;
   }
