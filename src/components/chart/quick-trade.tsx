@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { formatPrice } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -120,11 +120,21 @@ export function QuickTrade() {
     setScheduledIsMaxSell(false);
   }, [selectedSymbol, tradePrefill, cleanSym]);
 
+  const appliedPrefillRef = useRef<any>(null);
+
   // Pre-fill inputs when tradePrefill is set
   useEffect(() => {
-    if (!tradePrefill) return;
+    if (!tradePrefill) {
+      appliedPrefillRef.current = null;
+      return;
+    }
     const matches = tradePrefill.symbol === selectedSymbol || tradePrefill.symbol.replace(/USDT$|BUSD$|USDC$/, "") === cleanSym;
     if (!matches) return;
+
+    if (appliedPrefillRef.current === tradePrefill) {
+      return;
+    }
+    appliedPrefillRef.current = tradePrefill;
 
     // Set side
     setTradeSide(tradePrefill.side);
@@ -155,8 +165,9 @@ export function QuickTrade() {
     }
 
     // Pre-fill values com dimensionamento de posição proporcional ao risco
-    if (currentPrice > 0) {
-      const decimals = currentPrice > 1000 ? 6 : currentPrice > 1 ? 4 : (currentPrice < 0.01 ? 2 : 4);
+    const effPrice = currentPrice > 0 ? currentPrice : (tradePrefill.entryPrice || 0);
+    if (effPrice > 0) {
+      const decimals = effPrice > 1000 ? 6 : effPrice > 1 ? 4 : (effPrice < 0.01 ? 2 : 4);
       if (tradePrefill.side === "BUY") {
         let cash = 25;
         if (availableCashUsdt > 10) {
@@ -169,16 +180,16 @@ export function QuickTrade() {
           }
         }
         setUsdtAmount(cash.toFixed(2));
-        setQuantity(Number((cash / currentPrice).toFixed(decimals)).toString());
+        setQuantity(Number((cash / effPrice).toFixed(decimals)).toString());
       } else {
         // SELL
         if (availableHoldingQty > 0) {
           setQuantity(availableHoldingQty.toString());
-          setUsdtAmount((availableHoldingQty * currentPrice).toFixed(2));
+          setUsdtAmount((availableHoldingQty * effPrice).toFixed(2));
         } else {
           const defaultUsd = 25;
           setUsdtAmount(defaultUsd.toFixed(2));
-          setQuantity(Number((defaultUsd / currentPrice).toFixed(decimals)).toString());
+          setQuantity(Number((defaultUsd / effPrice).toFixed(decimals)).toString());
         }
       }
     }

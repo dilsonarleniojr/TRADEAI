@@ -188,7 +188,7 @@ export function ChartSection() {
   }, []);
 
   const handleImbalanceUpdate = useCallback((imbalance: OrderBookImbalanceResult | null) => {
-    setDepthImbalance((prev) => (prev?.imbalancePct === imbalance?.imbalancePct && prev?.trend === imbalance?.trend ? prev : imbalance));
+    setDepthImbalance((prev) => (prev?.imbalancePct === imbalance?.imbalancePct && prev?.confluenceSignal === imbalance?.confluenceSignal ? prev : imbalance));
   }, []);
 
   useEffect(() => {
@@ -219,7 +219,7 @@ export function ChartSection() {
   const handleSpoofingAlert = useCallback((alert: SpoofingAlert | null) => {
     setSpoofingAlert((prev) => {
       if (!prev && !alert) return prev;
-      if (prev && alert && prev.id === alert.id && prev.dropPct === alert.dropPct && prev.isAlertActive === alert.isAlertActive) {
+      if (prev && alert && prev.timestamp === alert.timestamp && prev.dropPct === alert.dropPct && prev.isAlertActive === alert.isAlertActive && prev.side === alert.side) {
         return prev;
       }
       return alert;

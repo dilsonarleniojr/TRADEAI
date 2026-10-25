@@ -27,14 +27,45 @@ interface PriceInfoProps {
 }
 
 export function PriceInfo({ symbol, interval, rsiValue }: PriceInfoProps) {
-  const { tickers } = useCryptoStore(
-  useShallow((s) => ({ tickers: s.tickers }))
-);
+  const currentTicker = useCryptoStore((s) => s.tickers[symbol]);
   const [tickerData, setTickerData] = useState<TickerInfo | null>(null);
   const prevPriceRef = useRef<number | null>(null);
   const clearFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Fetch fresh ticker data
+  // Sync with live store ticker updates for this symbol
+  useEffect(() => {
+    if (currentTicker) {
+      const newPrice = currentTicker.price;
+      const prevPrice = prevPriceRef.current;
+      prevPriceRef.current = newPrice;
+
+      let flash: 'up' | 'down' | null = null;
+      if (prevPrice !== null && newPrice !== prevPrice) {
+        flash = newPrice > prevPrice ? 'up' : 'down';
+      }
+
+      setTickerData((prev) => ({
+        symbol: currentTicker.symbol,
+        price: newPrice,
+        priceChange: currentTicker.priceChange ?? prev?.priceChange ?? 0,
+        priceChangePercent: currentTicker.priceChangePercent ?? prev?.priceChangePercent ?? 0,
+        high: currentTicker.high ?? prev?.high ?? newPrice,
+        low: currentTicker.low ?? prev?.low ?? newPrice,
+        volume: currentTicker.volume ?? prev?.volume ?? 0,
+        quoteVolume: currentTicker.quoteVolume ?? prev?.quoteVolume ?? 0,
+        flash: flash ?? prev?.flash ?? null,
+      }));
+
+      if (flash) {
+        if (clearFlashTimerRef.current) clearTimeout(clearFlashTimerRef.current);
+        clearFlashTimerRef.current = setTimeout(() => {
+          setTickerData((prev) => (prev ? { ...prev, flash: null } : prev));
+        }, 600);
+      }
+    }
+  }, [currentTicker]);
+
+  // Fetch initial/fallback fresh ticker data periodically
   useEffect(() => {
     const abortController = new AbortController();
     let cancelled = false;
@@ -60,9 +91,8 @@ export function PriceInfo({ symbol, interval, rsiValue }: PriceInfoProps) {
           prevPriceRef.current = newPrice;
 
           let flash: 'up' | 'down' | null = null;
-          if (prevPrice !== null) {
-            if (newPrice > prevPrice) flash = 'up';
-            else if (newPrice < prevPrice) flash = 'down';
+          if (prevPrice !== null && newPrice !== prevPrice) {
+            flash = newPrice > prevPrice ? 'up' : 'down';
           }
 
           setTickerData({
@@ -90,7 +120,7 @@ export function PriceInfo({ symbol, interval, rsiValue }: PriceInfoProps) {
       } catch {
         // Fall back to store tickers
         if (!cancelled) {
-          const storeTicker = tickers[symbol];
+          const storeTicker = useCryptoStore.getState().tickers[symbol];
           if (storeTicker) {
             setTickerData({ ...storeTicker, flash: null });
           }
@@ -102,7 +132,7 @@ export function PriceInfo({ symbol, interval, rsiValue }: PriceInfoProps) {
 
     const intervalId = setInterval(() => {
       if (!cancelled) loadTicker();
-    }, 10000);
+    }, 15000);
 
     return () => {
       cancelled = true;
@@ -110,7 +140,7 @@ export function PriceInfo({ symbol, interval, rsiValue }: PriceInfoProps) {
       clearInterval(intervalId);
       if (clearFlashTimerRef.current) clearTimeout(clearFlashTimerRef.current);
     };
-  }, [symbol, tickers]);
+  }, [symbol]);
 
   // RSI info
   const getRSIInfo = (val: number | null | undefined) => {
