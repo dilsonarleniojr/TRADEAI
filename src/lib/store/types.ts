@@ -10,6 +10,15 @@ export interface TickerData {
   low: number;
   volume: number;
   quoteVolume: number;
+  // Microestrutura em tempo real (@bookTicker / SharedArrayBuffer)
+  bidPrice?: number;
+  bidQty?: number;
+  askPrice?: number;
+  askQty?: number;
+  spreadBps?: number;
+  midPrice?: number;
+  updateId?: number;
+  timestamp?: number;
 }
 
 export interface KlineData {
