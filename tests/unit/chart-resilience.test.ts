@@ -111,4 +111,10 @@ describe("Chart Section & Microstructure Resilience", () => {
     expect(safeMode).toBe("SIM");
     expect(safeSymbol).toBe("BTC");
   });
+
+  it("should initialize activeSection with 'bot' as the default view for the application", async () => {
+    const { useCryptoStore } = await import("@/lib/store");
+    const activeSection = useCryptoStore.getState().activeSection;
+    expect(activeSection).toBe("bot");
+  });
 });

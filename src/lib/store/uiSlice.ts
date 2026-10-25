@@ -115,8 +115,8 @@ function loadDashboardVisibility(): Record<string, boolean> {
 }
 
 export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) => ({
-  // Active section
-  activeSection: "dashboard",
+  // Active section (Padrão inicial: Central de Robôs de Lucro)
+  activeSection: "bot",
   setActiveSection: (section) => set({ activeSection: section }),
 
   // Setup pré-configurado
