@@ -25,25 +25,25 @@ describe("L2 Heatmap P2P & 1D Texture Palette (Pilar 1 & 4 Institucional)", () =
       }
     });
 
-    it("deve mapear lado Bid (índices 0..122) com gradiente Esmeralda/Ciano e alta densidade", () => {
+    it("deve mapear lado Bid (índices 0..127) com gradiente Esmeralda/Ciano e alta densidade", () => {
       const palette = generate1DHeatmapPaletteData();
       
-      // Índice de maior densidade de Bid (índice 0 = normalized 0.0)
-      const rBid = palette[0];
-      const gBid = palette[1];
-      const bBid = palette[2];
-      const aBid = palette[3];
+      // Índice de maior densidade de Bid (índice 127 = pico de volume de compra)
+      const offsetBid = 127 * 4;
+      const rBid = palette[offsetBid + 0];
+      const gBid = palette[offsetBid + 1];
+      const bBid = palette[offsetBid + 2];
+      const aBid = palette[offsetBid + 3];
 
       expect(gBid).toBeGreaterThan(rBid); // Canal verde/ciano dominante
       expect(bBid).toBeGreaterThan(0);
-      expect(aBid).toBeGreaterThan(150); // Alta opacidade para clusters densos
+      expect(aBid).toBeGreaterThan(200); // Alta opacidade para clusters densos
 
-      // Índice próximo ao spread (índice 120 = normalized ~0.47)
-      const offsetMid = 120 * 4;
-      expect(palette[offsetMid + 3]).toBeLessThanOrEqual(aBid); // Opacidade diminui próximo ao spread
+      // Índice com volume zero (índice 0)
+      expect(palette[3]).toBe(0); // Transparência no volume nulo
     });
 
-    it("deve mapear lado Ask (índices 133..255) com gradiente Âmbar/Rubi e alta densidade", () => {
+    it("deve mapear lado Ask (índices 128..255) com gradiente Âmbar/Rubi e alta densidade", () => {
       const palette = generate1DHeatmapPaletteData();
       
       // Índice de maior densidade de Ask (índice 255 = normalized 1.0)
@@ -54,14 +54,15 @@ describe("L2 Heatmap P2P & 1D Texture Palette (Pilar 1 & 4 Institucional)", () =
       const aAsk = palette[offsetAsk + 3];
 
       expect(rAsk).toBeGreaterThan(bAsk); // Canal vermelho/âmbar dominante
-      expect(aAsk).toBeGreaterThan(150); // Alta opacidade para book denso de venda
+      expect(aAsk).toBeGreaterThan(200); // Alta opacidade para book denso de venda
     });
 
-    it("deve manter a zona neutra do spread (índices 124..131) quase transparente para evitar poluição visual", () => {
+    it("deve manter o ponto zero de volume (índices 0 e 128) transparente para evitar poluição visual", () => {
       const palette = generate1DHeatmapPaletteData();
-      const midIndex = 128 * 4; // Normalized 0.50 (Spread neutro)
-      const alphaMid = palette[midIndex + 3];
-      expect(alphaMid).toBeLessThanOrEqual(30); // Praticamente transparente
+      const alphaZeroBid = palette[3]; // Índice 0 (zero bid)
+      const alphaZeroAsk = palette[128 * 4 + 3]; // Índice 128 (zero ask)
+      expect(alphaZeroBid).toBe(0);
+      expect(alphaZeroAsk).toBe(0);
     });
   });
 
