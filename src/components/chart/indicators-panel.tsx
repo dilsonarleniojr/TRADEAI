@@ -158,7 +158,9 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        setRsiDimensions({ width: Math.max(width, 300), height: Math.max(height, 100) });
+        const newW = Math.max(Math.round(width), 300);
+        const newH = Math.max(Math.round(height), 100);
+        setRsiDimensions((prev) => (prev.width === newW && prev.height === newH ? prev : { width: newW, height: newH }));
       }
     });
     observer.observe(container);
@@ -171,7 +173,9 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        setMacdDimensions({ width: Math.max(width, 300), height: Math.max(height, 100) });
+        const newW = Math.max(Math.round(width), 300);
+        const newH = Math.max(Math.round(height), 100);
+        setMacdDimensions((prev) => (prev.width === newW && prev.height === newH ? prev : { width: newW, height: newH }));
       }
     });
     observer.observe(container);
@@ -184,7 +188,9 @@ export function IndicatorsPanel({ symbol, interval }: IndicatorsPanelProps) {
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        setStochrsiDimensions({ width: Math.max(width, 300), height: Math.max(height, 80) });
+        const newW = Math.max(Math.round(width), 300);
+        const newH = Math.max(Math.round(height), 80);
+        setStochrsiDimensions((prev) => (prev.width === newW && prev.height === newH ? prev : { width: newW, height: newH }));
       }
     });
     observer.observe(container);

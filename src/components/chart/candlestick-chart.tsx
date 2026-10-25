@@ -14,6 +14,8 @@ import { vSyncCoalescer } from '@/hooks/use-binance-stream';
 import { playTakeProfitHitSound } from '@/lib/sound/sound-effects';
 import { RenderTelemetryHUD } from '@/components/telemetry/render-telemetry-hud';
 
+const EMPTY_SPOOFING_MARKERS: SpoofingChartMarker[] = [];
+
 export type DrawingTool = 'crosshair' | 'trendline' | 'horizontal';
 
 export interface Drawing {
@@ -243,7 +245,7 @@ export function CandlestickChart({
     quantity: number;
   } | null>(null);
 
-  const storeSpoofingMarkers = useCryptoStore((s) => s.spoofingMarkers[symbol] || []);
+  const storeSpoofingMarkers = useCryptoStore((s) => s.spoofingMarkers[symbol] ?? EMPTY_SPOOFING_MARKERS);
   const activeSpoofingEvents = spoofingEvents ?? storeSpoofingMarkers;
   const [candles, setCandles] = useState<ProcessedCandle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -306,7 +308,9 @@ export function CandlestickChart({
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        setDimensions({ width: Math.max(width, 300), height: Math.max(height, 200) });
+        const newW = Math.max(Math.round(width), 300);
+        const newH = Math.max(Math.round(height), 200);
+        setDimensions((prev) => (prev.width === newW && prev.height === newH ? prev : { width: newW, height: newH }));
       }
     });
     observer.observe(container);

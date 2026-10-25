@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useCryptoStore } from '@/lib/store';
+import { useCryptoStore, type SpoofingChartMarker } from '@/lib/store';
 import { PriceInfo } from './price-info';
 import { CandlestickChart } from './candlestick-chart';
 import { IndicatorsPanel } from './indicators-panel';
@@ -10,6 +10,8 @@ import { OrderBook } from './order-book';
 import { OrderBookImbalanceHistogram } from './order-book-imbalance-histogram';
 import type { OrderBookImbalanceResult, SpoofingAlert } from '@/lib/order-book-imbalance';
 import { useToast } from '@/hooks/use-toast';
+
+const EMPTY_SPOOFING_MARKERS: SpoofingChartMarker[] = [];
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -173,13 +175,21 @@ export function ChartSection() {
   const [depthData, setDepthData] = useState<{ bids: { price: number; volume: number }[]; asks: { price: number; volume: number }[] } | null>(null);
   const [depthImbalance, setDepthImbalance] = useState<OrderBookImbalanceResult | null>(null);
   const [spoofingAlert, setSpoofingAlert] = useState<SpoofingAlert | null>(null);
-  const spoofingMarkers = useCryptoStore((s) => s.spoofingMarkers[s.selectedSymbol] || []);
+  const spoofingMarkers = useCryptoStore((s) => s.spoofingMarkers[s.selectedSymbol] ?? EMPTY_SPOOFING_MARKERS);
   const addSpoofingMarker = useCryptoStore((s) => s.addSpoofingMarker);
   const setSpoofingMarkers = useCryptoStore((s) => s.setSpoofingMarkers);
   const [showSpoofingMarkers, setShowSpoofingMarkers] = useState<boolean>(true);
   const setTradePrefill = useCryptoStore((s) => s.setTradePrefill);
   const currentPrice = useCryptoStore((s) => s.tickers[s.selectedSymbol]?.price ?? 0);
   const { toast } = useToast();
+
+  const handleDepthData = useCallback((data: { bids: { price: number; volume: number }[]; asks: { price: number; volume: number }[] } | null) => {
+    setDepthData(data);
+  }, []);
+
+  const handleImbalanceUpdate = useCallback((imbalance: OrderBookImbalanceResult | null) => {
+    setDepthImbalance((prev) => (prev?.imbalancePct === imbalance?.imbalancePct && prev?.trend === imbalance?.trend ? prev : imbalance));
+  }, []);
 
   useEffect(() => {
     setSpoofingAlert(null);
@@ -207,7 +217,13 @@ export function ChartSection() {
   }, [selectedSymbol, setSpoofingMarkers]);
 
   const handleSpoofingAlert = useCallback((alert: SpoofingAlert | null) => {
-    setSpoofingAlert(alert);
+    setSpoofingAlert((prev) => {
+      if (!prev && !alert) return prev;
+      if (prev && alert && prev.id === alert.id && prev.dropPct === alert.dropPct && prev.isAlertActive === alert.isAlertActive) {
+        return prev;
+      }
+      return alert;
+    });
     if (alert && alert.isAlertActive && alert.dropPct >= 30.0) {
       addSpoofingMarker({
         id: `alert-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -718,8 +734,8 @@ export function ChartSection() {
           {(sideView === 'both' || sideView === 'book') && (
             <OrderBook
               mode={sideView}
-              onDepthData={setDepthData}
-              onImbalanceUpdate={setDepthImbalance}
+              onDepthData={handleDepthData}
+              onImbalanceUpdate={handleImbalanceUpdate}
               onExecuteMarketOrder={handleQuickMarketOrderFromConfluence}
               onSpoofingAlert={handleSpoofingAlert}
             />

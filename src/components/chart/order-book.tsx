@@ -128,16 +128,24 @@ export function OrderBook({
   const prevVolumesRef = useRef<Map<number, number>>(new Map());
   const spoofingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Armazena callbacks externos em refs para isolar o ciclo de renderização e evitar loops React #185
+  const onDepthDataRef = useRef(onDepthData);
+  onDepthDataRef.current = onDepthData;
+  const onImbalanceUpdateRef = useRef(onImbalanceUpdate);
+  onImbalanceUpdateRef.current = onImbalanceUpdate;
+  const onSpoofingAlertRef = useRef(onSpoofingAlert);
+  onSpoofingAlertRef.current = onSpoofingAlert;
+
   // Expande a profundidade para 22 níveis no modo analítico exclusivo L2
   const levels = isCompact ? 8 : (mode === "book" ? 22 : 14);
 
-  // Reseta histórico de snapshots ao trocar de símbolo
+  // Reseta histórico de snapshots ao trocar de símbolo (sem disparar loop de callback)
   useEffect(() => {
     previousSnapshotRef.current = null;
     prevVolumesRef.current.clear();
     setFlashedLevels({});
-    onSpoofingAlert?.(null);
-  }, [selectedSymbol, onSpoofingAlert]);
+    onSpoofingAlertRef.current?.(null);
+  }, [selectedSymbol]);
 
   const refreshOrderBook = useCallback(async () => {
     if (!selectedSymbol) return;
@@ -182,7 +190,7 @@ export function OrderBook({
       }
 
       setOrderBook(data);
-      onDepthData?.({ bids: data.bids, asks: data.asks });
+      onDepthDataRef.current?.({ bids: data.bids, asks: data.asks });
 
       // Detecção de Liquidity Spoofing (quedas abruptas >= 30% em menos de 3.5s)
       const currentSnapshot: DepthSnapshot = {
@@ -194,18 +202,18 @@ export function OrderBook({
       if (previousSnapshotRef.current) {
         const spoofAlert = detectLiquiditySpoofing(currentSnapshot, previousSnapshotRef.current, 30.0, 3500);
         if (spoofAlert) {
-          onSpoofingAlert?.(spoofAlert);
+          onSpoofingAlertRef.current?.(spoofAlert);
           if (spoofingTimeoutRef.current) clearTimeout(spoofingTimeoutRef.current);
           spoofingTimeoutRef.current = setTimeout(() => {
-            onSpoofingAlert?.(null);
+            onSpoofingAlertRef.current?.(null);
           }, 4500);
         }
       }
       previousSnapshotRef.current = currentSnapshot;
 
-      if (onImbalanceUpdate) {
+      if (onImbalanceUpdateRef.current) {
         const imb = calculateOrderBookImbalance(data.bids, data.asks, 8);
-        onImbalanceUpdate(imb);
+        onImbalanceUpdateRef.current(imb);
       }
     } catch (err: unknown) {
       console.error("[OrderBook] Fetch error:", err);
@@ -217,7 +225,7 @@ export function OrderBook({
     } finally {
       setTimeout(() => setIsRefreshing(false), 300);
     }
-  }, [selectedSymbol, levels, onDepthData, onImbalanceUpdate, onSpoofingAlert]);
+  }, [selectedSymbol, levels]);
 
   // Initial load and auto-refresh every 3 seconds
   useEffect(() => {
