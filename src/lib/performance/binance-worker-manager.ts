@@ -35,24 +35,39 @@ export interface WorkerTickerUpdate {
   low: number;
   volume: number;
   quoteVolume: number;
+  bidPrice?: number;
+  bidQty?: number;
+  askPrice?: number;
+  askQty?: number;
+  spreadBps?: number;
+  midPrice?: number;
+  flags?: number;
+  updateId?: number;
   timestamp: number;
 }
 
 export type WorkerBatchCallback = (tickers: WorkerTickerUpdate[]) => void;
 export type WorkerErrorCallback = (error: OrderBookFetchError) => void;
 
-// Offsets do Slot Float64 (Stride = 10)
+// Offsets do Slot Float64 (Microstructure Stride = 16 = 128 bytes = 2 Cache Lines de 64B)
 export const SLOT_OFFSET_TIMESTAMP = 0;
 export const SLOT_OFFSET_SYMBOL_ID = 1;
-export const SLOT_OFFSET_PRICE = 2;
+export const SLOT_OFFSET_PRICE = 2; // Mid-Price ou Last Close
 export const SLOT_OFFSET_PRICE_CHANGE = 3;
 export const SLOT_OFFSET_PRICE_CHANGE_PCT = 4;
 export const SLOT_OFFSET_HIGH = 5;
 export const SLOT_OFFSET_LOW = 6;
 export const SLOT_OFFSET_VOLUME = 7;
 export const SLOT_OFFSET_QUOTE_VOLUME = 8;
-export const SLOT_OFFSET_FLAGS = 9;
-export const DEFAULT_TICKER_STRIDE = 10;
+export const SLOT_OFFSET_BID_PRICE = 9; // Best Bid
+export const SLOT_OFFSET_BID_QTY = 10;
+export const SLOT_OFFSET_ASK_PRICE = 11; // Best Ask
+export const SLOT_OFFSET_ASK_QTY = 12;
+export const SLOT_OFFSET_SPREAD_BPS = 13; // Spread em Basis Points ((Ask-Bid)/Mid)*10000
+export const SLOT_OFFSET_FLAGS = 14; // Bitmask: 1 = @bookTicker, 2 = @ticker
+export const SLOT_OFFSET_UPDATE_ID = 15; // Binance updateId
+export const MICROSTRUCTURE_STRIDE = 16;
+export const DEFAULT_TICKER_STRIDE = MICROSTRUCTURE_STRIDE;
 
 /**
  * BinanceWorkerManager - Gerenciador Institucional de Web Worker com Concorrência Atômica
@@ -214,16 +229,16 @@ export class BinanceWorkerManager {
       var spscData = null;
       var spscCapacity = 0;
       var spscMask = 0;
-      var spscStride = 10;
+      var spscStride = 16;
       var queueMode = "SPSC";
 
       var atomicHeader = null;
       var atomicData = null;
       var atomicCapacity = 0;
-      var atomicStride = 10;
+      var atomicStride = 16;
 
       var TRANSFER_BATCH_SIZE = 64;
-      var transferFloatArray = new Float64Array(TRANSFER_BATCH_SIZE * 10);
+      var transferFloatArray = new Float64Array(TRANSFER_BATCH_SIZE * 16);
       var transferCount = 0;
       var transferTimer = null;
       var pendingJsonBatch = {};
@@ -265,15 +280,15 @@ export class BinanceWorkerManager {
         if (transferCount === 0) return;
         var count = transferCount;
         transferCount = 0;
-        var outView = transferFloatArray.slice(0, count * 10);
+        var outView = transferFloatArray.slice(0, count * 16);
         self.postMessage({
           type: "TRANSFER_BATCH",
           count: count,
-          stride: 10,
+          stride: 16,
           buffer: outView.buffer,
           symbolMap: Object.assign({}, symbolMap)
         }, [outView.buffer]);
-        transferFloatArray = new Float64Array(TRANSFER_BATCH_SIZE * 10);
+        transferFloatArray = new Float64Array(TRANSFER_BATCH_SIZE * 16);
       }
 
       function flushJsonBatch() {
@@ -304,7 +319,7 @@ export class BinanceWorkerManager {
         }
       }
 
-      function writeToAtomicQueue(sym, p, pc, pcp, h, l, v, q, ts) {
+      function writeToAtomicQueue(sym, p, pc, pcp, h, l, v, q, bp, bq, ap, aq, spBps, flags, uId, ts) {
         var symId = getSymbolId(sym);
 
         if (queueMode === "SPSC" && spscHeader && spscData) {
@@ -329,7 +344,13 @@ export class BinanceWorkerManager {
           spscData[dataOffset + 6] = l;
           spscData[dataOffset + 7] = v;
           spscData[dataOffset + 8] = q;
-          spscData[dataOffset + 9] = 1;
+          spscData[dataOffset + 9] = bp || 0;
+          spscData[dataOffset + 10] = bq || 0;
+          spscData[dataOffset + 11] = ap || 0;
+          spscData[dataOffset + 12] = aq || 0;
+          spscData[dataOffset + 13] = spBps || 0;
+          spscData[dataOffset + 14] = flags || 1;
+          spscData[dataOffset + 15] = uId || 0;
           Atomics.add(spscHeader, 3, 1);
           Atomics.store(spscHeader, 0, head + 1);
           return true;
@@ -353,7 +374,13 @@ export class BinanceWorkerManager {
           atomicData[aOffset + 6] = l;
           atomicData[aOffset + 7] = v;
           atomicData[aOffset + 8] = q;
-          atomicData[aOffset + 9] = 1;
+          atomicData[aOffset + 9] = bp || 0;
+          atomicData[aOffset + 10] = bq || 0;
+          atomicData[aOffset + 11] = ap || 0;
+          atomicData[aOffset + 12] = aq || 0;
+          atomicData[aOffset + 13] = spBps || 0;
+          atomicData[aOffset + 14] = flags || 1;
+          atomicData[aOffset + 15] = uId || 0;
           Atomics.add(atomicHeader, 5, 1);
           Atomics.store(atomicHeader, 0, aHead + 1);
           if (typeof Atomics.notify === "function") {
@@ -368,8 +395,73 @@ export class BinanceWorkerManager {
         if (!raw) return;
         try {
           var payload = JSON.parse(raw);
+          var stream = payload.stream || "";
           var data = payload.data || payload;
-          if (data && data.s && data.c) {
+
+          if (stream.indexOf("@bookTicker") !== -1 || (data && data.b && data.a && !data.c)) {
+            var sym = String(data.s).toUpperCase();
+            var bp = parseFloat(data.b) || 0;
+            var bq = parseFloat(data.B) || 0;
+            var ap = parseFloat(data.a) || 0;
+            var aq = parseFloat(data.A) || 0;
+            var uId = parseFloat(data.u) || 0;
+            var mid = (bp > 0 && ap > 0) ? (bp + ap) / 2 : (bp || ap);
+            var spreadBps = mid > 0 ? ((ap - bp) / mid) * 10000 : 0;
+            var ts = Date.now();
+
+            var prev = pendingJsonBatch[sym] || {};
+            var p = mid;
+            var pc = prev.priceChange || 0;
+            var pcp = prev.priceChangePercent || 0;
+            var h = Math.max(prev.high || p, p);
+            var l = prev.low ? Math.min(prev.low, p) : p;
+            var v = prev.volume || 0;
+            var q = prev.quoteVolume || 0;
+
+            var wrote = writeToAtomicQueue(sym, p, pc, pcp, h, l, v, q, bp, bq, ap, aq, spreadBps, 1, uId, ts);
+
+            if (!wrote && !sharedBuffer) {
+              if (transferCount < TRANSFER_BATCH_SIZE) {
+                var off = transferCount * 16;
+                var symId = getSymbolId(sym);
+                transferFloatArray[off + 0] = ts;
+                transferFloatArray[off + 1] = symId;
+                transferFloatArray[off + 2] = p;
+                transferFloatArray[off + 3] = pc;
+                transferFloatArray[off + 4] = pcp;
+                transferFloatArray[off + 5] = h;
+                transferFloatArray[off + 6] = l;
+                transferFloatArray[off + 7] = v;
+                transferFloatArray[off + 8] = q;
+                transferFloatArray[off + 9] = bp;
+                transferFloatArray[off + 10] = bq;
+                transferFloatArray[off + 11] = ap;
+                transferFloatArray[off + 12] = aq;
+                transferFloatArray[off + 13] = spreadBps;
+                transferFloatArray[off + 14] = 1;
+                transferFloatArray[off + 15] = uId;
+                transferCount++;
+              }
+              pendingJsonBatch[sym] = {
+                symbol: sym,
+                price: p,
+                priceChange: pc,
+                priceChangePercent: pcp,
+                high: h,
+                low: l,
+                volume: v,
+                quoteVolume: q,
+                bidPrice: bp,
+                bidQty: bq,
+                askPrice: ap,
+                askQty: aq,
+                spreadBps: spreadBps,
+                midPrice: mid,
+                timestamp: ts
+              };
+              scheduleBatchFlush();
+            }
+          } else if (data && data.s && data.c) {
             var sym = String(data.s).toUpperCase();
             var p = parseFloat(data.c) || 0;
             var pc = parseFloat(data.p) || 0;
@@ -380,7 +472,15 @@ export class BinanceWorkerManager {
             var q = parseFloat(data.q) || 0;
             var ts = parseFloat(data.E) || Date.now();
 
-            var wrote = writeToAtomicQueue(sym, p, pc, pcp, h, l, v, q, ts);
+            var prev = pendingJsonBatch[sym] || {};
+            var bp = prev.bidPrice || p;
+            var bq = prev.bidQty || 0;
+            var ap = prev.askPrice || p;
+            var aq = prev.askQty || 0;
+            var spreadBps = prev.spreadBps || 0;
+            var mid = (bp > 0 && ap > 0) ? (bp + ap) / 2 : p;
+
+            var wrote = writeToAtomicQueue(sym, p, pc, pcp, h, l, v, q, bp, bq, ap, aq, spreadBps, 2, 0, ts);
 
             if (peerPort) {
               try {
@@ -395,6 +495,10 @@ export class BinanceWorkerManager {
                     low: l,
                     volume: v,
                     quoteVolume: q,
+                    bidPrice: bp,
+                    askPrice: ap,
+                    spreadBps: spreadBps,
+                    midPrice: mid,
                     timestamp: ts
                   }
                 });
@@ -403,7 +507,7 @@ export class BinanceWorkerManager {
 
             if (!wrote && !sharedBuffer) {
               if (transferCount < TRANSFER_BATCH_SIZE) {
-                var off = transferCount * 10;
+                var off = transferCount * 16;
                 var symId = getSymbolId(sym);
                 transferFloatArray[off + 0] = ts;
                 transferFloatArray[off + 1] = symId;
@@ -414,7 +518,13 @@ export class BinanceWorkerManager {
                 transferFloatArray[off + 6] = l;
                 transferFloatArray[off + 7] = v;
                 transferFloatArray[off + 8] = q;
-                transferFloatArray[off + 9] = 1;
+                transferFloatArray[off + 9] = bp;
+                transferFloatArray[off + 10] = bq;
+                transferFloatArray[off + 11] = ap;
+                transferFloatArray[off + 12] = aq;
+                transferFloatArray[off + 13] = spreadBps;
+                transferFloatArray[off + 14] = 2;
+                transferFloatArray[off + 15] = 0;
                 transferCount++;
               }
               pendingJsonBatch[sym] = {
@@ -426,6 +536,10 @@ export class BinanceWorkerManager {
                 low: l,
                 volume: v,
                 quoteVolume: q,
+                bidPrice: bp,
+                askPrice: ap,
+                spreadBps: spreadBps,
+                midPrice: mid,
                 timestamp: ts
               };
               scheduleBatchFlush();
@@ -446,10 +560,13 @@ export class BinanceWorkerManager {
           ws = null;
         }
 
-        var streams = subscribedSymbols.map(function(s) {
-          return s.toLowerCase() + "@ticker";
-        }).join("/");
-        var url = "wss://stream.binance.com:9443/stream?streams=" + streams;
+        var streams = [];
+        for (var i = 0; i < subscribedSymbols.length; i++) {
+          var s = subscribedSymbols[i].toLowerCase();
+          streams.push(s + "@bookTicker");
+          streams.push(s + "@ticker");
+        }
+        var url = "wss://stream.binance.com:9443/stream?streams=" + streams.join("/");
 
         try {
           ws = new WebSocket(url);
@@ -503,12 +620,12 @@ export class BinanceWorkerManager {
               spscHeader = new Int32Array(sharedBuffer, 0, 48);
               spscCapacity = spscHeader[32] || 2048;
               spscMask = spscHeader[33] || (spscCapacity - 1);
-              spscStride = spscHeader[34] || 10;
+              spscStride = spscHeader[34] || 16;
               spscData = new Float64Array(sharedBuffer, 192, spscCapacity * spscStride);
             } else {
               atomicHeader = new Int32Array(sharedBuffer, 0, 16);
               atomicCapacity = atomicHeader[2] || 2048;
-              atomicStride = atomicHeader[3] || 10;
+              atomicStride = atomicHeader[3] || 16;
               atomicData = new Float64Array(sharedBuffer, 64, atomicCapacity * atomicStride);
             }
           }
@@ -564,13 +681,20 @@ export class BinanceWorkerManager {
     }
 
     try {
-      // 1. Tenta inicializar via arquivo de worker dedicado (Next.js bundler chunk)
+      // 1. Tenta inicializar via worker dedicado de microestrutura (Next.js bundler chunk)
       let workerInstance: Worker | null = null;
       try {
         if (typeof import.meta !== "undefined" && import.meta.url) {
-          workerInstance = new Worker(
-            new URL("../../workers/binance-stream.worker.ts", import.meta.url)
-          );
+          try {
+            workerInstance = new Worker(
+              new URL("../../workers/ticker-worker.ts", import.meta.url),
+              { type: "module" }
+            );
+          } catch {
+            workerInstance = new Worker(
+              new URL("../../workers/binance-stream.worker.ts", import.meta.url)
+            );
+          }
         }
       } catch {
         workerInstance = null;
@@ -678,6 +802,10 @@ export class BinanceWorkerManager {
           const off = i * stride;
           const symId = floatView[off + SLOT_OFFSET_SYMBOL_ID];
           const sym = this.getSymbolFromId(symId);
+          const bp = floatView[off + SLOT_OFFSET_BID_PRICE];
+          const ap = floatView[off + SLOT_OFFSET_ASK_PRICE];
+          const mid = (bp > 0 && ap > 0) ? (bp + ap) / 2 : floatView[off + SLOT_OFFSET_PRICE];
+
           tickers.push({
             symbol: sym,
             price: floatView[off + SLOT_OFFSET_PRICE],
@@ -687,6 +815,14 @@ export class BinanceWorkerManager {
             low: floatView[off + SLOT_OFFSET_LOW],
             volume: floatView[off + SLOT_OFFSET_VOLUME],
             quoteVolume: floatView[off + SLOT_OFFSET_QUOTE_VOLUME],
+            bidPrice: bp,
+            bidQty: floatView[off + SLOT_OFFSET_BID_QTY],
+            askPrice: ap,
+            askQty: floatView[off + SLOT_OFFSET_ASK_QTY],
+            spreadBps: floatView[off + SLOT_OFFSET_SPREAD_BPS],
+            midPrice: mid,
+            flags: floatView[off + SLOT_OFFSET_FLAGS],
+            updateId: floatView[off + SLOT_OFFSET_UPDATE_ID],
             timestamp: floatView[off + SLOT_OFFSET_TIMESTAMP],
           });
         }
@@ -751,6 +887,10 @@ export class BinanceWorkerManager {
         (slot) => {
           const symId = slot[SLOT_OFFSET_SYMBOL_ID];
           const sym = this.getSymbolFromId(symId);
+          const bp = slot[SLOT_OFFSET_BID_PRICE];
+          const ap = slot[SLOT_OFFSET_ASK_PRICE];
+          const mid = (bp > 0 && ap > 0) ? (bp + ap) / 2 : slot[SLOT_OFFSET_PRICE];
+
           callback({
             symbol: sym,
             price: slot[SLOT_OFFSET_PRICE],
@@ -760,6 +900,14 @@ export class BinanceWorkerManager {
             low: slot[SLOT_OFFSET_LOW],
             volume: slot[SLOT_OFFSET_VOLUME],
             quoteVolume: slot[SLOT_OFFSET_QUOTE_VOLUME],
+            bidPrice: bp,
+            bidQty: slot[SLOT_OFFSET_BID_QTY],
+            askPrice: ap,
+            askQty: slot[SLOT_OFFSET_ASK_QTY],
+            spreadBps: slot[SLOT_OFFSET_SPREAD_BPS],
+            midPrice: mid,
+            flags: slot[SLOT_OFFSET_FLAGS],
+            updateId: slot[SLOT_OFFSET_UPDATE_ID],
             timestamp: slot[SLOT_OFFSET_TIMESTAMP],
           });
         },
@@ -775,6 +923,10 @@ export class BinanceWorkerManager {
         (slot) => {
           const symId = slot[SLOT_OFFSET_SYMBOL_ID];
           const sym = this.getSymbolFromId(symId);
+          const bp = slot[SLOT_OFFSET_BID_PRICE];
+          const ap = slot[SLOT_OFFSET_ASK_PRICE];
+          const mid = (bp > 0 && ap > 0) ? (bp + ap) / 2 : slot[SLOT_OFFSET_PRICE];
+
           callback({
             symbol: sym,
             price: slot[SLOT_OFFSET_PRICE],
@@ -784,6 +936,14 @@ export class BinanceWorkerManager {
             low: slot[SLOT_OFFSET_LOW],
             volume: slot[SLOT_OFFSET_VOLUME],
             quoteVolume: slot[SLOT_OFFSET_QUOTE_VOLUME],
+            bidPrice: bp,
+            bidQty: slot[SLOT_OFFSET_BID_QTY],
+            askPrice: ap,
+            askQty: slot[SLOT_OFFSET_ASK_QTY],
+            spreadBps: slot[SLOT_OFFSET_SPREAD_BPS],
+            midPrice: mid,
+            flags: slot[SLOT_OFFSET_FLAGS],
+            updateId: slot[SLOT_OFFSET_UPDATE_ID],
             timestamp: slot[SLOT_OFFSET_TIMESTAMP],
           });
         },
@@ -798,7 +958,7 @@ export class BinanceWorkerManager {
   /**
    * Simula a recepção de um tick diretamente na fila atômica (útil para testes unitários e headless).
    */
-  public simulateTick(ticker: NormalizedTicker): boolean {
+  public simulateTick(ticker: NormalizedTicker | WorkerTickerUpdate): boolean {
     const symId = this.getSymbolId(ticker.symbol);
     const slot = this.scratchSlot;
     slot[SLOT_OFFSET_TIMESTAMP] = ticker.timestamp;
@@ -810,7 +970,13 @@ export class BinanceWorkerManager {
     slot[SLOT_OFFSET_LOW] = ticker.low;
     slot[SLOT_OFFSET_VOLUME] = ticker.volume;
     slot[SLOT_OFFSET_QUOTE_VOLUME] = ticker.quoteVolume;
-    slot[SLOT_OFFSET_FLAGS] = 1;
+    slot[SLOT_OFFSET_BID_PRICE] = ticker.bidPrice || ticker.price;
+    slot[SLOT_OFFSET_BID_QTY] = ticker.bidQty || 1;
+    slot[SLOT_OFFSET_ASK_PRICE] = ticker.askPrice || ticker.price;
+    slot[SLOT_OFFSET_ASK_QTY] = ticker.askQty || 1;
+    slot[SLOT_OFFSET_SPREAD_BPS] = ticker.spreadBps || 0;
+    slot[SLOT_OFFSET_FLAGS] = ticker.flags || 1;
+    slot[SLOT_OFFSET_UPDATE_ID] = ticker.updateId || 0;
 
     if (this.spscQueue) {
       return this.spscQueue.push(slot);
@@ -821,7 +987,7 @@ export class BinanceWorkerManager {
 
     // Fallback: callback direto
     if (this.onBatchCallback) {
-      this.onBatchCallback([ticker]);
+      this.onBatchCallback([ticker as WorkerTickerUpdate]);
       return true;
     }
     return false;
