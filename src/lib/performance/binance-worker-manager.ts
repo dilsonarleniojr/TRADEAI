@@ -970,13 +970,14 @@ export class BinanceWorkerManager {
     slot[SLOT_OFFSET_LOW] = ticker.low;
     slot[SLOT_OFFSET_VOLUME] = ticker.volume;
     slot[SLOT_OFFSET_QUOTE_VOLUME] = ticker.quoteVolume;
-    slot[SLOT_OFFSET_BID_PRICE] = ticker.bidPrice || ticker.price;
-    slot[SLOT_OFFSET_BID_QTY] = ticker.bidQty || 1;
-    slot[SLOT_OFFSET_ASK_PRICE] = ticker.askPrice || ticker.price;
-    slot[SLOT_OFFSET_ASK_QTY] = ticker.askQty || 1;
-    slot[SLOT_OFFSET_SPREAD_BPS] = ticker.spreadBps || 0;
-    slot[SLOT_OFFSET_FLAGS] = ticker.flags || 1;
-    slot[SLOT_OFFSET_UPDATE_ID] = ticker.updateId || 0;
+    const micro = ticker as Partial<WorkerTickerUpdate>;
+    slot[SLOT_OFFSET_BID_PRICE] = micro.bidPrice || ticker.price;
+    slot[SLOT_OFFSET_BID_QTY] = micro.bidQty || 1;
+    slot[SLOT_OFFSET_ASK_PRICE] = micro.askPrice || ticker.price;
+    slot[SLOT_OFFSET_ASK_QTY] = micro.askQty || 1;
+    slot[SLOT_OFFSET_SPREAD_BPS] = micro.spreadBps || 0;
+    slot[SLOT_OFFSET_FLAGS] = micro.flags || 1;
+    slot[SLOT_OFFSET_UPDATE_ID] = micro.updateId || 0;
 
     if (this.spscQueue) {
       return this.spscQueue.push(slot);
