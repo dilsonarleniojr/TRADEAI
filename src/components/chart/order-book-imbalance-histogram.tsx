@@ -46,7 +46,7 @@ export function OrderBookImbalanceHistogram({
     return calculateOrderBookImbalance(bids, asks, 8);
   }, [bids, asks]);
 
-  const cleanSymbol = symbol.replace("USDT", "");
+  const cleanSymbol = (symbol || "BTCUSDT").replace("USDT", "");
 
   return (
     <div

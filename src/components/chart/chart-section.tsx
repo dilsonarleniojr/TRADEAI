@@ -95,7 +95,7 @@ function SymbolDropdownList({
               sym === selectedSymbol && "bg-crypto-cyan/15 text-crypto-cyan font-bold"
             )}
           >
-            <span>{sym.replace('USDT', '/USDT')}</span>
+            <span>{(sym || '').replace('USDT', '/USDT')}</span>
             {t && (
               <span className="text-[10px] font-mono text-muted-foreground">
                 ${t.price < 1 ? t.price.toFixed(4) : t.price.toFixed(2)}
@@ -114,7 +114,8 @@ function SymbolDropdownList({
 }
 
 export function ChartSection() {
-  const selectedSymbol = useCryptoStore((s) => s.selectedSymbol);
+  const rawSelectedSymbol = useCryptoStore((s) => s.selectedSymbol);
+  const selectedSymbol = rawSelectedSymbol || 'BTCUSDT';
   const setSelectedSymbol = useCryptoStore((s) => s.setSelectedSymbol);
   const [interval, setInterval] = useState('1h');
   const [symbolSearch, setSymbolSearch] = useState('');

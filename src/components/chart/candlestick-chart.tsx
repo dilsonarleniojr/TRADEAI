@@ -1641,41 +1641,47 @@ export function CandlestickChart({
                 const isBuy = trade.side === "BUY";
                 const color = isBuy ? "#10b981" : "#ef4444";
                 
-                return (
-                  <g key={`marker-${trade.id}`} className="cursor-help">
-                    {isBuy ? (
-                      // Upward pointing green caret/triangle
-                      <polygon
-                        points={`${x},${y - 12} ${x - 6},${y - 4} ${x + 6},${y - 4}`}
-                        fill="#22c55e"
-                        stroke="#10b981"
-                        strokeWidth={1}
-                      />
-                    ) : (
-                      // Downward pointing red caret/triangle
-                      <polygon
-                        points={`${x},${y + 12} ${x - 6},${y + 4} ${x + 6},${y + 4}`}
-                        fill="#ef4444"
-                        stroke="#f43f5e"
-                        strokeWidth={1}
-                      />
-                    )}
-                    {/* Vertical line connecting to trade price */}
-                    <line
-                      x1={x}
-                      y1={y}
-                      x2={x}
-                      y2={isBuy ? y - 4 : y + 4}
-                      stroke={color}
-                      strokeWidth={1}
-                      strokeDasharray="2,2"
-                      opacity={0.6}
-                    />
-                    <title>{`Execução ${trade.side === 'BUY' ? 'Compra' : 'Venda'}\nQtd: ${trade.quantity} ${trade.symbol.replace("USDT", "")}\nPreço: ${formatPrice(trade.price)}\nPnL: ${trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)} USD\nEstratégia: ${trade.strategy}\nModo: ${trade.mode.toUpperCase()}`}</title>
-                  </g>
-                );
-              });
-            })()}
+                    const pnlStr = typeof trade.pnl === 'number' && Number.isFinite(trade.pnl)
+                      ? `${trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)} USD`
+                      : 'N/A';
+                    const modeStr = (trade.mode || 'LIVE').toUpperCase();
+                    const symStr = (trade.symbol || symbol || '').replace("USDT", "");
+                    
+                    return (
+                      <g key={`marker-${trade.id}`} className="cursor-help">
+                        {isBuy ? (
+                          // Upward pointing green caret/triangle
+                          <polygon
+                            points={`${x},${y - 12} ${x - 6},${y - 4} ${x + 6},${y - 4}`}
+                            fill="#22c55e"
+                            stroke="#10b981"
+                            strokeWidth={1}
+                          />
+                        ) : (
+                          // Downward pointing red caret/triangle
+                          <polygon
+                            points={`${x},${y + 12} ${x - 6},${y + 4} ${x + 6},${y + 4}`}
+                            fill="#ef4444"
+                            stroke="#f43f5e"
+                            strokeWidth={1}
+                          />
+                        )}
+                        {/* Vertical line connecting to trade price */}
+                        <line
+                          x1={x}
+                          y1={y}
+                          x2={x}
+                          y2={isBuy ? y - 4 : y + 4}
+                          stroke={color}
+                          strokeWidth={1}
+                          strokeDasharray="2,2"
+                          opacity={0.6}
+                        />
+                        <title>{`Execução ${trade.side === 'BUY' ? 'Compra' : 'Venda'}\nQtd: ${trade.quantity} ${symStr}\nPreço: ${formatPrice(trade.price)}\nPnL: ${pnlStr}\nEstratégia: ${trade.strategy || 'AI'}\nModo: ${modeStr}`}</title>
+                      </g>
+                    );
+                  });
+                })()}
 
             {/* Liquidity Spoofing Evasion Markers & Candle Highlighting */}
             {showSpoofingMarkers && (() => {
@@ -2476,7 +2482,7 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
                     fontFamily="monospace"
                     fontWeight={700}
                   >
-                    TP: ${formatPrice(currentTp)} (+${tpGainUsd.toFixed(2)} | +{tpGainPct.toFixed(1)}%)
+                    TP: ${formatPrice(currentTp)} (+${(Number.isFinite(tpGainUsd) ? tpGainUsd : 0).toFixed(2)} | +${(Number.isFinite(tpGainPct) ? tpGainPct : 0).toFixed(1)}%)
                   </text>
 
                   {/* 3. LINHA DE STOP-LOSS (Vermelha / Rose OU Dourada se Breakeven Armado) */}
@@ -2600,7 +2606,7 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
                     >
                       {isStopAtBreakeven
                         ? `🛡️ SL (BE PROTEGIDO): $${formatPrice(currentSl)}`
-                        : `SL: $${formatPrice(currentSl)} (-$${Math.abs(slLossUsd).toFixed(2)} | ${slLossPct.toFixed(1)}%)`}
+                        : `SL: $${formatPrice(currentSl)} (-$${Math.abs(Number.isFinite(slLossUsd) ? slLossUsd : 0).toFixed(2)} | ${(Number.isFinite(slLossPct) ? slLossPct : 0).toFixed(1)}%)`}
                     </text>
                     <title>
                       {isStopAtBreakeven

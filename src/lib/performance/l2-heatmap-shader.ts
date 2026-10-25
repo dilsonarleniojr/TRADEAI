@@ -205,11 +205,34 @@ export function create1DTexturePalette(
     data
   );
 
-  // Amostragem bilinear contínua sem repetição
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  // 1. Mipmap Dinâmico para suavização e anti-aliasing em zoom macro
+  try {
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  } catch {
+    // Fallback caso a implementação WebGL emulada/headless não suporte mipmap em 1D
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  }
+
+  // 2. Amostragem bilinear no magnification filter
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  // 3. Filtragem anisotrópica para livros de alta densidade sem shimmering
+  try {
+    const extAniso =
+      gl.getExtension("EXT_texture_filter_anisotropic") ||
+      gl.getExtension("WEBKIT_EXT_texture_filter_anisotropic") ||
+      gl.getExtension("MOZ_EXT_texture_filter_anisotropic");
+
+    if (extAniso) {
+      const maxAniso = gl.getParameter(extAniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT) || 4;
+      gl.texParameterf(gl.TEXTURE_2D, extAniso.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(4, maxAniso));
+    }
+  } catch {
+    // Extensões opcionais ignoradas silenciosamente
+  }
 
   gl.bindTexture(gl.TEXTURE_2D, null);
   return texture;

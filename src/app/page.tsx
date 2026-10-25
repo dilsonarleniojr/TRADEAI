@@ -13,7 +13,6 @@ import { Footer } from "@/components/footer";
 import { TickerTape } from "@/components/header/ticker-tape";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
 import dynamic from "next/dynamic";
-import { ChartSection } from "@/components/chart/chart-section";
 import { BotSection } from "@/components/bot/bot-section";
 import { BotBackgroundRunner } from "@/components/bot/bot-background-runner";
 import { HistoryBootstrap } from "@/components/bot/history-bootstrap";
@@ -27,6 +26,11 @@ function TabLoadingSkeleton() {
     </div>
   );
 }
+
+const ChartSection = dynamic(
+  () => import("@/components/chart/chart-section").then((m) => m.ChartSection),
+  { ssr: false, loading: () => <TabLoadingSkeleton /> }
+);
 
 const ChatSection = dynamic(
   () => import("@/components/ai/chat-section").then((m) => m.ChatSection),
@@ -166,7 +170,9 @@ function HomePageContent() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <ChartSection />
+            <SectionErrorBoundary sectionName="Terminal Gráfico e Livro de Ofertas">
+              <ChartSection />
+            </SectionErrorBoundary>
           </motion.div>
         );
       case "ai":

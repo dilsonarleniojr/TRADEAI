@@ -53,7 +53,7 @@ export function QuickTrade() {
     clearTradePrefill,
   } = useCryptoStore(
   useShallow((s) => ({
-    selectedSymbol: s.selectedSymbol,
+    selectedSymbol: s.selectedSymbol || "BTCUSDT",
     tickers: s.tickers,
     tradingMode: s.tradingMode,
     portfolio: s.portfolio,
@@ -93,7 +93,7 @@ export function QuickTrade() {
   const currentPrice = ticker?.price ?? 0;
   const isPositive = (ticker?.priceChangePercent ?? 0) >= 0;
 
-  const cleanSym = selectedSymbol.replace(/USDT$|BUSD$|USDC$/, "");
+  const cleanSym = (selectedSymbol || "BTCUSDT").replace(/USDT$|BUSD$|USDC$/, "");
 
   // Find position in portfolio
   const currentPosition = portfolio.positions?.find(
@@ -382,7 +382,7 @@ export function QuickTrade() {
 
             toast({
               title: `⏰ Compra/Venda Programada Executada`,
-              description: `${order.side === "BUY" ? "🟢 Compra" : "🔴 Venda"} programada de ${order.quantity} ${order.symbol.replace("USDT", "")} disparada @ $${formatPrice(currentPrice)}`,
+              description: `${order.side === "BUY" ? "🟢 Compra" : "🔴 Venda"} programada de ${order.quantity} ${(order.symbol || selectedSymbol || "BTCUSDT").replace("USDT", "")} disparada @ $${formatPrice(currentPrice)}`,
             });
             
             // Emit telemetry
@@ -443,7 +443,7 @@ export function QuickTrade() {
 
     toast({
       title: "Ordem Programada Salva",
-      description: `${side === "BUY" ? "Compra" : "Venda"} programada de ${qty} ${selectedSymbol.replace("USDT", "")} salva @ gatilho $${formatPrice(trigger)} [${marginMode} ${leverage}x${timeStopActive ? ` | Time-Stop: ${timeStopHours}h` : ''}]`,
+      description: `${side === "BUY" ? "Compra" : "Venda"} programada de ${qty} ${(selectedSymbol || "BTCUSDT").replace("USDT", "")} salva @ gatilho $${formatPrice(trigger)} [${marginMode} ${leverage}x${timeStopActive ? ` | Time-Stop: ${timeStopHours}h` : ''}]`,
     });
   }, [triggerPrice, scheduledQty, currentPrice, selectedSymbol, addScheduledOrder, toast, marginMode, leverage, timeStopActive, timeStopHours, tradePrefill]);
 
@@ -520,7 +520,7 @@ export function QuickTrade() {
         const horizonTag = (marginMode === "SPOT") ? "Spot 1x (Anti-Wicking)" : `Margem Isolada ${leverage}x`;
         toast({
           title: `${side === "BUY" ? "🟢 Compra" : "🔴 Venda"} Executada [${horizonTag}]`,
-          description: `${qty} ${selectedSymbol.replace("USDT", "")} @ $${formatPrice(currentPrice)} — Total: $${formatPrice(total)}${timeStopActive ? ` | Time-Stop: ${timeStopHours}h` : ''}`,
+          description: `${qty} ${(selectedSymbol || "BTCUSDT").replace("USDT", "")} @ $${formatPrice(currentPrice)} — Total: $${formatPrice(total)}${timeStopActive ? ` | Time-Stop: ${timeStopHours}h` : ''}`,
         });
 
         // Emit telemetry event
@@ -1392,7 +1392,7 @@ export function QuickTrade() {
                           )}>
                             {order.side === "BUY" ? "COMPRA" : "VENDA"}
                           </Badge>
-                          <span className="font-mono text-muted-foreground text-[9px]">{order.symbol.replace("USDT", "")}</span>
+                          <span className="font-mono text-muted-foreground text-[9px]">{(order.symbol || "BTCUSDT").replace("USDT", "")}</span>
                         </div>
                         <span className="text-muted-foreground block">
                           Gatilho: {order.direction === "above" ? "≥" : "≤"} ${formatPrice(order.triggerPrice)}
@@ -1437,7 +1437,7 @@ export function QuickTrade() {
                 lastTrade.side === "BUY" ? "text-crypto-green" : "text-crypto-red"
               )} />
               <span className="text-xs font-medium">
-                {lastTrade.side} {lastTrade.qty} {selectedSymbol.replace("USDT", "")} @ ${formatPrice(lastTrade.price)}
+                {lastTrade.side} {lastTrade.qty} {(selectedSymbol || "BTCUSDT").replace("USDT", "")} @ ${formatPrice(lastTrade.price)}
               </span>
             </motion.div>
           )}
