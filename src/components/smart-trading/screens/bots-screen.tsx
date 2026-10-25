@@ -822,11 +822,28 @@ export const BotsScreen: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {bots.map((bot) => {
           const semanticState = resolveBotSemanticState(bot);
-          const currentPrice = tickers[bot.symbol]?.price ?? (bot.position?.currentPrice || 0);
           const hasPos = !!bot.position && bot.position.quantity > 0;
+          const activeSymbol = (hasPos && bot.position?.symbol)
+            ? bot.position.symbol
+            : (bot.overrideSymbol && bot.overrideSymbol !== "AUTO" ? bot.overrideSymbol : bot.symbol);
+          const cleanActiveSymbol = activeSymbol && activeSymbol !== "AUTO"
+            ? (activeSymbol.endsWith("USDT") ? activeSymbol : `${activeSymbol}USDT`)
+            : "";
+          const currentPrice = (tickers[activeSymbol]?.price || (cleanActiveSymbol ? tickers[cleanActiveSymbol]?.price : undefined))
+            ?? (bot.position?.currentPrice || 0);
           const uPnl = hasPos && bot.position
-            ? (currentPrice - bot.position.entryPrice) * bot.position.quantity
+            ? (typeof bot.position.unrealizedPnl === "number" && bot.position.unrealizedPnl !== 0
+                ? bot.position.unrealizedPnl
+                : (currentPrice - bot.position.entryPrice) * bot.position.quantity)
             : 0;
+
+          const displaySymbol = (hasPos && bot.position?.symbol)
+            ? bot.position.symbol.replace('USDT', '/USDT')
+            : (bot.overrideSymbol && bot.overrideSymbol !== "AUTO")
+            ? bot.overrideSymbol.replace('USDT', '/USDT')
+            : bot.symbol === "AUTO"
+            ? "AUTO (Screener)"
+            : bot.symbol.replace('USDT', '/USDT');
 
           const trades = bot.stats?.totalTrades || 0;
           const wins = bot.stats?.winTrades || 0;
@@ -838,7 +855,7 @@ export const BotsScreen: React.FC = () => {
               botId={bot.id}
               name={bot.name}
               strategy={bot.strategy}
-              symbol={bot.symbol.replace('USDT', '/USDT')}
+              symbol={displaySymbol}
               status={bot.active ? 'active' : 'paused'}
               semanticState={semanticState}
               profitToday={`${(bot.stats?.realizedPnl || 0) >= 0 ? '+' : ''}$${(bot.stats?.realizedPnl || 0).toFixed(2)}`}

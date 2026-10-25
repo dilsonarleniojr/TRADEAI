@@ -62,12 +62,14 @@ function handleIncomingTicker(sym: string, ticker: TickerData) {
   // Registra chegada de tick no Stale Feed Watchdog
   feedWatchdog.recordTick(sym, Date.now());
 
-  // Se a aba estiver em segundo plano, bufferiza e atualiza em intervalos espaçados (2.5s)
-  // reduzindo o consumo de CPU/bateria em mais de 90%
+  // Se a aba estiver em segundo plano, bufferiza e atualiza de forma controlada
+  // Com posições abertas, drena a cada 1.000ms para garantir trailing stop e precisão de saída sem lag
   if (typeof document !== "undefined" && isDocumentHidden) {
     backgroundTickerBuffer.set(sym, ticker);
     if (!backgroundFlushTimer) {
-      backgroundFlushTimer = setTimeout(flushBackgroundTickers, 2500);
+      const hasOpenPos = useCryptoStore.getState().bots.some((b) => !!b.position && b.position.quantity > 0);
+      const flushDelay = hasOpenPos ? 1000 : 2500;
+      backgroundFlushTimer = setTimeout(flushBackgroundTickers, flushDelay);
     }
     return;
   }
@@ -94,23 +96,33 @@ function getNeededSymbols(): string[] {
     set.add(store.selectedSymbol.toUpperCase());
   }
   store.bots.forEach((b) => {
+    // 1. Qualquer robô que possua posição aberta (mesmo se pausado ou em cooldown) DEVE ter seu preço transmitido em tempo real
+    if (b.position?.symbol) {
+      set.add(b.position.symbol.toUpperCase());
+    }
     if (b.active) {
       if (b.overrideSymbol && b.overrideSymbol !== "AUTO") {
         set.add(b.overrideSymbol.toUpperCase());
       }
-      if (b.symbol === "AUTO" || b.useAutoScreener) {
-        if (b.position?.symbol) {
-          set.add(b.position.symbol.toUpperCase());
-        }
-      } else if (b.symbol && b.symbol !== "AUTO") {
+      if (b.symbol && b.symbol !== "AUTO") {
         set.add(b.symbol.toUpperCase());
       }
     }
   });
+
+  // 2. Monitorar moedas sob custódia na carteira da Binance
+  if (Array.isArray(store.portfolio?.positions)) {
+    store.portfolio.positions.forEach((p) => {
+      if (p?.symbol && p.quantity > 0) set.add(p.symbol.toUpperCase());
+    });
+  }
+
   // Sempre monitorar pares-chave da Binance para screener e benchmark
   set.add("BTCUSDT");
   set.add("ETHUSDT");
   set.add("SOLUSDT");
+  set.add("BNBUSDT");
+  set.add("XRPUSDT");
   return Array.from(set).filter((s) => s && s !== "AUTO" && s.endsWith("USDT"));
 }
 
@@ -239,15 +251,17 @@ export function useBinanceStream() {
     useShallow((s) => ({
       selectedSymbol: s.selectedSymbol,
       activeBotSymbolsKey: s.bots
-        .filter((b) => b.active)
         .map((b) =>
-          b.position?.symbol ||
-          (b.overrideSymbol && b.overrideSymbol !== "AUTO"
-            ? b.overrideSymbol
-            : b.symbol === "AUTO" || b.useAutoScreener
-            ? "AUTO"
-            : b.symbol)
+          (b.position && b.position.quantity > 0 ? b.position.symbol : undefined) ||
+          (b.active
+            ? (b.overrideSymbol && b.overrideSymbol !== "AUTO"
+                ? b.overrideSymbol
+                : b.symbol === "AUTO" || b.useAutoScreener
+                ? "AUTO"
+                : b.symbol)
+            : undefined)
         )
+        .filter(Boolean)
         .sort()
         .join(","),
     }))

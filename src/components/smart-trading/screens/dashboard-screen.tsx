@@ -12,6 +12,7 @@ import { SmartPerformanceCard } from '../trading/performance-card';
 import { SmartMarketHeatmap } from '../trading/market-heatmap';
 import { SmartAssetWatchlist } from '../trading/asset-watchlist';
 import { SmartBotStatusCard } from '../trading/bot-status-card';
+import { resolveBotSemanticState } from './bots-screen';
 import { 
   SmartTable, 
   SmartTableHeader, 
@@ -394,6 +395,30 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {bots.slice(0, 4).map((bot) => {
+                const semanticState = resolveBotSemanticState(bot);
+                const hasPos = !!bot.position && bot.position.quantity > 0;
+                const activeSymbol = (hasPos && bot.position?.symbol)
+                  ? bot.position.symbol
+                  : (bot.overrideSymbol && bot.overrideSymbol !== "AUTO" ? bot.overrideSymbol : bot.symbol);
+                const cleanActiveSymbol = activeSymbol && activeSymbol !== "AUTO"
+                  ? (activeSymbol.endsWith("USDT") ? activeSymbol : `${activeSymbol}USDT`)
+                  : "";
+                const currentPrice = (tickers[activeSymbol]?.price || (cleanActiveSymbol ? tickers[cleanActiveSymbol]?.price : undefined))
+                  ?? (bot.position?.currentPrice || 0);
+                const uPnl = hasPos && bot.position
+                  ? (typeof bot.position.unrealizedPnl === "number" && bot.position.unrealizedPnl !== 0
+                      ? bot.position.unrealizedPnl
+                      : (currentPrice - bot.position.entryPrice) * bot.position.quantity)
+                  : 0;
+
+                const displaySymbol = (hasPos && bot.position?.symbol)
+                  ? bot.position.symbol.replace('USDT', '/USDT')
+                  : (bot.overrideSymbol && bot.overrideSymbol !== "AUTO")
+                  ? bot.overrideSymbol.replace('USDT', '/USDT')
+                  : bot.symbol === "AUTO"
+                  ? "AUTO (Screener)"
+                  : bot.symbol.replace('USDT', '/USDT');
+
                 const trades = bot.stats?.totalTrades || 0;
                 const wins = bot.stats?.winTrades || 0;
                 const wr = trades > 0 ? `${((wins / trades) * 100).toFixed(1)}%` : '0.0%';
@@ -405,21 +430,29 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                     botId={bot.id}
                     name={bot.name}
                     strategy={bot.strategy}
-                    symbol={bot.symbol.replace('USDT', '/USDT')}
+                    symbol={displaySymbol}
                     status={bot.active ? 'active' : 'paused'}
+                    semanticState={semanticState}
                     profitToday={`${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`}
                     profitPercent={parseFloat((pnl / Math.max(1, bot.allocationAmount || 15) * 100).toFixed(2))}
+                    unrealizedPnlUsd={uPnl}
                     tradesCount={trades}
                     winRate={wr}
                     drawdown={`${bot.stats?.lossTrades || 0} perdas`}
                     lastAction={bot.stats?.lastAction || 'Aguardando sinal'}
+                    positionInfo={hasPos && bot.position ? {
+                      quantity: bot.position.quantity,
+                      entryPrice: bot.position.entryPrice,
+                      currentPrice: currentPrice,
+                      side: bot.position.side,
+                    } : undefined}
                     onToggleStatus={() => {
                       const nextActive = !bot.active;
                       toggleBotActive(bot.id);
                       toast({
                         title: nextActive ? `Robô ${bot.name} Ativado` : `Robô ${bot.name} Pausado`,
                         description: nextActive
-                          ? `O robô foi iniciado e está monitorando o par ${bot.symbol.replace('USDT', '/USDT')}.`
+                          ? `O robô foi iniciado e está monitorando o par ${displaySymbol}.`
                           : `O robô foi pausado com sucesso. Nenhuma nova ordem será aberta.`,
                       });
                     }}

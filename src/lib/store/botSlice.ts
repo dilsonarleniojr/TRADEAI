@@ -981,7 +981,9 @@ export const createBotSlice: StateCreator<
       let hasChanges = false;
       const updatedBots = state.bots.map((b) => {
         if (!b.position || b.position.quantity <= 0) return b;
-        const ticker = tickers[b.symbol];
+        const targetSymbol = b.position.symbol || (b.overrideSymbol && b.overrideSymbol !== "AUTO" ? b.overrideSymbol : b.symbol);
+        const cleanSymbol = targetSymbol ? (targetSymbol.endsWith("USDT") ? targetSymbol : `${targetSymbol}USDT`) : "";
+        const ticker = tickers[targetSymbol] || (cleanSymbol ? tickers[cleanSymbol] : undefined);
         if (!ticker || !ticker.price) return b;
 
         const currentPrice = ticker.price;
@@ -991,6 +993,7 @@ export const createBotSlice: StateCreator<
         const gainPercent = ((currentPrice - entryPrice) / entryPrice) * 100;
         const unrealizedPnlUsdt = parseFloat(((currentPrice - entryPrice) * b.position.quantity).toFixed(2));
         const highestPrice = Math.max(b.position.highestPrice || entryPrice, currentPrice);
+        const lowestPrice = Math.min(b.position.lowestPrice ?? entryPrice, currentPrice);
 
         hasChanges = true;
         return {
@@ -999,6 +1002,7 @@ export const createBotSlice: StateCreator<
             ...b.position,
             currentPrice,
             highestPrice,
+            lowestPrice,
             unrealizedPnl: unrealizedPnlUsdt,
             unrealizedPnlPercent: parseFloat(gainPercent.toFixed(2)),
           },

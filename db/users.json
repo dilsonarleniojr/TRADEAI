@@ -1,12 +1,1 @@
-[
-  {
-    "id": "usr_1792889490122_vvbw3",
-    "name": "Dilson Arlenio Correa Jr",
-    "email": "dilsonarlenio@gmail.com",
-    "passwordHash": "c05a7323d20c1f7bcfbcd6475e51722c:5ef7a93e4f1c3126ecc5417a347e3cb1dd5cc909c3b867739a87fc4a4b90d3d52a71d85e24a0ae6c4890fed76d71c63c5a43a5ac730a14b1a640c3d0d3def929",
-    "twoFactorSecret": "5NPZ7BLWLI7I2KFHY5B3IKFRHDXBNZFA",
-    "twoFactorEnabled": true,
-    "createdAt": "2026-10-25T00:51:30.122Z",
-    "lastLoginAt": "2026-10-25T00:51:30.122Z"
-  }
-]
+[]
