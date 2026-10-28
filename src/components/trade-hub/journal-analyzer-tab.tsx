@@ -10,6 +10,7 @@ import {
   type TradeJournalRecord,
   type BotExecutionEventPayload,
 } from "@/lib/journal/trade-journal-engine";
+import { buildPostTradeCoTPrompt } from "@/lib/journal/post-trade-copilot-prompt";
 import {
   BookOpenCheck,
   TrendingUp,
@@ -22,6 +23,8 @@ import {
   Brain,
   History,
   Clock,
+  Copy,
+  Check,
 } from "lucide-react";
 
 interface JournalAnalyzerData {
@@ -66,11 +69,30 @@ export function JournalAnalyzerTab() {
     record: TradeJournalRecord;
     event: BotExecutionEventPayload;
   } | null>(null);
+  const [copiedCoT, setCopiedCoT] = useState<boolean>(false);
 
   const liveMetrics = useMemo(
     () => tradeJournalEngine.calculateMetrics(liveRecords, 1000),
     [liveRecords]
   );
+
+  const cotBundle = useMemo(
+    () =>
+      buildPostTradeCoTPrompt({
+        metrics: liveMetrics,
+        horizonWindow: "LIVE",
+        lastRecord: liveRecords[0] ?? null,
+      }),
+    [liveMetrics, liveRecords]
+  );
+
+  const handleCopyCoTPrompt = () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(cotBundle.promptText).catch(() => {});
+    }
+    setCopiedCoT(true);
+    setTimeout(() => setCopiedCoT(false), 2000);
+  };
 
   const formatRecordsForAi = (records: TradeJournalRecord[]): string => {
     if (records.length === 0) return "";
@@ -188,11 +210,33 @@ export function JournalAnalyzerTab() {
               </Badge>
             )}
             <span className="text-xs font-mono text-muted-foreground">
-              Pontos: {liveMetrics.equityCurve.length} | Net PnL:{" "}
+              Pontos: {liveMetrics.equityCurve.length} | Eficiência MFE:{" "}
+              <strong className="text-cyan-400">
+                {cotBundle.mfeCaptureEfficiencyPercent.toFixed(1)}%
+              </strong>{" "}
+              | Net PnL:{" "}
               <strong className={liveMetrics.totalNetPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>
                 {liveMetrics.totalNetPnl >= 0 ? "+" : ""}${liveMetrics.totalNetPnl.toFixed(2)}
               </strong>
             </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCopyCoTPrompt}
+              className="h-7 text-xs border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/15 font-mono"
+            >
+              {copiedCoT ? (
+                <>
+                  <Check className="w-3.5 h-3.5 mr-1 text-emerald-400" />
+                  Prompt CoT Copiado
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 mr-1" />
+                  Copiar Prompt CoT
+                </>
+              )}
+            </Button>
           </div>
         </CardHeader>
         <CardContent>

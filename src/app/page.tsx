@@ -65,6 +65,7 @@ import { MobileDrawer } from "@/components/mobile/mobile-drawer";
 import { AlertNotification } from "@/components/dashboard/alert-notification";
 import { ShortcutsHint } from "@/components/dashboard/shortcuts-hint";
 import { BotExecutionReportDialog } from "@/components/bot/bot-execution-report-dialog";
+import { QuantCopilotInstantModal } from "@/components/journal/quant-copilot-instant-modal";
 import { SectionErrorBoundary } from "@/components/common/section-error-boundary";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
@@ -276,6 +277,7 @@ function HomePageContent() {
           if (!open) setActiveExecutionReport(null);
         }}
       />
+      <QuantCopilotInstantModal />
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">

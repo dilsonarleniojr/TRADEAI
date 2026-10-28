@@ -6,11 +6,14 @@ import { Keyboard } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const shortcuts = [
-  { keys: ["1", "-", "6"], label: "Navigate sections" },
-  { keys: ["B"], label: "Toggle bot" },
-  { keys: ["T"], label: "Toggle theme" },
-  { keys: ["M"], label: "Toggle trading mode" },
-  { keys: ["S"], label: "Cycle symbols" },
+  { keys: ["1", "-", "9"], label: "Navegar seções" },
+  { keys: ["Alt", "+", "J"], label: "Auditoria Copiloto Quant CoT" },
+  { keys: ["⌘/Ctrl", "⇧", "C"], label: "Copiar & Auditar Prompt CoT" },
+  { keys: ["Esc", "Esc"], label: "Kill-Switch de Emergência" },
+  { keys: ["B"], label: "Alternar frota de robôs" },
+  { keys: ["T"], label: "Alternar tema visual" },
+  { keys: ["M"], label: "Alternar Paper / Live" },
+  { keys: ["S"], label: "Alternar par cripto" },
 ];
 
 export function ShortcutsHint() {
@@ -30,7 +33,7 @@ export function ShortcutsHint() {
         side="top"
         align="start"
         sideOffset={8}
-        className="w-56 p-3 bg-popover/95 backdrop-blur-md border border-border/60 shadow-lg rounded-xl"
+        className="w-64 p-3 bg-popover/95 backdrop-blur-md border border-border/60 shadow-lg rounded-xl"
       >
         <AnimatePresence>
           {open && (
@@ -41,7 +44,7 @@ export function ShortcutsHint() {
               transition={{ duration: 0.15 }}
             >
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">
-                Keyboard Shortcuts
+                Atalhos de Teclado Globais
               </p>
               <div className="space-y-2">
                 {shortcuts.map((shortcut) => (

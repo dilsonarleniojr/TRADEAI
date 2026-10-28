@@ -1,6 +1,33 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Melhorias de UI/UX Institucional (Curva Dual-Layer Equity + Underwater Drawdown SVG, Guardrails em Tempo Real no Topo, Barra Bipartida MAE/MFE e Copiloto Quant Pós-Trade CoT)",
+    "summary": "1) Motor Quant Pós-Trade & Prompt Chain-of-Thought (src/lib/journal/post-trade-copilot-prompt.ts): Implementação determinística de calculateMfeCaptureEfficiency (NetGain% / MFE%), calculateBipartiteExcursionWidths, computeUnderwaterDrawdownSeries (série pico-a-vale percentual com delta PnL ponto a ponto), computeInstitutionalRiskTelemetry (apuração em tempo real do consumo da Trava de Perda Diária <= -3.0% NAV e Consecutive Loss Brake 0/3) e buildPostTradeCoTPrompt (geração do prompt estruturado Chain-of-Thought Clear-Box com tags XML <diagnostico_assimetria_mae_mfe>, <impacto_friccao_e_custos>, <correlacao_orderflow_l2>, <plano_acao_parametrico> e contrato JSON); 2) Curva de Patrimônio Interativa Dual-Layer (src/components/journal/trade-journal-panel.tsx): Upgrade do gráfico SVG com camada alternável Underwater Drawdown (topo invertido em vermelho translúcido), hover crosshair vertical e barra de inspeção ponto a ponto; 3) Barra Bipartida MAE vs MFE & Quick Filter Chips: Adição de chips rápidos em 1 clique ('Todos', 'Direct AI Trade', 'Frota ao Vivo', 'Take-Profit', 'Stop-Loss', 'Captura MFE >= 70%') e visualização proporcional lado a lado de MAE vs MFE com badge de Eficiência de Captura MFE (%); 4) Barra Global de Status & Guardrails (src/components/header/global-status-bar.tsx) e Trade Hub IA (src/components/trade-hub/journal-analyzer-tab.tsx): Medidor de progresso em tempo real da Trava de Perda Diária (-3.0% NAV), contador Loss Brake (0/3), telemetria WAL Sync e botão 1-click para copiar o Prompt CoT; 5) Validação: Protótipo interativo Generative UI (ui_ux_improvements_preview.html) e 16/16 testes unitários aprovados nas 4 suítes do diário (2.100 asserções) com bun x tsc --noEmit sem erros.",
+    "tags": [
+      "ui-ux-institutional-enhancements",
+      "dual-layer-equity-underwater-drawdown",
+      "bipartite-mae-mfe-bar",
+      "mfe-capture-efficiency",
+      "post-trade-cot-prompt-engine",
+      "daily-loss-limit-gauge",
+      "consecutive-loss-brake-ui",
+      "wcag-aa-typography"
+    ],
+    "details": {
+      "copilotEnginePath": "src/lib/journal/post-trade-copilot-prompt.ts",
+      "journalPanelPath": "src/components/journal/trade-journal-panel.tsx",
+      "globalStatusBarPath": "src/components/header/global-status-bar.tsx",
+      "tradeHubAnalyzerPath": "src/components/trade-hub/journal-analyzer-tab.tsx",
+      "testSuitePath": "tests/unit/trade-journal-ui-copilot.test.ts",
+      "totalPassingTests": 16,
+      "totalAssertions": 2100,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1793196000000-ui-ux-dual-layer-and-cot-copilot",
+    "timestamp": "2026-10-28T09:00:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Compactação Colunar (TJC1_DEFLATE) e Agregação Diária Imutável UTC (Daily Rollup O(1)) para Históricos Acima de 50.000+ Execuções",
     "summary": "1) Motor de Compactação Colunar TJC1_DEFLATE (src/lib/journal/cold-tier-compaction-engine.ts): Codificação em layout Column-Major com delta-encoding monotônico em timestamps (entryTimestampMs, exitTimestampMs) e preços escalados em 64-bit (escala 1e8 para precisão de 8 casas decimais cripto), acompanhada de tabelas de dicionário O(1) para símbolos/estratégias/motivos e compressão DEFLATE nível 9. Inclui decodificador lossless round-trip e aferição real da taxa de compressão contra a representação JSON canônica; 2) Tabela de Agregação Diária Imutável UTC (TradeJournalDailyRollup em prisma/schema.prisma & src/app/api/journal/rollup/route.ts): Pré-consolida ao final de cada sessão UTC o PnL líquido diário, estatísticas suficientes aditivas para Sharpe/Sortino (sumGainPct, sumGainPctSq, sumDownsidePctSq), High-Water Mark e Drawdown Máximo com trava de imutabilidade (isImmutableUtcClosed = 1) no SQLite WAL; 3) Carregamento O(1) de Janelas Multi-Anuais (1Y/ALL): O método computeMetricsFromDailyRollups e getLongHorizonMetricsO1 no TradeJournalEngine reconstrói a Curva de Patrimônio e métricas institucionais de 52.000+ execuções em <5ms lendo apenas os snapshots diários pré-consolidados; 4) Integração UI & Validação: Seletor de horizonte ('TICKS' | '30D O(1)' | '90D O(1)' | '1Y O(1)' | 'ALL O(1)') e botão 'Cold-Tier TJC1 • Daily Rollup O(1)' no TradeJournalPanel, validados por tests/unit/trade-journal-cold-tier-compaction.test.ts (12/12 testes aprovados na suíte completa do diário, 2.077 asserções).",
     "tags": [

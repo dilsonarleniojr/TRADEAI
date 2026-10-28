@@ -7,11 +7,44 @@ import { playStopLossOrKillSwitchSound } from "@/lib/sound/sound-effects";
 import { structuredLogger } from "@/lib/telemetry/structured-logger";
 import { flightRecorder } from "@/lib/telemetry/flight-recorder";
 import { clearAllRestingMakerOrdersForTests } from "@/lib/bot/multi-bot-engine";
+import { tradeJournalEngine } from "@/lib/journal/trade-journal-engine";
+import { orderFlowAnomalyScanner } from "@/lib/order-flow/anomaly-scanner";
+import { buildPostTradeCoTPrompt } from "@/lib/journal/post-trade-copilot-prompt";
 
 export interface DesktopHotkeysOptions {
   enableKillSwitch?: boolean;
   enableSpaceAutoScroll?: boolean;
   enableCommandPalette?: boolean;
+  enableQuantCopilotShortcut?: boolean;
+}
+
+/**
+ * Avalia deterministicamente se o evento de teclado corresponde ao atalho global
+ * de Auditoria Instantânea do Copiloto Quant Pós-Trade:
+ * - `Alt + J` (Windows / Linux / macOS)
+ * - `Cmd + Shift + C` ou `Ctrl + Shift + C`
+ */
+export function isQuantCopilotHotkey(e: {
+  key: string;
+  code?: string;
+  altKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  shiftKey?: boolean;
+}): boolean {
+  const keyLower = (e.key || "").toLowerCase();
+  const isAltJ =
+    !!e.altKey &&
+    !e.ctrlKey &&
+    !e.metaKey &&
+    (keyLower === "j" || e.code === "KeyJ");
+  const isCmdOrCtrlShiftC =
+    (!!e.metaKey || !!e.ctrlKey) &&
+    !!e.shiftKey &&
+    !e.altKey &&
+    (keyLower === "c" || e.code === "KeyC");
+
+  return isAltJ || isCmdOrCtrlShiftC;
 }
 
 export function useDesktopHotkeys(options: DesktopHotkeysOptions = {}) {
@@ -19,6 +52,7 @@ export function useDesktopHotkeys(options: DesktopHotkeysOptions = {}) {
     enableKillSwitch = true,
     enableSpaceAutoScroll = true,
     enableCommandPalette = true,
+    enableQuantCopilotShortcut = true,
   } = options;
 
   const { toast } = useToast();
@@ -29,6 +63,9 @@ export function useDesktopHotkeys(options: DesktopHotkeysOptions = {}) {
   const toggleAllBots = useCryptoStore((s) => s.toggleAllBots);
   const setIsCommandSearchOpen = useCryptoStore((s) => s.setIsCommandSearchOpen);
   const isCommandSearchOpen = useCryptoStore((s) => s.isCommandSearchOpen);
+  const triggerQuantCopilotInstantAudit = useCryptoStore(
+    (s) => s.triggerQuantCopilotInstantAudit
+  );
 
   const triggerEmergencyKillSwitch = useCallback(() => {
     // 1. Pausa imediatamente todos os bots na frota
@@ -37,7 +74,7 @@ export function useDesktopHotkeys(options: DesktopHotkeysOptions = {}) {
     // 2. Limpa ordens passivas resting na memória/livro
     try {
       clearAllRestingMakerOrdersForTests();
-    } catch {}
+    } catch { }
 
     // 3. Dispara alerta sonoro ríspido
     playStopLossOrKillSwitchSound();
@@ -61,9 +98,36 @@ export function useDesktopHotkeys(options: DesktopHotkeysOptions = {}) {
     toast({
       variant: "destructive",
       title: "🚨 KILL-SWITCH DE EMERGÊNCIA ACIONADO",
-      description: "Todos os robôs foram pausados imediatamente e as ordens passivas foram canceladas.",
+      description:
+        "Todos os robôs foram pausados imediatamente e as ordens passivas foram canceladas.",
     });
   }, [toggleAllBots, toast]);
+
+  const triggerQuantCopilotHotkeyAction = useCallback(() => {
+    triggerQuantCopilotInstantAudit();
+
+    // Gera e copia automaticamente o Prompt Chain-of-Thought preenchido com a telemetria ao vivo
+    const records = tradeJournalEngine.getAllRecords();
+    const metrics = tradeJournalEngine.calculateMetrics(records, 1000);
+    const anomalies = orderFlowAnomalyScanner.getRecentAlerts(10);
+    const bundle = buildPostTradeCoTPrompt({
+      metrics,
+      horizonWindow: "LIVE",
+      anomalies,
+      lastRecord: records[0] ?? null,
+    });
+
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(bundle.promptText).catch(() => { });
+    }
+
+    toast({
+      title: "🧠 Copiloto Quant CoT Acionado (Alt+J)",
+      description: `Auditoria instantânea aberta (${bundle.riskStatus} • Eficiência MFE ${bundle.mfeCaptureEfficiencyPercent.toFixed(
+        1
+      )}%). Prompt CoT copiado para o clipboard.`,
+    });
+  }, [triggerQuantCopilotInstantAudit, toast]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -88,10 +152,17 @@ export function useDesktopHotkeys(options: DesktopHotkeysOptions = {}) {
         lastEscPressTimeRef.current = now;
       }
 
+      // 2. ALT + J ou CMD/CTRL + SHIFT + C: Auditoria Instantânea do Copiloto Quant Pós-Trade
+      if (enableQuantCopilotShortcut && isQuantCopilotHotkey(e)) {
+        e.preventDefault();
+        triggerQuantCopilotHotkeyAction();
+        return;
+      }
+
       // Se o usuário estiver digitando em um input ou campo de texto, não intercepta Espaço ou atalhos normais
       if (isInput) return;
 
-      // 2. ESPAÇO: Pausar / Retomar Auto-Scroll dos Logs e Trades
+      // 3. ESPAÇO: Pausar / Retomar Auto-Scroll dos Logs e Trades
       if (e.code === "Space" && enableSpaceAutoScroll) {
         e.preventDefault();
         toggleLogAutoScroll();
@@ -105,7 +176,7 @@ export function useDesktopHotkeys(options: DesktopHotkeysOptions = {}) {
         return;
       }
 
-      // 3. CTRL + K / CMD + K: Paleta de Comandos Rápidos
+      // 4. CTRL + K / CMD + K: Paleta de Comandos Rápidos
       if (enableCommandPalette && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setIsCommandSearchOpen(!isCommandSearchOpen);
@@ -118,16 +189,19 @@ export function useDesktopHotkeys(options: DesktopHotkeysOptions = {}) {
     enableKillSwitch,
     enableSpaceAutoScroll,
     enableCommandPalette,
+    enableQuantCopilotShortcut,
     toggleLogAutoScroll,
     isLogAutoScrollPaused,
     setIsCommandSearchOpen,
     isCommandSearchOpen,
     triggerEmergencyKillSwitch,
+    triggerQuantCopilotHotkeyAction,
     toast,
   ]);
 
   return {
     isLogAutoScrollPaused,
     triggerEmergencyKillSwitch,
+    triggerQuantCopilotHotkeyAction,
   };
 }

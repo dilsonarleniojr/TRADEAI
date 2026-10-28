@@ -63,6 +63,10 @@ export interface UISlice {
   setOpenProtectionModal: (open: boolean) => void;
   openBinanceScannerModal: boolean;
   setOpenBinanceScannerModal: (open: boolean) => void;
+  openQuantCopilotModal: boolean;
+  setOpenQuantCopilotModal: (open: boolean) => void;
+  quantCopilotAutoAuditCount: number;
+  triggerQuantCopilotInstantAudit: () => void;
 }
 
 // Default widget order
@@ -101,7 +105,7 @@ function loadDashboardLayout(): string[] {
   try {
     const saved = localStorage.getItem("tradeai-dashboard-layout");
     if (saved) return JSON.parse(saved);
-  } catch {}
+  } catch { }
   return DEFAULT_DASHBOARD_LAYOUT;
 }
 
@@ -110,7 +114,7 @@ function loadDashboardVisibility(): Record<string, boolean> {
   try {
     const saved = localStorage.getItem("tradeai-dashboard-visibility");
     if (saved) return JSON.parse(saved);
-  } catch {}
+  } catch { }
   return {};
 }
 
@@ -157,16 +161,17 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
         const ticker = tickers[alert.symbol];
         if (!ticker) return alert;
         const newPrice = ticker.price;
-        
+
         let triggered = alert.isTriggered;
         let message = alert.message || "";
         const alertType = alert.type || "price";
-        
+
         if (!alert.isTriggered) {
           if (alertType === "price") {
-            triggered = alert.direction === "above"
-              ? newPrice >= (alert.targetPrice || 0)
-              : newPrice <= (alert.targetPrice || 0);
+            triggered =
+              alert.direction === "above"
+                ? newPrice >= (alert.targetPrice || 0)
+                : newPrice <= (alert.targetPrice || 0);
             if (triggered) {
               message = `Preço de ${alert.symbol.replace("USDT", "")} atingiu $${newPrice} (Meta: $${alert.targetPrice})`;
             }
@@ -196,7 +201,7 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
             }
           }
         }
-        
+
         return {
           ...alert,
           currentPrice: newPrice,
@@ -265,4 +270,12 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
   setOpenProtectionModal: (open) => set({ openProtectionModal: open }),
   openBinanceScannerModal: false,
   setOpenBinanceScannerModal: (open) => set({ openBinanceScannerModal: open }),
+  openQuantCopilotModal: false,
+  setOpenQuantCopilotModal: (open) => set({ openQuantCopilotModal: open }),
+  quantCopilotAutoAuditCount: 0,
+  triggerQuantCopilotInstantAudit: () =>
+    set((state) => ({
+      openQuantCopilotModal: true,
+      quantCopilotAutoAuditCount: state.quantCopilotAutoAuditCount + 1,
+    })),
 });

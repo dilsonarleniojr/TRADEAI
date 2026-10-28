@@ -21,12 +21,22 @@ import {
   type AnomalyAlert,
 } from "@/lib/order-flow/anomaly-scanner";
 import {
+  buildPostTradeCoTPrompt,
+  calculateBipartiteExcursionWidths,
+  calculateMfeCaptureEfficiency,
+  computeUnderwaterDrawdownSeries,
+  type UnderwaterPoint,
+} from "@/lib/journal/post-trade-copilot-prompt";
+import {
   Activity,
   ArrowDownRight,
   ArrowUpRight,
   Bell,
+  Brain,
+  Check,
   CheckCircle2,
   Clock,
+  Copy,
   Download,
   Flame,
   LineChart,
@@ -40,6 +50,14 @@ import {
   Zap,
 } from "lucide-react";
 
+type QuickFilterChip =
+  | "ALL"
+  | "DIRECT_AI"
+  | "LIVE_FLEET"
+  | "TAKE_PROFIT"
+  | "STOP_LOSS"
+  | "HIGH_EFF_MFE";
+
 export function TradeJournalPanel() {
   const [records, setRecords] = useState<TradeJournalRecord[]>([]);
   const [metrics, setMetrics] = useState<PerformanceMetrics>(() =>
@@ -48,7 +66,17 @@ export function TradeJournalPanel() {
   const [filterMode, setFilterMode] = useState<"all" | "live" | "paper">("all");
   const [filterOutcome, setFilterOutcome] = useState<"all" | "win" | "loss">("all");
   const [searchSymbol, setSearchSymbol] = useState<string>("");
+  const [quickChip, setQuickChip] = useState<QuickFilterChip>("ALL");
   const [horizonWindow, setHorizonWindow] = useState<LongHorizonWindow>("LIVE");
+  const [showUnderwaterDrawdown, setShowUnderwaterDrawdown] = useState<boolean>(true);
+  const [hoveredCurvePoint, setHoveredCurvePoint] = useState<{
+    x: number;
+    y: number;
+    point: UnderwaterPoint;
+    index: number;
+  } | null>(null);
+  const [showCoTPromptDrawer, setShowCoTPromptDrawer] = useState<boolean>(false);
+  const [copiedPrompt, setCopiedPrompt] = useState<boolean>(false);
   const [compactionReport, setCompactionReport] = useState<ColdTierCompactionReport | null>(() =>
     tradeJournalEngine.getLastCompactionReport()
   );
@@ -104,15 +132,57 @@ export function TradeJournalPanel() {
     };
   }, []);
 
-  // Filtragem dinâmica
+  // Filtragem dinâmica + Quick Filter Chips em 1 clique
   const filteredRecords = useMemo(() => {
     const filters: JournalFilterOptions = {
       mode: filterMode,
       outcome: filterOutcome,
       symbol: searchSymbol.trim() ? searchSymbol.trim() : undefined,
     };
-    return tradeJournalEngine.getFilteredRecords(filters);
-  }, [records, filterMode, filterOutcome, searchSymbol]);
+    const base = tradeJournalEngine.getFilteredRecords(filters);
+    if (quickChip === "ALL") return base;
+
+    return base.filter((r) => {
+      const botLower = r.botName.toLowerCase();
+      const reasonUpper = r.exitReason.toUpperCase();
+      if (quickChip === "DIRECT_AI") {
+        return botLower.includes("direct") || r.botId.includes("direct");
+      }
+      if (quickChip === "LIVE_FLEET") {
+        return !botLower.includes("direct") && !r.botId.includes("direct");
+      }
+      if (quickChip === "TAKE_PROFIT") {
+        return reasonUpper.includes("TP") || reasonUpper.includes("TAKE") || reasonUpper.includes("ALVO");
+      }
+      if (quickChip === "STOP_LOSS") {
+        return reasonUpper.includes("SL") || reasonUpper.includes("STOP");
+      }
+      if (quickChip === "HIGH_EFF_MFE") {
+        return calculateMfeCaptureEfficiency(r.netGainPercent, r.mfePercent) >= 70;
+      }
+      return true;
+    });
+  }, [records, filterMode, filterOutcome, searchSymbol, quickChip]);
+
+  // Prompt Chain-of-Thought Institucional & Diagnóstico Clear-Box reativo
+  const copilotBundle = useMemo(
+    () =>
+      buildPostTradeCoTPrompt({
+        metrics,
+        horizonWindow,
+        anomalies,
+        lastRecord: filteredRecords[0] ?? null,
+      }),
+    [metrics, horizonWindow, anomalies, filteredRecords]
+  );
+
+  const handleCopyCoTPrompt = () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(copilotBundle.promptText).catch(() => {});
+    }
+    setCopiedPrompt(true);
+    setTimeout(() => setCopiedPrompt(false), 2000);
+  };
 
   // Recálculo de métricas com base no filtro ou na tabela Daily Rollup O(1) para janelas 30D/90D/1Y/ALL
   useEffect(() => {
@@ -417,27 +487,96 @@ export function TradeJournalPanel() {
                       </button>
                     ))}
                   </div>
+                  {/* Toggle Underwater Drawdown Layer */}
+                  <button
+                    type="button"
+                    onClick={() => setShowUnderwaterDrawdown((prev) => !prev)}
+                    className={`px-2.5 py-0.5 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
+                      showUnderwaterDrawdown
+                        ? "bg-rose-500/15 border-rose-500/40 text-rose-300"
+                        : "bg-[#0b0e14] border-[#1f2937] text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Underwater DD: {showUnderwaterDrawdown ? "ON" : "OFF"}
+                  </button>
+
+                  {/* Toggle Copiloto Quant & Prompt CoT */}
+                  <button
+                    type="button"
+                    onClick={() => setShowCoTPromptDrawer((prev) => !prev)}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
+                      showCoTPromptDrawer
+                        ? "bg-cyan-500/20 border-cyan-500/40 text-cyan-200"
+                        : "bg-cyan-500/10 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20"
+                    }`}
+                  >
+                    <Brain className="w-3.5 h-3.5" />
+                    Copiloto Quant CoT
+                  </button>
+
                   {lastLiveExecution && (
-                    <span className="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded font-mono">
+                    <span className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded font-mono">
                       ⚡ {lastLiveExecution.event.source === "DIRECT_AI_TRADE" ? "Direct AI" : "Live Fleet"} •{" "}
                       {lastLiveExecution.record.symbol} ({lastLiveExecution.event.triggerType || lastLiveExecution.record.exitReason}){" "}
                       {lastLiveExecution.record.netPnl >= 0 ? "+" : ""}${lastLiveExecution.record.netPnl.toFixed(2)}
                     </span>
                   )}
                   {metrics.equityCurve.length > 200 && (
-                    <span className="text-[10px] text-cyan-400 bg-cyan-950/60 border border-cyan-800/60 px-1.5 py-0.5 rounded font-mono">
+                    <span className="text-[11px] text-cyan-300 bg-cyan-950/60 border border-cyan-800/60 px-1.5 py-0.5 rounded font-mono">
                       LTTB Ativo (60 pts / {metrics.equityCurve.length} trades)
                     </span>
                   )}
-                  <span className="text-xs text-slate-400 font-mono">
+                  <span className="text-xs text-slate-300 font-mono tabular-nums">
                     Base Inicial: $1,000.00 USD ({metrics.equityCurve.length} pts)
                   </span>
                 </div>
               </div>
 
-              <div className="w-full h-44 relative bg-[#090d16] rounded-lg border border-[#1a2333] emerald-border-glow p-2 flex items-center justify-center overflow-hidden">
+              {/* Barra de Inspeção Crosshair Ponto-a-Ponto */}
+              {hoveredCurvePoint && (
+                <div className="mb-2.5 px-3 py-1.5 rounded-lg bg-[#0b0e14] border border-cyan-500/30 flex flex-wrap items-center justify-between gap-2 text-xs font-mono tabular-nums">
+                  <div className="flex items-center gap-3">
+                    <span className="text-cyan-400 font-semibold">
+                      Ponto #{hoveredCurvePoint.index + 1}
+                    </span>
+                    <span className="text-slate-300">
+                      {new Date(hoveredCurvePoint.point.timestamp).toISOString().replace("T", " ").slice(0, 19)} UTC
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-slate-300">
+                      Patrimônio:{" "}
+                      <strong className="text-emerald-400">
+                        ${hoveredCurvePoint.point.equity.toFixed(2)}
+                      </strong>
+                    </span>
+                    <span className="text-slate-300">
+                      Variação:{" "}
+                      <strong
+                        className={
+                          hoveredCurvePoint.point.deltaPnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                        }
+                      >
+                        {hoveredCurvePoint.point.deltaPnl >= 0 ? "+" : ""}
+                        ${hoveredCurvePoint.point.deltaPnl.toFixed(2)}
+                      </strong>
+                    </span>
+                    <span className="text-slate-300">
+                      Underwater DD:{" "}
+                      <strong className="text-rose-400">
+                        {hoveredCurvePoint.point.drawdownPercent.toFixed(2)}%
+                      </strong>
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div
+                className="w-full h-48 relative bg-[#090d16] rounded-lg border border-[#1a2333] emerald-border-glow p-2 flex items-center justify-center overflow-hidden"
+                onMouseLeave={() => setHoveredCurvePoint(null)}
+              >
                 {metrics.equityCurve.length <= 1 ? (
-                  <div className="text-xs text-slate-500 flex items-center gap-2">
+                  <div className="text-xs text-slate-400 flex items-center gap-2">
                     <Clock className="w-4 h-4" />
                     Aguardando encerramento de trades para plotar a curva de patrimônio contínua.
                   </div>
@@ -454,7 +593,7 @@ export function TradeJournalPanel() {
                       strokeWidth="1"
                     />
 
-                    {/* Caminho da Curva com Amostragem Adaptativa LTTB (preservação O(1) de nós DOM) */}
+                    {/* Caminho Dual-Layer: Curva de Patrimônio + Underwater Drawdown com Amostragem LTTB */}
                     {(() => {
                       const rawPoints = metrics.equityCurve;
                       const points =
@@ -464,15 +603,21 @@ export function TradeJournalPanel() {
                               getY: (p) => p.equity,
                             })
                           : rawPoints;
-                      const equities = points.map((p) => p.equity);
+                      const underwaterSeries = computeUnderwaterDrawdownSeries(points);
+                      const equities = underwaterSeries.map((p) => p.equity);
                       const minEq = Math.min(...equities) * 0.995;
                       const maxEq = Math.max(...equities) * 1.005;
                       const range = maxEq - minEq || 1;
+                      const maxAbsDd = Math.max(
+                        1,
+                        ...underwaterSeries.map((u) => Math.abs(u.drawdownPercent))
+                      );
 
-                      const coords = points.map((p, idx) => {
-                        const x = (idx / (points.length - 1)) * 790 + 5;
-                        const y = 150 - ((p.equity - minEq) / range) * 140;
-                        return { x, y, p };
+                      const coords = underwaterSeries.map((p, idx) => {
+                        const x = (idx / (underwaterSeries.length - 1)) * 790 + 5;
+                        const y = 150 - ((p.equity - minEq) / range) * 135;
+                        const ddY = 8 + (Math.abs(p.drawdownPercent) / maxAbsDd) * 45;
+                        return { x, y, ddY, p, idx };
                       });
 
                       const pathD = coords.reduce(
@@ -481,8 +626,29 @@ export function TradeJournalPanel() {
                       );
                       const areaD = `${pathD} L ${coords[coords.length - 1].x.toFixed(1)} 160 L ${coords[0].x.toFixed(1)} 160 Z`;
 
+                      const ddPathD = coords.reduce(
+                        (acc, c, i) => `${acc} ${i === 0 ? "M" : "L"} ${c.x.toFixed(1)} ${c.ddY.toFixed(1)}`,
+                        ""
+                      );
+                      const ddAreaD = `${ddPathD} L ${coords[coords.length - 1].x.toFixed(1)} 8 L ${coords[0].x.toFixed(1)} 8 Z`;
+
                       return (
                         <g>
+                          {/* Camada Underwater Drawdown (Topo Invertido) */}
+                          {showUnderwaterDrawdown && (
+                            <>
+                              <path d={ddAreaD} fill="rgba(244, 63, 94, 0.14)" />
+                              <path
+                                d={ddPathD}
+                                fill="none"
+                                stroke="#f43f5e"
+                                strokeWidth="1.5"
+                                strokeDasharray="3 3"
+                              />
+                            </>
+                          )}
+
+                          {/* Camada Principal de Patrimônio */}
                           <path d={areaD} className="svg-fill-emerald" />
                           <path
                             d={pathD}
@@ -492,15 +658,38 @@ export function TradeJournalPanel() {
                             strokeLinecap="round"
                             strokeLinejoin="round"
                           />
+
+                          {/* Linha Guia Crosshair Vertical */}
+                          {hoveredCurvePoint && (
+                            <line
+                              x1={hoveredCurvePoint.x}
+                              y1="0"
+                              x2={hoveredCurvePoint.x}
+                              y2="160"
+                              stroke="#38bdf8"
+                              strokeWidth="1.2"
+                              strokeDasharray="3 3"
+                            />
+                          )}
+
                           {coords.map((c, i) => (
                             <circle
                               key={i}
                               cx={c.x}
                               cy={c.y}
-                              r="3.5"
-                              fill="#10b981"
+                              r={hoveredCurvePoint?.index === c.idx ? "5.5" : "3.5"}
+                              fill={c.p.deltaPnl >= 0 ? "#10b981" : "#f43f5e"}
                               stroke="#0b0e14"
                               strokeWidth="1.5"
+                              className="cursor-pointer transition-all"
+                              onMouseEnter={() =>
+                                setHoveredCurvePoint({
+                                  x: c.x,
+                                  y: c.y,
+                                  point: c.p,
+                                  index: c.idx,
+                                })
+                              }
                             />
                           ))}
                         </g>
@@ -509,86 +698,178 @@ export function TradeJournalPanel() {
                   </svg>
                 )}
               </div>
+
+              {/* Gaveta/Card do Copiloto Quant Pós-Trade & Prompt Chain-of-Thought Estruturado */}
+              {showCoTPromptDrawer && (
+                <div className="mt-4 p-4 rounded-xl bg-[#0b0e14] border border-cyan-500/30 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Brain className="w-4 h-4 text-cyan-400" />
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-300">
+                        Copiloto Quant Pós-Trade • Diagnóstico Clear-Box &amp; Prompt CoT
+                      </h4>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold ${
+                          copilotBundle.riskStatus === "CRITICO"
+                            ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                            : copilotBundle.riskStatus === "ATENCAO"
+                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                            : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                        }`}
+                      >
+                        Status: {copilotBundle.riskStatus} • Eficiência MFE:{" "}
+                        {copilotBundle.mfeCaptureEfficiencyPercent.toFixed(1)}%
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyCoTPrompt}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-200 text-xs font-mono transition-colors cursor-pointer"
+                    >
+                      {copiedPrompt ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          Prompt Copiado!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          Copiar Prompt Institucional CoT
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-xs space-y-1">
+                    <div className="font-semibold text-emerald-300">
+                      {copilotBundle.clearBoxHeadline}
+                    </div>
+                    <p className="text-slate-300">{copilotBundle.clearBoxRecommendation}</p>
+                  </div>
+
+                  <pre className="p-3 rounded-lg bg-[#070a10] border border-[#1f2937] text-xs font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap max-h-52 leading-relaxed">
+                    {copilotBundle.promptText}
+                  </pre>
+                </div>
+              )}
             </div>
 
-            {/* Barra de Filtros e Exportação */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-[#131b2a] border border-[#1f2937] p-3 rounded-xl">
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Filtrar por par (ex: BTC, SOL)..."
-                  value={searchSymbol}
-                  onChange={(e) => setSearchSymbol(e.target.value)}
-                  className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 w-44 font-mono"
-                />
+            {/* Barra de Filtros, Quick Filter Chips e Exportação */}
+            <div className="space-y-2.5 bg-[#131b2a] border border-[#1f2937] p-3.5 rounded-xl">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Filtrar por par (ex: BTC, SOL)..."
+                    value={searchSymbol}
+                    onChange={(e) => setSearchSymbol(e.target.value)}
+                    className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 w-44 font-mono"
+                  />
 
-                <select
-                  value={filterMode}
-                  onChange={(e: any) => setFilterMode(e.target.value)}
-                  className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-emerald-500"
-                >
-                  <option value="all">Todos os Modos</option>
-                  <option value="live">⚡ Live (Real)</option>
-                  <option value="paper">📝 Paper (Simulado)</option>
-                </select>
+                  <select
+                    value={filterMode}
+                    onChange={(e: any) => setFilterMode(e.target.value)}
+                    className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="all">Todos os Modos</option>
+                    <option value="live">⚡ Live (Real)</option>
+                    <option value="paper">📝 Paper (Simulado)</option>
+                  </select>
 
-                <select
-                  value={filterOutcome}
-                  onChange={(e: any) => setFilterOutcome(e.target.value)}
-                  className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-emerald-500"
-                >
-                  <option value="all">Todos os Resultados</option>
-                  <option value="win">🟢 Apenas Lucros (Wins)</option>
-                  <option value="loss">🔴 Apenas Prejuízos (Losses)</option>
-                </select>
+                  <select
+                    value={filterOutcome}
+                    onChange={(e: any) => setFilterOutcome(e.target.value)}
+                    className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="all">Todos os Resultados</option>
+                    <option value="win">🟢 Apenas Lucros (Wins)</option>
+                    <option value="loss">🔴 Apenas Prejuízos (Losses)</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleExportCsv}
+                    disabled={filteredRecords.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a2234] border border-[#2d3748] text-xs font-medium text-slate-200 hover:text-white hover:bg-[#222d42] disabled:opacity-40 transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-emerald-400" />
+                    Exportar CSV
+                  </button>
+                  <button
+                    onClick={handleExportJson}
+                    disabled={filteredRecords.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a2234] border border-[#2d3748] text-xs font-medium text-slate-200 hover:text-white hover:bg-[#222d42] disabled:opacity-40 transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-cyan-400" />
+                    Exportar JSON
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleExportCsv}
-                  disabled={filteredRecords.length === 0}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a2234] border border-[#2d3748] text-xs font-medium text-slate-300 hover:text-white hover:bg-[#222d42] disabled:opacity-40 transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5 text-emerald-400" />
-                  Exportar CSV
-                </button>
-                <button
-                  onClick={handleExportJson}
-                  disabled={filteredRecords.length === 0}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a2234] border border-[#2d3748] text-xs font-medium text-slate-300 hover:text-white hover:bg-[#222d42] disabled:opacity-40 transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5 text-cyan-400" />
-                  Exportar JSON
-                </button>
+              {/* Quick Filter Chips em 1 Clique */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-[#1f2937]/80">
+                <span className="text-xs text-slate-400 font-medium mr-1">Filtro Rápido:</span>
+                {(
+                  [
+                    { id: "ALL", label: "Todos" },
+                    { id: "DIRECT_AI", label: "⚡ Direct AI Trade" },
+                    { id: "LIVE_FLEET", label: "🤖 Frota ao Vivo" },
+                    { id: "TAKE_PROFIT", label: "🎯 Take-Profit (TP1/TP2)" },
+                    { id: "STOP_LOSS", label: "🛡️ Stop-Loss" },
+                    { id: "HIGH_EFF_MFE", label: "🔥 Captura MFE ≥ 70%" },
+                  ] as Array<{ id: QuickFilterChip; label: string }>
+                ).map((chip) => (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    onClick={() => setQuickChip(chip.id)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors cursor-pointer ${
+                      quickChip === chip.id
+                        ? "bg-emerald-600 text-white font-semibold shadow-sm"
+                        : "bg-[#0b0e14] text-slate-300 hover:text-white border border-[#2d3748]"
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Tabela de Histórico Pós-Trade */}
+            {/* Tabela de Histórico Pós-Trade com Barra Bipartida MAE vs MFE */}
             <div className="overflow-x-auto rounded-xl border border-[#1f2937] bg-[#111827]">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-[#1f2937] bg-[#141d2e] text-slate-400 text-[11px] font-semibold uppercase tracking-wider">
+                  <tr className="border-b border-[#1f2937] bg-[#141d2e] text-slate-300 text-xs font-semibold uppercase tracking-wider">
                     <th className="py-3 px-4">Ativo / Robô</th>
                     <th className="py-3 px-3">Modo</th>
                     <th className="py-3 px-3">Preço Entrada / Saída</th>
                     <th className="py-3 px-3">Duração</th>
                     <th className="py-3 px-3 text-right">Net PnL</th>
-                    <th className="py-3 px-3 text-center">MAE (Pior Queda)</th>
-                    <th className="py-3 px-3 text-center">MFE (Pico Lucro)</th>
+                    <th className="py-3 px-3 text-center">Excursão Bipartida (MAE vs MFE)</th>
+                    <th className="py-3 px-3 text-center">Captura MFE</th>
                     <th className="py-3 px-3 text-right">Fricção (Taxas)</th>
                     <th className="py-3 px-4">Motivo Saída</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#1f2937]/50 font-mono">
+                <tbody className="divide-y divide-[#1f2937]/50 font-mono tabular-nums">
                   {filteredRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-8 text-center text-slate-500 font-sans">
+                      <td colSpan={9} className="py-8 text-center text-slate-400 font-sans">
                         Nenhum registro de trade encontrado para os filtros selecionados.
                       </td>
                     </tr>
                   ) : (
                     filteredRecords.map((r) => {
                       const isWin = r.netPnl >= 0;
+                      const bipartite = calculateBipartiteExcursionWidths(
+                        r.maePercent,
+                        r.mfePercent
+                      );
+                      const mfeCaptureEff = calculateMfeCaptureEfficiency(
+                        r.netGainPercent,
+                        r.mfePercent
+                      );
                       return (
                         <tr key={r.id} className="hover:bg-[#151f33] transition-colors">
                           <td className="py-3 px-4">
@@ -600,7 +881,7 @@ export function TradeJournalPanel() {
                               )}
                               <div>
                                 <span className="font-bold text-white text-xs">{r.symbol}</span>
-                                <span className="text-[10px] text-slate-400 block font-sans">
+                                <span className="text-[11px] text-slate-300 block font-sans">
                                   {r.botName}
                                 </span>
                               </div>
@@ -609,22 +890,22 @@ export function TradeJournalPanel() {
 
                           <td className="py-3 px-3 font-sans">
                             {r.mode === "live" ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
                                 LIVE
                               </span>
                             ) : (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 border border-blue-500/30 text-blue-400">
+                              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-500/10 border border-blue-500/30 text-blue-300">
                                 PAPER
                               </span>
                             )}
                           </td>
 
                           <td className="py-3 px-3">
-                            <div className="text-slate-300">${r.entryPrice.toFixed(4)}</div>
-                            <div className="text-[10px] text-slate-500">→ ${r.exitPrice.toFixed(4)}</div>
+                            <div className="text-slate-200">${r.entryPrice.toFixed(4)}</div>
+                            <div className="text-[11px] text-slate-400">→ ${r.exitPrice.toFixed(4)}</div>
                           </td>
 
-                          <td className="py-3 px-3 text-slate-300 font-sans text-[11px]">
+                          <td className="py-3 px-3 text-slate-200 font-sans text-xs">
                             {r.durationFormatted}
                           </td>
 
@@ -637,25 +918,51 @@ export function TradeJournalPanel() {
                               {isWin ? "+" : ""}${r.netPnl.toFixed(2)}
                             </span>
                             <span
-                              className={`block text-[10px] ${
-                                isWin ? "text-emerald-500/80" : "text-rose-500/80"
+                              className={`block text-[11px] ${
+                                isWin ? "text-emerald-400/90" : "text-rose-400/90"
                               }`}
                             >
                               {isWin ? "+" : ""}{r.netGainPercent.toFixed(2)}%
                             </span>
                           </td>
 
-                          {/* Badge MAE */}
-                          <td className="py-3 px-3 text-center">
-                            <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-rose-500/10 border border-rose-500/30 text-rose-400">
-                              {r.maePercent.toFixed(2)}%
-                            </span>
+                          {/* Barra Visual Bipartida MAE vs MFE */}
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-2 min-w-[175px]">
+                              <span className="text-[11px] font-bold text-rose-400 w-12 text-right">
+                                {r.maePercent.toFixed(2)}%
+                              </span>
+                              <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden flex border border-slate-700/80">
+                                <div
+                                  className="bg-rose-500 h-full"
+                                  style={{ width: `${bipartite.maeWidthPercent}%` }}
+                                  title={`MAE (Excursão Adversa): ${r.maePercent.toFixed(2)}%`}
+                                />
+                                <div
+                                  className="bg-emerald-500 h-full"
+                                  style={{ width: `${bipartite.mfeWidthPercent}%` }}
+                                  title={`MFE (Excursão Favorável): +${r.mfePercent.toFixed(2)}%`}
+                                />
+                              </div>
+                              <span className="text-[11px] font-bold text-emerald-400 w-12">
+                                +{r.mfePercent.toFixed(2)}%
+                              </span>
+                            </div>
                           </td>
 
-                          {/* Badge MFE */}
+                          {/* Eficiência de Captura MFE */}
                           <td className="py-3 px-3 text-center">
-                            <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
-                              +{r.mfePercent.toFixed(2)}%
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold border ${
+                                mfeCaptureEff >= 70
+                                  ? "bg-emerald-500/15 border-emerald-500/35 text-emerald-300"
+                                  : mfeCaptureEff >= 40
+                                  ? "bg-amber-500/15 border-amber-500/35 text-amber-300"
+                                  : "bg-slate-800 border-slate-700 text-slate-300"
+                              }`}
+                              title="Porcentagem do pico de lucro aberto (MFE) efetivamente embolsada no fechamento líquido"
+                            >
+                              {mfeCaptureEff.toFixed(0)}%
                             </span>
                           </td>
 
