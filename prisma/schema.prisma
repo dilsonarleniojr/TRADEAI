@@ -207,3 +207,37 @@ model TradeJournalRecord {
   @@index([exitTimestampMs])
   @@index([symbol, mode])
 }
+
+// Tabela de Agregação Diária Imutável (Daily Rollup & Cold-Tier Columnar Archive)
+// Pré-consolida PnL diário, Sharpe, Sortino, Drawdown e blob colunar TJC1 ao final de cada sessão UTC,
+// acelerando o carregamento de janelas multi-anuais (1Y/ALL acima de 50.000 execuções) para O(1).
+model TradeJournalDailyRollup {
+  dateUtc                String
+  mode                   String
+  totalTrades            Int
+  winningTrades          Int
+  losingTrades           Int
+  grossPnl               Float
+  netPnl                 Float
+  totalFeesUsd           Float
+  totalInvestedUsd       Float
+  sumGainPct             Float
+  sumGainPctSq           Float
+  sumDownsidePctSq       Float
+  openingEquity          Float
+  closingEquity          Float
+  highWaterMarkEquity    Float
+  maxIntraDayDrawdownPct Float
+  sharpeEstimate         Float
+  sortinoEstimate        Float
+  isImmutableUtcClosed   Boolean @default(false)
+  codec                  String  @default("TJC1_DEFLATE")
+  rawBytes               Int     @default(0)
+  compactedBytes         Int     @default(0)
+  compressionRatio       Float   @default(1.0)
+  columnarPayloadBase64  String?
+  updatedAtMs            Float
+
+  @@id([dateUtc, mode])
+  @@index([dateUtc])
+}

@@ -14,8 +14,22 @@ import {
   type JournalPersistenceStats,
   type CustomBatchSinkHandler,
 } from "./journal-persistence-worker-manager";
+import {
+  ColdTierCompactionEngine,
+  toUtcDateKey,
+  type DailyRollupSnapshot,
+  type ColdTierCompactionReport,
+  type LongHorizonWindow,
+} from "./cold-tier-compaction-engine";
 
-export type { JournalPersistenceStats, CustomBatchSinkHandler };
+export type {
+  JournalPersistenceStats,
+  CustomBatchSinkHandler,
+  DailyRollupSnapshot,
+  ColdTierCompactionReport,
+  LongHorizonWindow,
+};
+export { ColdTierCompactionEngine };
 export type ExecutionEventSource = "DIRECT_AI_TRADE" | "LIVE_FLEET" | "MANUAL";
 
 export type ExecutionTriggerType =
@@ -170,6 +184,8 @@ export class TradeJournalEngine {
   private static instance: TradeJournalEngine | null = null;
   private records: TradeJournalRecord[] = [];
   private recordsById = new Map<string, TradeJournalRecord>();
+  private dailyRollupsMap = new Map<string, DailyRollupSnapshot>();
+  private lastCompactionReport: ColdTierCompactionReport | null = null;
   private listeners: Array<(records: TradeJournalRecord[]) => void> = [];
   private executionEventListeners: Array<
     (record: TradeJournalRecord, event: BotExecutionEventPayload) => void
@@ -309,6 +325,7 @@ export class TradeJournalEngine {
     }
 
     this.scheduleAsyncRecordPersistence(record);
+    this.updateIncrementalDailyRollup(record);
     this.notifyListeners();
 
     if (event) {
@@ -419,6 +436,153 @@ export class TradeJournalEngine {
    */
   public subscribePersistenceStats(callback: (stats: JournalPersistenceStats) => void): () => void {
     return journalPersistenceManager.subscribeFlushStats(callback);
+  }
+
+  /**
+   * Executa a Compactação Colunar (TJC1_DEFLATE) e Agregação Diária Imutável UTC (Daily Rollup)
+   * sobre um conjunto de registros (ou sobre o histórico atual), pré-consolidando PnL diário,
+   * Sharpe, Sortino e Drawdown para consultas de longo prazo (1Y/ALL) em tempo constante O(1).
+   */
+  public runColdTierCompaction(
+    recordsToCompact: TradeJournalRecord[] = this.records,
+    initialCapital = 1000,
+    options?: { includeColumnarArchive?: boolean; referenceNowMs?: number }
+  ): ColdTierCompactionReport {
+    const report = ColdTierCompactionEngine.buildDailyRollups(
+      recordsToCompact,
+      initialCapital,
+      options
+    );
+    this.dailyRollupsMap.clear();
+    for (const rollup of report.rollups) {
+      this.dailyRollupsMap.set(`${rollup.dateUtc}__${rollup.mode}`, rollup);
+    }
+    this.lastCompactionReport = report;
+    return report;
+  }
+
+  /**
+   * Retorna os snapshots de agregação diária pré-consolidados (Daily Rollup Table)
+   */
+  public getDailyRollups(): DailyRollupSnapshot[] {
+    if (this.dailyRollupsMap.size === 0 && this.records.length > 0) {
+      this.runColdTierCompaction(this.records, 1000, { includeColumnarArchive: true });
+    }
+    return Array.from(this.dailyRollupsMap.values()).sort((a, b) =>
+      a.dateUtc.localeCompare(b.dateUtc)
+    );
+  }
+
+  /**
+   * Retorna o último relatório de compactação colunar (TJC1_DEFLATE)
+   */
+  public getLastCompactionReport(): ColdTierCompactionReport | null {
+    return this.lastCompactionReport;
+  }
+
+  /**
+   * Calcula em tempo constante O(1) (em relação ao número de trades) as métricas e a curva
+   * de patrimônio para janelas de longo prazo (30D, 90D, 1Y, ALL) usando a Daily Rollup Table.
+   */
+  public getLongHorizonMetricsO1(
+    horizon: LongHorizonWindow = "ALL",
+    mode: "all" | "live" | "paper" = "all",
+    initialCapital = 1000
+  ): PerformanceMetrics {
+    if (horizon === "LIVE") {
+      const filtered = this.getFilteredRecords({ mode });
+      return this.calculateMetrics(filtered, initialCapital);
+    }
+    const rollups = this.getDailyRollups();
+    return ColdTierCompactionEngine.computeMetricsFromDailyRollups(rollups, {
+      horizon,
+      mode,
+      initialCapital,
+    });
+  }
+
+  /**
+   * Atualiza incrementalmente em O(1) o snapshot diário UTC quando um novo trade é registrado em tempo real
+   */
+  private updateIncrementalDailyRollup(record: TradeJournalRecord): void {
+    const dateUtc = toUtcDateKey(record.exitTimestampMs);
+    const mode = record.mode === "live" ? "live" : "paper";
+    const key = `${dateUtc}__${mode}`;
+    const existing = this.dailyRollupsMap.get(key);
+    const fees = (record.commissionFeesUsd || 0) + (record.spreadCostUsd || 0);
+    const g = record.netGainPercent || 0;
+
+    if (!existing) {
+      const openingEquity = 1000;
+      const closingEquity = Number((openingEquity + record.netPnl).toFixed(2));
+      const hwm = Math.max(openingEquity, closingEquity);
+      const ddPct = hwm > 0 ? ((hwm - closingEquity) / hwm) * 100 : 0;
+
+      this.dailyRollupsMap.set(key, {
+        dateUtc,
+        mode,
+        totalTrades: 1,
+        winningTrades: record.netPnl > 0 ? 1 : 0,
+        losingTrades: record.netPnl < 0 ? 1 : 0,
+        grossPnl: Number(record.grossPnl.toFixed(2)),
+        netPnl: Number(record.netPnl.toFixed(2)),
+        totalFeesUsd: Number(fees.toFixed(2)),
+        totalInvestedUsd: Number((record.totalInvested || 0).toFixed(2)),
+        sumGainPct: Number(g.toFixed(4)),
+        sumGainPctSq: Number((g * g).toFixed(4)),
+        sumDownsidePctSq: Number((g < 0 ? g * g : 0).toFixed(4)),
+        openingEquity,
+        closingEquity,
+        highWaterMarkEquity: hwm,
+        maxIntraDayDrawdownPct: Number(ddPct.toFixed(2)),
+        sharpeEstimate: 0,
+        sortinoEstimate: 0,
+        isImmutableUtcClosed: dateUtc < toUtcDateKey(Date.now()),
+        codec: "TJC1_DEFLATE",
+        rawBytes: 0,
+        compactedBytes: 0,
+        compressionRatio: 1.0,
+        updatedAtMs: Date.now(),
+      });
+      return;
+    }
+
+    existing.totalTrades += 1;
+    if (record.netPnl > 0) existing.winningTrades += 1;
+    else if (record.netPnl < 0) existing.losingTrades += 1;
+    existing.grossPnl = Number((existing.grossPnl + record.grossPnl).toFixed(2));
+    existing.netPnl = Number((existing.netPnl + record.netPnl).toFixed(2));
+    existing.totalFeesUsd = Number((existing.totalFeesUsd + fees).toFixed(2));
+    existing.totalInvestedUsd = Number(
+      (existing.totalInvestedUsd + (record.totalInvested || 0)).toFixed(2)
+    );
+    existing.sumGainPct = Number((existing.sumGainPct + g).toFixed(4));
+    existing.sumGainPctSq = Number((existing.sumGainPctSq + g * g).toFixed(4));
+    if (g < 0) {
+      existing.sumDownsidePctSq = Number((existing.sumDownsidePctSq + g * g).toFixed(4));
+    }
+    existing.closingEquity = Number((existing.openingEquity + existing.netPnl).toFixed(2));
+    if (existing.closingEquity > existing.highWaterMarkEquity) {
+      existing.highWaterMarkEquity = existing.closingEquity;
+    }
+    const ddPct =
+      existing.highWaterMarkEquity > 0
+        ? ((existing.highWaterMarkEquity - existing.closingEquity) /
+            existing.highWaterMarkEquity) *
+          100
+        : 0;
+    if (ddPct > existing.maxIntraDayDrawdownPct) {
+      existing.maxIntraDayDrawdownPct = Number(ddPct.toFixed(2));
+    }
+
+    const mean = existing.sumGainPct / existing.totalTrades;
+    const variance = Math.max(0, existing.sumGainPctSq / existing.totalTrades - mean * mean);
+    const stdDev = Math.sqrt(variance);
+    existing.sharpeEstimate =
+      stdDev > 0
+        ? Number(((mean / stdDev) * Math.sqrt(existing.totalTrades)).toFixed(2))
+        : 0;
+    existing.updatedAtMs = Date.now();
   }
 
   /**
@@ -586,6 +750,7 @@ export class TradeJournalEngine {
     }
 
     this.scheduleAsyncRecordPersistence(record);
+    this.updateIncrementalDailyRollup(record);
     this.notifyListeners();
 
     const effectiveEvent: BotExecutionEventPayload = internalOptions?.originEvent || {
@@ -797,6 +962,8 @@ export class TradeJournalEngine {
   public clearAllRecords(): void {
     this.records = [];
     this.recordsById.clear();
+    this.dailyRollupsMap.clear();
+    this.lastCompactionReport = null;
     this.processedEventIds.clear();
     this.lastEventTimestamp = null;
     this.lastEventSource = null;

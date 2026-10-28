@@ -8,6 +8,8 @@ import {
   type JournalFilterOptions,
   type BotExecutionEventPayload,
   type JournalPersistenceStats,
+  type LongHorizonWindow,
+  type ColdTierCompactionReport,
 } from "@/lib/journal/trade-journal-engine";
 import { lttbDownsample } from "@/lib/performance/lttb";
 import {
@@ -46,6 +48,10 @@ export function TradeJournalPanel() {
   const [filterMode, setFilterMode] = useState<"all" | "live" | "paper">("all");
   const [filterOutcome, setFilterOutcome] = useState<"all" | "win" | "loss">("all");
   const [searchSymbol, setSearchSymbol] = useState<string>("");
+  const [horizonWindow, setHorizonWindow] = useState<LongHorizonWindow>("LIVE");
+  const [compactionReport, setCompactionReport] = useState<ColdTierCompactionReport | null>(() =>
+    tradeJournalEngine.getLastCompactionReport()
+  );
   const [activeTab, setActiveTab] = useState<"journal" | "telegram" | "orderflow">("journal");
 
   // Estado do Telegram
@@ -108,11 +114,36 @@ export function TradeJournalPanel() {
     return tradeJournalEngine.getFilteredRecords(filters);
   }, [records, filterMode, filterOutcome, searchSymbol]);
 
-  // Recálculo de métricas com base no filtro
+  // Recálculo de métricas com base no filtro ou na tabela Daily Rollup O(1) para janelas 30D/90D/1Y/ALL
   useEffect(() => {
-    const calculated = tradeJournalEngine.calculateMetrics(filteredRecords, 1000);
-    setMetrics(calculated);
-  }, [filteredRecords]);
+    if (horizonWindow === "LIVE") {
+      const calculated = tradeJournalEngine.calculateMetrics(filteredRecords, 1000);
+      setMetrics(calculated);
+    } else {
+      const rollupMetrics = tradeJournalEngine.getLongHorizonMetricsO1(
+        horizonWindow,
+        filterMode,
+        1000
+      );
+      setMetrics(rollupMetrics);
+    }
+  }, [filteredRecords, horizonWindow, filterMode]);
+
+  const handleRunColdTierCompaction = async () => {
+    const report = tradeJournalEngine.runColdTierCompaction(records, 1000, {
+      includeColumnarArchive: true,
+    });
+    setCompactionReport(report);
+    try {
+      await fetch("/api/journal/rollup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ initialCapital: 1000 }),
+      });
+    } catch {
+      // Ignora falha de rede se offline
+    }
+  };
 
   // Ações de Exportação
   const handleExportCsv = () => {
@@ -356,8 +387,36 @@ export function TradeJournalPanel() {
                       : ""}
                     )
                   </span>
+                  <button
+                    type="button"
+                    onClick={handleRunColdTierCompaction}
+                    title="Executar Compactação Colunar TJC1 e Agregação Diária Imutável UTC (Daily Rollup)"
+                    className="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-mono transition-colors cursor-pointer"
+                  >
+                    Cold-Tier TJC1 • Daily Rollup O(1)
+                    {compactionReport && compactionReport.compressionRatio > 1
+                      ? ` (${compactionReport.compressionRatio}x • ${compactionReport.totalRollupDays}d)`
+                      : ""}
+                  </button>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Seletor de Janela Temporal (Tick-by-Tick vs Daily Rollup O(1) para >50.000 trades) */}
+                  <div className="flex items-center gap-0.5 bg-[#0b0e14] p-0.5 rounded-md border border-[#1f2937]">
+                    {(["LIVE", "30D", "90D", "1Y", "ALL"] as LongHorizonWindow[]).map((win) => (
+                      <button
+                        key={win}
+                        type="button"
+                        onClick={() => setHorizonWindow(win)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all cursor-pointer ${
+                          horizonWindow === win
+                            ? "bg-emerald-600 text-white font-bold"
+                            : "text-slate-400 hover:text-slate-200"
+                        }`}
+                      >
+                        {win === "LIVE" ? "TICKS" : `${win} O(1)`}
+                      </button>
+                    ))}
+                  </div>
                   {lastLiveExecution && (
                     <span className="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded font-mono">
                       ⚡ {lastLiveExecution.event.source === "DIRECT_AI_TRADE" ? "Direct AI" : "Live Fleet"} •{" "}
