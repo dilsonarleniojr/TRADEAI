@@ -164,6 +164,74 @@ export function JournalAnalyzerTab() {
         </div>
       </div>
 
+      {/* Curva de Patrimônio em Tempo Real (Event-Driven BroadcastChannel / CustomEvent) */}
+      <Card className="border-emerald-500/30 bg-card/60 backdrop-blur-md">
+        <CardHeader className="pb-2 flex flex-row flex-wrap items-center justify-between gap-2">
+          <div>
+            <CardTitle className="text-xs font-semibold text-emerald-400 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" />
+              Curva de Patrimônio Acumulada em Tempo Real (Direct AI Trade & Live Fleet)
+              <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-300 bg-emerald-500/10 font-mono">
+                BroadcastChannel + CustomEvent
+              </Badge>
+            </CardTitle>
+            <CardDescription className="text-[11px] text-muted-foreground mt-0.5">
+              Acumula novos pontos automaticamente assim que um Take-Profit ou Stop-Loss é acionado pelo motor algorítmico
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            {lastLiveEvent && (
+              <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-300 bg-amber-500/10 font-mono">
+                ⚡ {lastLiveEvent.event.source === "DIRECT_AI_TRADE" ? "Direct AI" : "Live Fleet"} •{" "}
+                {lastLiveEvent.record.symbol} ({lastLiveEvent.event.triggerType || lastLiveEvent.record.exitReason}){" "}
+                {lastLiveEvent.record.netPnl >= 0 ? "+" : ""}${lastLiveEvent.record.netPnl.toFixed(2)}
+              </Badge>
+            )}
+            <span className="text-xs font-mono text-muted-foreground">
+              Pontos: {liveMetrics.equityCurve.length} | Net PnL:{" "}
+              <strong className={liveMetrics.totalNetPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                {liveMetrics.totalNetPnl >= 0 ? "+" : ""}${liveMetrics.totalNetPnl.toFixed(2)}
+              </strong>
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="w-full h-36 relative bg-background/60 rounded-lg border border-border/50 p-2 flex items-center justify-center overflow-hidden">
+            {liveMetrics.equityCurve.length <= 1 ? (
+              <div className="text-xs text-muted-foreground flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                Aguardando eventos de execução (TP/SL) do Direct AI Trade ou Live Fleet...
+              </div>
+            ) : (
+              <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 140">
+                {(() => {
+                  const points = liveMetrics.equityCurve;
+                  const equities = points.map((p) => p.equity);
+                  const minEq = Math.min(...equities) * 0.998;
+                  const maxEq = Math.max(...equities) * 1.002;
+                  const range = maxEq - minEq || 1;
+                  const coords = points.map((p, idx) => {
+                    const x = (idx / (points.length - 1)) * 780 + 10;
+                    const y = 130 - ((p.equity - minEq) / range) * 120;
+                    return `${x},${y}`;
+                  });
+                  const isPositive = points[points.length - 1].equity >= points[0].equity;
+                  const strokeColor = isPositive ? "#10b981" : "#f43f5e";
+                  return (
+                    <polyline
+                      fill="none"
+                      stroke={strokeColor}
+                      strokeWidth="2.5"
+                      points={coords.join(" ")}
+                    />
+                  );
+                })()}
+              </svg>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Optional Custom Trades Input */}
       {showCustomInput && (
         <Card className="border-cyan-500/30 bg-card/70 backdrop-blur-md">
