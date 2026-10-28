@@ -74,7 +74,7 @@ export function useDesktopHotkeys(options: DesktopHotkeysOptions = {}) {
     // 2. Limpa ordens passivas resting na memória/livro
     try {
       clearAllRestingMakerOrdersForTests();
-    } catch { }
+    } catch {}
 
     // 3. Dispara alerta sonoro ríspido
     playStopLossOrKillSwitchSound();
@@ -118,7 +118,7 @@ export function useDesktopHotkeys(options: DesktopHotkeysOptions = {}) {
     });
 
     if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(bundle.promptText).catch(() => { });
+      navigator.clipboard.writeText(bundle.promptText).catch(() => {});
     }
 
     toast({

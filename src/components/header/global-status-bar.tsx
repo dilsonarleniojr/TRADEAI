@@ -128,14 +128,15 @@ export function GlobalStatusBar() {
         {/* Stream Health */}
         <div className="flex items-center gap-1.5">
           <span
-            className={`w-2 h-2 rounded-full ${connectionStatus === "connected"
+            className={`w-2 h-2 rounded-full ${
+              connectionStatus === "connected"
                 ? "bg-emerald-400 shadow-[0_0_6px_#10b981]"
                 : connectionStatus === "connecting"
-                  ? "bg-amber-400 animate-pulse"
-                  : connectionStatus === "rest-api"
-                    ? "bg-cyan-400"
-                    : "bg-rose-500"
-              }`}
+                ? "bg-amber-400 animate-pulse"
+                : connectionStatus === "rest-api"
+                ? "bg-cyan-400"
+                : "bg-rose-500"
+            }`}
           />
           <span className="text-slate-200 font-semibold tracking-wider text-[10px] uppercase">
             Binance L2 Stream
@@ -144,12 +145,13 @@ export function GlobalStatusBar() {
 
         {/* Latency telemetry badge */}
         <div
-          className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] ${isGoodLatency
+          className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] ${
+            isGoodLatency
               ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
               : isModerateLatency
-                ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
-                : "bg-rose-500/10 text-rose-300 border-rose-500/30"
-            }`}
+              ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
+              : "bg-rose-500/10 text-rose-300 border-rose-500/30"
+          }`}
           title={`Latência RTT estimada: ${latency}ms`}
         >
           <Wifi className="w-3 h-3" />
@@ -190,28 +192,31 @@ export function GlobalStatusBar() {
           title="Trava Institucional de Perda Diária Máxima (-3.0% do NAV)"
         >
           <ShieldCheck
-            className={`w-3 h-3 ${riskTelemetry.riskStatus === "CRITICO"
+            className={`w-3 h-3 ${
+              riskTelemetry.riskStatus === "CRITICO"
                 ? "text-rose-400"
                 : riskTelemetry.riskStatus === "ATENCAO"
-                  ? "text-amber-400"
-                  : "text-emerald-400"
-              }`}
+                ? "text-amber-400"
+                : "text-emerald-400"
+            }`}
           />
           <span className="text-slate-400">Loss Diário:</span>
           <div className="w-16 h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
             <div
-              className={`h-full transition-all duration-300 ${riskTelemetry.dailyLossUtilizationPercent >= 80
+              className={`h-full transition-all duration-300 ${
+                riskTelemetry.dailyLossUtilizationPercent >= 80
                   ? "bg-rose-500"
                   : riskTelemetry.dailyLossUtilizationPercent >= 45
-                    ? "bg-amber-400"
-                    : "bg-emerald-500"
-                }`}
+                  ? "bg-amber-400"
+                  : "bg-emerald-500"
+              }`}
               style={{ width: `${Math.max(6, riskTelemetry.dailyLossUtilizationPercent)}%` }}
             />
           </div>
           <span
-            className={`font-semibold ${riskTelemetry.dailyLossPercentOfNav < -1.5 ? "text-rose-300" : "text-emerald-300"
-              }`}
+            className={`font-semibold ${
+              riskTelemetry.dailyLossPercentOfNav < -1.5 ? "text-rose-300" : "text-emerald-300"
+            }`}
           >
             {riskTelemetry.dailyLossPercentOfNav.toFixed(2)}% / -3.0%
           </span>
@@ -219,12 +224,13 @@ export function GlobalStatusBar() {
 
         {/* Consecutive Loss Brake (0/3) */}
         <div
-          className={`hidden xl:flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] ${riskTelemetry.consecutiveLosses >= 3
+          className={`hidden xl:flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] ${
+            riskTelemetry.consecutiveLosses >= 3
               ? "bg-rose-500/15 border-rose-500/40 text-rose-300"
               : riskTelemetry.consecutiveLosses === 2
-                ? "bg-amber-500/15 border-amber-500/40 text-amber-300"
-                : "bg-slate-800/80 border-slate-700 text-slate-300"
-            }`}
+              ? "bg-amber-500/15 border-amber-500/40 text-amber-300"
+              : "bg-slate-800/80 border-slate-700 text-slate-300"
+          }`}
           title="Trava de Perdas Consecutivas (Consecutive Loss Brake >= 3)"
         >
           <span>Loss Brake:</span>
@@ -260,10 +266,11 @@ export function GlobalStatusBar() {
 
         {/* Execution Mode */}
         <span
-          className={`px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase border ${tradingMode === "live"
+          className={`px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase border ${
+            tradingMode === "live"
               ? "bg-rose-500/15 text-rose-300 border-rose-500/35"
               : "bg-cyan-500/15 text-cyan-300 border-cyan-500/35"
-            }`}
+          }`}
         >
           {tradingMode === "live" ? "REAL MONEY" : "PAPER TRADING"}
         </span>
@@ -273,10 +280,11 @@ export function GlobalStatusBar() {
           variant="ghost"
           size="sm"
           onClick={handleQuickKill}
-          className={`h-5 px-2 py-0 text-[10px] font-mono font-bold rounded cursor-pointer transition-all ${killConfirm
+          className={`h-5 px-2 py-0 text-[10px] font-mono font-bold rounded cursor-pointer transition-all ${
+            killConfirm
               ? "bg-rose-600 text-white animate-pulse"
               : "bg-rose-950/50 text-rose-300 hover:bg-rose-900/70 border border-rose-500/40"
-            }`}
+          }`}
           title="Clique para pausar todos os robôs imediatamente"
         >
           <PowerOff className="w-3 h-3 mr-1" />

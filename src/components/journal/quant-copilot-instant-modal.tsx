@@ -142,8 +142,9 @@ export function QuantCopilotInstantModal() {
         },
         {
           parametro: "Governança Daily Loss & Consecutive Loss Brake",
-          valorAtual: `${riskTelemetry.dailyLossPercentOfNav.toFixed(2)}% NAV | ${riskTelemetry.consecutiveLosses
-            }/3 Loss`,
+          valorAtual: `${riskTelemetry.dailyLossPercentOfNav.toFixed(2)}% NAV | ${
+            riskTelemetry.consecutiveLosses
+          }/3 Loss`,
           valorSugerido:
             riskTelemetry.consecutiveLosses >= 2
               ? "Reduzir tamanho de mão em 50% até próximo trade vencedor"
@@ -178,17 +179,17 @@ export function QuantCopilotInstantModal() {
           setAuditResult((prev) =>
             prev
               ? {
-                ...prev,
-                source: "AI_ENGINE",
-                ajustesRecomendados: json.data.threeGoldenRules
-                  .slice(0, 3)
-                  .map((r: any, i: number) => ({
-                    parametro: r.ruleTitle || deterministicAdjustments[i]?.parametro || `Regra #${i + 1}`,
-                    valorAtual: deterministicAdjustments[i]?.valorAtual || "Parâmetro Atual",
-                    valorSugerido: r.directive || deterministicAdjustments[i]?.valorSugerido,
-                    racionalQuant: r.application || deterministicAdjustments[i]?.racionalQuant,
-                  })),
-              }
+                  ...prev,
+                  source: "AI_ENGINE",
+                  ajustesRecomendados: json.data.threeGoldenRules
+                    .slice(0, 3)
+                    .map((r: any, i: number) => ({
+                      parametro: r.ruleTitle || deterministicAdjustments[i]?.parametro || `Regra #${i + 1}`,
+                      valorAtual: deterministicAdjustments[i]?.valorAtual || "Parâmetro Atual",
+                      valorSugerido: r.directive || deterministicAdjustments[i]?.valorSugerido,
+                      racionalQuant: r.application || deterministicAdjustments[i]?.racionalQuant,
+                    })),
+                }
               : prev
           );
         }
@@ -207,7 +208,7 @@ export function QuantCopilotInstantModal() {
 
   const handleCopyPrompt = () => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(copilotBundle.promptText).catch(() => { });
+      navigator.clipboard.writeText(copilotBundle.promptText).catch(() => {});
     }
     setCopiedPrompt(true);
     setTimeout(() => setCopiedPrompt(false), 2000);
@@ -252,10 +253,11 @@ export function QuantCopilotInstantModal() {
                   key={win}
                   type="button"
                   onClick={() => setHorizonWindow(win)}
-                  className={`px-2 py-1 rounded text-xs font-mono transition-colors cursor-pointer ${horizonWindow === win
+                  className={`px-2 py-1 rounded text-xs font-mono transition-colors cursor-pointer ${
+                    horizonWindow === win
                       ? "bg-emerald-600 text-white font-bold"
                       : "text-slate-400 hover:text-slate-200"
-                    }`}
+                  }`}
                 >
                   {win}
                 </button>
@@ -284,12 +286,13 @@ export function QuantCopilotInstantModal() {
               </div>
               <div className="flex items-baseline justify-between font-mono">
                 <span
-                  className={`text-sm font-bold ${riskTelemetry.riskStatus === "CRITICO"
+                  className={`text-sm font-bold ${
+                    riskTelemetry.riskStatus === "CRITICO"
                       ? "text-rose-400"
                       : riskTelemetry.riskStatus === "ATENCAO"
-                        ? "text-amber-400"
-                        : "text-emerald-400"
-                    }`}
+                      ? "text-amber-400"
+                      : "text-emerald-400"
+                  }`}
                 >
                   {riskTelemetry.riskStatus}
                 </span>
@@ -299,12 +302,13 @@ export function QuantCopilotInstantModal() {
               </div>
               <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
                 <div
-                  className={`h-full ${riskTelemetry.dailyLossUtilizationPercent >= 80
+                  className={`h-full ${
+                    riskTelemetry.dailyLossUtilizationPercent >= 80
                       ? "bg-rose-500"
                       : riskTelemetry.dailyLossUtilizationPercent >= 45
-                        ? "bg-amber-400"
-                        : "bg-emerald-500"
-                    }`}
+                      ? "bg-amber-400"
+                      : "bg-emerald-500"
+                  }`}
                   style={{ width: `${Math.max(6, riskTelemetry.dailyLossUtilizationPercent)}%` }}
                 />
               </div>

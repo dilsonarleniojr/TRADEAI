@@ -105,7 +105,7 @@ function loadDashboardLayout(): string[] {
   try {
     const saved = localStorage.getItem("tradeai-dashboard-layout");
     if (saved) return JSON.parse(saved);
-  } catch { }
+  } catch {}
   return DEFAULT_DASHBOARD_LAYOUT;
 }
 
@@ -114,7 +114,7 @@ function loadDashboardVisibility(): Record<string, boolean> {
   try {
     const saved = localStorage.getItem("tradeai-dashboard-visibility");
     if (saved) return JSON.parse(saved);
-  } catch { }
+  } catch {}
   return {};
 }
 
