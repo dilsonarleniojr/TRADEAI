@@ -525,24 +525,33 @@ export class ColdTierCompactionEngine {
       let totalTrades = 0;
       let winningTrades = 0;
       let losingTrades = 0;
-      let grossPnl = 0;
-      let netPnl = 0;
-      let totalFeesUsd = 0;
-      let totalInvestedUsd = 0;
+      let grossPnlMicro = 0;
+      let netPnlMicro = 0;
+      let totalFeesMicro = 0;
+      let totalInvestedMicro = 0;
       let sumGainPct = 0;
       let sumGainPctSq = 0;
       let sumDownsidePctSq = 0;
       let maxIntraDayDrawdownPct = 0;
+      let equityMicro = Math.round(modeTracker.equity * CRYPTO_PRICE_SCALE);
+      let hwmMicro = Math.round(modeTracker.hwm * CRYPTO_PRICE_SCALE);
 
       for (const r of items) {
         totalTrades++;
         if (r.netPnl > 0) winningTrades++;
         else if (r.netPnl < 0) losingTrades++;
 
-        grossPnl += r.grossPnl;
-        netPnl += r.netPnl;
-        totalFeesUsd += (r.commissionFeesUsd || 0) + (r.spreadCostUsd || 0);
-        totalInvestedUsd += r.totalInvested || 0;
+        const rGrossMicro = Math.round(r.grossPnl * CRYPTO_PRICE_SCALE);
+        const rNetMicro = Math.round(r.netPnl * CRYPTO_PRICE_SCALE);
+        const rFeeMicro =
+          Math.round((r.commissionFeesUsd || 0) * CRYPTO_PRICE_SCALE) +
+          Math.round((r.spreadCostUsd || 0) * CRYPTO_PRICE_SCALE);
+        const rInvestedMicro = Math.round((r.totalInvested || 0) * CRYPTO_PRICE_SCALE);
+
+        grossPnlMicro += rGrossMicro;
+        netPnlMicro += rNetMicro;
+        totalFeesMicro += rFeeMicro;
+        totalInvestedMicro += rInvestedMicro;
 
         const g = r.netGainPercent || 0;
         sumGainPct += g;
@@ -551,18 +560,25 @@ export class ColdTierCompactionEngine {
           sumDownsidePctSq += g * g;
         }
 
-        modeTracker.equity += r.netPnl;
-        if (modeTracker.equity > modeTracker.hwm) {
-          modeTracker.hwm = modeTracker.equity;
+        equityMicro += rNetMicro;
+        if (equityMicro > hwmMicro) {
+          hwmMicro = equityMicro;
         }
         const dd =
-          modeTracker.hwm > 0
-            ? ((modeTracker.hwm - modeTracker.equity) / modeTracker.hwm) * 100
+          hwmMicro > 0
+            ? ((hwmMicro - equityMicro) / hwmMicro) * 100
             : 0;
         if (dd > maxIntraDayDrawdownPct) {
           maxIntraDayDrawdownPct = dd;
         }
       }
+
+      modeTracker.equity = equityMicro / CRYPTO_PRICE_SCALE;
+      modeTracker.hwm = hwmMicro / CRYPTO_PRICE_SCALE;
+      const grossPnl = grossPnlMicro / CRYPTO_PRICE_SCALE;
+      const netPnl = netPnlMicro / CRYPTO_PRICE_SCALE;
+      const totalFeesUsd = totalFeesMicro / CRYPTO_PRICE_SCALE;
+      const totalInvestedUsd = totalInvestedMicro / CRYPTO_PRICE_SCALE;
 
       const closingEquity = Number(modeTracker.equity.toFixed(2));
       const highWaterMarkEquity = Number(modeTracker.hwm.toFixed(2));

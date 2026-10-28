@@ -11,12 +11,16 @@ import {
 export const JOURNAL_PERSISTENCE_DEBOUNCE_MS = 500;
 export const JOURNAL_PERSISTENCE_MAX_WAIT_MS = 2000;
 export const JOURNAL_PERSISTENCE_MAX_BATCH_SIZE = 200;
+export const SQLITE_CIRCUIT_BREAKER_THRESHOLD = 3;
+export const SQLITE_CIRCUIT_BREAKER_COOLDOWN_MS = 15_000;
 
 export interface JournalPersistenceStats {
   persistenceMode: "WORKER_INDEXEDDB_SQLITE" | "ASYNC_BATCH_FALLBACK";
   workerActive: boolean;
   indexedDbReady: boolean;
   sqliteSyncEnabled: boolean;
+  sqliteCircuitState: "CLOSED" | "OPEN" | "HALF_OPEN";
+  consecutiveSyncFailures: number;
   debounceMs: number;
   pendingBatchSize: number;
   totalBatchesFlushed: number;
@@ -67,13 +71,35 @@ export class JournalPersistenceWorkerManager {
   private fallbackIndexedDbStore = new Map<string, TradeJournalRecord>();
   private customBatchSink: CustomBatchSinkHandler | null = null;
 
-  // Métricas de telemetria
+  // Métricas de telemetria e Circuit Breaker Resiliente
   private totalBatchesFlushed = 0;
   private totalRecordsPersisted = 0;
   private lastBatchSize = 0;
   private lastFlushDurationMs = 0;
   private lastFlushTimestamp: number | null = null;
+  private consecutiveSyncFailures = 0;
+  private circuitOpenedAt: number | null = null;
   private flushListeners: Array<(stats: JournalPersistenceStats) => void> = [];
+
+  private getSqliteCircuitState(): "CLOSED" | "OPEN" | "HALF_OPEN" {
+    if (this.consecutiveSyncFailures < SQLITE_CIRCUIT_BREAKER_THRESHOLD || this.circuitOpenedAt === null) {
+      return "CLOSED";
+    }
+    const elapsed = Date.now() - this.circuitOpenedAt;
+    return elapsed >= SQLITE_CIRCUIT_BREAKER_COOLDOWN_MS ? "HALF_OPEN" : "OPEN";
+  }
+
+  private recordSqliteSyncSuccess(): void {
+    this.consecutiveSyncFailures = 0;
+    this.circuitOpenedAt = null;
+  }
+
+  private recordSqliteSyncFailure(): void {
+    this.consecutiveSyncFailures += 1;
+    if (this.consecutiveSyncFailures >= SQLITE_CIRCUIT_BREAKER_THRESHOLD && this.circuitOpenedAt === null) {
+      this.circuitOpenedAt = Date.now();
+    }
+  }
 
   constructor() {
     this.initWorker();
@@ -341,6 +367,8 @@ export class JournalPersistenceWorkerManager {
       workerActive: this.workerActive,
       indexedDbReady: this.indexedDbReady || this.fallbackIndexedDbStore.size > 0,
       sqliteSyncEnabled: this.sqliteSyncEnabled,
+      sqliteCircuitState: this.getSqliteCircuitState(),
+      consecutiveSyncFailures: this.consecutiveSyncFailures,
       debounceMs: this.debounceMs,
       pendingBatchSize: this.pendingRecords.size,
       totalBatchesFlushed: this.totalBatchesFlushed,
@@ -373,6 +401,8 @@ export class JournalPersistenceWorkerManager {
     this.lastBatchSize = 0;
     this.lastFlushDurationMs = 0;
     this.lastFlushTimestamp = null;
+    this.consecutiveSyncFailures = 0;
+    this.circuitOpenedAt = null;
   }
 
   private notifyFlushListeners(stats: JournalPersistenceStats): void {
@@ -419,16 +449,27 @@ export class JournalPersistenceWorkerManager {
 
     await this.writeDirectIndexedDb(batch);
 
-    // 2. Sincroniza em lote com /api/journal/sync se estivermos em ambiente de navegador
-    if (this.sqliteSyncEnabled && typeof window !== "undefined" && typeof fetch === "function") {
+    // 2. Sincroniza em lote com /api/journal/sync respeitando Circuit Breaker Resiliente
+    const circuitState = this.getSqliteCircuitState();
+    if (
+      this.sqliteSyncEnabled &&
+      circuitState !== "OPEN" &&
+      typeof window !== "undefined" &&
+      typeof fetch === "function"
+    ) {
       try {
-        await fetch("/api/journal/sync", {
+        const res = await fetch("/api/journal/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ records: batch }),
         });
+        if (res.ok) {
+          this.recordSqliteSyncSuccess();
+        } else {
+          this.recordSqliteSyncFailure();
+        }
       } catch {
-        // Ignora falha de rede transitória
+        this.recordSqliteSyncFailure();
       }
     }
   }

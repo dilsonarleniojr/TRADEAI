@@ -7,7 +7,14 @@ import {
   buildPostTradeCoTPrompt,
   buildCopilotFleetDryRunPreview,
 } from "@/lib/journal/post-trade-copilot-prompt";
-import { TradeJournalEngine } from "@/lib/journal/trade-journal-engine";
+import {
+  TradeJournalEngine,
+  BoundedIdRingBuffer,
+  addExactUsd,
+  subExactUsd,
+  mulExactUsd,
+} from "@/lib/journal/trade-journal-engine";
+import { sanitizeSafeString } from "@/app/api/journal/sync/route";
 import { isQuantCopilotHotkey } from "@/hooks/use-desktop-hotkeys";
 import { useCryptoStore } from "@/lib/store";
 
@@ -240,5 +247,28 @@ describe("UI/UX Institutional Enhancements & Post-Trade Quant Copilot", () => {
     expect(updatedBot?.partialTpPercent).toBe(60);
     expect(updatedBot?.partialTpTrigger).toBe(1.6);
     expect(updatedBot?.stopLoss).toBe(1.8);
+  });
+
+  test("7. Garante Precisão Financeira de Ponto Fixo (Micro-Units 1e8), Ring Buffer O(1) e Sanitização Anti-Log-Injection", () => {
+    // 1. Eliminação total de deriva IEEE-754 (0.1 + 0.2 === 0.3 exato)
+    expect(addExactUsd(0.1, 0.2, 4)).toBe(0.3);
+    expect(subExactUsd(0.3, 0.1, 4)).toBe(0.2);
+    expect(mulExactUsd(100.125, 2, 4)).toBe(200.25);
+
+    // 2. BoundedIdRingBuffer com despejo circular determinístico O(1)
+    const ring = new BoundedIdRingBuffer(16);
+    for (let i = 0; i < 20; i++) {
+      ring.add(`evt_${i}`);
+    }
+    expect(ring.size).toBe(16);
+    expect(ring.has("evt_0")).toBe(false); // Evicted deterministically
+    expect(ring.has("evt_19")).toBe(true);
+
+    // 3. Sanitização de strings contra Log Injection (CRLF / caracteres de controle ASCII)
+    const maliciousInput = "BTCUSDT\r\n[CRITICAL] Fake Admin Log\u0000";
+    const cleaned = sanitizeSafeString(maliciousInput, "FALLBACK", 64);
+    expect(cleaned).not.toContain("\r");
+    expect(cleaned).not.toContain("\n");
+    expect(cleaned).not.toContain("\u0000");
   });
 });

@@ -169,6 +169,80 @@ export interface JournalFilterOptions {
 
 const STORAGE_KEY = "tradeai_trade_journal_records_v1";
 const MAX_IN_MEMORY_RECORDS = 5000;
+const MAX_PROCESSED_EVENT_IDS = 10000;
+
+/**
+ * Escala de Ponto Fixo Financeiro (1e8 micro-unidades / Satoshis)
+ * Garante precisão monetária exata e elimina deriva de ponto flutuante IEEE-754 (ex: 0.1 + 0.2 !== 0.3)
+ */
+export const FINANCIAL_MICRO_SCALE = 100_000_000;
+
+export function toMicroUnits(val: number): number {
+  if (!Number.isFinite(val)) return 0;
+  return Math.round(val * FINANCIAL_MICRO_SCALE);
+}
+
+export function fromMicroUnits(microVal: number, decimals = 4): number {
+  if (!Number.isFinite(microVal)) return 0;
+  const factor = Math.pow(10, decimals);
+  return Math.round((microVal / FINANCIAL_MICRO_SCALE) * factor) / factor;
+}
+
+export function addExactUsd(a: number, b: number, decimals = 4): number {
+  return fromMicroUnits(toMicroUnits(a) + toMicroUnits(b), decimals);
+}
+
+export function subExactUsd(a: number, b: number, decimals = 4): number {
+  return fromMicroUnits(toMicroUnits(a) - toMicroUnits(b), decimals);
+}
+
+export function mulExactUsd(a: number, b: number, decimals = 4): number {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  const microProduct = Math.round(a * b * FINANCIAL_MICRO_SCALE);
+  return fromMicroUnits(microProduct, decimals);
+}
+
+/**
+ * BoundedIdRingBuffer
+ * Estrutura de dados de tamanho fixo O(1) para controle de idempotência de eventos de execução,
+ * prevenindo vazamento de memória (Unbounded Set) em sessões contínuas 24/7.
+ */
+export class BoundedIdRingBuffer {
+  private readonly capacity: number;
+  private readonly ring: (string | undefined)[];
+  private readonly lookup = new Set<string>();
+  private writePtr = 0;
+
+  constructor(capacity = MAX_PROCESSED_EVENT_IDS) {
+    this.capacity = Math.max(16, capacity);
+    this.ring = new Array<string | undefined>(this.capacity);
+  }
+
+  public has(id: string): boolean {
+    return this.lookup.has(id);
+  }
+
+  public add(id: string): void {
+    if (!id || this.lookup.has(id)) return;
+    const evicted = this.ring[this.writePtr];
+    if (evicted !== undefined) {
+      this.lookup.delete(evicted);
+    }
+    this.ring[this.writePtr] = id;
+    this.lookup.add(id);
+    this.writePtr = (this.writePtr + 1) % this.capacity;
+  }
+
+  public clear(): void {
+    this.lookup.clear();
+    this.ring.fill(undefined);
+    this.writePtr = 0;
+  }
+
+  public get size(): number {
+    return this.lookup.size;
+  }
+}
 
 export interface JournalChannelStatus {
   broadcastChannelActive: boolean;
@@ -190,7 +264,8 @@ export class TradeJournalEngine {
   private executionEventListeners: Array<
     (record: TradeJournalRecord, event: BotExecutionEventPayload) => void
   > = [];
-  private processedEventIds = new Set<string>();
+  private processedEventIds = new BoundedIdRingBuffer(MAX_PROCESSED_EVENT_IDS);
+  private returnsTypedBuffer = new Float64Array(MAX_IN_MEMORY_RECORDS);
   private broadcastChannel: BroadcastChannel | null = null;
   private customEventActive = false;
   private lastEventTimestamp: number | null = null;
@@ -509,12 +584,12 @@ export class TradeJournalEngine {
     const mode = record.mode === "live" ? "live" : "paper";
     const key = `${dateUtc}__${mode}`;
     const existing = this.dailyRollupsMap.get(key);
-    const fees = (record.commissionFeesUsd || 0) + (record.spreadCostUsd || 0);
+    const fees = addExactUsd(record.commissionFeesUsd || 0, record.spreadCostUsd || 0, 4);
     const g = record.netGainPercent || 0;
 
     if (!existing) {
       const openingEquity = 1000;
-      const closingEquity = Number((openingEquity + record.netPnl).toFixed(2));
+      const closingEquity = addExactUsd(openingEquity, record.netPnl, 2);
       const hwm = Math.max(openingEquity, closingEquity);
       const ddPct = hwm > 0 ? ((hwm - closingEquity) / hwm) * 100 : 0;
 
@@ -524,10 +599,10 @@ export class TradeJournalEngine {
         totalTrades: 1,
         winningTrades: record.netPnl > 0 ? 1 : 0,
         losingTrades: record.netPnl < 0 ? 1 : 0,
-        grossPnl: Number(record.grossPnl.toFixed(2)),
-        netPnl: Number(record.netPnl.toFixed(2)),
-        totalFeesUsd: Number(fees.toFixed(2)),
-        totalInvestedUsd: Number((record.totalInvested || 0).toFixed(2)),
+        grossPnl: fromMicroUnits(toMicroUnits(record.grossPnl), 2),
+        netPnl: fromMicroUnits(toMicroUnits(record.netPnl), 2),
+        totalFeesUsd: fromMicroUnits(toMicroUnits(fees), 2),
+        totalInvestedUsd: fromMicroUnits(toMicroUnits(record.totalInvested || 0), 2),
         sumGainPct: Number(g.toFixed(4)),
         sumGainPctSq: Number((g * g).toFixed(4)),
         sumDownsidePctSq: Number((g < 0 ? g * g : 0).toFixed(4)),
@@ -550,18 +625,20 @@ export class TradeJournalEngine {
     existing.totalTrades += 1;
     if (record.netPnl > 0) existing.winningTrades += 1;
     else if (record.netPnl < 0) existing.losingTrades += 1;
-    existing.grossPnl = Number((existing.grossPnl + record.grossPnl).toFixed(2));
-    existing.netPnl = Number((existing.netPnl + record.netPnl).toFixed(2));
-    existing.totalFeesUsd = Number((existing.totalFeesUsd + fees).toFixed(2));
-    existing.totalInvestedUsd = Number(
-      (existing.totalInvestedUsd + (record.totalInvested || 0)).toFixed(2)
+    existing.grossPnl = addExactUsd(existing.grossPnl, record.grossPnl, 2);
+    existing.netPnl = addExactUsd(existing.netPnl, record.netPnl, 2);
+    existing.totalFeesUsd = addExactUsd(existing.totalFeesUsd, fees, 2);
+    existing.totalInvestedUsd = addExactUsd(
+      existing.totalInvestedUsd,
+      record.totalInvested || 0,
+      2
     );
     existing.sumGainPct = Number((existing.sumGainPct + g).toFixed(4));
     existing.sumGainPctSq = Number((existing.sumGainPctSq + g * g).toFixed(4));
     if (g < 0) {
       existing.sumDownsidePctSq = Number((existing.sumDownsidePctSq + g * g).toFixed(4));
     }
-    existing.closingEquity = Number((existing.openingEquity + existing.netPnl).toFixed(2));
+    existing.closingEquity = addExactUsd(existing.openingEquity, existing.netPnl, 2);
     if (existing.closingEquity > existing.highWaterMarkEquity) {
       existing.highWaterMarkEquity = existing.closingEquity;
     }
@@ -628,8 +705,9 @@ export class TradeJournalEngine {
     },
     internalOptions?: { skipChannelBroadcast?: boolean; originEvent?: BotExecutionEventPayload }
   ): TradeJournalRecord {
+    // Lookup O(1) via Map hash (elimina varredura linear Array.find O(N))
     if (trade.id) {
-      const existing = this.records.find((r) => r.id === trade.id);
+      const existing = this.recordsById.get(trade.id);
       if (existing) {
         return existing;
       }
@@ -638,19 +716,17 @@ export class TradeJournalEngine {
 
     const side = trade.side || "BUY";
     const mode = trade.mode || "paper";
-    const entryPrice = trade.entryPrice;
-    const exitPrice = trade.exitPrice;
-    const quantity = trade.quantity;
+    const entryPrice = Number.isFinite(trade.entryPrice) ? trade.entryPrice : 0;
+    const exitPrice = Number.isFinite(trade.exitPrice) ? trade.exitPrice : 0;
+    const quantity = Number.isFinite(trade.quantity) ? trade.quantity : 0;
 
-    const totalInvested = entryPrice * quantity;
-    const totalReturned = exitPrice * quantity;
-    const grossPnl = totalReturned - totalInvested;
+    // Aritmética de Ponto Fixo em Micro-Unidades (1e8) para eliminar deriva IEEE-754
+    const totalInvested = mulExactUsd(entryPrice, quantity, 4);
+    const totalReturned = mulExactUsd(exitPrice, quantity, 4);
+    const grossPnl = subExactUsd(totalReturned, totalInvested, 4);
     const gainPercent = entryPrice > 0 ? ((exitPrice - entryPrice) / entryPrice) * 100 : 0;
 
     // Rastreamento e cálculo de MAE e MFE
-    // Para posição Long:
-    // lowestPrice é o menor preço atingido durante a vida da posição.
-    // highestPrice é o maior preço atingido.
     const lowestPrice = Math.min(trade.lowestPrice ?? entryPrice, entryPrice, exitPrice);
     const highestPrice = Math.max(trade.highestPrice ?? entryPrice, entryPrice, exitPrice);
 
@@ -659,12 +735,14 @@ export class TradeJournalEngine {
     const mfePrice = highestPrice;
     const mfePercent = entryPrice > 0 ? ((highestPrice - entryPrice) / entryPrice) * 100 : 0; // valor >= 0
 
-    // Fricção de taxas e spread
+    // Fricção de taxas e spread calculada em micro-unidades exatas
     const commissionRate = trade.commissionRate ?? 0.001; // Padrão Binance Spot 0.10%
     const spreadPct = trade.spreadPercent ?? 0.03;       // Spread típico 0.03%
-    const commissionFeesUsd = (totalInvested + totalReturned) * commissionRate;
-    const spreadCostUsd = (totalInvested + totalReturned) * (spreadPct / 200); // Meio spread na entrada e saída
-    const netPnl = grossPnl - (commissionFeesUsd + spreadCostUsd);
+    const totalTurnover = addExactUsd(totalInvested, totalReturned, 4);
+    const commissionFeesUsd = mulExactUsd(totalTurnover, commissionRate, 4);
+    const spreadCostUsd = mulExactUsd(totalTurnover, spreadPct / 200, 4); // Meio spread na entrada e saída
+    const totalFrictionUsd = addExactUsd(commissionFeesUsd, spreadCostUsd, 4);
+    const netPnl = subExactUsd(grossPnl, totalFrictionUsd, 4);
     const netGainPercent = totalInvested > 0 ? (netPnl / totalInvested) * 100 : 0;
 
     // Temporalidade
@@ -814,71 +892,101 @@ export class TradeJournalEngine {
     let winTrades = 0;
     let lossTrades = 0;
     let breakevenTrades = 0;
-    let totalGrossPnl = 0;
-    let totalNetPnl = 0;
-    let totalFees = 0;
-    let grossWins = 0;
-    let grossLosses = 0;
+
+    // Acumuladores inteiros em micro-unidades (1e8) para zerar deriva de ponto flutuante IEEE-754
+    let totalGrossPnlMicro = 0;
+    let totalNetPnlMicro = 0;
+    let totalFeesMicro = 0;
+    let grossWinsMicro = 0;
+    let grossLossesMicro = 0;
     let sumMae = 0;
     let sumMfe = 0;
     let sumDurationMin = 0;
 
-    const returnsList: number[] = [];
-    const downsideReturns: number[] = [];
-
     // Para a curva de patrimônio, ordenamos cronologicamente (do mais antigo ao mais novo)
     const chronological = [...list].sort((a, b) => a.exitTimestampMs - b.exitTimestampMs);
-    let cumulativePnl = 0;
-    let peakEquity = initialEquity;
+    const totalTrades = chronological.length;
+
+    // Reutiliza Float64Array contíguo (redimensiona apenas se exceder a capacidade) para evitar GC spikes
+    if (this.returnsTypedBuffer.length < totalTrades) {
+      this.returnsTypedBuffer = new Float64Array(Math.max(totalTrades * 2, MAX_IN_MEMORY_RECORDS));
+    }
+    const returnsBuffer = this.returnsTypedBuffer;
+    let sumReturns = 0;
+    let sumDownsideSq = 0;
+    let downsideCount = 0;
+
+    const initialEquityMicro = toMicroUnits(initialEquity);
+    let cumulativePnlMicro = 0;
+    let peakEquityMicro = initialEquityMicro;
     let maxDrawdown = 0;
 
-    const equityCurve = [
-      { timestamp: chronological[0]?.entryTimestampMs || Date.now(), tradeIndex: 0, netPnl: 0, cumulativeNetPnl: 0, equity: initialEquity }
-    ];
+    const equityCurve: PerformanceMetrics["equityCurve"] = new Array(totalTrades + 1);
+    equityCurve[0] = {
+      timestamp: chronological[0]?.entryTimestampMs || Date.now(),
+      tradeIndex: 0,
+      netPnl: 0,
+      cumulativeNetPnl: 0,
+      equity: initialEquity,
+    };
 
-    for (let i = 0; i < chronological.length; i++) {
+    for (let i = 0; i < totalTrades; i++) {
       const t = chronological[i];
-      totalGrossPnl += t.grossPnl;
-      totalNetPnl += t.netPnl;
-      totalFees += (t.commissionFeesUsd + t.spreadCostUsd);
+      const grossMicro = toMicroUnits(t.grossPnl);
+      const netMicro = toMicroUnits(t.netPnl);
+      const feeMicro = toMicroUnits(t.commissionFeesUsd) + toMicroUnits(t.spreadCostUsd);
+
+      totalGrossPnlMicro += grossMicro;
+      totalNetPnlMicro += netMicro;
+      totalFeesMicro += feeMicro;
       sumMae += t.maePercent;
       sumMfe += t.mfePercent;
       sumDurationMin += t.durationMinutes;
 
       const retPct = t.netGainPercent / 100;
-      returnsList.push(retPct);
+      returnsBuffer[i] = retPct;
+      sumReturns += retPct;
 
       if (t.netPnl > 0.001) {
         winTrades++;
-        grossWins += t.netPnl;
+        grossWinsMicro += netMicro;
       } else if (t.netPnl < -0.001) {
         lossTrades++;
-        grossLosses += Math.abs(t.netPnl);
-        downsideReturns.push(retPct);
+        grossLossesMicro += Math.abs(netMicro);
+        sumDownsideSq += retPct * retPct;
+        downsideCount++;
       } else {
         breakevenTrades++;
       }
 
-      cumulativePnl += t.netPnl;
-      const currentEquity = initialEquity + cumulativePnl;
-      if (currentEquity > peakEquity) {
-        peakEquity = currentEquity;
+      cumulativePnlMicro += netMicro;
+      const currentEquityMicro = initialEquityMicro + cumulativePnlMicro;
+      if (currentEquityMicro > peakEquityMicro) {
+        peakEquityMicro = currentEquityMicro;
       }
-      const dd = peakEquity > 0 ? ((peakEquity - currentEquity) / peakEquity) * 100 : 0;
+      const dd =
+        peakEquityMicro > 0
+          ? ((peakEquityMicro - currentEquityMicro) / peakEquityMicro) * 100
+          : 0;
       if (dd > maxDrawdown) {
         maxDrawdown = dd;
       }
 
-      equityCurve.push({
+      equityCurve[i + 1] = {
         timestamp: t.exitTimestampMs,
         tradeIndex: i + 1,
         netPnl: t.netPnl,
-        cumulativeNetPnl: parseFloat(cumulativePnl.toFixed(4)),
-        equity: parseFloat(currentEquity.toFixed(4)),
-      });
+        cumulativeNetPnl: fromMicroUnits(cumulativePnlMicro, 4),
+        equity: fromMicroUnits(currentEquityMicro, 4),
+      };
     }
 
-    const totalTrades = list.length;
+    const totalGrossPnl = fromMicroUnits(totalGrossPnlMicro, 4);
+    const totalNetPnl = fromMicroUnits(totalNetPnlMicro, 4);
+    const totalFees = fromMicroUnits(totalFeesMicro, 4);
+    const grossWins = fromMicroUnits(grossWinsMicro, 4);
+    const grossLosses = fromMicroUnits(grossLossesMicro, 4);
+
     const winRate = totalTrades > 0 ? (winTrades / totalTrades) * 100 : 0;
     const profitFactor = grossLosses > 0 ? grossWins / grossLosses : (grossWins > 0 ? 99.9 : 0);
     const avgWin = winTrades > 0 ? grossWins / winTrades : 0;
@@ -895,12 +1003,17 @@ export class TradeJournalEngine {
     const avgMfePercent = parseFloat((sumMfe / totalTrades).toFixed(2));
     const avgDurationMinutes = parseFloat((sumDurationMin / totalTrades).toFixed(2));
 
-    // Sharpe Ratio e Sortino Ratio (anualizado aproximado)
+    // Sharpe Ratio e Sortino Ratio sobre Float64Array contíguo (zero alocações de arrays intermediários)
     let sharpeRatio = 0;
     let sortinoRatio = 0;
-    if (returnsList.length > 1) {
-      const meanReturn = returnsList.reduce((acc, r) => acc + r, 0) / returnsList.length;
-      const variance = returnsList.reduce((acc, r) => acc + Math.pow(r - meanReturn, 2), 0) / (returnsList.length - 1);
+    if (totalTrades > 1) {
+      const meanReturn = sumReturns / totalTrades;
+      let sumSqDiff = 0;
+      for (let i = 0; i < totalTrades; i++) {
+        const diff = returnsBuffer[i] - meanReturn;
+        sumSqDiff += diff * diff;
+      }
+      const variance = sumSqDiff / (totalTrades - 1);
       const stdDev = Math.sqrt(variance);
 
       // Assumindo ~252 períodos operacionais
@@ -908,9 +1021,7 @@ export class TradeJournalEngine {
         sharpeRatio = parseFloat(((meanReturn / stdDev) * Math.sqrt(252)).toFixed(2));
       }
 
-      const downsideVar = downsideReturns.length > 0
-        ? downsideReturns.reduce((acc, r) => acc + Math.pow(r, 2), 0) / downsideReturns.length
-        : 0;
+      const downsideVar = downsideCount > 0 ? sumDownsideSq / downsideCount : 0;
       const downsideDev = Math.sqrt(downsideVar);
       if (downsideDev > 0) {
         sortinoRatio = parseFloat(((meanReturn / downsideDev) * Math.sqrt(252)).toFixed(2));
