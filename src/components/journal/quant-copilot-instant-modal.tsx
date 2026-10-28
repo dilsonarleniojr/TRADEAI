@@ -330,40 +330,41 @@ export function QuantCopilotInstantModal() {
       aria-modal="true"
       aria-label="Auditoria Instantânea do Copiloto Quant Pós-Trade"
     >
-      <div className="w-full max-w-4xl bg-[#0b0e14] border border-cyan-500/35 rounded-2xl shadow-2xl overflow-hidden text-slate-200 flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 bg-[#111827] border-b border-[#1f2937]">
-          <div className="flex items-center gap-2.5">
+      <section className="w-full max-w-4xl bg-[#0b0e14] border border-cyan-500/35 rounded-2xl shadow-2xl overflow-hidden text-slate-200 flex flex-col max-h-[90vh]">
+        {/* Header Semântico (Escala 4/8pt: px-6=24px, py-4=16px, gap-4=16px) */}
+        <header className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 bg-[#111827] border-b border-[#1f2937]">
+          <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-cyan-500/15 border border-cyan-500/35 text-cyan-400">
               <Brain className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-sm sm:text-base font-bold text-white">
+                <h2 className="text-sm sm:text-base font-bold text-white tracking-tight">
                   Copiloto Quant Pós-Trade • Auditoria Instantânea CoT
                 </h2>
-                <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-cyan-500/15 border border-cyan-500/30 text-cyan-300">
+                <span className="px-2 py-0.5 rounded text-xs font-mono bg-cyan-500/15 border border-cyan-500/30 text-cyan-200">
                   Alt+J / ⌘⇧C
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-300 mt-0.5">
                 Auditoria em tempo real sobre excursão MAE/MFE, fricção de taxas e aplicação em 1 clique na frota
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <nav aria-label="Seletor de horizonte temporal do Copiloto" className="flex items-center gap-2">
             {/* Seletor Rápido de Horizonte O(1) */}
-            <div className="flex items-center gap-0.5 bg-[#070a10] p-0.5 rounded-lg border border-[#1f2937]">
+            <div className="flex items-center gap-1 bg-[#070a10] p-1 rounded-lg border border-[#1f2937]">
               {(["LIVE", "30D", "90D", "1Y", "ALL"] as LongHorizonWindow[]).map((win) => (
                 <button
                   key={win}
                   type="button"
+                  aria-pressed={horizonWindow === win}
                   onClick={() => setHorizonWindow(win)}
-                  className={`px-2 py-1 rounded text-xs font-mono transition-colors cursor-pointer ${
+                  className={`h-7 px-2.5 rounded-md text-xs font-mono transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95 ${
                     horizonWindow === win
-                      ? "bg-emerald-600 text-white font-bold"
-                      : "text-slate-400 hover:text-slate-200"
+                      ? "bg-emerald-600 text-white font-bold shadow-sm"
+                      : "text-slate-300 hover:text-white hover:bg-slate-800/60"
                   }`}
                 >
                   {win}
@@ -374,20 +375,20 @@ export function QuantCopilotInstantModal() {
             <button
               type="button"
               onClick={() => setOpenQuantCopilotModal(false)}
-              className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+              className="h-8 w-8 inline-flex items-center justify-center rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 hover:text-white transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 active:scale-95"
               aria-label="Fechar modal"
             >
               <X className="w-4 h-4" />
             </button>
-          </div>
-        </div>
+          </nav>
+        </header>
 
-        {/* Corpo Rolável */}
-        <div className="p-5 overflow-y-auto space-y-4 pro-scrollbar">
+        {/* Corpo Principal Semântico Rolável (p-6=24px, space-y-4=16px) */}
+        <main className="p-6 overflow-y-auto space-y-4 pro-scrollbar">
           {/* Linha 1: Guardrails Institucionais e Eficiência Bipartida MAE vs MFE */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="p-3.5 rounded-xl bg-[#131b2a] border border-[#1f2937] space-y-1.5">
-              <div className="flex items-center justify-between text-xs text-slate-400">
+          <section aria-label="Telemetria de Risco e Excursão MAE/MFE" className="grid grid-cols-1 md:grid-cols-3 gap-4 tabular-nums">
+            <article className="p-4 rounded-xl bg-[#131b2a] border border-[#1f2937] space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-300 font-semibold">
                 <span>Status Guardrails (Pilar 2)</span>
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
               </div>
@@ -403,13 +404,13 @@ export function QuantCopilotInstantModal() {
                 >
                   {riskTelemetry.riskStatus}
                 </span>
-                <span className="text-xs text-slate-300">
+                <span className="text-xs text-slate-200">
                   Loss Diário: {riskTelemetry.dailyLossPercentOfNav.toFixed(2)}% / -3.0%
                 </span>
               </div>
               <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
                 <div
-                  className={`h-full ${
+                  className={`h-full transition-all duration-200 ${
                     riskTelemetry.dailyLossUtilizationPercent >= 80
                       ? "bg-rose-500"
                       : riskTelemetry.dailyLossUtilizationPercent >= 45
@@ -419,17 +420,17 @@ export function QuantCopilotInstantModal() {
                   style={{ width: `${Math.max(6, riskTelemetry.dailyLossUtilizationPercent)}%` }}
                 />
               </div>
-            </div>
+            </article>
 
-            <div className="p-3.5 rounded-xl bg-[#131b2a] border border-[#1f2937] space-y-1.5">
-              <div className="flex items-center justify-between text-xs text-slate-400">
+            <article className="p-4 rounded-xl bg-[#131b2a] border border-[#1f2937] space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-300 font-semibold">
                 <span>Eficiência de Captura MFE</span>
-                <span className="font-mono text-cyan-300">
+                <span className="font-mono text-cyan-300 font-bold">
                   {copilotBundle.mfeCaptureEfficiencyPercent.toFixed(1)}%
                 </span>
               </div>
               <div className="flex items-center gap-2 font-mono text-xs">
-                <span className="text-rose-400">MAE {metrics.avgMaePercent.toFixed(2)}%</span>
+                <span className="text-rose-400 font-semibold">MAE {metrics.avgMaePercent.toFixed(2)}%</span>
                 <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden flex">
                   <div
                     className="bg-rose-500 h-full"
@@ -440,34 +441,34 @@ export function QuantCopilotInstantModal() {
                     style={{ width: `${avgBipartite.mfeWidthPercent}%` }}
                   />
                 </div>
-                <span className="text-emerald-400">MFE +{metrics.avgMfePercent.toFixed(2)}%</span>
+                <span className="text-emerald-400 font-semibold">MFE +{metrics.avgMfePercent.toFixed(2)}%</span>
               </div>
-              <div className="text-xs text-slate-400 font-mono">
+              <div className="text-xs text-slate-300 font-mono">
                 Win Rate: {metrics.winRate.toFixed(1)}% • PF: {metrics.profitFactor.toFixed(2)} • Sharpe:{" "}
                 {metrics.sharpeRatio.toFixed(2)}
               </div>
-            </div>
+            </article>
 
-            <div className="p-3.5 rounded-xl bg-[#131b2a] border border-[#1f2937] flex flex-col justify-between">
-              <div className="text-xs font-semibold text-emerald-300">
+            <article className="p-4 rounded-xl bg-[#131b2a] border border-[#1f2937] flex flex-col justify-between">
+              <div className="text-xs font-bold text-emerald-300">
                 {copilotBundle.clearBoxHeadline}
               </div>
-              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+              <p className="text-xs text-slate-200 mt-1.5 leading-relaxed">
                 {copilotBundle.clearBoxRecommendation}
               </p>
-            </div>
-          </div>
+            </article>
+          </section>
 
           {/* Linha 2: Recomendações Paramétricas Auditadas + Botão "Aplicar Ajuste Sugerido (Dry-Run Preview)" */}
           {auditResult && (
-            <div className="p-4 rounded-xl bg-[#111827] border border-[#1f2937] space-y-3">
+            <section aria-label="Plano de Ação Paramétrico" className="p-4 rounded-xl bg-[#111827] border border-[#1f2937] space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-cyan-400" />
                   <h3 className="text-xs font-bold uppercase tracking-wider text-white">
                     Plano de Ação Paramétrico ({auditResult.source === "AI_ENGINE" ? "IA Multimodal" : "Motor Clear-Box"})
                   </h3>
-                  <span className="text-xs text-slate-400 font-mono">
+                  <span className="text-xs text-slate-300 font-mono tabular-nums">
                     Auditado às {auditResult.auditedAtIso}
                   </span>
                 </div>
@@ -475,28 +476,29 @@ export function QuantCopilotInstantModal() {
                   type="button"
                   onClick={runInstantCoTAudit}
                   disabled={isAuditing}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-200 text-xs font-mono cursor-pointer transition-colors"
+                  aria-busy={isAuditing}
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-200 text-xs font-mono cursor-pointer transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 active:scale-[0.98]"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isAuditing ? "animate-spin" : ""}`} />
                   {isAuditing ? "Re-auditando..." : "Re-auditar Agora"}
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {auditResult.ajustesRecomendados.map((aj, idx) => {
                   const isApplied = !!appliedActionTitles[aj.parametro];
                   return (
-                    <div
+                    <article
                       key={idx}
-                      className="p-3.5 rounded-lg bg-[#0b0e14] border border-[#1f2937] flex flex-col justify-between space-y-2.5 text-xs"
+                      className="p-4 rounded-xl bg-[#0b0e14] border border-[#1f2937] hover:border-slate-700 flex flex-col justify-between space-y-3 text-xs transition-colors duration-150"
                     >
                       <div className="space-y-1.5">
-                        <div className="font-bold text-cyan-300">{aj.parametro}</div>
-                        <div className="text-slate-400 font-mono">Atual: {aj.valorAtual}</div>
+                        <h4 className="font-bold text-cyan-300">{aj.parametro}</h4>
+                        <div className="text-slate-300 font-mono">Atual: {aj.valorAtual}</div>
                         <div className="text-emerald-300 font-mono font-semibold">
                           Sugerido: {aj.valorSugerido}
                         </div>
-                        <p className="text-slate-300 pt-1 border-t border-[#1f2937]/80">
+                        <p className="text-slate-200 pt-1.5 border-t border-[#1f2937]/80 leading-relaxed">
                           {aj.racionalQuant}
                         </p>
                       </div>
@@ -504,7 +506,7 @@ export function QuantCopilotInstantModal() {
                       <button
                         type="button"
                         onClick={() => handleOpenDryRunPreview(idx, aj)}
-                        className={`w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold border transition-colors cursor-pointer ${
+                        className={`w-full h-8 inline-flex items-center justify-center gap-1.5 px-3 rounded-lg text-xs font-mono font-semibold border transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 active:scale-[0.98] ${
                           isApplied
                             ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300"
                             : "bg-cyan-500/15 hover:bg-cyan-500/25 border-cyan-500/35 text-cyan-200"
@@ -522,7 +524,7 @@ export function QuantCopilotInstantModal() {
                           </>
                         )}
                       </button>
-                    </div>
+                    </article>
                   );
                 })}
               </div>
@@ -552,14 +554,14 @@ export function QuantCopilotInstantModal() {
                     <button
                       type="button"
                       onClick={() => setActiveDryRunPreview(null)}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono cursor-pointer transition-colors"
+                      className="h-8 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 active:scale-95"
                     >
                       Cancelar Dry-Run
                     </button>
                     <button
                       type="button"
                       onClick={handleConfirmApplyToFleet}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono font-bold cursor-pointer transition-colors shadow-sm"
+                      className="inline-flex items-center gap-1.5 h-8 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono font-bold cursor-pointer transition-all duration-150 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-[0.98]"
                     >
                       <Play className="w-3.5 h-3.5" />
                       Confirmar e Aplicar na Frota ({activeDryRunPreview.targetBotsCount} robôs)
@@ -567,20 +569,20 @@ export function QuantCopilotInstantModal() {
                   </div>
                 </div>
               )}
-            </div>
+            </section>
           )}
 
           {/* Linha 3: Inspetor do Prompt Chain-of-Thought Completo */}
-          <div className="p-4 rounded-xl bg-[#111827] border border-[#1f2937] space-y-2.5">
+          <section aria-label="Inspetor de Prompt Chain-of-Thought" className="p-4 rounded-xl bg-[#111827] border border-[#1f2937] space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-200 font-mono">
                 Prompt Chain-of-Thought Estruturado (Preenchido em Tempo Real)
               </span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handleCopyPrompt}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono font-semibold transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono font-semibold transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95"
                 >
                   {copiedPrompt ? (
                     <>
@@ -600,7 +602,7 @@ export function QuantCopilotInstantModal() {
                     setOpenQuantCopilotModal(false);
                     setActiveSection("journal");
                   }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#1a2234] hover:bg-[#222d42] border border-[#2d3748] text-slate-200 text-xs font-mono transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#1a2234] hover:bg-[#222d42] border border-[#2d3748] text-slate-200 text-xs font-mono transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 active:scale-95"
                 >
                   <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
                   Abrir Diário Completo
@@ -608,12 +610,12 @@ export function QuantCopilotInstantModal() {
               </div>
             </div>
 
-            <pre className="p-3 rounded-lg bg-[#070a10] border border-[#1f2937] text-xs font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap max-h-48 leading-relaxed">
+            <pre className="p-3 rounded-lg bg-[#070a10] border border-[#1f2937] text-xs font-mono text-slate-200 overflow-x-auto whitespace-pre-wrap max-h-48 leading-relaxed">
               {copilotBundle.promptText}
             </pre>
-          </div>
-        </div>
-      </div>
+          </section>
+        </main>
+      </section>
     </div>
   );
 }

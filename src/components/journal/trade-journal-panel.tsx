@@ -59,6 +59,360 @@ type QuickFilterChip =
   | "STOP_LOSS"
   | "HIGH_EFF_MFE";
 
+const VIRTUAL_ROW_HEIGHT = 54;
+const VIRTUAL_OVERSCAN = 6;
+const VIRTUAL_VIEWPORT_HEIGHT = 486;
+
+interface DualLayerEquityCurveViewportProps {
+  equityCurve: Array<{ timestamp: number; equity: number }>;
+  showUnderwaterDrawdown: boolean;
+}
+
+/**
+ * Subcomponente Isolado (React.memo) para a Curva de Patrimônio Dual-Layer + Crosshair.
+ * - Evita re-renderizar o TradeJournalPanel inteiro, os 6 KPIs e a tabela pós-trade a cada movimento do mouse em 144Hz.
+ * - Memoiza a amostragem LTTB, o cálculo de Underwater Drawdown e as strings de caminho SVG (zero alocações na heap durante hover).
+ */
+const DualLayerEquityCurveViewport = React.memo(function DualLayerEquityCurveViewport({
+  equityCurve,
+  showUnderwaterDrawdown,
+}: DualLayerEquityCurveViewportProps) {
+  const [hoveredCurvePoint, setHoveredCurvePoint] = useState<{
+    x: number;
+    y: number;
+    point: UnderwaterPoint;
+    index: number;
+  } | null>(null);
+
+  const geometry = useMemo(() => {
+    if (equityCurve.length <= 1) return null;
+    const points =
+      equityCurve.length > 200
+        ? lttbDownsample(equityCurve, 60, {
+            getX: (_, i) => i,
+            getY: (p) => p.equity,
+          })
+        : equityCurve;
+
+    const underwaterSeries = computeUnderwaterDrawdownSeries(points);
+    let minEq = Infinity;
+    let maxEq = -Infinity;
+    let maxAbsDd = 1;
+
+    for (let i = 0; i < underwaterSeries.length; i++) {
+      const u = underwaterSeries[i];
+      if (u.equity < minEq) minEq = u.equity;
+      if (u.equity > maxEq) maxEq = u.equity;
+      const absDd = Math.abs(u.drawdownPercent);
+      if (absDd > maxAbsDd) maxAbsDd = absDd;
+    }
+
+    minEq *= 0.995;
+    maxEq *= 1.005;
+    const range = maxEq - minEq || 1;
+    const denom = Math.max(1, underwaterSeries.length - 1);
+
+    const coords = new Array<{
+      x: number;
+      y: number;
+      ddY: number;
+      p: UnderwaterPoint;
+      idx: number;
+    }>(underwaterSeries.length);
+
+    let pathD = "";
+    let ddPathD = "";
+
+    for (let idx = 0; idx < underwaterSeries.length; idx++) {
+      const p = underwaterSeries[idx];
+      const x = (idx / denom) * 790 + 5;
+      const y = 150 - ((p.equity - minEq) / range) * 135;
+      const ddY = 8 + (Math.abs(p.drawdownPercent) / maxAbsDd) * 45;
+      coords[idx] = { x, y, ddY, p, idx };
+      const cmd = idx === 0 ? "M" : "L";
+      pathD += ` ${cmd} ${x.toFixed(1)} ${y.toFixed(1)}`;
+      ddPathD += ` ${cmd} ${x.toFixed(1)} ${ddY.toFixed(1)}`;
+    }
+
+    const lastX = coords[coords.length - 1].x.toFixed(1);
+    const firstX = coords[0].x.toFixed(1);
+    const areaD = `${pathD} L ${lastX} 160 L ${firstX} 160 Z`;
+    const ddAreaD = `${ddPathD} L ${lastX} 8 L ${firstX} 8 Z`;
+
+    return { coords, pathD, areaD, ddPathD, ddAreaD };
+  }, [equityCurve]);
+
+  return (
+    <div style={{ contain: "layout paint" }}>
+      {/* Barra de Inspeção Crosshair Ponto-a-Ponto (Isolada do restante da árvore DOM) */}
+      {hoveredCurvePoint && (
+        <div className="mb-2.5 px-3 py-1.5 rounded-lg bg-[#0b0e14] border border-cyan-500/30 flex flex-wrap items-center justify-between gap-2 text-xs font-mono tabular-nums">
+          <div className="flex items-center gap-3">
+            <span className="text-cyan-400 font-semibold">
+              Ponto #{hoveredCurvePoint.index + 1}
+            </span>
+            <span className="text-slate-300">
+              {new Date(hoveredCurvePoint.point.timestamp)
+                .toISOString()
+                .replace("T", " ")
+                .slice(0, 19)}{" "}
+              UTC
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-slate-300">
+              Patrimônio:{" "}
+              <strong className="text-emerald-400">
+                ${hoveredCurvePoint.point.equity.toFixed(2)}
+              </strong>
+            </span>
+            <span className="text-slate-300">
+              Variação:{" "}
+              <strong
+                className={
+                  hoveredCurvePoint.point.deltaPnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                }
+              >
+                {hoveredCurvePoint.point.deltaPnl >= 0 ? "+" : ""}
+                ${hoveredCurvePoint.point.deltaPnl.toFixed(2)}
+              </strong>
+            </span>
+            <span className="text-slate-300">
+              Underwater DD:{" "}
+              <strong className="text-rose-400">
+                {hoveredCurvePoint.point.drawdownPercent.toFixed(2)}%
+              </strong>
+            </span>
+          </div>
+        </div>
+      )}
+
+      <div
+        className="w-full h-48 relative bg-[#090d16] rounded-lg border border-[#1a2333] emerald-border-glow p-2 flex items-center justify-center overflow-hidden"
+        onMouseLeave={() => setHoveredCurvePoint(null)}
+      >
+        {!geometry ? (
+          <div className="flex flex-col items-center justify-center gap-2 text-center px-4">
+            <div className="p-2 rounded-full bg-slate-800/80 border border-slate-700 text-emerald-400">
+              <Clock className="w-5 h-5" />
+            </div>
+            <p className="text-xs font-medium text-slate-200">
+              Aguardando encerramento de trades para plotar a curva de patrimônio contínua.
+            </p>
+            <p className="text-xs text-slate-400">
+              Eventos de <code className="text-emerald-300">PARTIAL_TAKE_PROFIT</code> e fechamentos finais atualizam o gráfico em tempo real via BroadcastChannel.
+            </p>
+          </div>
+        ) : (
+          <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 160">
+            <line
+              x1="0"
+              y1="80"
+              x2="800"
+              y2="80"
+              stroke="#223046"
+              strokeDasharray="4 4"
+              strokeWidth="1"
+            />
+            <g>
+              {showUnderwaterDrawdown && (
+                <>
+                  <path d={geometry.ddAreaD} fill="rgba(244, 63, 94, 0.14)" />
+                  <path
+                    d={geometry.ddPathD}
+                    fill="none"
+                    stroke="#f43f5e"
+                    strokeWidth="1.5"
+                    strokeDasharray="3 3"
+                  />
+                </>
+              )}
+
+              <path d={geometry.areaD} className="svg-fill-emerald" />
+              <path
+                d={geometry.pathD}
+                fill="none"
+                stroke="#10b981"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+
+              {hoveredCurvePoint && (
+                <line
+                  x1={hoveredCurvePoint.x}
+                  y1="0"
+                  x2={hoveredCurvePoint.x}
+                  y2="160"
+                  stroke="#38bdf8"
+                  strokeWidth="1.2"
+                  strokeDasharray="3 3"
+                />
+              )}
+
+              {geometry.coords.map((c, i) => (
+                <circle
+                  key={i}
+                  cx={c.x}
+                  cy={c.y}
+                  r={hoveredCurvePoint?.index === c.idx ? "5.5" : "3.5"}
+                  fill={c.p.deltaPnl >= 0 ? "#10b981" : "#f43f5e"}
+                  stroke="#0b0e14"
+                  strokeWidth="1.5"
+                  className="cursor-pointer transition-all duration-100"
+                  onMouseEnter={() =>
+                    setHoveredCurvePoint({
+                      x: c.x,
+                      y: c.y,
+                      point: c.p,
+                      index: c.idx,
+                    })
+                  }
+                />
+              ))}
+            </g>
+          </svg>
+        )}
+      </div>
+    </div>
+  );
+});
+
+interface VirtualPostTradeRowProps {
+  record: TradeJournalRecord;
+  isSelected: boolean;
+  onSelect: (id: string) => void;
+  onAuditRow: (id: string) => void;
+}
+
+/**
+ * Linha Virtualizada Memoizada (React.memo) para eliminar re-renderizações desnecessárias
+ * durante rolagem (Windowing O(1)) ou navegação por teclado (J/K).
+ */
+const VirtualPostTradeRow = React.memo(function VirtualPostTradeRow({
+  record: r,
+  isSelected,
+  onSelect,
+  onAuditRow,
+}: VirtualPostTradeRowProps) {
+  const isWin = r.netPnl >= 0;
+  const bipartite = calculateBipartiteExcursionWidths(r.maePercent, r.mfePercent);
+  const mfeCaptureEff = calculateMfeCaptureEfficiency(r.netGainPercent, r.mfePercent);
+
+  return (
+    <tr
+      aria-selected={isSelected}
+      style={{ height: `${VIRTUAL_ROW_HEIGHT}px` }}
+      onClick={() => onSelect(r.id)}
+      onDoubleClick={() => onAuditRow(r.id)}
+      className={`transition-colors duration-100 cursor-pointer ${
+        isSelected
+          ? "bg-cyan-500/10 ring-1 ring-inset ring-cyan-500/40"
+          : "hover:bg-[#151f33]"
+      }`}
+    >
+      <td className="py-2.5 px-4">
+        <div className="flex items-center gap-2">
+          {isWin ? (
+            <ArrowUpRight className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : (
+            <ArrowDownRight className="w-4 h-4 text-rose-400 shrink-0" />
+          )}
+          <div>
+            <span className="font-bold text-white text-xs">{r.symbol}</span>
+            <span className="text-[11px] text-slate-300 block font-sans truncate max-w-[140px]">
+              {r.botName}
+            </span>
+          </div>
+        </div>
+      </td>
+
+      <td className="py-2.5 px-3 font-sans">
+        {r.mode === "live" ? (
+          <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
+            LIVE
+          </span>
+        ) : (
+          <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-500/10 border border-blue-500/30 text-blue-300">
+            PAPER
+          </span>
+        )}
+      </td>
+
+      <td className="py-2.5 px-3">
+        <div className="text-slate-200">${r.entryPrice.toFixed(4)}</div>
+        <div className="text-[11px] text-slate-400">→ ${r.exitPrice.toFixed(4)}</div>
+      </td>
+
+      <td className="py-2.5 px-3 text-slate-200 font-sans text-xs">
+        {r.durationFormatted}
+      </td>
+
+      <td className="py-2.5 px-3 text-right">
+        <span className={`font-bold ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
+          {isWin ? "+" : ""}${r.netPnl.toFixed(2)}
+        </span>
+        <span
+          className={`block text-[11px] ${
+            isWin ? "text-emerald-400/90" : "text-rose-400/90"
+          }`}
+        >
+          {isWin ? "+" : ""}{r.netGainPercent.toFixed(2)}%
+        </span>
+      </td>
+
+      <td className="py-2.5 px-3">
+        <div className="flex items-center gap-2 min-w-[175px]">
+          <span className="text-[11px] font-bold text-rose-400 w-12 text-right">
+            {r.maePercent.toFixed(2)}%
+          </span>
+          <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden flex border border-slate-700/80">
+            <div
+              className="bg-rose-500 h-full"
+              style={{ width: `${bipartite.maeWidthPercent}%` }}
+              title={`MAE (Excursão Adversa): ${r.maePercent.toFixed(2)}%`}
+            />
+            <div
+              className="bg-emerald-500 h-full"
+              style={{ width: `${bipartite.mfeWidthPercent}%` }}
+              title={`MFE (Excursão Favorável): +${r.mfePercent.toFixed(2)}%`}
+            />
+          </div>
+          <span className="text-[11px] font-bold text-emerald-400 w-12">
+            +{r.mfePercent.toFixed(2)}%
+          </span>
+        </div>
+      </td>
+
+      <td className="py-2.5 px-3 text-center">
+        <span
+          className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold border ${
+            mfeCaptureEff >= 70
+              ? "bg-emerald-500/15 border-emerald-500/35 text-emerald-300"
+              : mfeCaptureEff >= 40
+              ? "bg-amber-500/15 border-amber-500/35 text-amber-300"
+              : "bg-slate-800 border-slate-700 text-slate-300"
+          }`}
+          title="Porcentagem do pico de lucro aberto (MFE) efetivamente embolsada no fechamento líquido"
+        >
+          {mfeCaptureEff.toFixed(0)}%
+        </span>
+      </td>
+
+      <td className="py-2.5 px-3 text-right text-slate-400">
+        ${(r.commissionFeesUsd + r.spreadCostUsd).toFixed(3)}
+      </td>
+
+      <td
+        className="py-2.5 px-4 font-sans text-slate-300 text-[11px] max-w-[180px] truncate"
+        title={r.exitReason}
+      >
+        {r.exitReason}
+      </td>
+    </tr>
+  );
+});
+
 export function TradeJournalPanel() {
   const [records, setRecords] = useState<TradeJournalRecord[]>([]);
   const [metrics, setMetrics] = useState<PerformanceMetrics>(() =>
@@ -70,15 +424,11 @@ export function TradeJournalPanel() {
   const [quickChip, setQuickChip] = useState<QuickFilterChip>("ALL");
   const [horizonWindow, setHorizonWindow] = useState<LongHorizonWindow>("LIVE");
   const [showUnderwaterDrawdown, setShowUnderwaterDrawdown] = useState<boolean>(true);
-  const [hoveredCurvePoint, setHoveredCurvePoint] = useState<{
-    x: number;
-    y: number;
-    point: UnderwaterPoint;
-    index: number;
-  } | null>(null);
   const [showCoTPromptDrawer, setShowCoTPromptDrawer] = useState<boolean>(false);
   const [copiedPrompt, setCopiedPrompt] = useState<boolean>(false);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [tableScrollTop, setTableScrollTop] = useState<number>(0);
+  const tableViewportRef = useRef<HTMLDivElement | null>(null);
   const [isCompacting, setIsCompacting] = useState<boolean>(false);
   const triggerQuantCopilotInstantAudit = useCryptoStore(
     (s) => s.triggerQuantCopilotInstantAudit
@@ -108,29 +458,78 @@ export function TradeJournalPanel() {
     tradeJournalEngine.getPersistenceStats()
   );
 
+  // V-Sync Frame Coalescer (requestAnimationFrame) para suprimir cascatas de re-render em rajadas de alta frequência
+  const rafFrameIdRef = useRef<number | null>(null);
+  const pendingRecordsRef = useRef<TradeJournalRecord[] | null>(null);
+  const pendingLiveExecRef = useRef<{
+    record: TradeJournalRecord;
+    event: BotExecutionEventPayload;
+  } | null>(null);
+  const pendingPersistenceRef = useRef<JournalPersistenceStats | null>(null);
+
   useEffect(() => {
-    // Inscrição no Diário de Trades
+    const scheduleVsyncCommit = () => {
+      if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+        if (pendingRecordsRef.current) {
+          setRecords(pendingRecordsRef.current);
+          pendingRecordsRef.current = null;
+        }
+        if (pendingLiveExecRef.current) {
+          setLastLiveExecution(pendingLiveExecRef.current);
+          pendingLiveExecRef.current = null;
+        }
+        if (pendingPersistenceRef.current) {
+          setPersistenceStats(pendingPersistenceRef.current);
+          pendingPersistenceRef.current = null;
+        }
+        return;
+      }
+      if (rafFrameIdRef.current !== null) return;
+      rafFrameIdRef.current = window.requestAnimationFrame(() => {
+        rafFrameIdRef.current = null;
+        if (pendingRecordsRef.current) {
+          setRecords(pendingRecordsRef.current);
+          pendingRecordsRef.current = null;
+        }
+        if (pendingLiveExecRef.current) {
+          setLastLiveExecution(pendingLiveExecRef.current);
+          pendingLiveExecRef.current = null;
+        }
+        if (pendingPersistenceRef.current) {
+          setPersistenceStats(pendingPersistenceRef.current);
+          pendingPersistenceRef.current = null;
+        }
+      });
+    };
+
     const unsubJournal = tradeJournalEngine.subscribe((updatedList) => {
-      setRecords(updatedList);
+      pendingRecordsRef.current = updatedList;
+      scheduleVsyncCommit();
     });
 
-    // Inscrição no Canal de Eventos de Execução em Tempo Real (BroadcastChannel + CustomEvent)
     const unsubExecutionBus = tradeJournalEngine.subscribeExecutionEvents((rec, evt) => {
-      setLastLiveExecution({ record: rec, event: evt });
+      pendingLiveExecRef.current = { record: rec, event: evt };
+      scheduleVsyncCommit();
     });
 
-    // Inscrição na Telemetria de Persistência Assíncrona em Lote (IndexedDB + SQLite WAL 500ms)
     const unsubPersistence = tradeJournalEngine.subscribePersistenceStats((stats) => {
-      setPersistenceStats(stats);
+      pendingPersistenceRef.current = stats;
+      scheduleVsyncCommit();
     });
 
-    // Inscrição em Anomalias de Order Flow
-    const unsubAnomalies = orderFlowAnomalyScanner.subscribe((alert) => {
+    const unsubAnomalies = orderFlowAnomalyScanner.subscribe(() => {
       setAnomalies(orderFlowAnomalyScanner.getRecentAlerts(20));
     });
     setAnomalies(orderFlowAnomalyScanner.getRecentAlerts(20));
 
     return () => {
+      if (
+        rafFrameIdRef.current !== null &&
+        typeof window !== "undefined" &&
+        typeof window.cancelAnimationFrame === "function"
+      ) {
+        window.cancelAnimationFrame(rafFrameIdRef.current);
+      }
       unsubJournal();
       unsubExecutionBus();
       unsubPersistence();
@@ -178,7 +577,42 @@ export function TradeJournalPanel() {
     [filteredRecords, selectedRecordId]
   );
 
-  // Navegação por Teclado Estilo Vim/Trading Desk (J/K ou Setas + Enter/Escape)
+  const handleSelectRow = useCallback((id: string) => {
+    setSelectedRecordId(id);
+  }, []);
+
+  const handleAuditRow = useCallback((id: string) => {
+    setSelectedRecordId(id);
+    setShowCoTPromptDrawer(true);
+  }, []);
+
+  // Janela Virtual O(1) para a Tabela Pós-Trade (Zero-DOM Windowing para > 50.000 trades)
+  const virtualWindow = useMemo(() => {
+    const totalCount = filteredRecords.length;
+    if (totalCount === 0) {
+      return {
+        startIndex: 0,
+        endIndex: 0,
+        visibleRows: [] as TradeJournalRecord[],
+        topPaddingHeight: 0,
+        bottomPaddingHeight: 0,
+      };
+    }
+    const visibleCount = Math.ceil(VIRTUAL_VIEWPORT_HEIGHT / VIRTUAL_ROW_HEIGHT);
+    const rawStart = Math.floor(tableScrollTop / VIRTUAL_ROW_HEIGHT);
+    const startIndex = Math.max(0, rawStart - VIRTUAL_OVERSCAN);
+    const endIndex = Math.min(totalCount, rawStart + visibleCount + VIRTUAL_OVERSCAN);
+
+    return {
+      startIndex,
+      endIndex,
+      visibleRows: filteredRecords.slice(startIndex, endIndex),
+      topPaddingHeight: startIndex * VIRTUAL_ROW_HEIGHT,
+      bottomPaddingHeight: Math.max(0, (totalCount - endIndex) * VIRTUAL_ROW_HEIGHT),
+    };
+  }, [filteredRecords, tableScrollTop]);
+
+  // Navegação por Teclado Estilo Vim/Trading Desk (J/K ou Setas + Enter/Escape) com Auto-Scroll Virtual
   const handleTableKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (filteredRecords.length === 0) return;
     const currentIndex = filteredRecords.findIndex((r) => r.id === selectedRecord?.id);
@@ -187,10 +621,25 @@ export function TradeJournalPanel() {
       const nextIdx =
         currentIndex < 0 ? 0 : Math.min(filteredRecords.length - 1, currentIndex + 1);
       setSelectedRecordId(filteredRecords[nextIdx].id);
+      if (tableViewportRef.current) {
+        const rowBottom = (nextIdx + 1) * VIRTUAL_ROW_HEIGHT;
+        const viewBottom =
+          tableViewportRef.current.scrollTop + tableViewportRef.current.clientHeight;
+        if (rowBottom > viewBottom) {
+          tableViewportRef.current.scrollTop =
+            rowBottom - tableViewportRef.current.clientHeight + VIRTUAL_ROW_HEIGHT;
+        }
+      }
     } else if (e.key === "k" || e.key === "K" || e.key === "ArrowUp") {
       e.preventDefault();
       const prevIdx = currentIndex <= 0 ? 0 : currentIndex - 1;
       setSelectedRecordId(filteredRecords[prevIdx].id);
+      if (tableViewportRef.current) {
+        const rowTop = prevIdx * VIRTUAL_ROW_HEIGHT;
+        if (rowTop < tableViewportRef.current.scrollTop) {
+          tableViewportRef.current.scrollTop = Math.max(0, rowTop - VIRTUAL_ROW_HEIGHT);
+        }
+      }
     } else if (e.key === "Enter" && selectedRecord) {
       e.preventDefault();
       setShowCoTPromptDrawer(true);
@@ -626,179 +1075,11 @@ export function TradeJournalPanel() {
                 )}
               </div>
 
-              {/* Barra de Inspeção Crosshair Ponto-a-Ponto */}
-              {hoveredCurvePoint && (
-                <div className="mb-2.5 px-3 py-1.5 rounded-lg bg-[#0b0e14] border border-cyan-500/30 flex flex-wrap items-center justify-between gap-2 text-xs font-mono tabular-nums">
-                  <div className="flex items-center gap-3">
-                    <span className="text-cyan-400 font-semibold">
-                      Ponto #{hoveredCurvePoint.index + 1}
-                    </span>
-                    <span className="text-slate-300">
-                      {new Date(hoveredCurvePoint.point.timestamp).toISOString().replace("T", " ").slice(0, 19)} UTC
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-slate-300">
-                      Patrimônio:{" "}
-                      <strong className="text-emerald-400">
-                        ${hoveredCurvePoint.point.equity.toFixed(2)}
-                      </strong>
-                    </span>
-                    <span className="text-slate-300">
-                      Variação:{" "}
-                      <strong
-                        className={
-                          hoveredCurvePoint.point.deltaPnl >= 0 ? "text-emerald-400" : "text-rose-400"
-                        }
-                      >
-                        {hoveredCurvePoint.point.deltaPnl >= 0 ? "+" : ""}
-                        ${hoveredCurvePoint.point.deltaPnl.toFixed(2)}
-                      </strong>
-                    </span>
-                    <span className="text-slate-300">
-                      Underwater DD:{" "}
-                      <strong className="text-rose-400">
-                        {hoveredCurvePoint.point.drawdownPercent.toFixed(2)}%
-                      </strong>
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              <div
-                className="w-full h-48 relative bg-[#090d16] rounded-lg border border-[#1a2333] emerald-border-glow p-2 flex items-center justify-center overflow-hidden"
-                onMouseLeave={() => setHoveredCurvePoint(null)}
-              >
-                {metrics.equityCurve.length <= 1 ? (
-                  <div className="flex flex-col items-center justify-center gap-2 text-center px-4">
-                    <div className="p-2 rounded-full bg-slate-800/80 border border-slate-700 text-emerald-400">
-                      <Clock className="w-5 h-5" />
-                    </div>
-                    <p className="text-xs font-medium text-slate-200">
-                      Aguardando encerramento de trades para plotar a curva de patrimônio contínua.
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      Eventos de <code className="text-emerald-300">PARTIAL_TAKE_PROFIT</code> e fechamentos finais atualizam o gráfico em tempo real via BroadcastChannel.
-                    </p>
-                  </div>
-                ) : (
-                  <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 160">
-                    {/* Linha Zero / Base */}
-                    <line
-                      x1="0"
-                      y1="80"
-                      x2="800"
-                      y2="80"
-                      stroke="#223046"
-                      strokeDasharray="4 4"
-                      strokeWidth="1"
-                    />
-
-                    {/* Caminho Dual-Layer: Curva de Patrimônio + Underwater Drawdown com Amostragem LTTB */}
-                    {(() => {
-                      const rawPoints = metrics.equityCurve;
-                      const points =
-                        rawPoints.length > 200
-                          ? lttbDownsample(rawPoints, 60, {
-                              getX: (_, i) => i,
-                              getY: (p) => p.equity,
-                            })
-                          : rawPoints;
-                      const underwaterSeries = computeUnderwaterDrawdownSeries(points);
-                      const equities = underwaterSeries.map((p) => p.equity);
-                      const minEq = Math.min(...equities) * 0.995;
-                      const maxEq = Math.max(...equities) * 1.005;
-                      const range = maxEq - minEq || 1;
-                      const maxAbsDd = Math.max(
-                        1,
-                        ...underwaterSeries.map((u) => Math.abs(u.drawdownPercent))
-                      );
-
-                      const coords = underwaterSeries.map((p, idx) => {
-                        const x = (idx / (underwaterSeries.length - 1)) * 790 + 5;
-                        const y = 150 - ((p.equity - minEq) / range) * 135;
-                        const ddY = 8 + (Math.abs(p.drawdownPercent) / maxAbsDd) * 45;
-                        return { x, y, ddY, p, idx };
-                      });
-
-                      const pathD = coords.reduce(
-                        (acc, c, i) => `${acc} ${i === 0 ? "M" : "L"} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`,
-                        ""
-                      );
-                      const areaD = `${pathD} L ${coords[coords.length - 1].x.toFixed(1)} 160 L ${coords[0].x.toFixed(1)} 160 Z`;
-
-                      const ddPathD = coords.reduce(
-                        (acc, c, i) => `${acc} ${i === 0 ? "M" : "L"} ${c.x.toFixed(1)} ${c.ddY.toFixed(1)}`,
-                        ""
-                      );
-                      const ddAreaD = `${ddPathD} L ${coords[coords.length - 1].x.toFixed(1)} 8 L ${coords[0].x.toFixed(1)} 8 Z`;
-
-                      return (
-                        <g>
-                          {/* Camada Underwater Drawdown (Topo Invertido) */}
-                          {showUnderwaterDrawdown && (
-                            <>
-                              <path d={ddAreaD} fill="rgba(244, 63, 94, 0.14)" />
-                              <path
-                                d={ddPathD}
-                                fill="none"
-                                stroke="#f43f5e"
-                                strokeWidth="1.5"
-                                strokeDasharray="3 3"
-                              />
-                            </>
-                          )}
-
-                          {/* Camada Principal de Patrimônio */}
-                          <path d={areaD} className="svg-fill-emerald" />
-                          <path
-                            d={pathD}
-                            fill="none"
-                            stroke="#10b981"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-
-                          {/* Linha Guia Crosshair Vertical */}
-                          {hoveredCurvePoint && (
-                            <line
-                              x1={hoveredCurvePoint.x}
-                              y1="0"
-                              x2={hoveredCurvePoint.x}
-                              y2="160"
-                              stroke="#38bdf8"
-                              strokeWidth="1.2"
-                              strokeDasharray="3 3"
-                            />
-                          )}
-
-                          {coords.map((c, i) => (
-                            <circle
-                              key={i}
-                              cx={c.x}
-                              cy={c.y}
-                              r={hoveredCurvePoint?.index === c.idx ? "5.5" : "3.5"}
-                              fill={c.p.deltaPnl >= 0 ? "#10b981" : "#f43f5e"}
-                              stroke="#0b0e14"
-                              strokeWidth="1.5"
-                              className="cursor-pointer transition-all"
-                              onMouseEnter={() =>
-                                setHoveredCurvePoint({
-                                  x: c.x,
-                                  y: c.y,
-                                  point: c.p,
-                                  index: c.idx,
-                                })
-                              }
-                            />
-                          ))}
-                        </g>
-                      );
-                    })()}
-                  </svg>
-                )}
-              </div>
+              {/* Viewport SVG Dual-Layer Isolado (React.memo + contain: layout paint) */}
+              <DualLayerEquityCurveViewport
+                equityCurve={metrics.equityCurve}
+                showUnderwaterDrawdown={showUnderwaterDrawdown}
+              />
 
               {/* Gaveta/Card do Copiloto Quant Pós-Trade & Prompt Chain-of-Thought Estruturado */}
               {showCoTPromptDrawer && (
@@ -1000,16 +1281,22 @@ export function TradeJournalPanel() {
               </div>
             )}
 
-            {/* Tabela de Histórico Pós-Trade com Barra Bipartida MAE vs MFE e Navegação J/K */}
+            {/* Tabela Virtualizada O(1) Pós-Trade com Barra Bipartida MAE vs MFE e Navegação J/K */}
             <div
+              ref={tableViewportRef}
               tabIndex={0}
               onKeyDown={handleTableKeyDown}
-              aria-label="Tabela de histórico pós-trade (use J/K ou setas para navegar e Enter para auditar com Copiloto Quant)"
-              className="overflow-x-auto rounded-xl border border-[#1f2937] bg-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60"
+              onScroll={(e) => setTableScrollTop(e.currentTarget.scrollTop)}
+              style={{
+                maxHeight: `${VIRTUAL_VIEWPORT_HEIGHT}px`,
+                contain: "layout paint",
+              }}
+              aria-label="Tabela de histórico pós-trade virtualizada (use J/K ou setas para navegar e Enter para auditar com Copiloto Quant)"
+              className="overflow-auto rounded-xl border border-[#1f2937] bg-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60"
             >
               <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-[#1f2937] bg-[#141d2e] text-slate-200 text-xs font-semibold uppercase tracking-wider">
+                <thead className="sticky top-0 z-10 bg-[#141d2e] shadow-sm">
+                  <tr className="border-b border-[#1f2937] text-slate-200 text-xs font-semibold uppercase tracking-wider">
                     <th className="py-3 px-4">Ativo / Robô</th>
                     <th className="py-3 px-3">Modo</th>
                     <th className="py-3 px-3">Preço Entrada / Saída</th>
@@ -1062,136 +1349,30 @@ export function TradeJournalPanel() {
                       </td>
                     </tr>
                   ) : (
-                    filteredRecords.map((r) => {
-                      const isWin = r.netPnl >= 0;
-                      const isSelected = selectedRecord?.id === r.id;
-                      const bipartite = calculateBipartiteExcursionWidths(
-                        r.maePercent,
-                        r.mfePercent
-                      );
-                      const mfeCaptureEff = calculateMfeCaptureEfficiency(
-                        r.netGainPercent,
-                        r.mfePercent
-                      );
-                      return (
-                        <tr
-                          key={r.id}
-                          aria-selected={isSelected}
-                          onClick={() => setSelectedRecordId(r.id)}
-                          onDoubleClick={() => {
-                            setSelectedRecordId(r.id);
-                            setShowCoTPromptDrawer(true);
-                          }}
-                          className={`transition-colors cursor-pointer ${
-                            isSelected
-                              ? "bg-cyan-500/10 ring-1 ring-inset ring-cyan-500/40"
-                              : "hover:bg-[#151f33]"
-                          }`}
-                        >
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              {isWin ? (
-                                <ArrowUpRight className="w-4 h-4 text-emerald-400 shrink-0" />
-                              ) : (
-                                <ArrowDownRight className="w-4 h-4 text-rose-400 shrink-0" />
-                              )}
-                              <div>
-                                <span className="font-bold text-white text-xs">{r.symbol}</span>
-                                <span className="text-[11px] text-slate-300 block font-sans">
-                                  {r.botName}
-                                </span>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="py-3 px-3 font-sans">
-                            {r.mode === "live" ? (
-                              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
-                                LIVE
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-500/10 border border-blue-500/30 text-blue-300">
-                                PAPER
-                              </span>
-                            )}
-                          </td>
-
-                          <td className="py-3 px-3">
-                            <div className="text-slate-200">${r.entryPrice.toFixed(4)}</div>
-                            <div className="text-[11px] text-slate-400">→ ${r.exitPrice.toFixed(4)}</div>
-                          </td>
-
-                          <td className="py-3 px-3 text-slate-200 font-sans text-xs">
-                            {r.durationFormatted}
-                          </td>
-
-                          <td className="py-3 px-3 text-right">
-                            <span
-                              className={`font-bold ${
-                                isWin ? "text-emerald-400" : "text-rose-400"
-                              }`}
-                            >
-                              {isWin ? "+" : ""}${r.netPnl.toFixed(2)}
-                            </span>
-                            <span
-                              className={`block text-[11px] ${
-                                isWin ? "text-emerald-400/90" : "text-rose-400/90"
-                              }`}
-                            >
-                              {isWin ? "+" : ""}{r.netGainPercent.toFixed(2)}%
-                            </span>
-                          </td>
-
-                          {/* Barra Visual Bipartida MAE vs MFE */}
-                          <td className="py-3 px-3">
-                            <div className="flex items-center gap-2 min-w-[175px]">
-                              <span className="text-[11px] font-bold text-rose-400 w-12 text-right">
-                                {r.maePercent.toFixed(2)}%
-                              </span>
-                              <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden flex border border-slate-700/80">
-                                <div
-                                  className="bg-rose-500 h-full"
-                                  style={{ width: `${bipartite.maeWidthPercent}%` }}
-                                  title={`MAE (Excursão Adversa): ${r.maePercent.toFixed(2)}%`}
-                                />
-                                <div
-                                  className="bg-emerald-500 h-full"
-                                  style={{ width: `${bipartite.mfeWidthPercent}%` }}
-                                  title={`MFE (Excursão Favorável): +${r.mfePercent.toFixed(2)}%`}
-                                />
-                              </div>
-                              <span className="text-[11px] font-bold text-emerald-400 w-12">
-                                +{r.mfePercent.toFixed(2)}%
-                              </span>
-                            </div>
-                          </td>
-
-                          {/* Eficiência de Captura MFE */}
-                          <td className="py-3 px-3 text-center">
-                            <span
-                              className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold border ${
-                                mfeCaptureEff >= 70
-                                  ? "bg-emerald-500/15 border-emerald-500/35 text-emerald-300"
-                                  : mfeCaptureEff >= 40
-                                  ? "bg-amber-500/15 border-amber-500/35 text-amber-300"
-                                  : "bg-slate-800 border-slate-700 text-slate-300"
-                              }`}
-                              title="Porcentagem do pico de lucro aberto (MFE) efetivamente embolsada no fechamento líquido"
-                            >
-                              {mfeCaptureEff.toFixed(0)}%
-                            </span>
-                          </td>
-
-                          <td className="py-3 px-3 text-right text-slate-400">
-                            ${(r.commissionFeesUsd + r.spreadCostUsd).toFixed(3)}
-                          </td>
-
-                          <td className="py-3 px-4 font-sans text-slate-300 text-[11px] max-w-[180px] truncate" title={r.exitReason}>
-                            {r.exitReason}
-                          </td>
+                    <>
+                      {virtualWindow.topPaddingHeight > 0 && (
+                        <tr aria-hidden="true" style={{ height: `${virtualWindow.topPaddingHeight}px` }}>
+                          <td colSpan={9} />
                         </tr>
-                      );
-                    })
+                      )}
+                      {virtualWindow.visibleRows.map((r) => (
+                        <VirtualPostTradeRow
+                          key={r.id}
+                          record={r}
+                          isSelected={selectedRecord?.id === r.id}
+                          onSelect={handleSelectRow}
+                          onAuditRow={handleAuditRow}
+                        />
+                      ))}
+                      {virtualWindow.bottomPaddingHeight > 0 && (
+                        <tr
+                          aria-hidden="true"
+                          style={{ height: `${virtualWindow.bottomPaddingHeight}px` }}
+                        >
+                          <td colSpan={9} />
+                        </tr>
+                      )}
+                    </>
                   )}
                 </tbody>
               </table>
