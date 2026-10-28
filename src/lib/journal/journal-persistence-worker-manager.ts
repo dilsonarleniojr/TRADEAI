@@ -518,3 +518,4 @@ export class JournalPersistenceWorkerManager {
 }
 
 export const journalPersistenceManager = new JournalPersistenceWorkerManager();
+
