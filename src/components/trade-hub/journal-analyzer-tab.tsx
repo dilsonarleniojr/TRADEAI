@@ -1,10 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  tradeJournalEngine,
+  type TradeJournalRecord,
+  type BotExecutionEventPayload,
+} from "@/lib/journal/trade-journal-engine";
 import {
   BookOpenCheck,
   TrendingUp,
@@ -16,6 +21,7 @@ import {
   Flame,
   Brain,
   History,
+  Clock,
 } from "lucide-react";
 
 interface JournalAnalyzerData {
@@ -53,16 +59,43 @@ export function JournalAnalyzerTab() {
   const [showCustomInput, setShowCustomInput] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [data, setData] = useState<JournalAnalyzerData | null>(null);
+  const [liveRecords, setLiveRecords] = useState<TradeJournalRecord[]>(() =>
+    tradeJournalEngine.getAllRecords()
+  );
+  const [lastLiveEvent, setLastLiveEvent] = useState<{
+    record: TradeJournalRecord;
+    event: BotExecutionEventPayload;
+  } | null>(null);
+
+  const liveMetrics = useMemo(
+    () => tradeJournalEngine.calculateMetrics(liveRecords, 1000),
+    [liveRecords]
+  );
+
+  const formatRecordsForAi = (records: TradeJournalRecord[]): string => {
+    if (records.length === 0) return "";
+    return records
+      .slice(0, 20)
+      .map(
+        (r, idx) =>
+          `${idx + 1}. ${r.symbol} ${r.side} $${r.entryPrice} -> $${r.exitPrice} (${
+            r.netGainPercent >= 0 ? "+" : ""
+          }${r.netGainPercent.toFixed(2)}%, PnL: $${r.netPnl.toFixed(2)}, Motivo: ${r.exitReason})`
+      )
+      .join("\n");
+  };
 
   const runJournalAnalysis = async (tradesText = "") => {
     setLoading(true);
     try {
+      const effectiveTradesText =
+        tradesText || formatRecordsForAi(tradeJournalEngine.getAllRecords());
       const res = await fetch("/api/ai/trade-hub", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tool: "journal_analyzer",
-          params: { customTrades: tradesText },
+          params: { customTrades: effectiveTradesText },
         }),
       });
       const json = await res.json();
@@ -78,6 +111,21 @@ export function JournalAnalyzerTab() {
 
   useEffect(() => {
     runJournalAnalysis();
+
+    const unsubJournal = tradeJournalEngine.subscribe((updated) => {
+      setLiveRecords(updated);
+    });
+
+    const unsubExecutions = tradeJournalEngine.subscribeExecutionEvents((record, event) => {
+      setLastLiveEvent({ record, event });
+      // Atualiza automaticamente a análise tática quando um TP/SL é acionado em tempo real
+      runJournalAnalysis(formatRecordsForAi(tradeJournalEngine.getAllRecords()));
+    });
+
+    return () => {
+      unsubJournal();
+      unsubExecutions();
+    };
   }, []);
 
   return (
