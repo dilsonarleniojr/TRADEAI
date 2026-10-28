@@ -27,6 +27,7 @@ import {
   computeUnderwaterDrawdownSeries,
   type UnderwaterPoint,
 } from "@/lib/journal/post-trade-copilot-prompt";
+import { useCryptoStore } from "@/lib/store";
 import {
   Activity,
   ArrowDownRight,
@@ -77,7 +78,11 @@ export function TradeJournalPanel() {
   } | null>(null);
   const [showCoTPromptDrawer, setShowCoTPromptDrawer] = useState<boolean>(false);
   const [copiedPrompt, setCopiedPrompt] = useState<boolean>(false);
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [isCompacting, setIsCompacting] = useState<boolean>(false);
+  const triggerQuantCopilotInstantAudit = useCryptoStore(
+    (s) => s.triggerQuantCopilotInstantAudit
+  );
   const [compactionReport, setCompactionReport] = useState<ColdTierCompactionReport | null>(() =>
     tradeJournalEngine.getLastCompactionReport()
   );
@@ -165,16 +170,46 @@ export function TradeJournalPanel() {
     });
   }, [records, filterMode, filterOutcome, searchSymbol, quickChip]);
 
-  // Prompt Chain-of-Thought Institucional & Diagnóstico Clear-Box reativo
+  const selectedRecord = useMemo(
+    () =>
+      filteredRecords.find((r) => r.id === selectedRecordId) ??
+      filteredRecords[0] ??
+      null,
+    [filteredRecords, selectedRecordId]
+  );
+
+  // Navegação por Teclado Estilo Vim/Trading Desk (J/K ou Setas + Enter/Escape)
+  const handleTableKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (filteredRecords.length === 0) return;
+    const currentIndex = filteredRecords.findIndex((r) => r.id === selectedRecord?.id);
+    if (e.key === "j" || e.key === "J" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const nextIdx =
+        currentIndex < 0 ? 0 : Math.min(filteredRecords.length - 1, currentIndex + 1);
+      setSelectedRecordId(filteredRecords[nextIdx].id);
+    } else if (e.key === "k" || e.key === "K" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const prevIdx = currentIndex <= 0 ? 0 : currentIndex - 1;
+      setSelectedRecordId(filteredRecords[prevIdx].id);
+    } else if (e.key === "Enter" && selectedRecord) {
+      e.preventDefault();
+      setShowCoTPromptDrawer(true);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setSelectedRecordId(null);
+    }
+  };
+
+  // Prompt Chain-of-Thought Institucional & Diagnóstico Clear-Box reativo ao trade selecionado
   const copilotBundle = useMemo(
     () =>
       buildPostTradeCoTPrompt({
         metrics,
         horizonWindow,
         anomalies,
-        lastRecord: filteredRecords[0] ?? null,
+        lastRecord: selectedRecord,
       }),
-    [metrics, horizonWindow, anomalies, filteredRecords]
+    [metrics, horizonWindow, anomalies, selectedRecord]
   );
 
   const handleCopyCoTPrompt = () => {
@@ -918,8 +953,60 @@ export function TradeJournalPanel() {
               </div>
             </div>
 
-            {/* Tabela de Histórico Pós-Trade com Barra Bipartida MAE vs MFE */}
-            <div className="overflow-x-auto rounded-xl border border-[#1f2937] bg-[#111827]">
+            {/* Barra de Inspeção de Execução Individual + Navegação Vim/Trading Desk (J/K + Enter) */}
+            {selectedRecord && (
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-xl bg-[#0e1523] border border-cyan-500/30 text-xs font-mono tabular-nums">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="px-2 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/35 text-cyan-300 font-bold">
+                    INSPEÇÃO ATIVA
+                  </span>
+                  <span className="font-bold text-white">
+                    {selectedRecord.symbol} ({selectedRecord.side.toUpperCase()})
+                  </span>
+                  <span className="text-slate-300 font-sans">
+                    Robô: <strong className="text-white">{selectedRecord.botName}</strong>
+                  </span>
+                  <span
+                    className={
+                      selectedRecord.netPnl >= 0 ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"
+                    }
+                  >
+                    PnL: {selectedRecord.netPnl >= 0 ? "+" : ""}${selectedRecord.netPnl.toFixed(2)} (
+                    {selectedRecord.netGainPercent >= 0 ? "+" : ""}
+                    {selectedRecord.netGainPercent.toFixed(2)}%)
+                  </span>
+                  <span className="text-slate-300">
+                    MAE/MFE:{" "}
+                    <strong className="text-rose-400">{selectedRecord.maePercent.toFixed(2)}%</strong> /{" "}
+                    <strong className="text-emerald-400">+{selectedRecord.mfePercent.toFixed(2)}%</strong>
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-slate-300 font-sans hidden sm:inline">
+                    Teclado: <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-cyan-300 font-mono">J</kbd>/
+                    <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-cyan-300 font-mono">K</kbd> navegar •{" "}
+                    <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-cyan-300 font-mono">Enter</kbd> Prompt CoT
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => triggerQuantCopilotInstantAudit()}
+                    className="inline-flex items-center gap-1.5 h-7 px-3 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-200 font-sans font-semibold transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 active:scale-95"
+                  >
+                    <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                    Abrir Modal Copiloto &amp; Dry-Run
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Tabela de Histórico Pós-Trade com Barra Bipartida MAE vs MFE e Navegação J/K */}
+            <div
+              tabIndex={0}
+              onKeyDown={handleTableKeyDown}
+              aria-label="Tabela de histórico pós-trade (use J/K ou setas para navegar e Enter para auditar com Copiloto Quant)"
+              className="overflow-x-auto rounded-xl border border-[#1f2937] bg-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60"
+            >
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-[#1f2937] bg-[#141d2e] text-slate-200 text-xs font-semibold uppercase tracking-wider">
@@ -977,6 +1064,7 @@ export function TradeJournalPanel() {
                   ) : (
                     filteredRecords.map((r) => {
                       const isWin = r.netPnl >= 0;
+                      const isSelected = selectedRecord?.id === r.id;
                       const bipartite = calculateBipartiteExcursionWidths(
                         r.maePercent,
                         r.mfePercent
@@ -986,7 +1074,20 @@ export function TradeJournalPanel() {
                         r.mfePercent
                       );
                       return (
-                        <tr key={r.id} className="hover:bg-[#151f33] transition-colors">
+                        <tr
+                          key={r.id}
+                          aria-selected={isSelected}
+                          onClick={() => setSelectedRecordId(r.id)}
+                          onDoubleClick={() => {
+                            setSelectedRecordId(r.id);
+                            setShowCoTPromptDrawer(true);
+                          }}
+                          className={`transition-colors cursor-pointer ${
+                            isSelected
+                              ? "bg-cyan-500/10 ring-1 ring-inset ring-cyan-500/40"
+                              : "hover:bg-[#151f33]"
+                          }`}
+                        >
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
                               {isWin ? (

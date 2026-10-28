@@ -11,6 +11,7 @@ import {
   type BotExecutionEventPayload,
 } from "@/lib/journal/trade-journal-engine";
 import { buildPostTradeCoTPrompt } from "@/lib/journal/post-trade-copilot-prompt";
+import { useCryptoStore } from "@/lib/store";
 import {
   BookOpenCheck,
   TrendingUp,
@@ -70,6 +71,9 @@ export function JournalAnalyzerTab() {
     event: BotExecutionEventPayload;
   } | null>(null);
   const [copiedCoT, setCopiedCoT] = useState<boolean>(false);
+  const triggerQuantCopilotInstantAudit = useCryptoStore(
+    (s) => s.triggerQuantCopilotInstantAudit
+  );
 
   const liveMetrics = useMemo(
     () => tradeJournalEngine.calculateMetrics(liveRecords, 1000),
@@ -152,24 +156,34 @@ export function JournalAnalyzerTab() {
 
   return (
     <div className="space-y-6">
-      {/* Header Panel */}
+      {/* Header Panel (4/8pt Grid + CTA Primário) */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-card/60 backdrop-blur-md p-4 rounded-xl border border-border/40">
         <div>
           <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
             <BookOpenCheck className="w-4 h-4 text-cyan-400" />
-            Analisador Psicológico & Tático do Diário de Trades
+            Analisador Psicológico &amp; Tático do Diário de Trades
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5">
             Diagnóstico das últimas 20 operações para identificar vieses emocionais e erros de execução
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => triggerQuantCopilotInstantAudit()}
+            className="h-8 text-xs border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/15 font-mono"
+          >
+            <Brain className="w-3.5 h-3.5 mr-1.5 text-cyan-400" />
+            Copiloto Quant (Alt+J)
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
             onClick={() => setShowCustomInput(!showCustomInput)}
-            className="text-xs border-border/60"
+            className="h-8 text-xs border-border/60"
           >
             {showCustomInput ? "Usar Trades do Banco" : "Colar Trades Manualmente"}
           </Button>
@@ -177,8 +191,9 @@ export function JournalAnalyzerTab() {
           <Button
             onClick={() => runJournalAnalysis(showCustomInput ? customTrades : "")}
             disabled={loading}
+            aria-busy={loading}
             size="sm"
-            className="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium"
+            className="h-8 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow-sm"
           >
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} />
             {loading ? "Auditando..." : "Analisar Diário"}
