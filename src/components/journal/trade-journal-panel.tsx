@@ -7,6 +7,7 @@ import {
   type PerformanceMetrics,
   type JournalFilterOptions,
   type BotExecutionEventPayload,
+  type JournalPersistenceStats,
 } from "@/lib/journal/trade-journal-engine";
 import { lttbDownsample } from "@/lib/performance/lttb";
 import {
@@ -63,6 +64,9 @@ export function TradeJournalPanel() {
     record: TradeJournalRecord;
     event: BotExecutionEventPayload;
   } | null>(null);
+  const [persistenceStats, setPersistenceStats] = useState<JournalPersistenceStats>(() =>
+    tradeJournalEngine.getPersistenceStats()
+  );
 
   useEffect(() => {
     // Inscrição no Diário de Trades
@@ -75,6 +79,11 @@ export function TradeJournalPanel() {
       setLastLiveExecution({ record: rec, event: evt });
     });
 
+    // Inscrição na Telemetria de Persistência Assíncrona em Lote (IndexedDB + SQLite WAL 500ms)
+    const unsubPersistence = tradeJournalEngine.subscribePersistenceStats((stats) => {
+      setPersistenceStats(stats);
+    });
+
     // Inscrição em Anomalias de Order Flow
     const unsubAnomalies = orderFlowAnomalyScanner.subscribe((alert) => {
       setAnomalies(orderFlowAnomalyScanner.getRecentAlerts(20));
@@ -84,6 +93,7 @@ export function TradeJournalPanel() {
     return () => {
       unsubJournal();
       unsubExecutionBus();
+      unsubPersistence();
       unsubAnomalies();
     };
   }, []);
@@ -337,6 +347,14 @@ export function TradeJournalPanel() {
                   <span className="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                     Stream Real-Time (BroadcastChannel + CustomEvent)
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300 font-mono">
+                    Worker IDB + SQLite WAL • Batch {persistenceStats.debounceMs}ms (
+                    {persistenceStats.totalRecordsPersisted} salvos
+                    {persistenceStats.lastFlushDurationMs > 0
+                      ? ` • ${persistenceStats.lastFlushDurationMs}ms`
+                      : ""}
+                    )
                   </span>
                 </div>
                 <div className="flex items-center gap-2">

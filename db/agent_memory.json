@@ -1,6 +1,33 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Persistência Assíncrona em Lote (500ms Debounced Batch Write) em IndexedDB e SQLite WAL via Web Worker para o TradeJournalEngine",
+    "summary": "1) Web Worker Dedicado de Persistência (src/workers/journal-persistence.worker.ts & src/lib/journal/journal-persistence-worker-manager.ts): Migração do snapshot síncrono de localStorage para um pipeline assíncrono em lote (debounced batch write a cada 500ms, maxWait 2000ms, maxBatchSize 200) orquestrado fora da Main Thread. Acumula registros modificados (dirty delta) em um Map O(1) e executa transações readwrite em lote no IndexedDB ('tradeai_institutional_journal_db', store 'journal_records') em paralelo ao envio POST para '/api/journal/sync'; 2) Endpoint SQLite WAL (/api/journal/sync - src/app/api/journal/sync/route.ts & prisma/schema.prisma): Criação sob demanda da tabela 'TradeJournalRecord' com índices compostos ('idx_trade_journal_exit_ts' e 'idx_trade_journal_symbol_mode') e escrita transacional em lote ('INSERT OR REPLACE') via db.$transaction; 3) Escalabilidade Acima de 1.000+ Execuções (src/lib/journal/trade-journal-engine.ts): Substituição de buscas lineares por índice Map O(1) ('recordsById'), ampliação da janela em memória para 5.000 registros (com downsampling LTTB na UI) e eliminação de JSON.stringify síncrono na thread principal; 4) Telemetria e Validação: Badge em tempo real no TradeJournalPanel e suíte de testes em tests/unit/trade-journal-async-persistence.test.ts validando coalescência de rajadas de TP1/TP2, ingestão de 1.250 execuções (<0.5ms/evento, 0 serializações síncronas) e round-trip SQLite WAL (9/9 testes aprovados, 52 asserções, 0 erros TypeScript).",
+    "tags": [
+      "indexeddb-web-worker",
+      "sqlite-wal-batch-sync",
+      "debounced-batch-write-500ms",
+      "zero-main-thread-json-stringify",
+      "high-frequency-partial-fills",
+      "trade-journal-engine",
+      "pilar-1-non-blocking-io",
+      "pilar-4-observability"
+    ],
+    "details": {
+      "workerPath": "src/workers/journal-persistence.worker.ts",
+      "workerManagerPath": "src/lib/journal/journal-persistence-worker-manager.ts",
+      "apiRoutePath": "src/app/api/journal/sync/route.ts",
+      "enginePath": "src/lib/journal/trade-journal-engine.ts",
+      "testSuitePath": "tests/unit/trade-journal-async-persistence.test.ts",
+      "debounceMs": 500,
+      "maxInMemoryRecords": 5000,
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1793194200000-async-idb-sqlite-worker-persistence",
+    "timestamp": "2026-10-28T08:30:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Barramento de Eventos em Tempo Real (BroadcastChannel + CustomEvent) no TradeJournalEngine para Acumulação Instantânea da Curva de Patrimônio",
     "summary": "1) Barramento Dual Event-Driven no TradeJournalEngine (src/lib/journal/trade-journal-engine.ts): Conexão direta do motor do Diário de Trading ao canal de execução dos robôs via BroadcastChannel ('tradeai_execution_channel_v1') e CustomEvent ('tradeai:bot-execution' / 'tradeai:journal-updated') com deduplicação idempotente O(1) via Set<string> processedEventIds; 2) Integração Direct AI Trade (src/lib/bot/pilot/direct-operation-manager.ts & src/components/bot/direct-ai-trade-modal.tsx): Emissão determinística de eventos em tempo real no disparo de TP1 ('direct_tp1_${session.id}'), TP2 ('direct_tp2_${session.id}') e encerramento final ('direct_close_${session.id}' para TARGET_REACHED, STOP_LOSS, TRAILING_STOP, TIME_EXPIRED e MANUAL_CLOSE); 3) Integração Live Fleet (src/lib/bot/multi-bot-engine.ts): Emissão direta de eventos em executePartialTakeProfit ('PARTIAL_TAKE_PROFIT') e executeBotSell ('TAKE_PROFIT', 'STOP_LOSS', 'TRAILING_STOP', 'MANUAL_CLOSE'); 4) Atualização Reativa Zero-Click na UI: Subscrição reativa em TradeJournalPanel, SmartDashboardScreen, SmartPaperTradingScreen e JournalAnalyzerTab, eliminando snapshots estáticos e cliques manuais no botão de atualizar; 5) Validação: Suíte de testes unitários em tests/unit/trade-journal-realtime-bus.test.ts (5/5 aprovados, 25 expect() calls) e bun x tsc --noEmit com 0 erros.",
     "tags": [

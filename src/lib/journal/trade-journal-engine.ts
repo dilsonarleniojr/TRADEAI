@@ -9,6 +9,13 @@
  * - Persistência em armazenamento local e exportação em formato auditável (JSON / CSV)
  */
 
+import {
+  journalPersistenceManager,
+  type JournalPersistenceStats,
+  type CustomBatchSinkHandler,
+} from "./journal-persistence-worker-manager";
+
+export type { JournalPersistenceStats, CustomBatchSinkHandler };
 export type ExecutionEventSource = "DIRECT_AI_TRADE" | "LIVE_FLEET" | "MANUAL";
 
 export type ExecutionTriggerType =
@@ -147,6 +154,7 @@ export interface JournalFilterOptions {
 }
 
 const STORAGE_KEY = "tradeai_trade_journal_records_v1";
+const MAX_IN_MEMORY_RECORDS = 5000;
 
 export interface JournalChannelStatus {
   broadcastChannelActive: boolean;
@@ -155,11 +163,13 @@ export interface JournalChannelStatus {
   lastEventTimestamp: number | null;
   lastEventSource: ExecutionEventSource | null;
   lastTriggerType: ExecutionTriggerType | null;
+  persistence: JournalPersistenceStats;
 }
 
 export class TradeJournalEngine {
   private static instance: TradeJournalEngine | null = null;
   private records: TradeJournalRecord[] = [];
+  private recordsById = new Map<string, TradeJournalRecord>();
   private listeners: Array<(records: TradeJournalRecord[]) => void> = [];
   private executionEventListeners: Array<
     (record: TradeJournalRecord, event: BotExecutionEventPayload) => void
@@ -174,6 +184,7 @@ export class TradeJournalEngine {
   private constructor() {
     this.loadFromStorage();
     this.initRealtimeEventBus();
+    void this.hydrateFromAsyncStorage();
   }
 
   public static getInstance(): TradeJournalEngine {
@@ -206,8 +217,9 @@ export class TradeJournalEngine {
           } else if (data.type === "JOURNAL_CLEAR") {
             if (this.records.length > 0) {
               this.records = [];
+              this.recordsById.clear();
               this.processedEventIds.clear();
-              this.saveToStorage();
+              void journalPersistenceManager.clearAllPersisted();
               this.notifyListeners();
             }
           }
@@ -265,8 +277,8 @@ export class TradeJournalEngine {
     shouldBroadcastToChannel: boolean
   ): TradeJournalRecord | null {
     const dedupId = event.eventId || event.id;
-    if (dedupId && (this.processedEventIds.has(dedupId) || this.records.some((r) => r.id === dedupId))) {
-      return this.records.find((r) => r.id === dedupId) || null;
+    if (dedupId && (this.processedEventIds.has(dedupId) || this.recordsById.has(dedupId))) {
+      return this.recordsById.get(dedupId) || null;
     }
 
     return this.dispatchExecutionEvent(event, { broadcastToChannel: shouldBroadcastToChannel });
@@ -280,21 +292,23 @@ export class TradeJournalEngine {
     event?: BotExecutionEventPayload
   ): void {
     if (!record || !record.id) return;
-    if (this.processedEventIds.has(record.id) || this.records.some((r) => r.id === record.id)) {
+    if (this.processedEventIds.has(record.id) || this.recordsById.has(record.id)) {
       return;
     }
 
     this.processedEventIds.add(record.id);
+    this.recordsById.set(record.id, record);
     this.lastEventTimestamp = record.exitTimestampMs || Date.now();
     this.lastEventSource = record.source || event?.source || "LIVE_FLEET";
     this.lastTriggerType = record.triggerType || event?.triggerType || "TAKE_PROFIT";
 
     this.records.unshift(record);
-    if (this.records.length > 1000) {
-      this.records = this.records.slice(0, 1000);
+    if (this.records.length > MAX_IN_MEMORY_RECORDS) {
+      const removed = this.records.pop();
+      if (removed?.id) this.recordsById.delete(removed.id);
     }
 
-    this.saveToStorage();
+    this.scheduleAsyncRecordPersistence(record);
     this.notifyListeners();
 
     if (event) {
@@ -316,7 +330,7 @@ export class TradeJournalEngine {
       event.id ||
       `exec_${event.source.toLowerCase()}_${event.botId || "bot"}_${event.symbol}_${event.exitTimestampMs || Date.now()}`;
 
-    const existing = this.records.find((r) => r.id === dedupId);
+    const existing = this.recordsById.get(dedupId);
     if (existing) {
       return existing;
     }
@@ -369,7 +383,42 @@ export class TradeJournalEngine {
       lastEventTimestamp: this.lastEventTimestamp,
       lastEventSource: this.lastEventSource,
       lastTriggerType: this.lastTriggerType,
+      persistence: journalPersistenceManager.getStats(),
     };
+  }
+
+  /**
+   * Retorna estatísticas da persistência assíncrona em lote (Web Worker IndexedDB + SQLite WAL)
+   */
+  public getPersistenceStats(): JournalPersistenceStats {
+    return journalPersistenceManager.getStats();
+  }
+
+  /**
+   * Força o flush imediato do lote pendente de 500ms para IndexedDB / SQLite
+   */
+  public async flushPersistence(): Promise<JournalPersistenceStats> {
+    return journalPersistenceManager.flushNow();
+  }
+
+  /**
+   * Configura parâmetros do gerenciador de persistência assíncrona (debounceMs, customBatchSink, etc.)
+   */
+  public configurePersistence(options: {
+    debounceMs?: number;
+    maxWaitMs?: number;
+    maxBatchSize?: number;
+    sqliteSyncEnabled?: boolean;
+    customBatchSink?: CustomBatchSinkHandler | null;
+  }): void {
+    journalPersistenceManager.configure(options);
+  }
+
+  /**
+   * Inscreve um listener nas estatísticas de flush assíncrono em lote
+   */
+  public subscribePersistenceStats(callback: (stats: JournalPersistenceStats) => void): () => void {
+    return journalPersistenceManager.subscribeFlushStats(callback);
   }
 
   /**
@@ -523,17 +572,20 @@ export class TradeJournalEngine {
     };
 
     this.processedEventIds.add(record.id);
+    this.recordsById.set(record.id, record);
     this.lastEventTimestamp = exitTimestampMs;
     this.lastEventSource = resolvedSource;
     this.lastTriggerType = resolvedTriggerType;
 
     this.records.unshift(record);
-    // Limitar histórico a 1000 registros em memória para proteção de RAM
-    if (this.records.length > 1000) {
-      this.records = this.records.slice(0, 1000);
+    // Suporta históricos > 1.000+ execuções em memória (até MAX_IN_MEMORY_RECORDS = 5.000)
+    // sem serialização JSON síncrona na Main Thread
+    if (this.records.length > MAX_IN_MEMORY_RECORDS) {
+      const removed = this.records.pop();
+      if (removed?.id) this.recordsById.delete(removed.id);
     }
 
-    this.saveToStorage();
+    this.scheduleAsyncRecordPersistence(record);
     this.notifyListeners();
 
     const effectiveEvent: BotExecutionEventPayload = internalOptions?.originEvent || {
@@ -744,11 +796,19 @@ export class TradeJournalEngine {
 
   public clearAllRecords(): void {
     this.records = [];
+    this.recordsById.clear();
     this.processedEventIds.clear();
     this.lastEventTimestamp = null;
     this.lastEventSource = null;
     this.lastTriggerType = null;
-    this.saveToStorage();
+    if (typeof window !== "undefined" && window.localStorage) {
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        // Ignora erro de quota/permissão
+      }
+    }
+    void journalPersistenceManager.clearAllPersisted();
     this.notifyListeners();
     if (this.broadcastChannel) {
       try {
@@ -840,12 +900,45 @@ export class TradeJournalEngine {
     return `${secs}s`;
   }
 
-  private saveToStorage(): void {
-    if (typeof window === "undefined" || !window.localStorage) return;
+  /**
+   * Enfileira um único registro para escrita assíncrona em lote (debounced batch write 500ms)
+   * no IndexedDB e SQLite (/api/journal/sync) via Web Worker dedicado, evitando serializações
+   * JSON.stringify síncronas na thread principal.
+   */
+  private scheduleAsyncRecordPersistence(record: TradeJournalRecord): void {
+    journalPersistenceManager.enqueueRecord(record);
+  }
+
+  /**
+   * Hidrata de forma assíncrona os registros persistidos no IndexedDB e SQLite (/api/journal/sync),
+   * mesclando de forma idempotente com registros em memória.
+   */
+  public async hydrateFromAsyncStorage(): Promise<number> {
+    if (typeof window === "undefined") return 0;
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.records));
+      const persisted = await journalPersistenceManager.loadPersistedRecords(MAX_IN_MEMORY_RECORDS);
+      if (!Array.isArray(persisted) || persisted.length === 0) return 0;
+
+      let added = 0;
+      for (const rec of persisted) {
+        if (rec?.id && !this.processedEventIds.has(rec.id) && !this.recordsById.has(rec.id)) {
+          this.processedEventIds.add(rec.id);
+          this.recordsById.set(rec.id, rec);
+          this.records.push(rec);
+          added++;
+        }
+      }
+
+      if (added > 0) {
+        this.records.sort((a, b) => (b.exitTimestampMs || 0) - (a.exitTimestampMs || 0));
+        if (this.records.length > MAX_IN_MEMORY_RECORDS) {
+          this.records = this.records.slice(0, MAX_IN_MEMORY_RECORDS);
+        }
+        this.notifyListeners();
+      }
+      return added;
     } catch {
-      // Ignora erro de quota em ambiente restrito
+      return 0;
     }
   }
 
@@ -854,10 +947,21 @@ export class TradeJournalEngine {
     try {
       const data = window.localStorage.getItem(STORAGE_KEY);
       if (data) {
-        this.records = JSON.parse(data);
-        for (const rec of this.records) {
-          if (rec?.id) {
-            this.processedEventIds.add(rec.id);
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          this.records = parsed;
+          for (const rec of this.records) {
+            if (rec?.id) {
+              this.processedEventIds.add(rec.id);
+              this.recordsById.set(rec.id, rec);
+            }
+          }
+          // Migra o snapshot legado de localStorage para o pipeline assíncrono IndexedDB + SQLite
+          journalPersistenceManager.enqueueBatch(this.records);
+          try {
+            window.localStorage.removeItem(STORAGE_KEY);
+          } catch {
+            // Ignora erro
           }
         }
       }

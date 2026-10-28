@@ -167,3 +167,43 @@ model Candle {
 
   @@id([symbol, interval, openTime])
 }
+
+// Registros analíticos do Diário de Trading Institucional (persistência assíncrona em lote via Web Worker + SQLite WAL).
+// A tabela e seus índices também são criados sob demanda em src/app/api/journal/sync/route.ts.
+model TradeJournalRecord {
+  id                String  @id
+  botId             String
+  botName           String
+  symbol            String
+  side              String
+  mode              String
+  strategy          String
+  source            String?
+  triggerType       String?
+  entryPrice        Float
+  exitPrice         Float
+  quantity          Float
+  totalInvested     Float
+  totalReturned     Float
+  grossPnl          Float
+  netPnl            Float
+  netGainPercent    Float
+  commissionFeesUsd Float
+  spreadCostUsd     Float
+  highestPrice      Float
+  lowestPrice       Float
+  maePercent        Float
+  mfePercent        Float
+  entryTime         String
+  exitTime          String
+  entryTimestampMs  Float
+  exitTimestampMs   Float
+  durationMs        Float
+  durationMinutes   Float
+  durationFormatted String
+  exitReason        String
+  notes             String?
+
+  @@index([exitTimestampMs])
+  @@index([symbol, mode])
+}
