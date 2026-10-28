@@ -7,6 +7,7 @@ import {
   type PerformanceMetrics,
   type JournalFilterOptions,
 } from "@/lib/journal/trade-journal-engine";
+import { lttbDownsample } from "@/lib/performance/lttb";
 import {
   telegramNotificationService,
   type TelegramConfig,
@@ -323,9 +324,16 @@ export function TradeJournalPanel() {
                     Curva de Patrimônio Acumulado (Equity Curve)
                   </h3>
                 </div>
-                <span className="text-xs text-slate-400 font-mono">
-                  Base Inicial: $1,000.00 USD
-                </span>
+                <div className="flex items-center gap-2">
+                  {metrics.equityCurve.length > 200 && (
+                    <span className="text-[10px] text-cyan-400 bg-cyan-950/60 border border-cyan-800/60 px-1.5 py-0.5 rounded font-mono">
+                      LTTB Ativo (60 pts / {metrics.equityCurve.length} trades)
+                    </span>
+                  )}
+                  <span className="text-xs text-slate-400 font-mono">
+                    Base Inicial: $1,000.00 USD
+                  </span>
+                </div>
               </div>
 
               <div className="w-full h-44 relative bg-[#090d16] rounded-lg border border-[#1a2333] emerald-border-glow p-2 flex items-center justify-center overflow-hidden">
@@ -347,9 +355,16 @@ export function TradeJournalPanel() {
                       strokeWidth="1"
                     />
 
-                    {/* Caminho da Curva */}
+                    {/* Caminho da Curva com Amostragem Adaptativa LTTB (preservação O(1) de nós DOM) */}
                     {(() => {
-                      const points = metrics.equityCurve;
+                      const rawPoints = metrics.equityCurve;
+                      const points =
+                        rawPoints.length > 200
+                          ? lttbDownsample(rawPoints, 60, {
+                              getX: (_, i) => i,
+                              getY: (p) => p.equity,
+                            })
+                          : rawPoints;
                       const equities = points.map((p) => p.equity);
                       const minEq = Math.min(...equities) * 0.995;
                       const maxEq = Math.max(...equities) * 1.005;

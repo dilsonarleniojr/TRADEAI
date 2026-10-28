@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { SmartBadge } from "../ui/badge";
 import { SmartButton } from "../ui/button";
 import { SmartTable, SmartTableHeader, SmartTableBody, SmartTableRow, SmartTableHead, SmartTableCell } from "../ui/table";
+import { lttbDownsample } from "@/lib/performance/lttb";
 
 export function SmartBacktestMetricsCard() {
   const [isRunning, setIsRunning] = React.useState(false);
@@ -13,15 +14,19 @@ export function SmartBacktestMetricsCard() {
   const [initialCapital, setInitialCapital] = React.useState("10000");
 
   const equityPoints = [10000, 10350, 10180, 10720, 10600, 11250, 11890, 12400, 12200, 13100, 13850, 14860];
-  const minEquity = Math.min(...equityPoints);
-  const maxEquity = Math.max(...equityPoints);
+  const sampledPoints = React.useMemo(() => {
+    return equityPoints.length > 200 ? lttbDownsample(equityPoints, 60) : equityPoints;
+  }, [equityPoints]);
+
+  const minEquity = Math.min(...sampledPoints);
+  const maxEquity = Math.max(...sampledPoints);
   const range = maxEquity - minEquity || 1;
   const width = 600;
   const height = 180;
 
-  const pointsSvg = equityPoints
+  const pointsSvg = sampledPoints
     .map((val, idx) => {
-      const x = (idx / (equityPoints.length - 1)) * width;
+      const x = (idx / (sampledPoints.length - 1)) * width;
       const y = height - ((val - minEquity) / range) * (height - 30) - 15;
       return `${x},${y}`;
     })

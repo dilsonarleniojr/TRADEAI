@@ -1,6 +1,32 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Amostragem Adaptativa LTTB (Largest Triangle Three Buckets) para Curvas de Patrimônio Contínuas",
+    "summary": "1) Algoritmo LTTB (src/lib/performance/lttb.ts): Implementação pura e de alta performance do algoritmo Largest Triangle Three Buckets (MIT/Steinarsson) para redução geométrica de séries temporais financeiras, reduzindo séries com >200 operações para exatamente 60 pontos representativos com ancoragem do primeiro/último ponto e preservação matemática rigorosa de picos e vales (drawdowns); 2) Integração no Diário de Trading (src/components/journal/trade-journal-panel.tsx): Aplicação transparente na renderização SVG da curva de patrimônio líquido contínua, reduzindo nós <circle> de O(N) para O(1) e adicionando badge visual 'LTTB Ativo (60 pts)'; 3) Integração no Estúdio Quant (src/components/smart-trading/trading/backtest-metrics-card.tsx): Proteção da malha geométrica da simulação histórica de backtesting com useMemo; 4) Validação Rigorosa: Suíte de testes unitários dedicada em tests/unit/lttb.test.ts cobrindo preservação de picos, condições de borda, microtempo de execução (<5ms para 1.000 pontos) com 100% de aprovação (6/6), além de 0 erros no typecheck bun x tsc --noEmit.",
+    "tags": [
+      "lttb-algorithm",
+      "largest-triangle-three-buckets",
+      "equity-curve-downsampling",
+      "dom-node-optimization",
+      "trade-journal",
+      "quant-studio",
+      "sub-millisecond-performance",
+      "pilar-4-observability"
+    ],
+    "details": {
+      "lttbModulePath": "src/lib/performance/lttb.ts",
+      "testSuitePath": "tests/unit/lttb.test.ts",
+      "journalPanelPath": "src/components/journal/trade-journal-panel.tsx",
+      "backtestCardPath": "src/components/smart-trading/trading/backtest-metrics-card.tsx",
+      "threshold": 60,
+      "triggerCondition": "> 200 trades",
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1792622000000-lttb-equity-downsample",
+    "timestamp": "2026-10-25T03:18:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Consolidação de SVGs e Ícones: Migração de Gradientes Inline para Classes Utilitárias no globals.css",
     "summary": "1) Eliminação de Definições Inline de Gradientes SVG: Removidos blocos redundantes <defs><linearGradient id='equityGrad'|'chartGradientDirect'> nos componentes de gráficos de curvas de patrimônio e modais em src/components/journal/trade-journal-panel.tsx, src/components/smart-trading/trading/backtest-metrics-card.tsx e src/components/bot/direct-ai-trade-modal.tsx, eliminando colisões de ID no DOM e reduzindo o volume de HTML gerado em SSR; 2) Classes Utilitárias de Preenchimento SVG e Brilho Semântico: Adição e padronização em src/app/globals.css de .cyan-glow, .emerald-border-glow, .cyan-border-glow, .rose-border-glow, .svg-fill-emerald, .svg-fill-cyan, .svg-fill-rose e .svg-fill-blue; 3) Purga de Classes Legadas Órfãs: Substituição sistemática de referências legadas .st-scrollbar por .cyan-scrollbar em src/components/smart-trading/ui/modal.tsx, src/components/smart-trading/ui/table.tsx e src/components/smart-trading/trading/asset-watchlist.tsx; 4) Aplicação nos Cards de Métricas do Estúdio Quant: Cards de PnL, Win Rate, Profit Factor, Ganho/Perda Média e Risco em src/components/trade-hub/journal-analyzer-tab.tsx e portfolio-risk-tab.tsx modernizados com as classes utilitárias; 5) Validação: Tipagem estrita com bun x tsc --noEmit (0 erros), 6/6 testes unitários passando em bun test e servidor operacional respondendo HTTP 200.",
     "tags": [
