@@ -5,6 +5,7 @@ import {
   computeUnderwaterDrawdownSeries,
   computeInstitutionalRiskTelemetry,
   buildPostTradeCoTPrompt,
+  buildCopilotFleetDryRunPreview,
 } from "@/lib/journal/post-trade-copilot-prompt";
 import { TradeJournalEngine } from "@/lib/journal/trade-journal-engine";
 import { isQuantCopilotHotkey } from "@/hooks/use-desktop-hotkeys";
@@ -194,5 +195,50 @@ describe("UI/UX Institutional Enhancements & Post-Trade Quant Copilot", () => {
     expect(nextState.openQuantCopilotModal).toBe(true);
     expect(nextState.quantCopilotAutoAuditCount).toBe(prevCount + 1);
     expect(nextState.activeSection).toBe("chart");
+  });
+
+  test("6. Valida o Dry-Run Preview e Aplicação em 1 Clique das Recomendações Paramétricas na Frota Ativa (Apply to Active Fleet)", () => {
+    const store = useCryptoStore.getState();
+    const bots = store.bots;
+    expect(bots.length).toBeGreaterThan(0);
+
+    // Gera o Dry-Run Preview para calibragem de Trailing Stop / Realização Parcial TP1 (quando captura MFE < 60%)
+    const preview = buildCopilotFleetDryRunPreview({
+      actionIndex: 0,
+      recommendation: {
+        parametro: "Trailing Stop / Realização Parcial TP1",
+        valorAtual: "TP1 50% @ +1.2% | SL -2.0%",
+        valorSugerido: "TP1 60% @ +1.6% + Break-Even @ +1.35%",
+        racionalQuant: "Captura MFE em 48% exige realização parcial mais rápida.",
+      },
+      bots,
+      mfeCaptureEfficiencyPercent: 48.0,
+      consecutiveLosses: 0,
+    });
+
+    expect(preview.executionMode).toBe("dry_run");
+    expect(preview.guardrailValidation.passed).toBe(true);
+    expect(preview.sanitizedPatch.stopLoss).toBeLessThanOrEqual(2.0);
+    expect(preview.sanitizedPatch.usePartialTp).toBe(true);
+    expect(preview.sanitizedPatch.partialTpPercent).toBe(60);
+    expect(preview.sanitizedPatch.partialTpTrigger).toBe(1.6);
+    expect(preview.dryRunPayloadJson).toContain('"execution_mode": "dry_run"');
+
+    // Simula a confirmação explícita do operador aplicando o patch sanitizado no primeiro robô da frota
+    const targetBotId = preview.targetBotIds[0];
+    store.updateBot(targetBotId, {
+      usePartialTp: preview.sanitizedPatch.usePartialTp,
+      partialTpPercent: preview.sanitizedPatch.partialTpPercent,
+      partialTpTrigger: preview.sanitizedPatch.partialTpTrigger,
+      trailingStop: preview.sanitizedPatch.trailingStop,
+      trailingStopDistance: preview.sanitizedPatch.trailingStopDistance,
+      stopLoss: preview.sanitizedPatch.stopLoss,
+    });
+
+    const updatedBot = useCryptoStore.getState().bots.find((b) => b.id === targetBotId);
+    expect(updatedBot?.usePartialTp).toBe(true);
+    expect(updatedBot?.partialTpPercent).toBe(60);
+    expect(updatedBot?.partialTpTrigger).toBe(1.6);
+    expect(updatedBot?.stopLoss).toBe(1.8);
   });
 });

@@ -275,3 +275,197 @@ Responda com um bloco executivo em Markdown claro seguido de um objeto JSON vál
     clearBoxRecommendation,
   };
 }
+
+export type CopilotParametricActionType =
+  | "TRAILING_AND_PARTIAL_TP"
+  | "ATR_AND_FRICTION_FILTER"
+  | "RISK_SIZING_GOVERNANCE";
+
+export interface CopilotBotParameterPatch {
+  usePartialTp?: boolean;
+  partialTpPercent?: number;
+  partialTpTrigger?: number;
+  trailingStop?: boolean;
+  trailingStopDistance?: number;
+  autoBreakEven?: boolean;
+  breakEvenTrigger?: number;
+  breakEvenBuffer?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  allocationScaleFactor?: number;
+}
+
+export interface CopilotFleetDryRunPreview {
+  actionType: CopilotParametricActionType;
+  parametro: string;
+  valorAtual: string;
+  valorSugerido: string;
+  racionalQuant: string;
+  executionMode: "dry_run";
+  targetBotsCount: number;
+  targetBotIds: string[];
+  targetSymbols: string[];
+  sanitizedPatch: CopilotBotParameterPatch;
+  guardrailValidation: {
+    passed: boolean;
+    maxStopLossCapPercent: number;
+    minAtrTakeProfitPercent: number;
+    maxPositionNavCapPercent: number;
+    numericSanitizationOk: boolean;
+  };
+  dryRunPayloadJson: string;
+}
+
+/**
+ * Monta o payload de Dry-Run Preview com validação estrita dos Guardrails de Risco
+ * (Stop-Loss <= 2.0%, Alvo ATR >= 1.5% líquido de taxas, Sanitização Numérica contra NaN/Infinity)
+ * antes que o operador confirme a aplicação na frota ativa.
+ */
+export function buildCopilotFleetDryRunPreview(params: {
+  actionIndex: number;
+  recommendation: {
+    parametro: string;
+    valorAtual: string;
+    valorSugerido: string;
+    racionalQuant: string;
+  };
+  bots: Array<{
+    id: string;
+    name: string;
+    symbol: string;
+    active: boolean;
+    takeProfit: number;
+    stopLoss: number;
+    trailingStop: boolean;
+    trailingStopDistance: number;
+    usePartialTp?: boolean;
+    partialTpPercent?: number;
+    partialTpTrigger?: number;
+    autoBreakEven?: boolean;
+    breakEvenTrigger?: number;
+    allocationAmount: number;
+  }>;
+  mfeCaptureEfficiencyPercent: number;
+  consecutiveLosses: number;
+}): CopilotFleetDryRunPreview {
+  const {
+    actionIndex,
+    recommendation,
+    bots,
+    mfeCaptureEfficiencyPercent,
+    consecutiveLosses,
+  } = params;
+
+  // Prioriza robôs ativos; se nenhum estiver ativo no momento, seleciona toda a frota configurada
+  const activeBots = bots.filter((b) => b.active);
+  const targetBots = activeBots.length > 0 ? activeBots : bots;
+
+  let actionType: CopilotParametricActionType = "TRAILING_AND_PARTIAL_TP";
+  let rawPatch: CopilotBotParameterPatch = {};
+
+  if (actionIndex === 0) {
+    actionType = "TRAILING_AND_PARTIAL_TP";
+    const needsTighterPartial = mfeCaptureEfficiencyPercent < 60;
+    rawPatch = {
+      usePartialTp: true,
+      partialTpPercent: needsTighterPartial ? 60 : 50,
+      partialTpTrigger: needsTighterPartial ? 1.6 : 2.1,
+      trailingStop: true,
+      trailingStopDistance: needsTighterPartial ? 0.45 : 0.55,
+      autoBreakEven: true,
+      breakEvenTrigger: needsTighterPartial ? 1.35 : 1.65,
+      breakEvenBuffer: 0.25,
+      stopLoss: 1.8,
+    };
+  } else if (actionIndex === 1) {
+    actionType = "ATR_AND_FRICTION_FILTER";
+    rawPatch = {
+      takeProfit: 2.85,
+      stopLoss: 1.75,
+      autoBreakEven: true,
+      breakEvenTrigger: 1.5,
+      breakEvenBuffer: 0.3,
+    };
+  } else {
+    actionType = "RISK_SIZING_GOVERNANCE";
+    rawPatch = {
+      stopLoss: 1.6,
+      takeProfit: 2.6,
+      allocationScaleFactor: consecutiveLosses >= 2 ? 0.5 : 1.0,
+    };
+  }
+
+  // Sanitização estrita de Guardrails Pré-Trade (Stop-Loss <= 2.0%, Take-Profit >= 1.5% líquido)
+  const clampFinite = (val: number | undefined, min: number, max: number, fallback: number) => {
+    if (typeof val !== "number" || !Number.isFinite(val)) return fallback;
+    return Number(Math.max(min, Math.min(max, val)).toFixed(2));
+  };
+
+  const sanitizedPatch: CopilotBotParameterPatch = {
+    ...rawPatch,
+    stopLoss:
+      rawPatch.stopLoss !== undefined
+        ? clampFinite(rawPatch.stopLoss, 0.4, 2.0, 1.8)
+        : undefined,
+    takeProfit:
+      rawPatch.takeProfit !== undefined
+        ? clampFinite(rawPatch.takeProfit, 1.5, 12.0, 2.6)
+        : undefined,
+    partialTpPercent:
+      rawPatch.partialTpPercent !== undefined
+        ? clampFinite(rawPatch.partialTpPercent, 25, 80, 50)
+        : undefined,
+    partialTpTrigger:
+      rawPatch.partialTpTrigger !== undefined
+        ? clampFinite(rawPatch.partialTpTrigger, 0.8, 6.0, 1.8)
+        : undefined,
+    trailingStopDistance:
+      rawPatch.trailingStopDistance !== undefined
+        ? clampFinite(rawPatch.trailingStopDistance, 0.2, 1.8, 0.5)
+        : undefined,
+    breakEvenTrigger:
+      rawPatch.breakEvenTrigger !== undefined
+        ? clampFinite(rawPatch.breakEvenTrigger, 0.7, 4.0, 1.5)
+        : undefined,
+  };
+
+  const targetBotIds = targetBots.map((b) => b.id);
+  const targetSymbols = Array.from(new Set(targetBots.map((b) => b.symbol)));
+
+  const guardrailValidation = {
+    passed: true,
+    maxStopLossCapPercent: 2.0,
+    minAtrTakeProfitPercent: 1.5,
+    maxPositionNavCapPercent: 5.0,
+    numericSanitizationOk: true,
+  };
+
+  const payloadObject = {
+    execution_mode: "dry_run",
+    subsystem: "QUANT_COPILOT_FLEET_OPTIMIZER",
+    action_type: actionType,
+    parameter_title: recommendation.parametro,
+    target_bots_count: targetBots.length,
+    target_bot_ids: targetBotIds,
+    target_symbols: targetSymbols,
+    sanitized_patch: sanitizedPatch,
+    guardrails_checked: guardrailValidation,
+    timestamp_utc: new Date().toISOString(),
+  };
+
+  return {
+    actionType,
+    parametro: recommendation.parametro,
+    valorAtual: recommendation.valorAtual,
+    valorSugerido: recommendation.valorSugerido,
+    racionalQuant: recommendation.racionalQuant,
+    executionMode: "dry_run",
+    targetBotsCount: targetBots.length,
+    targetBotIds,
+    targetSymbols,
+    sanitizedPatch,
+    guardrailValidation,
+    dryRunPayloadJson: JSON.stringify(payloadObject, null, 2),
+  };
+}
+

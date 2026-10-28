@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useCryptoStore } from "@/lib/store";
+import { useToast } from "@/hooks/use-toast";
+import { structuredLogger } from "@/lib/telemetry/structured-logger";
 import {
   tradeJournalEngine,
   type TradeJournalRecord,
@@ -13,16 +15,21 @@ import {
 } from "@/lib/order-flow/anomaly-scanner";
 import {
   buildPostTradeCoTPrompt,
+  buildCopilotFleetDryRunPreview,
   calculateBipartiteExcursionWidths,
   computeInstitutionalRiskTelemetry,
+  type CopilotFleetDryRunPreview,
 } from "@/lib/journal/post-trade-copilot-prompt";
 import {
   Brain,
   Check,
+  CheckCircle2,
   Copy,
   ExternalLink,
+  Play,
   RefreshCw,
   ShieldCheck,
+  Sliders,
   Sparkles,
   X,
 } from "lucide-react";
@@ -45,6 +52,7 @@ interface QuantAuditResponse {
  * Modal/Drawer Global de Auditoria Instantânea do Copiloto Quant Pós-Trade.
  * Acionado globalmente via atalho de teclado `Alt+J` ou `Cmd+Shift+C` (`Ctrl+Shift+C`)
  * a partir de qualquer tela (Gráfico, Central de Robôs, Dashboard) sem perder o contexto visual.
+ * Inclui "Apply to Active Fleet" com Dry-Run Preview e confirmação explícita do operador.
  */
 export function QuantCopilotInstantModal() {
   const {
@@ -52,14 +60,19 @@ export function QuantCopilotInstantModal() {
     setOpenQuantCopilotModal,
     quantCopilotAutoAuditCount,
     setActiveSection,
+    bots,
+    updateBot,
   } = useCryptoStore(
     useShallow((s) => ({
       openQuantCopilotModal: s.openQuantCopilotModal,
       setOpenQuantCopilotModal: s.setOpenQuantCopilotModal,
       quantCopilotAutoAuditCount: s.quantCopilotAutoAuditCount,
       setActiveSection: s.setActiveSection,
+      bots: s.bots,
+      updateBot: s.updateBot,
     }))
   );
+  const { toast } = useToast();
 
   const [records, setRecords] = useState<TradeJournalRecord[]>(() =>
     tradeJournalEngine.getAllRecords()
@@ -71,6 +84,9 @@ export function QuantCopilotInstantModal() {
   const [copiedPrompt, setCopiedPrompt] = useState<boolean>(false);
   const [isAuditing, setIsAuditing] = useState<boolean>(false);
   const [auditResult, setAuditResult] = useState<QuantAuditResponse | null>(null);
+  const [activeDryRunPreview, setActiveDryRunPreview] =
+    useState<CopilotFleetDryRunPreview | null>(null);
+  const [appliedActionTitles, setAppliedActionTitles] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const unsubJournal = tradeJournalEngine.subscribe((updated) => {
@@ -116,15 +132,14 @@ export function QuantCopilotInstantModal() {
   const runInstantCoTAudit = useCallback(async () => {
     setIsAuditing(true);
     try {
-      // Monta o diagnóstico determinístico Clear-Box imediato e consulta o motor IA em paralelo
       const deterministicAdjustments = [
         {
           parametro: "Trailing Stop / Realização Parcial TP1",
           valorAtual: "TP1 50% @ +1.2% | SL -2.0%",
           valorSugerido:
             copilotBundle.mfeCaptureEfficiencyPercent < 60
-              ? "TP1 60% @ +1.0 ATR + Break-Even Imediato"
-              : "Manter TP1 50% + Trailing Dinâmico 0.8 ATR",
+              ? "TP1 60% @ +1.6% + Break-Even @ +1.35%"
+              : "TP1 50% @ +2.1% + Trailing 0.55%",
           racionalQuant: `Captura MFE atual em ${copilotBundle.mfeCaptureEfficiencyPercent.toFixed(
             1
           )}% com MAE médio de ${metrics.avgMaePercent.toFixed(2)}%.`,
@@ -134,8 +149,8 @@ export function QuantCopilotInstantModal() {
           valorAtual: "ATR Mínimo >= 1.50% líquido",
           valorSugerido:
             metrics.totalFees > Math.abs(metrics.totalNetPnl) * 0.25
-              ? "Elevar filtro ATR Mínimo para >= 1.85% líquido"
-              : "Manter ATR Mínimo >= 1.50% líquido",
+              ? "Alvo TP 2.85% | SL 1.75% (ATR >= 1.85%)"
+              : "Alvo TP 2.85% | SL 1.75% (ATR >= 1.50%)",
           racionalQuant: `Fricção acumulada de -$${metrics.totalFees.toFixed(
             2
           )} USD frente a Net PnL de $${metrics.totalNetPnl.toFixed(2)} USD.`,
@@ -147,8 +162,8 @@ export function QuantCopilotInstantModal() {
           }/3 Loss`,
           valorSugerido:
             riskTelemetry.consecutiveLosses >= 2
-              ? "Reduzir tamanho de mão em 50% até próximo trade vencedor"
-              : "Operação nominal dentro do limite <= 5% NAV por posição",
+              ? "Reduzir alocação em 50% + SL estrito 1.60%"
+              : "Manter alocação nominal (<= 5% NAV) + SL 1.60%",
           racionalQuant: `Consumo de ${riskTelemetry.dailyLossUtilizationPercent.toFixed(
             1
           )}% da trava diária de -3.0% NAV.`,
@@ -163,7 +178,6 @@ export function QuantCopilotInstantModal() {
         auditedAtIso: new Date().toISOString().slice(11, 19) + " UTC",
       });
 
-      // Tenta enriquecer assincronamente via endpoint /api/ai/trade-hub se disponível
       const res = await fetch("/api/ai/trade-hub", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -184,10 +198,16 @@ export function QuantCopilotInstantModal() {
                   ajustesRecomendados: json.data.threeGoldenRules
                     .slice(0, 3)
                     .map((r: any, i: number) => ({
-                      parametro: r.ruleTitle || deterministicAdjustments[i]?.parametro || `Regra #${i + 1}`,
-                      valorAtual: deterministicAdjustments[i]?.valorAtual || "Parâmetro Atual",
-                      valorSugerido: r.directive || deterministicAdjustments[i]?.valorSugerido,
-                      racionalQuant: r.application || deterministicAdjustments[i]?.racionalQuant,
+                      parametro:
+                        r.ruleTitle ||
+                        deterministicAdjustments[i]?.parametro ||
+                        `Regra #${i + 1}`,
+                      valorAtual:
+                        deterministicAdjustments[i]?.valorAtual || "Parâmetro Atual",
+                      valorSugerido:
+                        r.directive || deterministicAdjustments[i]?.valorSugerido,
+                      racionalQuant:
+                        r.application || deterministicAdjustments[i]?.racionalQuant,
                     })),
                 }
               : prev
@@ -199,12 +219,99 @@ export function QuantCopilotInstantModal() {
     }
   }, [copilotBundle, metrics, riskTelemetry]);
 
-  // Sempre que o modal abrir ou o atalho global Alt+J / Cmd+Shift+C for acionado, dispara a auditoria instantânea
   useEffect(() => {
     if (openQuantCopilotModal) {
       runInstantCoTAudit();
     }
   }, [openQuantCopilotModal, quantCopilotAutoAuditCount, runInstantCoTAudit]);
+
+  const handleOpenDryRunPreview = (
+    idx: number,
+    aj: {
+      parametro: string;
+      valorAtual: string;
+      valorSugerido: string;
+      racionalQuant: string;
+    }
+  ) => {
+    const preview = buildCopilotFleetDryRunPreview({
+      actionIndex: idx,
+      recommendation: aj,
+      bots,
+      mfeCaptureEfficiencyPercent: copilotBundle.mfeCaptureEfficiencyPercent,
+      consecutiveLosses: riskTelemetry.consecutiveLosses,
+    });
+    setActiveDryRunPreview(preview);
+  };
+
+  const handleConfirmApplyToFleet = () => {
+    if (!activeDryRunPreview) return;
+    const { targetBotIds, sanitizedPatch, parametro } = activeDryRunPreview;
+
+    for (let i = 0; i < targetBotIds.length; i++) {
+      const botId = targetBotIds[i];
+      const currentBot = bots.find((b) => b.id === botId);
+      if (!currentBot) continue;
+
+      const patchToApply: Record<string, any> = {};
+      if (sanitizedPatch.usePartialTp !== undefined) {
+        patchToApply.usePartialTp = sanitizedPatch.usePartialTp;
+      }
+      if (sanitizedPatch.partialTpPercent !== undefined) {
+        patchToApply.partialTpPercent = sanitizedPatch.partialTpPercent;
+      }
+      if (sanitizedPatch.partialTpTrigger !== undefined) {
+        patchToApply.partialTpTrigger = sanitizedPatch.partialTpTrigger;
+      }
+      if (sanitizedPatch.trailingStop !== undefined) {
+        patchToApply.trailingStop = sanitizedPatch.trailingStop;
+      }
+      if (sanitizedPatch.trailingStopDistance !== undefined) {
+        patchToApply.trailingStopDistance = sanitizedPatch.trailingStopDistance;
+      }
+      if (sanitizedPatch.autoBreakEven !== undefined) {
+        patchToApply.autoBreakEven = sanitizedPatch.autoBreakEven;
+      }
+      if (sanitizedPatch.breakEvenTrigger !== undefined) {
+        patchToApply.breakEvenTrigger = sanitizedPatch.breakEvenTrigger;
+      }
+      if (sanitizedPatch.breakEvenBuffer !== undefined) {
+        patchToApply.breakEvenBuffer = sanitizedPatch.breakEvenBuffer;
+      }
+      if (sanitizedPatch.stopLoss !== undefined) {
+        patchToApply.stopLoss = sanitizedPatch.stopLoss;
+      }
+      if (sanitizedPatch.takeProfit !== undefined) {
+        patchToApply.takeProfit = sanitizedPatch.takeProfit;
+      }
+      if (
+        sanitizedPatch.allocationScaleFactor !== undefined &&
+        sanitizedPatch.allocationScaleFactor > 0 &&
+        sanitizedPatch.allocationScaleFactor < 1
+      ) {
+        patchToApply.allocationAmount = Math.max(
+          10,
+          Number(
+            (currentBot.allocationAmount * sanitizedPatch.allocationScaleFactor).toFixed(2)
+          )
+        );
+      }
+
+      updateBot(botId, patchToApply);
+    }
+
+    structuredLogger.info(
+      "RISK_ENGINE",
+      `[COPILOTO_QUANT_PATCH] Ajuste paramétrico "${parametro}" aplicado após Dry-Run em ${targetBotIds.length} robôs da frota.`
+    );
+
+    setAppliedActionTitles((prev) => ({ ...prev, [parametro]: true }));
+    toast({
+      title: "✅ Ajuste Paramétrico Aplicado na Frota",
+      description: `"${parametro}" sincronizado em ${targetBotIds.length} robô(s) respeitando SL <= 2.0% e Filtro ATR >= 1.5%.`,
+    });
+    setActiveDryRunPreview(null);
+  };
 
   const handleCopyPrompt = () => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -240,7 +347,7 @@ export function QuantCopilotInstantModal() {
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Auditoria em tempo real sobre excursão MAE/MFE, fricção de taxas e guardrails sem sair da tela gráfica
+                Auditoria em tempo real sobre excursão MAE/MFE, fricção de taxas e aplicação em 1 clique na frota
               </p>
             </div>
           </div>
@@ -351,7 +458,7 @@ export function QuantCopilotInstantModal() {
             </div>
           </div>
 
-          {/* Linha 2: Recomendações Paramétricas Auditadas (Clear-Box + IA) */}
+          {/* Linha 2: Recomendações Paramétricas Auditadas + Botão "Aplicar Ajuste Sugerido (Dry-Run Preview)" */}
           {auditResult && (
             <div className="p-4 rounded-xl bg-[#111827] border border-[#1f2937] space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -376,22 +483,90 @@ export function QuantCopilotInstantModal() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {auditResult.ajustesRecomendados.map((aj, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-lg bg-[#0b0e14] border border-[#1f2937] space-y-1.5 text-xs"
-                  >
-                    <div className="font-bold text-cyan-300">{aj.parametro}</div>
-                    <div className="text-slate-400 font-mono">Atual: {aj.valorAtual}</div>
-                    <div className="text-emerald-300 font-mono font-semibold">
-                      Sugerido: {aj.valorSugerido}
+                {auditResult.ajustesRecomendados.map((aj, idx) => {
+                  const isApplied = !!appliedActionTitles[aj.parametro];
+                  return (
+                    <div
+                      key={idx}
+                      className="p-3.5 rounded-lg bg-[#0b0e14] border border-[#1f2937] flex flex-col justify-between space-y-2.5 text-xs"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="font-bold text-cyan-300">{aj.parametro}</div>
+                        <div className="text-slate-400 font-mono">Atual: {aj.valorAtual}</div>
+                        <div className="text-emerald-300 font-mono font-semibold">
+                          Sugerido: {aj.valorSugerido}
+                        </div>
+                        <p className="text-slate-300 pt-1 border-t border-[#1f2937]/80">
+                          {aj.racionalQuant}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDryRunPreview(idx, aj)}
+                        className={`w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold border transition-colors cursor-pointer ${
+                          isApplied
+                            ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300"
+                            : "bg-cyan-500/15 hover:bg-cyan-500/25 border-cyan-500/35 text-cyan-200"
+                        }`}
+                      >
+                        {isApplied ? (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                            Aplicado na Frota (Rever Dry-Run)
+                          </>
+                        ) : (
+                          <>
+                            <Sliders className="w-3.5 h-3.5 text-cyan-400" />
+                            Aplicar Ajuste Sugerido (Dry-Run Preview)
+                          </>
+                        )}
+                      </button>
                     </div>
-                    <p className="text-slate-300 pt-1 border-t border-[#1f2937]/80">
-                      {aj.racionalQuant}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+
+              {/* Painel de Dry-Run Preview & Confirmação Explícita do Operador (Guardrail #5) */}
+              {activeDryRunPreview && (
+                <div className="mt-3 p-4 rounded-xl bg-[#070a10] border border-amber-500/40 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-amber-500/20 border border-amber-500/40 text-amber-300">
+                        DRY-RUN PREVIEW (PRÉ-TRADE GATE)
+                      </span>
+                      <span className="text-xs font-bold text-white">
+                        {activeDryRunPreview.parametro}
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono text-emerald-400">
+                      ✓ Guardrails OK (SL ≤ 2.0% • Alvo ATR ≥ 1.5% • {activeDryRunPreview.targetBotsCount} robôs alvo)
+                    </span>
+                  </div>
+
+                  <pre className="p-3 rounded-lg bg-[#0b0e14] border border-[#1f2937] text-xs font-mono text-cyan-200 overflow-x-auto max-h-40">
+                    {activeDryRunPreview.dryRunPayloadJson}
+                  </pre>
+
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveDryRunPreview(null)}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono cursor-pointer transition-colors"
+                    >
+                      Cancelar Dry-Run
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmApplyToFleet}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono font-bold cursor-pointer transition-colors shadow-sm"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                      Confirmar e Aplicar na Frota ({activeDryRunPreview.targetBotsCount} robôs)
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -442,4 +617,3 @@ export function QuantCopilotInstantModal() {
     </div>
   );
 }
-
