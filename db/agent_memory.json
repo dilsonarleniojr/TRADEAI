@@ -1,6 +1,36 @@
 [
   {
     "category": "ARCHITECTURE_DECISION",
+    "title": "Barramento de Eventos em Tempo Real (BroadcastChannel + CustomEvent) no TradeJournalEngine para Acumulação Instantânea da Curva de Patrimônio",
+    "summary": "1) Barramento Dual Event-Driven no TradeJournalEngine (src/lib/journal/trade-journal-engine.ts): Conexão direta do motor do Diário de Trading ao canal de execução dos robôs via BroadcastChannel ('tradeai_execution_channel_v1') e CustomEvent ('tradeai:bot-execution' / 'tradeai:journal-updated') com deduplicação idempotente O(1) via Set<string> processedEventIds; 2) Integração Direct AI Trade (src/lib/bot/pilot/direct-operation-manager.ts & src/components/bot/direct-ai-trade-modal.tsx): Emissão determinística de eventos em tempo real no disparo de TP1 ('direct_tp1_${session.id}'), TP2 ('direct_tp2_${session.id}') e encerramento final ('direct_close_${session.id}' para TARGET_REACHED, STOP_LOSS, TRAILING_STOP, TIME_EXPIRED e MANUAL_CLOSE); 3) Integração Live Fleet (src/lib/bot/multi-bot-engine.ts): Emissão direta de eventos em executePartialTakeProfit ('PARTIAL_TAKE_PROFIT') e executeBotSell ('TAKE_PROFIT', 'STOP_LOSS', 'TRAILING_STOP', 'MANUAL_CLOSE'); 4) Atualização Reativa Zero-Click na UI: Subscrição reativa em TradeJournalPanel, SmartDashboardScreen, SmartPaperTradingScreen e JournalAnalyzerTab, eliminando snapshots estáticos e cliques manuais no botão de atualizar; 5) Validação: Suíte de testes unitários em tests/unit/trade-journal-realtime-bus.test.ts (5/5 aprovados, 25 expect() calls) e bun x tsc --noEmit com 0 erros.",
+    "tags": [
+      "trade-journal-engine",
+      "broadcast-channel",
+      "custom-event-bus",
+      "real-time-equity-curve",
+      "direct-ai-trade",
+      "live-fleet",
+      "idempotent-deduplication",
+      "pilar-1-event-driven",
+      "pilar-4-observability"
+    ],
+    "details": {
+      "journalEnginePath": "src/lib/journal/trade-journal-engine.ts",
+      "directOperationManagerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
+      "directAiModalPath": "src/components/bot/direct-ai-trade-modal.tsx",
+      "multiBotEnginePath": "src/lib/bot/multi-bot-engine.ts",
+      "journalPanelPath": "src/components/journal/trade-journal-panel.tsx",
+      "journalAnalyzerTabPath": "src/components/trade-hub/journal-analyzer-tab.tsx",
+      "testSuitePath": "tests/unit/trade-journal-realtime-bus.test.ts",
+      "broadcastChannelName": "tradeai_execution_channel_v1",
+      "customEventName": "tradeai:bot-execution",
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1793193600000-realtime-journal-execution-bus",
+    "timestamp": "2026-10-28T08:13:00.000Z"
+  },
+  {
+    "category": "ARCHITECTURE_DECISION",
     "title": "Amostragem Adaptativa LTTB (Largest Triangle Three Buckets) para Curvas de Patrimônio Contínuas",
     "summary": "1) Algoritmo LTTB (src/lib/performance/lttb.ts): Implementação pura e de alta performance do algoritmo Largest Triangle Three Buckets (MIT/Steinarsson) para redução geométrica de séries temporais financeiras, reduzindo séries com >200 operações para exatamente 60 pontos representativos com ancoragem do primeiro/último ponto e preservação matemática rigorosa de picos e vales (drawdowns); 2) Integração no Diário de Trading (src/components/journal/trade-journal-panel.tsx): Aplicação transparente na renderização SVG da curva de patrimônio líquido contínua, reduzindo nós <circle> de O(N) para O(1) e adicionando badge visual 'LTTB Ativo (60 pts)'; 3) Integração no Estúdio Quant (src/components/smart-trading/trading/backtest-metrics-card.tsx): Proteção da malha geométrica da simulação histórica de backtesting com useMemo; 4) Validação Rigorosa: Suíte de testes unitários dedicada em tests/unit/lttb.test.ts cobrindo preservação de picos, condições de borda, microtempo de execução (<5ms para 1.000 pontos) com 100% de aprovação (6/6), além de 0 erros no typecheck bun x tsc --noEmit.",
     "tags": [

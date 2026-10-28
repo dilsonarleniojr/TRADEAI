@@ -162,7 +162,7 @@ export class TradeJournalEngine {
   private records: TradeJournalRecord[] = [];
   private listeners: Array<(records: TradeJournalRecord[]) => void> = [];
   private executionEventListeners: Array<
-    (payload: { record: TradeJournalRecord; event: BotExecutionEventPayload }) => void
+    (record: TradeJournalRecord, event: BotExecutionEventPayload) => void
   > = [];
   private processedEventIds = new Set<string>();
   private broadcastChannel: BroadcastChannel | null = null;
@@ -376,7 +376,7 @@ export class TradeJournalEngine {
    * Inscreve um listener específico para eventos de execução em tempo real (TP/SL/Parciais)
    */
   public subscribeExecutionEvents(
-    callback: (payload: { record: TradeJournalRecord; event: BotExecutionEventPayload }) => void
+    callback: (record: TradeJournalRecord, event: BotExecutionEventPayload) => void
   ): () => void {
     this.executionEventListeners.push(callback);
     return () => {

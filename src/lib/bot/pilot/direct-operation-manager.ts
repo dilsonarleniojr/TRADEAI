@@ -1842,7 +1842,7 @@ export class DirectOperationManager {
    * Cria uma sessão mockada em memória exclusivamente para cenários de testes
    */
   public static createSessionForTesting(overrides: Partial<DirectOperationSession>): DirectOperationSession {
-    const id = `test-session-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const id = overrides.id || `test-session-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const now = Date.now();
     const session: DirectOperationSession = {
       id,
