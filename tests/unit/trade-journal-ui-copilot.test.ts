@@ -15,6 +15,12 @@ import {
   mulExactUsd,
 } from "@/lib/journal/trade-journal-engine";
 import { sanitizeSafeString } from "@/app/api/journal/sync/route";
+import { selectCascadedModel } from "@/lib/ai-client";
+import {
+  LongTermMemoryStore,
+  evaluateLLMResponseGovernance,
+} from "@/lib/ai/agent-runtime";
+import { AGENT_SYSTEM_PROMPT, applyGatekeeper } from "@/lib/ai/signal-agent";
 import { isQuantCopilotHotkey } from "@/hooks/use-desktop-hotkeys";
 import { useCryptoStore } from "@/lib/store";
 
@@ -270,5 +276,82 @@ describe("UI/UX Institutional Enhancements & Post-Trade Quant Copilot", () => {
     expect(cleaned).not.toContain("\r");
     expect(cleaned).not.toContain("\n");
     expect(cleaned).not.toContain("\u0000");
+  });
+
+  test("8. Valida Otimização do Pipeline de IA: Model Cascading, Hybrid Search (BM25 + Cosseno RRF) e Governança Anti-Alucinação", () => {
+    // 1. Model Cascading: roteia tarefas rápidas para SLMs/Mini e raciocínio complexo para modelos Frontier
+    expect(selectCascadedModel("openai", "fast")).toBe("gpt-4o-mini");
+    expect(selectCascadedModel("openai", "frontier")).toBe("o1");
+    expect(selectCascadedModel("gemini", "fast")).toBe("gemini-flash-lite-latest");
+    expect(selectCascadedModel("claude", "fast")).toBe("claude-haiku-4-5-20251001");
+
+    // 2. Compressão Semântica XML no System Prompt do Agente de Sinais
+    expect(AGENT_SYSTEM_PROMPT).toContain("<grounding_rules>");
+    expect(AGENT_SYSTEM_PROMPT).toContain("<output_schema>");
+    expect(AGENT_SYSTEM_PROMPT.length).toBeLessThan(950);
+
+    // 3. Hybrid Search (BM25 + Dense Cosine Embedding + Reciprocal Rank Fusion RRF)
+    const memStore = LongTermMemoryStore.getInstance();
+    memStore.remember({
+      category: "QUANT_STRATEGY",
+      title: "Calibragem Trailing Stop ATR e Order Flow L2",
+      summary: "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
+      tags: ["mfe", "trailing-stop", "order-flow", "atr"],
+      details: { minRr: 2.2 },
+    });
+    const hybridHits = memStore.recallHybrid("otimizar captura MFE trailing stop order flow", "QUANT_STRATEGY", 3);
+    expect(hybridHits.length).toBeGreaterThan(0);
+    expect(hybridHits[0].rrfScore).toBeGreaterThan(0);
+    expect(hybridHits[0].denseCosineScore).toBeGreaterThan(0);
+
+    // 4. Avaliação de Governança LLM (Faithfulness, Context Recall, JSON Schema Compliance e Detecção de Alucinação)
+    const validDecision = {
+      signal: "BUY",
+      confidence_score: 84,
+      risk_reward_ratio: 2.5,
+      key_driver: "Tendência de alta com OFI comprador",
+      risk_warning: "Volatilidade moderada antes do fechamento",
+      stop_loss: 98.5,
+      take_profit: 103.8,
+    };
+    const evalGood = evaluateLLMResponseGovernance({
+      promptText: AGENT_SYSTEM_PROMPT,
+      responseText: JSON.stringify(validDecision),
+      parsedDecision: validDecision,
+      referencePrice: 100,
+      toolsInvokedCount: 3,
+      requiredToolsCount: 3,
+      modelTier: "fast",
+    });
+    expect(evalGood.faithfulnessScore).toBe(1);
+    expect(evalGood.hallucinationRate).toBe(0);
+    expect(evalGood.jsonSchemaCompliance).toBe(1);
+    expect(evalGood.passedGovernanceGate).toBe(true);
+
+    // Caso de alucinação: recomenda BUY sem invocar ferramentas (toolsInvokedCount = 0) e com stop_loss fora de escala
+    const hallucinatedDecision = {
+      signal: "BUY",
+      stop_loss: 10, // -90% de distância absurda do preço de referência 100
+      take_profit: 250,
+    };
+    const evalBad = evaluateLLMResponseGovernance({
+      promptText: AGENT_SYSTEM_PROMPT,
+      responseText: JSON.stringify(hallucinatedDecision),
+      parsedDecision: hallucinatedDecision,
+      referencePrice: 100,
+      toolsInvokedCount: 0,
+      requiredToolsCount: 3,
+      modelTier: "fast",
+    });
+    expect(evalBad.hallucinationRate).toBeGreaterThan(0.5);
+    expect(evalBad.passedGovernanceGate).toBe(false);
+
+    // Gatekeeper determinístico veta R:R < 2.2
+    const gated = applyGatekeeper(
+      { signal: "BUY", confidence_score: 80, stop_loss: 98, take_profit: 101 },
+      100
+    );
+    expect(gated.signal).toBe("HOLD");
+    expect(gated.vetoed).toBe(true);
   });
 });

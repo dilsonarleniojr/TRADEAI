@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { getProvider, type AIProviderId } from "@/lib/ai/providers";
 import { getActiveProvider, getModel, resolveApiKey } from "@/lib/ai/settings";
+import { computeDeterministicEmbedding, cosineSimilarityFloat32 } from "@/lib/ai/agent-runtime";
 
 // Cliente de IA compartilhado pelas rotas /api/ai/*. O motor (Claude, OpenAI, Gemini ou Qwen)
 // é escolhido em Configurações → Motor de IA; as rotas não precisam saber qual está ativo.
@@ -15,6 +16,7 @@ export class AIUnavailableError extends Error {
 }
 
 export type Effort = "low" | "medium" | "high";
+export type ModelCascadeTier = "fast" | "balanced" | "frontier";
 
 /** Mensagem neutra. `content` em blocos só aparece no histórico de conversas feitas com o Claude. */
 export interface AIMessage {
@@ -30,6 +32,13 @@ export interface AskAIOptions {
   effort?: Effort;
   /** Força um motor específico (ex.: botão "Testar"); por padrão usa o ativo. */
   provider?: AIProviderId;
+  /** Tier de Model Cascading ("fast" usa SLM/mini para tarefas estruturadas/JSON; "frontier" para raciocínio profundo) */
+  cascadeTier?: ModelCascadeTier;
+  /** Força saída estrita em JSON object (response_format: json_object) */
+  jsonMode?: boolean;
+  /** Habilita Cache Semântico em memória (TTL padrão 45s, similaridade >= 0.96) */
+  enableSemanticCache?: boolean;
+  semanticCacheTtlMs?: number;
 }
 
 export interface AIReply {
@@ -38,6 +47,102 @@ export interface AIReply {
   model: string;
   /** Conteúdo para guardar no histórico e reenviar no próximo turno (blocos completos no Claude). */
   assistantContent: AIMessage["content"];
+  cachedSemanticHit?: boolean;
+}
+
+/**
+ * Roteamento Inteligente de Modelos (Model Cascading)
+ * Mapeia cada provedor e tier de complexidade para o modelo de melhor relação custo/latência/precisão.
+ */
+const CASCADE_MODEL_MAP: Record<AIProviderId, Record<ModelCascadeTier, string>> = {
+  gemini: {
+    fast: "gemini-flash-lite-latest",
+    balanced: "gemini-2.5-flash",
+    frontier: "gemini-2.5-pro",
+  },
+  openai: {
+    fast: "gpt-4o-mini",
+    balanced: "gpt-4o",
+    frontier: "o1",
+  },
+  claude: {
+    fast: "claude-haiku-4-5-20251001",
+    balanced: "claude-sonnet-5-5",
+    frontier: "claude-opus-5-5",
+  },
+  qwen: {
+    fast: "qwen-turbo",
+    balanced: "qwen-plus",
+    frontier: "qwen-max",
+  },
+};
+
+export function selectCascadedModel(provider: AIProviderId, tier?: ModelCascadeTier): string {
+  const configured = getModel(provider);
+  if (!tier) return configured;
+  return CASCADE_MODEL_MAP[provider]?.[tier] || configured;
+}
+
+interface SemanticCacheEntry {
+  keyHash: string;
+  embedding: Float32Array;
+  reply: AIReply;
+  expiresAt: number;
+}
+
+const MAX_SEMANTIC_CACHE_ENTRIES = 150;
+const semanticPromptCache = new Map<string, SemanticCacheEntry>();
+
+export function clearSemanticPromptCache(): void {
+  semanticPromptCache.clear();
+}
+
+function lookupSemanticCache(
+  system: string,
+  userPrompt: string,
+  similarityThreshold = 0.96
+): AIReply | null {
+  const now = Date.now();
+  const composite = `${system.slice(0, 180)}||${userPrompt}`;
+  const exact = semanticPromptCache.get(composite);
+  if (exact) {
+    if (exact.expiresAt > now) {
+      return { ...exact.reply, cachedSemanticHit: true };
+    }
+    semanticPromptCache.delete(composite);
+  }
+
+  const queryVec = computeDeterministicEmbedding(composite);
+  for (const [k, entry] of semanticPromptCache.entries()) {
+    if (entry.expiresAt <= now) {
+      semanticPromptCache.delete(k);
+      continue;
+    }
+    const sim = cosineSimilarityFloat32(queryVec, entry.embedding);
+    if (sim >= similarityThreshold) {
+      return { ...entry.reply, cachedSemanticHit: true };
+    }
+  }
+  return null;
+}
+
+function storeSemanticCache(
+  system: string,
+  userPrompt: string,
+  reply: AIReply,
+  ttlMs = 45_000
+): void {
+  const composite = `${system.slice(0, 180)}||${userPrompt}`;
+  if (semanticPromptCache.size >= MAX_SEMANTIC_CACHE_ENTRIES) {
+    const oldestKey = semanticPromptCache.keys().next().value;
+    if (oldestKey) semanticPromptCache.delete(oldestKey);
+  }
+  semanticPromptCache.set(composite, {
+    keyHash: composite,
+    embedding: computeDeterministicEmbedding(composite),
+    reply,
+    expiresAt: Date.now() + ttlMs,
+  });
 }
 
 // Endpoints compatíveis com a API da OpenAI documentados pelos próprios fornecedores.
@@ -142,6 +247,7 @@ async function askOpenAICompatible(o: AskAIOptions, provider: AIProviderId, mode
     completion = await client.chat.completions.create({
       model,
       messages,
+      ...(o.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
       // A OpenAI exige max_completion_tokens nos modelos novos; Gemini e Qwen aceitam max_tokens.
       ...(provider === "openai" ? { max_completion_tokens: limit } : { max_tokens: limit }),
     });
@@ -173,10 +279,24 @@ const ALL_AI_PROVIDERS: AIProviderId[] = ["gemini", "openai", "claude", "qwen"];
  */
 export async function askAI(o: AskAIOptions): Promise<AIReply> {
   const provider = o.provider ?? getActiveProvider();
-  const model = getModel(provider);
+  const model = selectCascadedModel(provider, o.cascadeTier);
+
+  const lastUserText =
+    o.messages.length > 0 ? contentToText(o.messages[o.messages.length - 1].content) : "";
+  if (o.enableSemanticCache !== false && o.messages.length === 1 && lastUserText) {
+    const cached = lookupSemanticCache(o.system, lastUserText);
+    if (cached) return cached;
+  }
 
   try {
-    return provider === "claude" ? await askClaude(o, model) : await askOpenAICompatible(o, provider, model);
+    const reply =
+      provider === "claude"
+        ? await askClaude(o, model)
+        : await askOpenAICompatible(o, provider, model);
+    if (o.enableSemanticCache !== false && o.messages.length === 1 && lastUserText) {
+      storeSemanticCache(o.system, lastUserText, reply, o.semanticCacheTtlMs ?? 45_000);
+    }
+    return reply;
   } catch (primaryError) {
     // Se um provedor específico foi forçado explicitamente pelo chamador sem opção de failover, relança
     if (o.provider && o.provider !== getActiveProvider()) {
@@ -191,12 +311,15 @@ export async function askAI(o: AskAIOptions): Promise<AIReply> {
         console.warn(
           `[AI Engine Failover] Motor "${provider}" falhou (${(primaryError as Error)?.message}). Movendo operação para o motor em funcionamento "${fallback}"...`
         );
-        const fallbackModel = getModel(fallback);
+        const fallbackModel = selectCascadedModel(fallback, o.cascadeTier);
         const reply =
           fallback === "claude"
             ? await askClaude({ ...o, provider: fallback }, fallbackModel)
             : await askOpenAICompatible({ ...o, provider: fallback }, fallback, fallbackModel);
 
+        if (o.enableSemanticCache !== false && o.messages.length === 1 && lastUserText) {
+          storeSemanticCache(o.system, lastUserText, reply, o.semanticCacheTtlMs ?? 45_000);
+        }
         return reply;
       } catch (fallbackError) {
         console.warn(`[AI Engine Failover] Motor "${fallback}" também falhou. Tentando próximo...`);

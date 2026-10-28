@@ -1,5 +1,21 @@
 [
   {
+    "category": "QUANT_STRATEGY",
+    "title": "Calibragem Trailing Stop ATR e Order Flow L2",
+    "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
+    "tags": [
+      "mfe",
+      "trailing-stop",
+      "order-flow",
+      "atr"
+    ],
+    "details": {
+      "minRr": 2.2
+    },
+    "id": "mem-1793185359348-crec8",
+    "timestamp": "2026-10-28T11:02:39.348Z"
+  },
+  {
     "category": "ARCHITECTURE_DECISION",
     "title": "Melhorias de UI/UX Institucional (Curva Dual-Layer Equity + Underwater Drawdown SVG, Guardrails em Tempo Real no Topo, Barra Bipartida MAE/MFE e Copiloto Quant Pós-Trade CoT)",
     "summary": "1) Motor Quant Pós-Trade & Prompt Chain-of-Thought (src/lib/journal/post-trade-copilot-prompt.ts): Implementação determinística de calculateMfeCaptureEfficiency (NetGain% / MFE%), calculateBipartiteExcursionWidths, computeUnderwaterDrawdownSeries (série pico-a-vale percentual com delta PnL ponto a ponto), computeInstitutionalRiskTelemetry (apuração em tempo real do consumo da Trava de Perda Diária <= -3.0% NAV e Consecutive Loss Brake 0/3) e buildPostTradeCoTPrompt (geração do prompt estruturado Chain-of-Thought Clear-Box com tags XML <diagnostico_assimetria_mae_mfe>, <impacto_friccao_e_custos>, <correlacao_orderflow_l2>, <plano_acao_parametrico> e contrato JSON); 2) Curva de Patrimônio Interativa Dual-Layer (src/components/journal/trade-journal-panel.tsx): Upgrade do gráfico SVG com camada alternável Underwater Drawdown (topo invertido em vermelho translúcido), hover crosshair vertical e barra de inspeção ponto a ponto; 3) Barra Bipartida MAE vs MFE & Quick Filter Chips: Adição de chips rápidos em 1 clique ('Todos', 'Direct AI Trade', 'Frota ao Vivo', 'Take-Profit', 'Stop-Loss', 'Captura MFE >= 70%') e visualização proporcional lado a lado de MAE vs MFE com badge de Eficiência de Captura MFE (%); 4) Barra Global de Status & Guardrails (src/components/header/global-status-bar.tsx) e Trade Hub IA (src/components/trade-hub/journal-analyzer-tab.tsx): Medidor de progresso em tempo real da Trava de Perda Diária (-3.0% NAV), contador Loss Brake (0/3), telemetria WAL Sync e botão 1-click para copiar o Prompt CoT; 5) Validação: Protótipo interativo Generative UI (ui_ux_improvements_preview.html) e 16/16 testes unitários aprovados nas 4 suítes do diário (2.100 asserções) com bun x tsc --noEmit sem erros.",
@@ -1609,8 +1625,8 @@
       "selectorPath": "src/lib/bot/pilot/market-opportunity-selector.ts",
       "managerPath": "src/lib/bot/pilot/direct-operation-manager.ts",
       "mathPath": "src/lib/bot/pilot/precise-math.ts",
-      "targetNetRR": 1.80,
-      "minThreshold": 1.50
+      "targetNetRR": 1.8,
+      "minThreshold": 1.5
     },
     "id": "mem-1792255300000-direct-operation-rr-fix",
     "timestamp": "2026-10-17T16:42:00.000Z"
@@ -1687,9 +1703,9 @@
       "chaos-engineering"
     ],
     "details": {
-      "baselineCapitalUsd": 70.0,
-      "maxRiskPerTradeUsd": 1.40,
-      "maxDailyDrawdownUsd": 3.50,
+      "baselineCapitalUsd": 70,
+      "maxRiskPerTradeUsd": 1.4,
+      "maxDailyDrawdownUsd": 3.5,
       "notionalRangeUsd": "11.00 - 15.00",
       "orderType": "LIMIT_MAKER (Post-Only GTX)",
       "filesCreated": [
@@ -1747,8 +1763,19 @@
       "evGatePath": "src/lib/bot/mathematical-expectancy-gate.ts",
       "enginePath": "src/lib/bot/multi-bot-engine.ts",
       "storePath": "src/lib/store/botSlice.ts",
-      "quarantinedBots": ["DOGE", "APT", "NEAR", "FET"],
-      "topPerformers": ["SUI", "AVAX", "FIL", "LINK", "PUMP"],
+      "quarantinedBots": [
+        "DOGE",
+        "APT",
+        "NEAR",
+        "FET"
+      ],
+      "topPerformers": [
+        "SUI",
+        "AVAX",
+        "FIL",
+        "LINK",
+        "PUMP"
+      ],
       "testCoverage": "tests/unit/mathematical-expectancy-gate.test.ts (100% passing)"
     },
     "id": "mem-1792162800000-profit-optimization-and-quarantine",
@@ -1767,8 +1794,18 @@
     ],
     "details": {
       "componentPath": "src/components/bot/bot-pnl-registry.tsx",
-      "integratedIn": ["src/components/bot/bot-section.tsx", "src/components/history/history-section.tsx"],
-      "metrics": ["grossProfit", "grossLoss", "netPnl", "winRate", "profitFactor", "unrealizedPnl"]
+      "integratedIn": [
+        "src/components/bot/bot-section.tsx",
+        "src/components/history/history-section.tsx"
+      ],
+      "metrics": [
+        "grossProfit",
+        "grossLoss",
+        "netPnl",
+        "winRate",
+        "profitFactor",
+        "unrealizedPnl"
+      ]
     },
     "id": "mem-1792112000000-bot-pnl-registry",
     "timestamp": "2026-10-16T01:07:00.000Z"
@@ -1812,7 +1849,10 @@
     "details": {
       "totalModes": 9,
       "storageKey": "tradeai_protection_settings",
-      "presets": ["Institucional (100% ativo)", "Agressivo (permissivo)"],
+      "presets": [
+        "Institucional (100% ativo)",
+        "Agressivo (permissivo)"
+      ],
       "testCoverage": "scripts/test_risk_manager.ts (100% green)"
     },
     "id": "mem-1791965000000-user-protection-settings-toggles",
@@ -1839,8 +1879,8 @@
       "consecutiveLossCooldownMs": 3600000,
       "orderType": "LIMIT_MAKER",
       "restingOrderTimeoutSec": 60,
-      "minNetRewardRiskRatio": 1.50,
-      "breakEvenRMultiple": 1.0,
+      "minNetRewardRiskRatio": 1.5,
+      "breakEvenRMultiple": 1,
       "breakEvenFeeBufferPct": 0.35
     },
     "id": "mem-1791963000000-quant-riskmanager-limitmaker-restructuring",
@@ -2048,8 +2088,11 @@
     "details": {
       "endpoint": "/api/trades/cost-basis",
       "minProfitMargin": ">= 1.2% a 1.5% líquido de taxas",
-      "timeframesAnalyzed": ["15m", "5m"],
-      "trailingTpDistance": 0.50,
+      "timeframesAnalyzed": [
+        "15m",
+        "5m"
+      ],
+      "trailingTpDistance": 0.5,
       "timeStopDisabled": true,
       "stopLossAccidentalDisabled": true
     },
@@ -2068,7 +2111,11 @@
     ],
     "details": {
       "component": "PauseBotDialog",
-      "actions": ["Manter Ativo em Carteira", "Liquidar a Mercado Imediatamente", "Cancelar"]
+      "actions": [
+        "Manter Ativo em Carteira",
+        "Liquidar a Mercado Imediatamente",
+        "Cancelar"
+      ]
     },
     "id": "mem-1791941500000-pause-bot-dialog",
     "timestamp": "2026-10-14T01:30:00.000Z"
@@ -2086,10 +2133,13 @@
       "custody-protection"
     ],
     "details": {
-      "symbolsAdopted": ["BATUSDT", "AMPUSDT"],
+      "symbolsAdopted": [
+        "BATUSDT",
+        "AMPUSDT"
+      ],
       "batQuantity": 573.426,
       "ampQuantity": 43275.681,
-      "trailingTpDistance": 0.40,
+      "trailingTpDistance": 0.4,
       "autoBreakEven": true
     },
     "id": "mem-1791940000000-guardian-bots",
@@ -2110,7 +2160,7 @@
     "details": {
       "rateLimitPerMin": 120,
       "maxPartialRetries": 3,
-      "minPartialNotionalUsd": 5.20
+      "minPartialNotionalUsd": 5.2
     },
     "id": "mem-1791934700000-orphan-heal",
     "timestamp": "2026-10-14T00:38:00.000Z"
@@ -2281,7 +2331,7 @@
     ],
     "details": {
       "breakEvenTrigger": 0.85,
-      "breakEvenBuffer": 0.30,
+      "breakEvenBuffer": 0.3,
       "takeProfitRange": "1.8% a 2.8%",
       "trailingArmThreshold": "1.1% ou 65% do TP",
       "stopLossRange": "1.2% a 2.0%"
@@ -2301,9 +2351,9 @@
       "multi-timeframe-15m"
     ],
     "details": {
-      "max24hChange": 18.0,
+      "max24hChange": 18,
       "minPriceUsdt": 0.005,
-      "minRangePosition": 0.50,
+      "minRangePosition": 0.5,
       "max15mEmaExtension": 2.8,
       "min24hVolume": 3000000
     },
@@ -2347,9 +2397,9 @@
     "details": {
       "usePartialTp": true,
       "partialTpPercent": 50,
-      "partialTpTrigger": 1.0,
-      "minNotionalSlice": 5.20,
-      "postPartialBreakEvenBuffer": 0.30
+      "partialTpTrigger": 1,
+      "minNotionalSlice": 5.2,
+      "postPartialBreakEvenBuffer": 0.3
     },
     "id": "mem-1791841200000-phase4-partial-tp",
     "timestamp": "2026-10-13T22:20:00.000Z"
@@ -2406,8 +2456,17 @@
     ],
     "details": {
       "component": "src/components/dashboard/ai-entries.tsx",
-      "actions": ["toggleSelectEntry", "toggleSelectAll", "handleBatchCreateBots"],
-      "features": ["individual checkbox per BUY card", "select all checkbox", "batch action bar", "toast notification with active bots"]
+      "actions": [
+        "toggleSelectEntry",
+        "toggleSelectAll",
+        "handleBatchCreateBots"
+      ],
+      "features": [
+        "individual checkbox per BUY card",
+        "select all checkbox",
+        "batch action bar",
+        "toast notification with active bots"
+      ]
     },
     "id": "mem-1791845400000-batch-bots",
     "timestamp": "2026-10-13T23:30:00.000Z"

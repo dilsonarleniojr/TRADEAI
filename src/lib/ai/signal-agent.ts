@@ -458,28 +458,18 @@ export async function executeAgentTool(
 // Loop do agente (por provedor)
 // ---------------------------------------------------------------------------
 
-export const AGENT_SYSTEM_PROMPT = `Você é um motor quantitativo de análise de criptoativos com acesso a ferramentas que leem dados reais da Binance.
-Use as ferramentas para obter tendência, livro de ofertas, scanner técnico (Pivots e Composite Score) e contexto antes de decidir.
-Antes de propor BUY ou SELL, valide o plano com trade_risk_evaluation.
-Se uma ferramenta falhar, NÃO invente os dados dela: decida com o que tem ou responda HOLD.
-
-REGRAS DE OURO DA SKILL TECHNICAL-SCANNER:
-1. NUNCA recomende BUY se a cotação estiver a menos de 0.8% da resistência R1 ou R2 dos Pivots Diários.
-2. NUNCA recomende BUY se o Composite Score for menor que +3 ou se a tendência diária for de baixa.
-3. Relação R:R mínima obrigatória: 2.2:1. Se a distância até o alvo/resistência for menor que 2.2x o stop loss, a resposta DEVE ser HOLD.
-
-Resposta final: EXCLUSIVAMENTE um objeto JSON, sem texto fora dele:
-{
-  "signal": "BUY" | "SELL" | "HOLD",
-  "confidence_score": <inteiro 0-100>,
-  "risk_reward_ratio": <número>,
-  "key_driver": "<no máximo 10 palavras>",
-  "risk_warning": "<no máximo 10 palavras>",
-  "stop_loss": <preço>,
-  "take_profit": <preço>
-}
-Regras: BUY exige stop_loss < preço < take_profit com R:R >= 2.2. SELL exige take_profit < preço < stop_loss com R:R >= 2.2. R:R abaixo de 2.2 DEVE ser HOLD.
-Para HOLD, stop_loss e take_profit iguais ao preço atual.`;
+export const AGENT_SYSTEM_PROMPT = `<role>Motor Quant Institucional TradeAI. Decida estritamente via ferramentas reais Binance.</role>
+<grounding_rules>
+1. Chame em paralelo: trend_momentum_analysis, order_book_liquidity e technical_scanner.
+2. Antes de BUY/SELL, valide com trade_risk_evaluation.
+3. ZERO ALUCINAÇÃO: Falha de ferramenta ou incerteza -> signal="HOLD".
+4. VETOS: <0.8% de R1/R2; BUY com Composite Score < +3 ou tendência BAIXA; R:R < 2.2 -> signal="HOLD".
+</grounding_rules>
+<output_schema>
+Retorne EXCLUSIVAMENTE JSON (sem markdown):
+{"signal":"BUY"|"SELL"|"HOLD","confidence_score":0..100,"risk_reward_ratio":number,"key_driver":"max 10 palavras","risk_warning":"max 10 palavras","stop_loss":number,"take_profit":number}
+Para HOLD: stop_loss e take_profit = preço atual.
+</output_schema>`;
 
 class LLMFailure extends Error {}
 
@@ -584,19 +574,23 @@ async function runOpenAICompatibleLoop(
     );
     if (calls.length && !last) {
       messages.push({ role: "assistant", content: msg.content ?? null, tool_calls: calls });
-      for (const call of calls) {
-        let args: Record<string, unknown> = {};
-        try {
-          args = JSON.parse(call.function.arguments || "{}");
-        } catch {
-          // Argumentos inválidos: a ferramenta devolve o erro de validação ao LLM.
-        }
-        messages.push({
-          role: "tool",
-          tool_call_id: call.id,
-          content: JSON.stringify(await runTool(call.function.name, args)),
-        });
-      }
+      // Execução paralela de tool calling via Promise.all (reduz latência de 4x 300ms para ~300ms)
+      const toolMessages = await Promise.all(
+        calls.map(async (call) => {
+          let args: Record<string, unknown> = {};
+          try {
+            args = JSON.parse(call.function.arguments || "{}");
+          } catch {
+            // Argumentos inválidos: a ferramenta devolve o erro de validação ao LLM.
+          }
+          return {
+            role: "tool" as const,
+            tool_call_id: call.id,
+            content: JSON.stringify(await runTool(call.function.name, args)),
+          };
+        })
+      );
+      messages.push(...toolMessages);
       continue;
     }
     return { text: msg.content ?? "", iterations: i, model: completion.model || model };

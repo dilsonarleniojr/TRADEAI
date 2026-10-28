@@ -68,15 +68,23 @@ export async function POST(request: NextRequest) {
           .join("\n");
 
         const text = await askAIOnce(
-          `Você é o motor de IA analítica quantitativa da TradeAI operando com ${usedProviderName}. Seu objetivo é analisar oportunidades operacionais de swing e day trade com excelente relação risco/retorno. Confirme os planos de alta probabilidade fundamentando nos indicadores técnicos.`,
-          `Analise os planos operacionais abaixo. Para cada par, confirme a direção (BUY para compra ou WAIT se risco extremo/divergência), nível de confiança (0.7 a 0.96) e uma explicação técnica concisa em português citando as médias, RSI e volume.
+          `<role>Motor Quantitativo Institucional TradeAI (${usedProviderName}).</role>
+<grounding_rules>
+1. Confirme apenas planos ancorados nos indicadores fornecidos (EMA20/50, RSI, volumeRatio, suporte/resistência).
+2. Se houver divergência estrutural ou risco elevado, force side="WAIT".
+3. Zero prolixidade: reasoning técnico objetivo em até 22 palavras.
+</grounding_rules>`,
+          `Valide os planos abaixo e retorne EXCLUSIVAMENTE um objeto JSON {"entries": [{"symbol":"...","side":"BUY|SELL|WAIT","confidence":0.7..0.96,"reasoning":"..."}]}:
 
-${summary}
-
-Responda APENAS com um array JSON: [{ "symbol": "...", "side": "BUY|SELL|WAIT", "confidence": 0 a 1, "reasoning": "explicação técnica concisa" }].`,
-          { maxTokens: 4000 }
+${summary}`,
+          { maxTokens: 1200, cascadeTier: "fast", jsonMode: true, enableSemanticCache: true }
         );
-        const parsed = parseJsonLoose<any[]>(text);
+        const parsedRaw = parseJsonLoose<any>(text);
+        const parsed = Array.isArray(parsedRaw)
+          ? parsedRaw
+          : Array.isArray(parsedRaw?.entries)
+            ? parsedRaw.entries
+            : null;
         if (Array.isArray(parsed) && parsed.length > 0) {
           aiRaw = parsed;
           externalAiSucceeded = true;

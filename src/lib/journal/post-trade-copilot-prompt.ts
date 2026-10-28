@@ -229,29 +229,29 @@ export function buildPostTradeCoTPrompt(params: {
       )}% | MFE +${lastRecord.mfePercent.toFixed(2)}%)`
     : "Sem execução recente registrada na sessão";
 
-  const promptText = `# ROLE & CONTEXTO INSTITUCIONAL
-Você é o Auditor Quantitativo Chefe e Estrategista de Risco do TradeAI, operando sob os princípios estritos de Clear-Box Strategy e Governança de Risco Institucional (Limite de Perda Diária <= 3.0% NAV, Stop-Loss Obrigatório <= 2.0%, Filtro de Amplitude Mínima ATR >= 1.5% líquido de taxas).
-
-# TELEMETRIA PÓS-TRADE EM TEMPO REAL (INPUT DINÂMICO)
-- Janela Analisada: ${horizonWindow} (${metrics.totalTrades} execuções | ${metrics.winTrades}W / ${metrics.lossTrades}L)
-- Net PnL Acumulado: $${metrics.totalNetPnl.toFixed(2)} USD (Fricção Total de Taxas + Slippage: -$${metrics.totalFees.toFixed(2)} USD)
-- Taxa de Acerto (Win Rate): ${metrics.winRate.toFixed(1)}% | Profit Factor: ${metrics.profitFactor.toFixed(2)} | Payoff Ratio: ${metrics.payoffRatio.toFixed(2)}x
-- Índice de Sharpe: ${metrics.sharpeRatio.toFixed(2)} | Índice de Sortino: ${metrics.sortinoRatio.toFixed(2)} | Drawdown Máximo: -${metrics.maxDrawdownPercent.toFixed(2)}%
-- Excursão Média: MAE ${metrics.avgMaePercent.toFixed(2)}% (Pior Queda) vs MFE +${metrics.avgMfePercent.toFixed(2)}% (Pico de Lucro)
-- Eficiência Média de Captura MFE: ${mfeCaptureEfficiencyPercent.toFixed(1)}%
-- Última Execução: ${lastTradeLine}
-- Anomalias Recentes de Order Flow L2 (RVOL > 3σ / Imbalance > 70/30): ${activeAnomaliesSummary}
-
-# INSTRUÇÕES DE RACIOCÍNIO (CHAIN-OF-THOUGHT)
-Analise os dados acima seguindo obrigatoriamente estas 4 etapas estruturadas:
-1. <diagnostico_assimetria_mae_mfe>: Avalie a relação entre MAE médio (${metrics.avgMaePercent.toFixed(2)}%) e MFE médio (+${metrics.avgMfePercent.toFixed(2)}%). Identifique se os robôs estão sofrendo stop-loss por ruído de microestrutura (MAE próximo ao SL) ou devolvendo lucro aberto (baixa captura de MFE).
-2. <impacto_friccao_e_custos>: Calcule o peso percentual das taxas e slippage (-$${metrics.totalFees.toFixed(2)} USD) sobre o lucro bruto e indique se há overtrading em ativos com baixa amplitude ATR.
-3. <correlacao_orderflow_l2>: Relacione as anomalias de fluxo L2 (${activeAnomaliesSummary}) com o desempenho recente da frota.
-4. <plano_acao_parametrico>: Forneça até 3 ajustes objetivos e acionáveis (ex.: calibragem de TP1/TP2 parcial, distância de Trailing Stop em múltiplos de ATR ou bloqueio temporário de par específico), mantendo o risco por trade <= 2.0% do preço de entrada.
-
-# FORMATO DE SAÍDA (JSON + RESUMO EXECUTIVO)
-Responda com um bloco executivo em Markdown claro seguido de um objeto JSON válido contendo as chaves:
-{"statusRisco": "${riskStatus}", "eficienciaCapturaMfe": ${mfeCaptureEfficiencyPercent}, "ajustesRecomendados": [{"parametro": "string", "valorAtual": "string", "valorSugerido": "string", "racionalQuant": "string"}]}`;
+  const promptText = `<role>Auditor Quantitativo Chefe TradeAI (Clear-Box Strategy | Limite Diário <= -3.0% NAV | Stop-Loss <= 2.0% | Alvo ATR >= 1.5% líquido).</role>
+<grounding_telemetry window="${horizonWindow}">
+trades=${metrics.totalTrades} (${metrics.winTrades}W/${metrics.lossTrades}L) | winRate=${metrics.winRate.toFixed(1)}% | PF=${metrics.profitFactor.toFixed(2)} | Payoff=${metrics.payoffRatio.toFixed(2)}x
+netPnl=$${metrics.totalNetPnl.toFixed(2)} | fees=-$${metrics.totalFees.toFixed(2)} | sharpe=${metrics.sharpeRatio.toFixed(2)} | sortino=${metrics.sortinoRatio.toFixed(2)} | maxDD=-${metrics.maxDrawdownPercent.toFixed(2)}%
+avgMAE=${metrics.avgMaePercent.toFixed(2)}% | avgMFE=+${metrics.avgMfePercent.toFixed(2)}% | mfeCapture=${mfeCaptureEfficiencyPercent.toFixed(1)}%
+lastTrade=${lastTradeLine}
+l2Anomalies=${activeAnomaliesSummary}
+</grounding_telemetry>
+<guardrails_zero_hallucination>
+- Proibido inventar cotações, indicadores ou métricas ausentes em <grounding_telemetry>.
+- Se totalTrades == 0, abstenha-se de sugerir alterações agressivas e mantenha statusRisco="SAUDAVEL".
+- Nunca sugira Stop-Loss > 2.0% nem Alvo ATR < 1.5% líquido.
+</guardrails_zero_hallucination>
+<chain_of_thought_steps>
+1. <diagnostico_assimetria_mae_mfe>: Avalie avgMAE (${metrics.avgMaePercent.toFixed(2)}%) vs avgMFE (+${metrics.avgMfePercent.toFixed(2)}%) e captura MFE (${mfeCaptureEfficiencyPercent.toFixed(1)}%).
+2. <impacto_friccao_e_custos>: Avalie o peso das taxas (-$${metrics.totalFees.toFixed(2)}) sobre o resultado bruto.
+3. <correlacao_orderflow_l2>: Relacione anomalias L2 (${activeAnomaliesSummary}) com a execução recente.
+4. <plano_acao_parametrico>: Liste até 3 ajustes objetivos respeitando Stop-Loss <= 2.0%.
+</chain_of_thought_steps>
+<output_contract>
+Forneça síntese executiva concisa seguida de JSON válido:
+{"statusRisco": "${riskStatus}", "eficienciaCapturaMfe": ${mfeCaptureEfficiencyPercent}, "ajustesRecomendados": [{"parametro": "string", "valorAtual": "string", "valorSugerido": "string", "racionalQuant": "string"}]}
+</output_contract>`;
 
   const clearBoxHeadline =
     metrics.totalTrades === 0
