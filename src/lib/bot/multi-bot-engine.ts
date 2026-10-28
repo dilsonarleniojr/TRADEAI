@@ -12,7 +12,7 @@ import { latencyTelemetry } from "./latency-telemetry";
 import { flightRecorder } from "@/lib/telemetry/flight-recorder";
 import { structuredLogger } from "@/lib/telemetry/structured-logger";
 import { playOrderExecutedSound, playTakeProfitHitSound, playStopLossOrKillSwitchSound } from "@/lib/sound/sound-effects";
-import { tradeJournalEngine } from "@/lib/journal/trade-journal-engine";
+import { tradeJournalEngine, type ExecutionTriggerType } from "@/lib/journal/trade-journal-engine";
 import { telegramNotificationService } from "@/lib/telegram/telegram-service";
 import { orderFlowAnomalyScanner } from "@/lib/order-flow/anomaly-scanner";
 
@@ -3067,6 +3067,31 @@ async function executeBotPartialSell({
   store.updateBotPosition(bot.id, updatedPosition);
   store.recordBotTrade(bot.id, trade, partialPnl);
 
+  // Dispara evento de realização parcial em tempo real para o TradeJournalEngine (BroadcastChannel + CustomEvent)
+  tradeJournalEngine.dispatchExecutionEvent({
+    eventId: trade.id,
+    source: "LIVE_FLEET",
+    triggerType: "PARTIAL_TAKE_PROFIT",
+    botId: bot.id,
+    botName: bot.name,
+    symbol: execSymbol,
+    side: "BUY",
+    mode: tradingMode === "live" ? "live" : "paper",
+    strategy: bot.strategy,
+    entryPrice: position.entryPrice,
+    exitPrice: sellPrice,
+    quantity: sellQty,
+    highestPrice: position.highestPrice || Math.max(position.entryPrice, sellPrice),
+    lowestPrice: position.lowestPrice || Math.min(position.entryPrice, sellPrice),
+    entryTime: position.entryTime,
+    exitTime: trade.timestamp,
+    entryTimestampMs: position.entryTimestampMs,
+    exitTimestampMs: Date.now(),
+    exitReason: `TP_PARCIAL_${Math.round(partialRatio * 100)}PCT`,
+    commissionRate: 0.001,
+    notes: `Realização parcial (${Math.round(partialRatio * 100)}%) com trava Break-Even em $${breakEvenPrice.toFixed(4)}`,
+  });
+
   const modeTag = tradingMode === "live" ? "🟢 [REAL]" : "🔷 [SIMULADO]";
   store.addBotLog({
     message: `🎯 ${modeTag} [${bot.name}] REALIZAÇÃO PARCIAL (${Math.round(partialRatio * 100)}%) CONCLUÍDA! Lucro embolsado: +$${partialPnl.toFixed(2)} USDT (+${gainPercent.toFixed(2)}%). Restante travado no Break-Even ($${breakEvenPrice.toFixed(4)}) com risco ZERO!`,
@@ -3193,6 +3218,30 @@ async function executeBotSell({
           store.updateBotPosition(bot.id, null);
           store.recordBotTrade(bot.id, trade, netPnl);
 
+          tradeJournalEngine.dispatchExecutionEvent({
+            eventId: trade.id,
+            source: "LIVE_FLEET",
+            triggerType: logType === "profit" ? "TAKE_PROFIT" : "STOP_LOSS",
+            botId: bot.id,
+            botName: bot.name,
+            symbol: execSymbol,
+            side: "BUY",
+            mode: tradingMode === "live" ? "live" : "paper",
+            strategy: bot.strategy,
+            entryPrice: position.entryPrice,
+            exitPrice: sellPrice,
+            quantity: position.quantity,
+            highestPrice: position.highestPrice || Math.max(position.entryPrice, sellPrice),
+            lowestPrice: position.lowestPrice || Math.min(position.entryPrice, sellPrice),
+            entryTime: position.entryTime,
+            exitTime: trade.timestamp,
+            entryTimestampMs: position.entryTimestampMs,
+            exitTimestampMs: Date.now(),
+            exitReason: `${reason} (MIN_NOTIONAL_DUST)`,
+            commissionRate: 0.001,
+            notes: `Encerramento residual via ${reason}`,
+          });
+
           store.addBotLog({
             message: `⚠️ [${bot.name}] Posição encerrada no robô. A quantidade em carteira (${position.quantity.toFixed(4)} ${execSymbol.replace("USDT", "")}) vale menos que o lote mínimo de $5 da Binance para venda direta. O saldo residual permanece seguro na sua conta Spot da Binance.`,
             type: "warning",
@@ -3268,9 +3317,21 @@ async function executeBotSell({
   store.updateBotPosition(bot.id, null);
   store.recordBotTrade(bot.id, trade, netPnl);
 
-  // Registra no Diário de Trades Automatizado (MAE, MFE, Fricção e Analytics)
-  const journalRecord = tradeJournalEngine.recordTrade({
-    id: trade.id,
+  // Dispara evento de execução em tempo real no Diário de Trades Automatizado (BroadcastChannel + CustomEvent)
+  const resolvedTriggerType: ExecutionTriggerType = reason.toUpperCase().includes("TRAILING")
+    ? "TRAILING_STOP"
+    : reason.toUpperCase().includes("PARCIAL")
+      ? "PARTIAL_TAKE_PROFIT"
+      : logType === "profit" || reason.toUpperCase().includes("TAKE PROFIT") || reason.toUpperCase().includes("LUCRO")
+        ? "TAKE_PROFIT"
+        : reason.toUpperCase().includes("MANUAL") || reason.toUpperCase().includes("KILL")
+          ? "MANUAL_CLOSE"
+          : "STOP_LOSS";
+
+  const journalRecord = tradeJournalEngine.dispatchExecutionEvent({
+    eventId: trade.id,
+    source: "LIVE_FLEET",
+    triggerType: resolvedTriggerType,
     botId: bot.id,
     botName: bot.name,
     symbol: execSymbol,

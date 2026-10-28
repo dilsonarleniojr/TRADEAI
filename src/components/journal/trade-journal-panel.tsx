@@ -6,6 +6,7 @@ import {
   type TradeJournalRecord,
   type PerformanceMetrics,
   type JournalFilterOptions,
+  type BotExecutionEventPayload,
 } from "@/lib/journal/trade-journal-engine";
 import { lttbDownsample } from "@/lib/performance/lttb";
 import {
@@ -58,11 +59,20 @@ export function TradeJournalPanel() {
 
   // Estado de Anomalias de Order Flow
   const [anomalies, setAnomalies] = useState<AnomalyAlert[]>([]);
+  const [lastLiveExecution, setLastLiveExecution] = useState<{
+    record: TradeJournalRecord;
+    event: BotExecutionEventPayload;
+  } | null>(null);
 
   useEffect(() => {
     // Inscrição no Diário de Trades
     const unsubJournal = tradeJournalEngine.subscribe((updatedList) => {
       setRecords(updatedList);
+    });
+
+    // Inscrição no Canal de Eventos de Execução em Tempo Real (BroadcastChannel + CustomEvent)
+    const unsubExecutionBus = tradeJournalEngine.subscribeExecutionEvents((rec, evt) => {
+      setLastLiveExecution({ record: rec, event: evt });
     });
 
     // Inscrição em Anomalias de Order Flow
@@ -73,6 +83,7 @@ export function TradeJournalPanel() {
 
     return () => {
       unsubJournal();
+      unsubExecutionBus();
       unsubAnomalies();
     };
   }, []);
@@ -317,21 +328,32 @@ export function TradeJournalPanel() {
 
             {/* Curva de Patrimônio (Equity Curve) em SVG de Alta Resolução */}
             <div className="bg-[#131b2a] border border-[#1f2937] p-5 rounded-xl">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-emerald-400" />
                   <h3 className="text-sm font-semibold text-white">
                     Curva de Patrimônio Acumulado (Equity Curve)
                   </h3>
+                  <span className="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Stream Real-Time (BroadcastChannel + CustomEvent)
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
+                  {lastLiveExecution && (
+                    <span className="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded font-mono">
+                      ⚡ {lastLiveExecution.event.source === "DIRECT_AI_TRADE" ? "Direct AI" : "Live Fleet"} •{" "}
+                      {lastLiveExecution.record.symbol} ({lastLiveExecution.event.triggerType || lastLiveExecution.record.exitReason}){" "}
+                      {lastLiveExecution.record.netPnl >= 0 ? "+" : ""}${lastLiveExecution.record.netPnl.toFixed(2)}
+                    </span>
+                  )}
                   {metrics.equityCurve.length > 200 && (
                     <span className="text-[10px] text-cyan-400 bg-cyan-950/60 border border-cyan-800/60 px-1.5 py-0.5 rounded font-mono">
                       LTTB Ativo (60 pts / {metrics.equityCurve.length} trades)
                     </span>
                   )}
                   <span className="text-xs text-slate-400 font-mono">
-                    Base Inicial: $1,000.00 USD
+                    Base Inicial: $1,000.00 USD ({metrics.equityCurve.length} pts)
                   </span>
                 </div>
               </div>

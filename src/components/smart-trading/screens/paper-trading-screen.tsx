@@ -195,9 +195,16 @@ export const PaperTradingScreen: React.FC = () => {
     }
   };
 
-  // Métricas do Diário de Trades (MAE / MFE)
-  const journalRecords = useMemo(() => {
-    return tradeJournalEngine.getAllRecords();
+  // Métricas do Diário de Trades em Tempo Real (BroadcastChannel / CustomEvent)
+  const [journalRecords, setJournalRecords] = useState<TradeJournalRecord[]>(() =>
+    tradeJournalEngine.getAllRecords()
+  );
+
+  useEffect(() => {
+    const unsub = tradeJournalEngine.subscribe((updated) => {
+      setJournalRecords(updated);
+    });
+    return () => unsub();
   }, []);
 
   const journalMetrics: PerformanceMetrics = useMemo(() => {

@@ -17,6 +17,7 @@ import { getOrderBookAnalysis } from '@/lib/bot/order-book-cache';
 import { GraduatedCircuitBreaker } from './chaos-test-harness';
 import type { SpoofingAlert } from '@/lib/order-book-imbalance';
 import { LockFreeSPSCQueue } from '@/lib/performance/lock-free-spsc-queue';
+import { tradeJournalEngine, type ExecutionTriggerType } from '@/lib/journal/trade-journal-engine';
 
 export interface DirectOperationSession {
   id: string;
@@ -82,6 +83,11 @@ export interface DirectOperationSession {
   tp2QuantityExecuted?: number;
   tp1RealizedPnlUsd?: number;
   tp2RealizedPnlUsd?: number;
+  tp1ExecutedPrice?: number;
+  tp1ExecutedAt?: number;
+  tp2ExecutedPrice?: number;
+  tp2ExecutedAt?: number;
+  closedAt?: number;
 
   // Próxima Geração: Regime, MTF, Sizing & Telemetria
   marketRegime?: string;
@@ -1187,17 +1193,45 @@ export class DirectOperationManager {
           const partialFee = (tp1Qty * latestPrice) * 0.001;
           const partialNetPnl = PreciseMath.roundDown(partialGross - partialFee, 2);
 
+          const tp1ExecTimestamp = Date.now();
           session.isTp1Taken = true;
           isTp1JustTakenInThisTick = true;
           session.isPartialProfitTaken = true; // Compatibilidade com testes legados
           session.tp1QuantityExecuted = tp1Qty;
           session.partialQuantityExecuted = tp1Qty;
           session.tp1RealizedPnlUsd = partialNetPnl;
+          session.tp1ExecutedPrice = latestPrice;
+          session.tp1ExecutedAt = tp1ExecTimestamp;
           session.partialRealizedPnlUsd = (session.partialRealizedPnlUsd || 0) + partialNetPnl;
           session.quantity = PreciseMath.roundDown(session.quantity - tp1Qty, 8);
           session.isSkewGateActive = isSkewGateActive;
           session.orderBookSkewRatio = bidAskDepthRatio;
           session.tp1LiquidationPct = tp1PctNumber;
+
+          // Dispara evento de execução em tempo real para o TradeJournalEngine (BroadcastChannel + CustomEvent)
+          try {
+            tradeJournalEngine.dispatchExecutionEvent({
+              eventId: `direct_tp1_${session.id}`,
+              source: 'DIRECT_AI_TRADE',
+              triggerType: 'PARTIAL_TAKE_PROFIT',
+              botId: session.id,
+              botName: 'Direct AI Sniper (TP1)',
+              symbol: session.symbol,
+              side: 'BUY',
+              mode: session.mode === 'live' ? 'live' : 'paper',
+              strategy: session.strategyChosen || 'AI_SNIPER',
+              entryPrice: session.entryPrice,
+              exitPrice: latestPrice,
+              quantity: tp1Qty,
+              highestPrice: session.highestPriceReached || latestPrice,
+              lowestPrice: session.lowestPriceReached || session.entryPrice,
+              entryTimestampMs: session.startTime || tp1ExecTimestamp - 30000,
+              exitTimestampMs: tp1ExecTimestamp,
+              exitReason: isSkewGateActive ? 'TP1_SKEW_GATE_50PCT' : 'TP1_PARTIAL_33PCT',
+            });
+          } catch (journalErr) {
+            console.warn('[DirectOperationManager] Falha ao emitir evento TP1 para o TradeJournalEngine:', journalErr);
+          }
 
           // Trailing Stop Agressivo com Base em MAE Residual:
           // Se o ativo sofreu excursão adversa inicial acentuada (MAE <= -0.60%), eleva para +0.60% para proteger contra nova retração à zona de estresse.
@@ -1288,14 +1322,42 @@ export class DirectOperationManager {
           const fee = (tp2Qty * latestPrice) * 0.001;
           const tp2NetPnl = PreciseMath.roundDown(grossPnl - fee, 2);
 
+          const tp2ExecTimestamp = Date.now();
           session.isTp2Taken = true;
           session.tp2QuantityExecuted = tp2Qty;
           session.tp2RealizedPnlUsd = tp2NetPnl;
+          session.tp2ExecutedPrice = latestPrice;
+          session.tp2ExecutedAt = tp2ExecTimestamp;
           session.partialRealizedPnlUsd = (session.partialRealizedPnlUsd || 0) + tp2NetPnl;
           session.quantity = PreciseMath.roundDown(session.quantity - tp2Qty, 8);
           session.isCvdExhaustionTriggered = isCvdExhaustionHit;
           session.cvdDeltaAtTp2Pct = cvdDelta;
           session.tp2AnticipatedReason = isCvdExhaustionHit ? 'CVD_EXHAUSTION' : undefined;
+
+          // Dispara evento de execução em tempo real para o TradeJournalEngine (BroadcastChannel + CustomEvent)
+          try {
+            tradeJournalEngine.dispatchExecutionEvent({
+              eventId: `direct_tp2_${session.id}`,
+              source: 'DIRECT_AI_TRADE',
+              triggerType: 'PARTIAL_TAKE_PROFIT',
+              botId: session.id,
+              botName: 'Direct AI Sniper (TP2)',
+              symbol: session.symbol,
+              side: 'BUY',
+              mode: session.mode === 'live' ? 'live' : 'paper',
+              strategy: session.strategyChosen || 'AI_SNIPER',
+              entryPrice: session.entryPrice,
+              exitPrice: latestPrice,
+              quantity: tp2Qty,
+              highestPrice: session.highestPriceReached || latestPrice,
+              lowestPrice: session.lowestPriceReached || session.entryPrice,
+              entryTimestampMs: session.startTime || tp2ExecTimestamp - 45000,
+              exitTimestampMs: tp2ExecTimestamp,
+              exitReason: isCvdExhaustionHit ? 'TP2_CVD_EXHAUSTION' : 'TP2_PARTIAL_33PCT',
+            });
+          } catch (journalErr) {
+            console.warn('[DirectOperationManager] Falha ao emitir evento TP2 para o TradeJournalEngine:', journalErr);
+          }
 
           // Blindagem de Lucro Mínimo Absoluto no Runner (TP3 Hard Floor)
           // Trava irrevogavelmente em no mínimo +1.0% acima do preço de entrada (ou no nível exato do TP1, o que for maior)
@@ -1482,15 +1544,62 @@ export class DirectOperationManager {
     const totalRealizedPnl = (session.partialRealizedPnlUsd || 0) + netRunnerPnl;
     const netPercent = (totalRealizedPnl / session.investedAmountUsd) * 100;
 
+    const closeTimestamp = Date.now();
     session.status = 'CLOSED';
     session.closeReason = reason;
     session.currentPrice = exitPrice;
+    session.closedAt = closeTimestamp;
     session.closeBinanceOrderId = closeBinanceOrderId;
     session.realizedPnlUsd = PreciseMath.roundDown(totalRealizedPnl, 2);
     session.realizedPnlPercent = PreciseMath.roundDown(netPercent, 2);
     session.feeDeductedUsd = PreciseMath.roundDown(totalFees, 2);
     session.unrealizedPnlUsd = 0;
     session.unrealizedPnlPercent = 0;
+
+    // Dispara evento de execução final em tempo real para o TradeJournalEngine (BroadcastChannel + CustomEvent)
+    if (effectiveQty > 0) {
+      try {
+        const triggerType: ExecutionTriggerType =
+          reason === 'TARGET_REACHED'
+            ? 'TAKE_PROFIT'
+            : reason === 'STOP_LOSS'
+              ? session.isTp1Taken || session.breakEvenProtected
+                ? 'TRAILING_STOP'
+                : 'STOP_LOSS'
+              : reason === 'TIME_EXPIRED'
+                ? 'TIME_EXPIRED'
+                : 'MANUAL_CLOSE';
+
+        const resolvedReasonLabel =
+          reason === 'STOP_LOSS' && (session.isTp1Taken || session.breakEvenProtected)
+            ? session.isTp2Taken
+              ? 'TP3_RUNNER_TRAILING_STOP'
+              : 'BREAK_EVEN_TRAILING_STOP'
+            : reason;
+
+        tradeJournalEngine.dispatchExecutionEvent({
+          eventId: `direct_close_${session.id}`,
+          source: 'DIRECT_AI_TRADE',
+          triggerType,
+          botId: session.id,
+          botName: session.isTp1Taken ? 'Direct AI Sniper (Runner)' : 'Direct AI Sniper',
+          symbol: session.symbol,
+          side: 'BUY',
+          mode: session.mode === 'live' ? 'live' : 'paper',
+          strategy: session.strategyChosen || 'AI_SNIPER',
+          entryPrice: session.entryPrice,
+          exitPrice,
+          quantity: effectiveQty,
+          highestPrice: session.highestPriceReached || Math.max(session.entryPrice, exitPrice),
+          lowestPrice: session.lowestPriceReached || Math.min(session.entryPrice, exitPrice),
+          entryTimestampMs: session.startTime || closeTimestamp - 60000,
+          exitTimestampMs: closeTimestamp,
+          exitReason: resolvedReasonLabel,
+        });
+      } catch (journalErr) {
+        console.warn('[DirectOperationManager] Falha ao emitir evento de fechamento para o TradeJournalEngine:', journalErr);
+      }
+    }
 
     // Gera auto-avaliação pós-trade da IA (Post-Trade Reflection) e salva no diário
     const journalEntry = this.generatePostTradeReflection(session);

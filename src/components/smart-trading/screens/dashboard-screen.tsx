@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useCryptoStore } from '@/lib/store';
 import { useShallow } from 'zustand/react/shallow';
 import { manualCloseBotPosition } from '@/lib/bot/multi-bot-engine';
-import { tradeJournalEngine } from '@/lib/journal/trade-journal-engine';
+import { tradeJournalEngine, type TradeJournalRecord } from '@/lib/journal/trade-journal-engine';
 import { SmartCard, SmartCardHeader, SmartCardTitle, SmartCardDescription, SmartCardContent } from '../ui/card';
 import { SmartBadge } from '../ui/badge';
 import { SmartButton } from '../ui/button';
@@ -120,11 +120,21 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       });
   }, [bots, tickers]);
 
-  // Métricas do Diário (MAE / MFE)
-  const journalMetrics = useMemo(() => {
-    const records = tradeJournalEngine.getAllRecords();
-    return tradeJournalEngine.calculateMetrics(records);
+  // Métricas do Diário em Tempo Real via BroadcastChannel / CustomEvent (MAE / MFE / Equity Curve)
+  const [journalRecords, setJournalRecords] = useState<TradeJournalRecord[]>(() =>
+    tradeJournalEngine.getAllRecords()
+  );
+
+  useEffect(() => {
+    const unsub = tradeJournalEngine.subscribe((updated) => {
+      setJournalRecords(updated);
+    });
+    return () => unsub();
   }, []);
+
+  const journalMetrics = useMemo(() => {
+    return tradeJournalEngine.calculateMetrics(journalRecords);
+  }, [journalRecords]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">

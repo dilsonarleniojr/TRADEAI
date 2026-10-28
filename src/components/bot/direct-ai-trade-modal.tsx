@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCryptoStore } from "@/lib/store";
 import { formatPrice } from "@/lib/format";
 import { calculateWickPenetration } from "@/lib/order-book-imbalance";
+import { tradeJournalEngine, type ExecutionTriggerType } from "@/lib/journal/trade-journal-engine";
 import {
   Zap,
   Clock,
@@ -197,6 +198,109 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
       setBalanceError(null);
     }
   }, [open, tradingMode, binanceTestnet]);
+
+  // Sincronização em tempo real com o canal de eventos de execução do Diário de Trading
+  useEffect(() => {
+    if (!session?.id || !session.entryPrice) return;
+
+    const entryTimeMs = session.startTime || Date.now() - 30000;
+    const mode = session.mode === "live" ? "live" : "paper";
+    const strat = session.strategyChosen || "AI_SNIPER";
+
+    if (session.isTp1Taken && session.tp1QuantityExecuted && session.tp1QuantityExecuted > 0) {
+      const tp1ExitPrice = session.tp1ExecutedPrice || session.tp1Price || session.currentPrice || session.entryPrice;
+      tradeJournalEngine.dispatchExecutionEvent({
+        eventId: `direct_tp1_${session.id}`,
+        source: "DIRECT_AI_TRADE",
+        triggerType: "PARTIAL_TAKE_PROFIT",
+        botId: session.id,
+        botName: "Direct AI Sniper (TP1)",
+        symbol: session.symbol,
+        side: "BUY",
+        mode,
+        strategy: strat,
+        entryPrice: session.entryPrice,
+        exitPrice: tp1ExitPrice,
+        quantity: session.tp1QuantityExecuted,
+        highestPrice: session.highestPriceReached || tp1ExitPrice,
+        lowestPrice: session.lowestPriceReached || session.entryPrice,
+        entryTimestampMs: entryTimeMs,
+        exitTimestampMs: session.tp1ExecutedAt || Date.now(),
+        exitReason: session.isSkewGateActive ? "TP1_SKEW_GATE_50PCT" : "TP1_PARTIAL_33PCT",
+      });
+    }
+
+    if (session.isTp2Taken && session.tp2QuantityExecuted && session.tp2QuantityExecuted > 0) {
+      const tp2ExitPrice = session.tp2ExecutedPrice || session.tp2Price || session.currentPrice || session.entryPrice;
+      tradeJournalEngine.dispatchExecutionEvent({
+        eventId: `direct_tp2_${session.id}`,
+        source: "DIRECT_AI_TRADE",
+        triggerType: "PARTIAL_TAKE_PROFIT",
+        botId: session.id,
+        botName: "Direct AI Sniper (TP2)",
+        symbol: session.symbol,
+        side: "BUY",
+        mode,
+        strategy: strat,
+        entryPrice: session.entryPrice,
+        exitPrice: tp2ExitPrice,
+        quantity: session.tp2QuantityExecuted,
+        highestPrice: session.highestPriceReached || tp2ExitPrice,
+        lowestPrice: session.lowestPriceReached || session.entryPrice,
+        entryTimestampMs: entryTimeMs,
+        exitTimestampMs: session.tp2ExecutedAt || Date.now(),
+        exitReason: session.isCvdExhaustionTriggered ? "TP2_CVD_EXHAUSTION" : "TP2_PARTIAL_33PCT",
+      });
+    }
+
+    if (session.status === "CLOSED" && session.quantity > 0) {
+      const exitPrice = session.currentPrice || session.entryPrice;
+      const reason = session.closeReason || "MANUAL_CLOSE";
+      const triggerType: ExecutionTriggerType =
+        reason === "TARGET_REACHED"
+          ? "TAKE_PROFIT"
+          : reason === "STOP_LOSS"
+            ? session.isTp1Taken || session.breakEvenProtected
+              ? "TRAILING_STOP"
+              : "STOP_LOSS"
+            : reason === "TIME_EXPIRED"
+              ? "TIME_EXPIRED"
+              : "MANUAL_CLOSE";
+
+      const resolvedReasonLabel =
+        reason === "STOP_LOSS" && (session.isTp1Taken || session.breakEvenProtected)
+          ? session.isTp2Taken
+            ? "TP3_RUNNER_TRAILING_STOP"
+            : "BREAK_EVEN_TRAILING_STOP"
+          : reason;
+
+      tradeJournalEngine.dispatchExecutionEvent({
+        eventId: `direct_close_${session.id}`,
+        source: "DIRECT_AI_TRADE",
+        triggerType,
+        botId: session.id,
+        botName: session.isTp1Taken ? "Direct AI Sniper (Runner)" : "Direct AI Sniper",
+        symbol: session.symbol,
+        side: "BUY",
+        mode,
+        strategy: strat,
+        entryPrice: session.entryPrice,
+        exitPrice,
+        quantity: session.quantity,
+        highestPrice: session.highestPriceReached || Math.max(session.entryPrice, exitPrice),
+        lowestPrice: session.lowestPriceReached || Math.min(session.entryPrice, exitPrice),
+        entryTimestampMs: entryTimeMs,
+        exitTimestampMs: session.closedAt || Date.now(),
+        exitReason: resolvedReasonLabel,
+      });
+    }
+  }, [
+    session?.id,
+    session?.status,
+    session?.isTp1Taken,
+    session?.isTp2Taken,
+    session?.closeReason,
+  ]);
 
   // Limpeza de timers ao desmontar ou fechar
   useEffect(() => {

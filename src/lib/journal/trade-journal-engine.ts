@@ -9,6 +9,47 @@
  * - Persistência em armazenamento local e exportação em formato auditável (JSON / CSV)
  */
 
+export type ExecutionEventSource = "DIRECT_AI_TRADE" | "LIVE_FLEET" | "MANUAL";
+
+export type ExecutionTriggerType =
+  | "TAKE_PROFIT"
+  | "PARTIAL_TAKE_PROFIT"
+  | "STOP_LOSS"
+  | "TRAILING_STOP"
+  | "TIME_EXPIRED"
+  | "MANUAL_CLOSE";
+
+export interface BotExecutionEventPayload {
+  eventId?: string;
+  id?: string;
+  source: ExecutionEventSource;
+  triggerType: ExecutionTriggerType;
+  botId?: string;
+  botName?: string;
+  symbol: string;
+  side?: "BUY" | "SELL";
+  mode?: "live" | "paper";
+  strategy?: string;
+  entryPrice: number;
+  exitPrice: number;
+  quantity: number;
+  highestPrice?: number;
+  lowestPrice?: number;
+  entryTime?: string;
+  exitTime?: string;
+  entryTimestampMs?: number;
+  exitTimestampMs?: number;
+  exitReason?: string;
+  commissionRate?: number;
+  spreadPercent?: number;
+  slippagePercent?: number;
+  notes?: string;
+}
+
+export const TRADE_EXECUTION_CHANNEL_NAME = "tradeai_execution_channel_v1";
+export const TRADE_EXECUTION_CUSTOM_EVENT = "tradeai:bot-execution";
+export const JOURNAL_UPDATED_CUSTOM_EVENT = "tradeai:journal-updated";
+
 export interface TradeJournalRecord {
   id: string;
   botId: string;
@@ -17,6 +58,8 @@ export interface TradeJournalRecord {
   side: "BUY" | "SELL";
   mode: "live" | "paper";
   strategy: string;
+  source?: ExecutionEventSource;
+  triggerType?: ExecutionTriggerType;
 
   // Preços e Quantidades
   entryPrice: number;
@@ -105,13 +148,32 @@ export interface JournalFilterOptions {
 
 const STORAGE_KEY = "tradeai_trade_journal_records_v1";
 
+export interface JournalChannelStatus {
+  broadcastChannelActive: boolean;
+  customEventActive: boolean;
+  processedEventsCount: number;
+  lastEventTimestamp: number | null;
+  lastEventSource: ExecutionEventSource | null;
+  lastTriggerType: ExecutionTriggerType | null;
+}
+
 export class TradeJournalEngine {
   private static instance: TradeJournalEngine | null = null;
   private records: TradeJournalRecord[] = [];
   private listeners: Array<(records: TradeJournalRecord[]) => void> = [];
+  private executionEventListeners: Array<
+    (payload: { record: TradeJournalRecord; event: BotExecutionEventPayload }) => void
+  > = [];
+  private processedEventIds = new Set<string>();
+  private broadcastChannel: BroadcastChannel | null = null;
+  private customEventActive = false;
+  private lastEventTimestamp: number | null = null;
+  private lastEventSource: ExecutionEventSource | null = null;
+  private lastTriggerType: ExecutionTriggerType | null = null;
 
   private constructor() {
     this.loadFromStorage();
+    this.initRealtimeEventBus();
   }
 
   public static getInstance(): TradeJournalEngine {
@@ -122,31 +184,245 @@ export class TradeJournalEngine {
   }
 
   /**
+   * Inicializa o barramento reativo dual (BroadcastChannel + CustomEvent)
+   * para conectar o motor diretamente aos eventos de execução (Direct AI Trade & Live Fleet).
+   */
+  private initRealtimeEventBus(): void {
+    // 1. Conexão via BroadcastChannel (comunicação entre abas, workers e contextos isolados)
+    if (typeof BroadcastChannel !== "undefined") {
+      try {
+        this.broadcastChannel = new BroadcastChannel(TRADE_EXECUTION_CHANNEL_NAME);
+        this.broadcastChannel.onmessage = (msgEvent: MessageEvent) => {
+          const data = msgEvent?.data;
+          if (!data || typeof data !== "object") return;
+
+          if (data.type === "BOT_EXECUTION_EVENT" && data.payload) {
+            this.ingestExternalExecutionEvent(data.payload as BotExecutionEventPayload, false);
+          } else if (data.type === "BOT_EXECUTION_RECORDED" && data.record) {
+            this.ingestBroadcastedRecord(
+              data.record as TradeJournalRecord,
+              data.event as BotExecutionEventPayload | undefined
+            );
+          } else if (data.type === "JOURNAL_CLEAR") {
+            if (this.records.length > 0) {
+              this.records = [];
+              this.processedEventIds.clear();
+              this.saveToStorage();
+              this.notifyListeners();
+            }
+          }
+        };
+      } catch {
+        this.broadcastChannel = null;
+      }
+    }
+
+    // 2. Conexão via CustomEvent no EventTarget global (window / globalThis)
+    const target: EventTarget | undefined =
+      typeof window !== "undefined"
+        ? window
+        : typeof globalThis !== "undefined" && typeof (globalThis as any).addEventListener === "function"
+        ? (globalThis as unknown as EventTarget)
+        : undefined;
+
+    if (target) {
+      try {
+        target.addEventListener(TRADE_EXECUTION_CUSTOM_EVENT, ((evt: Event) => {
+          const customEvt = evt as CustomEvent;
+          const detail = customEvt?.detail;
+          if (!detail || typeof detail !== "object") return;
+
+          // Ignora eventos despachados internamente por este próprio motor (já processados)
+          if (detail.__internalDispatched) return;
+
+          const payload: BotExecutionEventPayload = detail.event || detail;
+          if (payload && payload.symbol && typeof payload.entryPrice === "number") {
+            this.ingestExternalExecutionEvent(payload, true);
+          }
+        }) as EventListener);
+
+        if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+          window.addEventListener("storage", (storageEvt: StorageEvent) => {
+            if (storageEvt.key === STORAGE_KEY) {
+              this.loadFromStorage();
+              this.notifyListeners();
+            }
+          });
+        }
+
+        this.customEventActive = true;
+      } catch {
+        this.customEventActive = false;
+      }
+    }
+  }
+
+  /**
+   * Processa um evento de execução vindo de CustomEvent externo ou BroadcastChannel
+   */
+  private ingestExternalExecutionEvent(
+    event: BotExecutionEventPayload,
+    shouldBroadcastToChannel: boolean
+  ): TradeJournalRecord | null {
+    const dedupId = event.eventId || event.id;
+    if (dedupId && (this.processedEventIds.has(dedupId) || this.records.some((r) => r.id === dedupId))) {
+      return this.records.find((r) => r.id === dedupId) || null;
+    }
+
+    return this.dispatchExecutionEvent(event, { broadcastToChannel: shouldBroadcastToChannel });
+  }
+
+  /**
+   * Sincroniza um TradeJournalRecord já computado e transmitido por outra aba/worker via BroadcastChannel
+   */
+  private ingestBroadcastedRecord(
+    record: TradeJournalRecord,
+    event?: BotExecutionEventPayload
+  ): void {
+    if (!record || !record.id) return;
+    if (this.processedEventIds.has(record.id) || this.records.some((r) => r.id === record.id)) {
+      return;
+    }
+
+    this.processedEventIds.add(record.id);
+    this.lastEventTimestamp = record.exitTimestampMs || Date.now();
+    this.lastEventSource = record.source || event?.source || "LIVE_FLEET";
+    this.lastTriggerType = record.triggerType || event?.triggerType || "TAKE_PROFIT";
+
+    this.records.unshift(record);
+    if (this.records.length > 1000) {
+      this.records = this.records.slice(0, 1000);
+    }
+
+    this.saveToStorage();
+    this.notifyListeners();
+
+    if (event) {
+      this.notifyExecutionEventListeners(record, event);
+    }
+  }
+
+  /**
+   * Despacha um evento de execução (Take-Profit, Parcial, Stop-Loss, Trailing Stop)
+   * diretamente do motor algorítmico (Direct AI Trade ou Live Fleet), atualizando
+   * imediatamente a curva de patrimônio em memória e propagando via BroadcastChannel e CustomEvent.
+   */
+  public dispatchExecutionEvent(
+    event: BotExecutionEventPayload,
+    options?: { broadcastToChannel?: boolean }
+  ): TradeJournalRecord {
+    const dedupId =
+      event.eventId ||
+      event.id ||
+      `exec_${event.source.toLowerCase()}_${event.botId || "bot"}_${event.symbol}_${event.exitTimestampMs || Date.now()}`;
+
+    const existing = this.records.find((r) => r.id === dedupId);
+    if (existing) {
+      return existing;
+    }
+
+    this.processedEventIds.add(dedupId);
+    this.lastEventTimestamp = event.exitTimestampMs || Date.now();
+    this.lastEventSource = event.source;
+    this.lastTriggerType = event.triggerType;
+
+    const record = this.recordTrade(
+      {
+        id: dedupId,
+        botId: event.botId,
+        botName: event.botName,
+        symbol: event.symbol,
+        side: event.side,
+        mode: event.mode,
+        strategy: event.strategy,
+        source: event.source,
+        triggerType: event.triggerType,
+        entryPrice: event.entryPrice,
+        exitPrice: event.exitPrice,
+        quantity: event.quantity,
+        highestPrice: event.highestPrice,
+        lowestPrice: event.lowestPrice,
+        entryTime: event.entryTime,
+        exitTime: event.exitTime,
+        entryTimestampMs: event.entryTimestampMs,
+        exitTimestampMs: event.exitTimestampMs,
+        exitReason: event.exitReason || event.triggerType,
+        commissionRate: event.commissionRate,
+        spreadPercent: event.spreadPercent,
+        slippagePercent: event.slippagePercent,
+        notes: event.notes,
+      },
+      { skipChannelBroadcast: options?.broadcastToChannel === false, originEvent: event }
+    );
+
+    return record;
+  }
+
+  /**
+   * Retorna o status atual do barramento de eventos em tempo real
+   */
+  public getChannelStatus(): JournalChannelStatus {
+    return {
+      broadcastChannelActive: this.broadcastChannel !== null,
+      customEventActive: this.customEventActive,
+      processedEventsCount: this.processedEventIds.size,
+      lastEventTimestamp: this.lastEventTimestamp,
+      lastEventSource: this.lastEventSource,
+      lastTriggerType: this.lastTriggerType,
+    };
+  }
+
+  /**
+   * Inscreve um listener específico para eventos de execução em tempo real (TP/SL/Parciais)
+   */
+  public subscribeExecutionEvents(
+    callback: (payload: { record: TradeJournalRecord; event: BotExecutionEventPayload }) => void
+  ): () => void {
+    this.executionEventListeners.push(callback);
+    return () => {
+      this.executionEventListeners = this.executionEventListeners.filter((cb) => cb !== callback);
+    };
+  }
+
+  /**
    * Registra a conclusão de uma operação e calcula todas as métricas analíticas.
    */
-  public recordTrade(trade: {
-    id?: string;
-    botId?: string;
-    botName?: string;
-    symbol: string;
-    side?: "BUY" | "SELL";
-    mode?: "live" | "paper";
-    strategy?: string;
-    entryPrice: number;
-    exitPrice: number;
-    quantity: number;
-    highestPrice?: number;
-    lowestPrice?: number;
-    entryTime?: string;
-    exitTime?: string;
-    entryTimestampMs?: number;
-    exitTimestampMs?: number;
-    exitReason?: string;
-    commissionRate?: number; // Ex: 0.001 (0.10%)
-    spreadPercent?: number;  // Ex: 0.04%
-    slippagePercent?: number;
-    notes?: string;
-  }): TradeJournalRecord {
+  public recordTrade(
+    trade: {
+      id?: string;
+      botId?: string;
+      botName?: string;
+      symbol: string;
+      side?: "BUY" | "SELL";
+      mode?: "live" | "paper";
+      strategy?: string;
+      source?: ExecutionEventSource;
+      triggerType?: ExecutionTriggerType;
+      entryPrice: number;
+      exitPrice: number;
+      quantity: number;
+      highestPrice?: number;
+      lowestPrice?: number;
+      entryTime?: string;
+      exitTime?: string;
+      entryTimestampMs?: number;
+      exitTimestampMs?: number;
+      exitReason?: string;
+      commissionRate?: number; // Ex: 0.001 (0.10%)
+      spreadPercent?: number;  // Ex: 0.04%
+      slippagePercent?: number;
+      notes?: string;
+    },
+    internalOptions?: { skipChannelBroadcast?: boolean; originEvent?: BotExecutionEventPayload }
+  ): TradeJournalRecord {
+    if (trade.id) {
+      const existing = this.records.find((r) => r.id === trade.id);
+      if (existing) {
+        return existing;
+      }
+      this.processedEventIds.add(trade.id);
+    }
+
     const side = trade.side || "BUY";
     const mode = trade.mode || "paper";
     const entryPrice = trade.entryPrice;
@@ -186,6 +462,26 @@ export class TradeJournalEngine {
     const durationMinutes = parseFloat((durationMs / 60000).toFixed(2));
     const durationFormatted = this.formatDuration(durationMs);
 
+    const resolvedTriggerType: ExecutionTriggerType =
+      trade.triggerType ||
+      (trade.exitReason?.toUpperCase().includes("PARTIAL") || trade.exitReason?.toUpperCase().includes("TP1") || trade.exitReason?.toUpperCase().includes("TP2")
+        ? "PARTIAL_TAKE_PROFIT"
+        : trade.exitReason?.toUpperCase().includes("TRAILING")
+        ? "TRAILING_STOP"
+        : trade.exitReason?.toUpperCase().includes("STOP") || trade.exitReason?.toUpperCase().includes("SL")
+        ? "STOP_LOSS"
+        : trade.exitReason?.toUpperCase().includes("TIME")
+        ? "TIME_EXPIRED"
+        : trade.exitReason?.toUpperCase().includes("MANUAL")
+        ? "MANUAL_CLOSE"
+        : "TAKE_PROFIT");
+
+    const resolvedSource: ExecutionEventSource =
+      trade.source ||
+      (trade.botId?.startsWith("direct-") || trade.botName?.toLowerCase().includes("direct")
+        ? "DIRECT_AI_TRADE"
+        : "LIVE_FLEET");
+
     const record: TradeJournalRecord = {
       id: trade.id || `tj_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       botId: trade.botId || "manual_or_bot",
@@ -194,6 +490,8 @@ export class TradeJournalEngine {
       side,
       mode,
       strategy: trade.strategy || "Quantitative Strategy",
+      source: resolvedSource,
+      triggerType: resolvedTriggerType,
       entryPrice,
       exitPrice,
       quantity,
@@ -224,6 +522,11 @@ export class TradeJournalEngine {
       notes: trade.notes,
     };
 
+    this.processedEventIds.add(record.id);
+    this.lastEventTimestamp = exitTimestampMs;
+    this.lastEventSource = resolvedSource;
+    this.lastTriggerType = resolvedTriggerType;
+
     this.records.unshift(record);
     // Limitar histórico a 1000 registros em memória para proteção de RAM
     if (this.records.length > 1000) {
@@ -232,6 +535,34 @@ export class TradeJournalEngine {
 
     this.saveToStorage();
     this.notifyListeners();
+
+    const effectiveEvent: BotExecutionEventPayload = internalOptions?.originEvent || {
+      eventId: record.id,
+      id: record.id,
+      source: resolvedSource,
+      triggerType: resolvedTriggerType,
+      botId: record.botId,
+      botName: record.botName,
+      symbol: record.symbol,
+      side: record.side,
+      mode: record.mode,
+      strategy: record.strategy,
+      entryPrice: record.entryPrice,
+      exitPrice: record.exitPrice,
+      quantity: record.quantity,
+      highestPrice: record.highestPrice,
+      lowestPrice: record.lowestPrice,
+      entryTime: record.entryTime,
+      exitTime: record.exitTime,
+      entryTimestampMs: record.entryTimestampMs,
+      exitTimestampMs: record.exitTimestampMs,
+      exitReason: record.exitReason,
+      notes: record.notes,
+    };
+
+    this.notifyExecutionEventListeners(record, effectiveEvent);
+    this.emitRealtimeSignals(record, effectiveEvent, internalOptions?.skipChannelBroadcast === true);
+
     return record;
   }
 
@@ -413,8 +744,19 @@ export class TradeJournalEngine {
 
   public clearAllRecords(): void {
     this.records = [];
+    this.processedEventIds.clear();
+    this.lastEventTimestamp = null;
+    this.lastEventSource = null;
+    this.lastTriggerType = null;
     this.saveToStorage();
     this.notifyListeners();
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage({ type: "JOURNAL_CLEAR" });
+      } catch {
+        // Ignora erro se canal estiver fechado
+      }
+    }
   }
 
   public subscribe(callback: (records: TradeJournalRecord[]) => void): () => void {
@@ -513,6 +855,11 @@ export class TradeJournalEngine {
       const data = window.localStorage.getItem(STORAGE_KEY);
       if (data) {
         this.records = JSON.parse(data);
+        for (const rec of this.records) {
+          if (rec?.id) {
+            this.processedEventIds.add(rec.id);
+          }
+        }
       }
     } catch {
       this.records = [];
@@ -526,6 +873,69 @@ export class TradeJournalEngine {
         listener(list);
       } catch (err) {
         console.error("[TradeJournalEngine] Erro no listener:", err);
+      }
+    }
+  }
+
+  private notifyExecutionEventListeners(
+    record: TradeJournalRecord,
+    event: BotExecutionEventPayload
+  ): void {
+    for (const listener of this.executionEventListeners) {
+      try {
+        listener(record, event);
+      } catch (err) {
+        console.error("[TradeJournalEngine] Erro no executionEventListener:", err);
+      }
+    }
+  }
+
+  private emitRealtimeSignals(
+    record: TradeJournalRecord,
+    event: BotExecutionEventPayload,
+    skipChannelBroadcast: boolean = false
+  ): void {
+    if (!skipChannelBroadcast && this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage({
+          type: "BOT_EXECUTION_RECORDED",
+          record,
+          event,
+        });
+      } catch {
+        // Ignora erro se o BroadcastChannel estiver indisponível ou fechado
+      }
+    }
+
+    const eventTarget: EventTarget | null =
+      typeof window !== "undefined"
+        ? window
+        : typeof globalThis !== "undefined" && typeof globalThis.dispatchEvent === "function"
+          ? globalThis
+          : null;
+
+    if (eventTarget && typeof CustomEvent !== "undefined") {
+      try {
+        eventTarget.dispatchEvent(
+          new CustomEvent(TRADE_EXECUTION_CUSTOM_EVENT, {
+            detail: {
+              record,
+              event,
+              __internalDispatched: true,
+            },
+          })
+        );
+        eventTarget.dispatchEvent(
+          new CustomEvent(JOURNAL_UPDATED_CUSTOM_EVENT, {
+            detail: {
+              records: this.getAllRecords(),
+              latestRecord: record,
+              event,
+            },
+          })
+        );
+      } catch {
+        // Ignora erro em runtime sem suporte a CustomEvent
       }
     }
   }
