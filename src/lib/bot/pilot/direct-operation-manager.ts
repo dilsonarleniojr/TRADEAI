@@ -18,6 +18,7 @@ import { GraduatedCircuitBreaker } from './chaos-test-harness';
 import type { SpoofingAlert } from '@/lib/order-book-imbalance';
 import { LockFreeSPSCQueue } from '@/lib/performance/lock-free-spsc-queue';
 import { tradeJournalEngine, type ExecutionTriggerType } from '@/lib/journal/trade-journal-engine';
+import { isTradableBinanceSpotSymbol } from '@/lib/binance-spot-sync';
 
 export interface DirectOperationSession {
   id: string;
@@ -636,6 +637,10 @@ export class DirectOperationManager {
     await cleanupService.syncServerTime();
 
     // 3. Seleção inteligente do melhor ativo com rotação automática (Cooldown de 30 min)
+    const sanitizedOverride =
+      overrideSymbol && isTradableBinanceSpotSymbol(overrideSymbol)
+        ? overrideSymbol.toUpperCase()
+        : undefined;
     const cooldownSymbols = DirectOperationManager.getCooldownSymbols();
     const selector = MarketOpportunitySelector.getInstance();
     const opportunity: EvaluatedOpportunity = await selector.findBestOpportunity(
@@ -643,7 +648,7 @@ export class DirectOperationManager {
       "https://api.binance.com",
       strategy,
       cooldownSymbols,
-      overrideSymbol
+      sanitizedOverride
     );
 
     // Registra o símbolo selecionado para que a próxima operação priorize outro ativo
@@ -670,7 +675,14 @@ export class DirectOperationManager {
     const quantizedQty = PreciseMath.quantizeLotDown(rawQty, filters.stepSize);
     const notionalUsd = PreciseMath.roundDown(quantizedQty * entryPrice, 2);
 
-    // 7. Auto-cura e garantia de R:R Líquido >= 1.80x contra atrito de comissões e tickSize
+    // 7. Auto-cura de Stop Loss e garantia de R:R Líquido >= 1.80x contra atrito de comissões e tickSize
+    const maxStopLossDist = entryPrice * 0.0175;
+    if (entryPrice - opportunity.signal.stopLoss > maxStopLossDist) {
+      opportunity.signal.stopLoss = metadataService.quantizePrice(
+        Math.max(filters.tickSize, entryPrice - maxStopLossDist),
+        filters
+      );
+    }
     const minSafeTakeProfit = PilotTradeValidator.calculateTargetTakeProfit(
       opportunity.signal.suggestedPrice,
       opportunity.signal.stopLoss,

@@ -64,6 +64,14 @@ export class ExchangeMetadataService {
         throw new Error(`Símbolo ${sym} não encontrado no exchangeInfo retornado`);
       }
 
+      if (symbolData.status && symbolData.status !== "TRADING") {
+        throw new Error(`Símbolo ${sym} não está ativo para negociação Spot (status: ${symbolData.status})`);
+      }
+
+      if (symbolData.isSpotTradingAllowed === false) {
+        throw new Error(`Símbolo ${sym} não permite negociação Spot`);
+      }
+
       const lotFilter = symbolData.filters.find((f: any) => f.filterType === "LOT_SIZE") || {};
       const priceFilter = symbolData.filters.find((f: any) => f.filterType === "PRICE_FILTER") || {};
       const notionalFilter =

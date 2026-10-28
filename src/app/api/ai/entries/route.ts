@@ -5,6 +5,12 @@ import { loadSnapshot } from "@/lib/ai-market";
 import { combineWithAi, computeIndicators, planEntry, type TradeEntry } from "@/lib/ai-entries";
 import { getActiveProvider } from "@/lib/ai/settings";
 import { getProvider } from "@/lib/ai/providers";
+import {
+  getVerifiedBinanceSpotRegistry,
+  isTradableBinanceSpotSymbol,
+  quantizeToBinanceTick,
+  VERIFIED_FALLBACK_SPOT_SYMBOLS,
+} from "@/lib/binance-spot-sync";
 
 const MAX_SYMBOLS = 10;
 const CACHE_MS = 60_000;
@@ -19,13 +25,26 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const forceRefresh = Boolean(body.forceRefresh);
-    const symbols: string[] = Array.isArray(body.symbols)
+    const spotRegistry = await getVerifiedBinanceSpotRegistry().catch(() => null);
+
+    let symbols: string[] = Array.isArray(body.symbols)
       ? [...new Set<string>(body.symbols.map((s: unknown) => String(s).replace(/[^A-Z0-9]/gi, "").toUpperCase()))]
-          .filter((s) => s.length >= 5 && s.length <= 20)
+          .filter((s) => isTradableBinanceSpotSymbol(s, null, spotRegistry))
           .slice(0, MAX_SYMBOLS)
       : [];
+
+    // Se os pares informados incluíam opções inválidas/restritas e a lista ficou curta, completa com pares Spot verificados
+    if (symbols.length < 4) {
+      for (const fallbackSym of VERIFIED_FALLBACK_SPOT_SYMBOLS) {
+        if (symbols.length >= 6) break;
+        if (!symbols.includes(fallbackSym) && isTradableBinanceSpotSymbol(fallbackSym, null, spotRegistry)) {
+          symbols.push(fallbackSym);
+        }
+      }
+    }
+
     if (symbols.length === 0) {
-      return NextResponse.json({ success: false, error: "Informe ao menos um par." }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Informe ao menos um par Spot válido na Binance." }, { status: 400 });
     }
 
     const key = [...symbols].sort().join(",");
@@ -39,8 +58,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Não foi possível obter dados da Binance agora." }, { status: 503 });
     }
 
-    // 1) Plano determinístico por indicadores
-    const plans = snapshots.map((m) => ({ m, plan: planEntry(m) }));
+    // 1) Plano determinístico por indicadores (quantizando níveis no tickSize oficial do par)
+    const plans = snapshots.map((m) => {
+      const rawPlan = planEntry(m);
+      const tickSize = spotRegistry?.get(m.symbol)?.tickSize;
+      return {
+        m,
+        plan: {
+          ...rawPlan,
+          entry: quantizeToBinanceTick(rawPlan.entry, tickSize),
+          stopLoss: quantizeToBinanceTick(rawPlan.stopLoss, tickSize, "floor"),
+          takeProfit: quantizeToBinanceTick(rawPlan.takeProfit, tickSize),
+          takeProfit2: quantizeToBinanceTick(rawPlan.takeProfit2, tickSize),
+        },
+      };
+    });
 
     // 2) Identificar o motor de IA ativo configurado
     const activeProv = getActiveProvider();
@@ -68,13 +100,13 @@ export async function POST(request: NextRequest) {
           .join("\n");
 
         const text = await askAIOnce(
-          `<role>Motor Quantitativo Institucional TradeAI (${usedProviderName}).</role>
+          `<role>Motor Quantitativo Institucional TradeAI (${usedProviderName}) — Binance Spot.</role>
 <grounding_rules>
 1. Confirme apenas planos ancorados nos indicadores fornecidos (EMA20/50, RSI, volumeRatio, suporte/resistência).
-2. Se houver divergência estrutural ou risco elevado, force side="WAIT".
+2. No mercado Spot da Binance, entradas de novo investimento devem ser "BUY" (compra) ou "WAIT" (aguardar). Se o ativo estiver em queda sem suporte claro, force side="WAIT".
 3. Zero prolixidade: reasoning técnico objetivo em até 22 palavras.
 </grounding_rules>`,
-          `Valide os planos abaixo e retorne EXCLUSIVAMENTE um objeto JSON {"entries": [{"symbol":"...","side":"BUY|SELL|WAIT","confidence":0.7..0.96,"reasoning":"..."}]}:
+          `Valide os planos abaixo e retorne EXCLUSIVAMENTE um objeto JSON {"entries": [{"symbol":"...","side":"BUY|WAIT","confidence":0.7..0.96,"reasoning":"..."}]}:
 
 ${summary}`,
           { maxTokens: 1200, cascadeTier: "fast", jsonMode: true, enableSemanticCache: true }
@@ -143,8 +175,10 @@ ${summary}`,
       };
     });
 
-    // Ordena para que oportunidades acionáveis (COMPRA/VENDA com maior score) apareçam primeiro
+    // Ordena para que oportunidades acionáveis (COMPRA com maior score) apareçam primeiro
     entries.sort((a, b) => {
+      if (a.side === "BUY" && b.side !== "BUY") return -1;
+      if (a.side !== "BUY" && b.side === "BUY") return 1;
       if (a.side !== "WAIT" && b.side === "WAIT") return -1;
       if (a.side === "WAIT" && b.side !== "WAIT") return 1;
       return b.score - a.score;

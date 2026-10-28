@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import type { ExitAction, ExitPlan, TradeEntry } from "@/lib/ai-entries";
 import { FastCloseBadge } from "@/components/bot/fast-close-badge";
 import { manualCloseBotPosition } from "@/lib/bot/multi-bot-engine";
+import { isTradableBinanceSpotSymbol } from "@/lib/binance-spot-sync";
 
 const MAX_PAIRS = 6;
 const RISK_PER_TRADE = 0.01; // 1% do patrimônio por operação
@@ -41,27 +42,6 @@ const FILTER_TABS: { id: EntryFilter; label: string; icon: any }[] = [
   { id: "volatilidade", label: "Volatilidade", icon: Flame },
   { id: "favoritos", label: "Blue Chips & Fav", icon: Zap },
 ];
-
-const STABLE_AND_PEGGED = new Set([
-  "USDC", "FDUSD", "TUSD", "USDD", "DAI", "BUSD", "EUR", "AEUR", "USDP",
-  "WBTC", "WBETH", "TBTC", "PAXG", "UST", "USDE", "USDJ", "CUSD",
-]);
-
-// Tokens deslistados, suspensos ou em status BREAK na Binance Spot
-const KNOWN_DELISTED_OR_HALTED = new Set([
-  "ACA", "VIC", "MATIC", "MKR", "AKT", "STG", "IDEX", "WTC", "WABI", "TORN", "VGX",
-  "NULS", "DREP", "MOB", "PNT", "BTG", "HIFI", "EPX", "FOR", "LOOM", "REEF", "BOND",
-  "DOCK", "POLS", "MDX", "VOXEL", "WRX", "UNFI", "BLZ", "KEY", "AMB", "KP3R", "AKRO",
-  "MULTIA", "OMG", "WAVES", "WNXM", "XEM", "DGB"
-]);
-
-function isTradableCrypto(sym: string): boolean {
-  if (!sym.endsWith("USDT")) return false;
-  if (sym.includes("UP") || sym.includes("DOWN") || sym.includes("BEAR") || sym.includes("BULL")) return false;
-  const base = sym.replace("USDT", "");
-  if (STABLE_AND_PEGGED.has(base) || KNOWN_DELISTED_OR_HALTED.has(base)) return false;
-  return true;
-}
 
 const SIDE_STYLE: Record<TradeEntry["side"], string> = {
   BUY: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
@@ -167,10 +147,14 @@ export function AIEntries() {
   const positions = (portfolio?.positions ?? []).filter((p) => p.quantity > 0 && p.avgPrice > 0);
   const equity = portfolio?.totalValue ?? 0;
 
-  // Constrói a lista ampla de candidatos de acordo com o filtro selecionado
+  // Constrói a lista ampla de candidatos de acordo com o filtro selecionado (100% elegíveis na Binance Spot)
   const candidatePool = useMemo(() => {
+    const validWatchlist = watchlist.filter((sym) => isTradableBinanceSpotSymbol(sym, tickers[sym]));
     const allTradable = Object.values(tickers).filter(
-      (t) => isTradableCrypto(t.symbol) && t.price > 0 && (t.quoteVolume > 100000 || watchlist.includes(t.symbol))
+      (t) =>
+        isTradableBinanceSpotSymbol(t.symbol, t) &&
+        t.price > 0 &&
+        (t.quoteVolume > 100000 || validWatchlist.includes(t.symbol))
     );
 
     if (filter === "gainers") {
@@ -200,7 +184,7 @@ export function AIEntries() {
 
     if (filter === "favoritos") {
       const blueChips = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT", "NEARUSDT", "SUIUSDT"];
-      return [...new Set([...watchlist, ...blueChips])];
+      return [...new Set([...validWatchlist, ...blueChips])].filter((s) => isTradableBinanceSpotSymbol(s, tickers[s]));
     }
 
     // "destaques" (Cesta dinâmica equilibrada entre altas, reversões e momentum)
@@ -231,7 +215,9 @@ export function AIEntries() {
       .slice(0, 8)
       .map((t) => t.symbol);
 
-    return [...new Set([...topGainers, ...topDips, ...topVol, ...highVolume, selectedSymbol, ...watchlist])];
+    const validSelected = selectedSymbol && isTradableBinanceSpotSymbol(selectedSymbol, tickers[selectedSymbol]) ? [selectedSymbol] : [];
+
+    return [...new Set([...topGainers, ...topDips, ...topVol, ...highVolume, ...validSelected, ...validWatchlist])];
   }, [tickers, filter, watchlist, selectedSymbol]);
 
   // Seleciona um lote dinâmico rotativo de pares a partir do pool
@@ -240,7 +226,7 @@ export function AIEntries() {
       return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"].slice(0, MAX_PAIRS);
     }
 
-    const currentSelected = selectedSymbol && isTradableCrypto(selectedSymbol) ? [selectedSymbol] : [];
+    const currentSelected = selectedSymbol && isTradableBinanceSpotSymbol(selectedSymbol, tickers[selectedSymbol]) ? [selectedSymbol] : [];
     const available = candidatePool.filter((s) => !currentSelected.includes(s));
 
     const needed = MAX_PAIRS - currentSelected.length;
@@ -268,7 +254,9 @@ export function AIEntries() {
 
       const symbols = pickSymbols(nextOffset);
       const data = await call("/api/ai/entries", { symbols, forceRefresh: forceNextRotation });
-      const receivedEntries: TradeEntry[] = data.entries ?? [];
+      const receivedEntries: TradeEntry[] = (data.entries ?? []).filter((e: TradeEntry) =>
+        isTradableBinanceSpotSymbol(e.symbol, tickers[e.symbol])
+      );
       setEntries(receivedEntries);
       setGeneratedAt(Date.now());
       setSelectedSymbols((prev) => prev.filter((sym) => receivedEntries.some((e) => e.symbol === sym && e.side === "BUY")));
@@ -315,7 +303,6 @@ export function AIEntries() {
     if (newFilter === filter) return;
     setFilter(newFilter);
     setRotationOffset(0);
-    // Dispara geração imediata para o novo filtro
     setTimeout(() => {
       generate(true);
     }, 50);
@@ -366,10 +353,10 @@ export function AIEntries() {
       ? Number(((e.trailingDistance / e.entry) * 100).toFixed(2))
       : 0.5;
 
-    // 2. Alocação sugerida (risco de 1%, teto de 25% do patrimônio)
+    // 2. Alocação sugerida (risco de 1%, teto de 25% do patrimônio, mínimo $20 USDT para Spot)
     const suggestedSize = sizing(e);
     const allocationAmount = suggestedSize?.notional && suggestedSize.notional > 0
-      ? Math.max(15, Number(suggestedSize.notional.toFixed(2)))
+      ? Math.max(20, Number(suggestedSize.notional.toFixed(2)))
       : 25;
 
     const existingBot = bots.find((b) => b.symbol.toUpperCase() === cleanSym);
@@ -435,7 +422,6 @@ export function AIEntries() {
   const handleLinkBot = (e: TradeEntry) => {
     const res = createOrUpdateBotFromEntry(e);
 
-    // Seleciona o robô na frota, ativa o par e navega até a tela de robôs
     setSelectedBotId(res.targetBotId);
     setSelectedSymbol(res.cleanSym);
     setActiveSection("bot");
@@ -449,10 +435,8 @@ export function AIEntries() {
     });
   };
 
-  // Lista de entradas com sinal de COMPRA (aptas para gerar robôs)
   const buyEntries = useMemo(() => entries.filter((e) => e.side === "BUY"), [entries]);
 
-  // Verifica se todos os robôs sugeridos de compra estão marcados
   const allSelected = useMemo(
     () => buyEntries.length > 0 && buyEntries.every((e) => selectedSymbols.includes(e.symbol)),
     [buyEntries, selectedSymbols]
@@ -472,7 +456,6 @@ export function AIEntries() {
     }
   };
 
-  // Gerar e ativar em lote todos os robôs selecionados (com teto institucional de 4 robôs simultâneos)
   const handleBatchCreateBots = () => {
     let selectedEntriesToProcess = buyEntries.filter((e) => selectedSymbols.includes(e.symbol));
     if (selectedEntriesToProcess.length === 0) {
@@ -496,17 +479,14 @@ export function AIEntries() {
     try {
       const results = selectedEntriesToProcess.map((e) => createOrUpdateBotFromEntry(e));
 
-      // Seleciona o último robô da lista
       if (results.length > 0) {
         const last = results[results.length - 1];
         setSelectedBotId(last.targetBotId);
         setSelectedSymbol(last.cleanSym);
       }
 
-      // Limpa a seleção após concluir
       setSelectedSymbols([]);
 
-      // Navega até a seção de robôs
       setActiveSection("bot");
       if (typeof window !== "undefined") {
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -690,7 +670,6 @@ export function AIEntries() {
             {exits.map((x) => {
               const cleanSym = x.symbol.toUpperCase();
               const activeBot = bots.find((b) => b.symbol.toUpperCase() === cleanSym && b.active);
-              const isBotInPosition = activeBot && (activeBot.status === "in_position" || (!!activeBot.position && activeBot.position.quantity > 0));
 
               return (
               <div key={x.symbol} className={cn("rounded-lg border border-border/40 p-3 space-y-2", activeBot && "border-emerald-500/40 bg-emerald-950/10", loadingExits && "opacity-60")}>
@@ -752,21 +731,6 @@ export function AIEntries() {
           const cleanSym = e.symbol.toUpperCase();
           const activeBot = bots.find((b) => b.symbol.toUpperCase() === cleanSym && b.active);
           const isBotInPosition = activeBot && (activeBot.status === "in_position" || (!!activeBot.position && activeBot.position.quantity > 0));
-
-          let floatingPnlPct = 0;
-          let hasFloatingPnl = false;
-          if (isBotInPosition && activeBot.position) {
-            const curPrice = tickers[cleanSym]?.price ?? (activeBot.position.currentPrice || e.currentPrice || 0);
-            const entryPrice = activeBot.position.entryPrice || 0;
-            if (curPrice > 0 && entryPrice > 0) {
-              floatingPnlPct = ((curPrice - entryPrice) / entryPrice) * 100;
-              hasFloatingPnl = true;
-            } else if (typeof activeBot.position.unrealizedPnlPercent === "number") {
-              floatingPnlPct = activeBot.position.unrealizedPnlPercent;
-              hasFloatingPnl = true;
-            }
-          }
-          const isFloatingProfit = floatingPnlPct >= 0;
 
           return (
             <div
@@ -911,7 +875,6 @@ export function AIEntries() {
                   </Button>
                 )}
 
-                {/* Gatilho de Zeragem Rápida a Mercado (Fast Close / Market Flatten) */}
                 {activeBot && isBotInPosition && (
                   <Button
                     size="sm"

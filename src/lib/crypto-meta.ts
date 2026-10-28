@@ -1,4 +1,5 @@
 // Centralized crypto metadata for 50+ symbols
+import { isTradableBinanceSpotSymbol } from "@/lib/binance-spot-sync";
 
 export type CryptoCategory = 
   | "Layer 1" 
@@ -149,12 +150,30 @@ export function generateColorForSymbol(sym: string): string {
   return `hsl(${h}, 75%, 52%)`;
 }
 
-// Dynamically register new symbols fetched from Binance
+export function getCryptoName(baseOrSymbol: string): string {
+  const clean = String(baseOrSymbol || "").toUpperCase();
+  const sym = clean.endsWith("USDT") ? clean : `${clean}USDT`;
+  return CRYPTO_NAMES[sym] || clean.replace(/USDT$/, "");
+}
+
+export function getCryptoIcon(baseOrSymbol: string): string {
+  const clean = String(baseOrSymbol || "").toUpperCase().replace(/USDT$/, "");
+  return clean.slice(0, 4);
+}
+
+export function getAssetCategory(baseOrSymbol: string): CryptoCategory {
+  const clean = String(baseOrSymbol || "").toUpperCase();
+  const sym = clean.endsWith("USDT") ? clean : `${clean}USDT`;
+  return CRYPTO_CATEGORIES[sym] || "Inovação";
+}
+
+// Dynamically register new symbols fetched from Binance (only valid Spot crypto pairs)
 export function registerDynamicSymbols(
   symbols: Array<{ symbol: string; name?: string; short?: string; category?: string }>
 ) {
   for (const item of symbols) {
-    const sym = item.symbol;
+    const sym = String(item?.symbol || "").toUpperCase();
+    if (!isTradableBinanceSpotSymbol(sym)) continue;
     if (!CRYPTO_BY_SYMBOL[sym]) {
       const short = item.short || sym.replace(/USDT$/, "");
       const name = item.name && item.name !== sym ? item.name : short;
@@ -198,13 +217,15 @@ export function getCryptoMeta(symbol: string): CryptoMeta {
     rank: 999,
     description: `Par ${short}/USDT negociado na Binance`,
   };
-  CRYPTO_LIST.push(meta);
-  CRYPTO_BY_SYMBOL[symbol] = meta;
-  CRYPTO_COLORS[symbol] = color;
-  CRYPTO_NAMES[symbol] = short;
-  CRYPTO_CATEGORIES[symbol] = "Inovação";
-  CRYPTO_SHORTS[symbol] = short;
-  if (!ALL_SYMBOLS.includes(symbol)) ALL_SYMBOLS.push(symbol);
+  if (isTradableBinanceSpotSymbol(symbol)) {
+    CRYPTO_LIST.push(meta);
+    CRYPTO_BY_SYMBOL[symbol] = meta;
+    CRYPTO_COLORS[symbol] = color;
+    CRYPTO_NAMES[symbol] = short;
+    CRYPTO_CATEGORIES[symbol] = "Inovação";
+    CRYPTO_SHORTS[symbol] = short;
+    if (!ALL_SYMBOLS.includes(symbol)) ALL_SYMBOLS.push(symbol);
+  }
   return meta;
 }
 

@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import { fetchFromBinanceService } from '@/lib/binance-service';
+import {
+  getVerifiedBinanceSpotRegistry,
+  isTradableBinanceSpotSymbol,
+} from '@/lib/binance-spot-sync';
 
 export interface BinanceProfitableBotRecommendation {
   id: string;
@@ -34,20 +38,6 @@ export interface BinanceProfitableBotRecommendation {
   riskRewardRatio: string;
   suggestedAllocation: number;
 }
-
-// Moedas estáveis ou atreladas a fiat que não têm volatilidade direcional
-const STABLE_AND_PEGGED = new Set([
-  'USDC', 'FDUSD', 'TUSD', 'USDD', 'DAI', 'BUSD', 'EUR', 'AEUR', 'USDP',
-  'WBTC', 'WBETH', 'TBTC', 'PAXG', 'UST', 'USDE', 'USDJ', 'CUSD', 'EURI', 'USDS'
-]);
-
-// Tokens deslistados, suspensos ou com problemas de liquidez
-const KNOWN_DELISTED_OR_HALTED = new Set([
-  'ACA', 'VIC', 'MATIC', 'MKR', 'AKT', 'STG', 'IDEX', 'WTC', 'WABI', 'TORN', 'VGX',
-  'NULS', 'DREP', 'MOB', 'PNT', 'BTG', 'HIFI', 'EPX', 'FOR', 'LOOM', 'REEF', 'BOND',
-  'DOCK', 'POLS', 'MDX', 'VOXEL', 'WRX', 'UNFI', 'BLZ', 'KEY', 'AMB', 'KP3R', 'AKRO',
-  'MULTIA', 'OMG', 'WAVES', 'WNXM', 'XEM', 'DGB'
-]);
 
 const BLUE_CHIPS = new Set([
   'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'LINK', 'NEAR', 'SUI'
@@ -99,14 +89,17 @@ export async function GET(request: Request) {
 
     const now = Date.now();
     if (!cachedResult || now - cachedResult.timestamp > CACHE_TTL_MS) {
-      const rawTickers = await fetchBinance24hTickers();
+      const [rawTickers, spotRegistry] = await Promise.all([
+        fetchBinance24hTickers(),
+        getVerifiedBinanceSpotRegistry().catch(() => null),
+      ]);
 
-      // 1. Filtra apenas pares em USDT válidos
+      // 1. Filtra apenas pares em USDT 100% válidos e operáveis na Binance Spot
+      // (exclui ações tokenizadas *BUSDT TRD_GRP_261, stablecoins, non-ASCII e pares em BREAK)
       const usdtPairs = rawTickers.filter((t) => {
-        if (!t.symbol || !t.symbol.endsWith('USDT')) return false;
-        if (t.symbol.includes('UP') || t.symbol.includes('DOWN') || t.symbol.includes('BEAR') || t.symbol.includes('BULL')) return false;
-        const base = t.symbol.replace('USDT', '');
-        if (STABLE_AND_PEGGED.has(base) || KNOWN_DELISTED_OR_HALTED.has(base)) return false;
+        if (!t?.symbol || !isTradableBinanceSpotSymbol(t.symbol, t, spotRegistry)) {
+          return false;
+        }
 
         const price = parseFloat(t.lastPrice || '0');
         const vol = parseFloat(t.quoteVolume || '0');
@@ -120,7 +113,7 @@ export async function GET(request: Request) {
       // 2. Pontuação Quantitativa de Lucratividade para cada par da Binance
       const scored: BinanceProfitableBotRecommendation[] = usdtPairs.map((t) => {
         const symbol = t.symbol;
-        const base = symbol.replace('USDT', '');
+        const base = symbol.slice(0, -4);
         const price = parseFloat(t.lastPrice || '0');
         const change24h = parseFloat(t.priceChangePercent || '0');
         const volume24h = parseFloat(t.quoteVolume || '0');

@@ -1,53 +1,76 @@
 import { NextResponse } from 'next/server';
-import { fetchFromBinanceService } from '@/lib/binance-service';
+import { getVerifiedBinanceSpotRegistry, isTradableBinanceSpotSymbol, VERIFIED_FALLBACK_SPOT_SYMBOLS } from '@/lib/binance-spot-sync';
 
-export async function POST() {
-  return handleSync();
-}
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
-export async function GET() {
-  return handleSync();
-}
+const BINANCE_ENDPOINTS = [
+  'https://api.binance.com',
+  'https://api1.binance.com',
+  'https://api2.binance.com',
+  'https://api3.binance.com',
+  'https://data-api.binance.vision',
+];
 
-async function handleSync() {
-  const localRes = await fetchFromBinanceService('/api/market/sync', 500);
-  if (localRes) {
+async function fetchFromBinance(path: string, timeoutMs = 6000): Promise<Response> {
+  let lastError: Error | null = null;
+  for (const base of BINANCE_ENDPOINTS) {
     try {
-      const data = await localRes.json();
-      return NextResponse.json(data);
-    } catch {
-      // ignore
+      const res = await fetch(`${base}${path}`, {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (res.ok) return res;
+      lastError = new Error(`${base} returned HTTP ${res.status}`);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
     }
   }
+  throw lastError || new Error('All Binance endpoints failed');
+}
 
-  // Fallback direct to Binance
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const rawSymbol = (searchParams.get('symbol') || 'BTCUSDT').toUpperCase();
+  const interval = searchParams.get('interval') || '1m';
+  const limit = Math.min(Number(searchParams.get('limit') || 300), 1000);
+
   try {
-    const [infoRes, tickerRes] = await Promise.all([
-      fetch('https://api.binance.com/api/v3/exchangeInfo', { signal: AbortSignal.timeout(12000), cache: 'no-store' }),
-      fetch('https://api.binance.com/api/v3/ticker/24hr', { signal: AbortSignal.timeout(10000), cache: 'no-store' }),
+    const spotRegistry = await getVerifiedBinanceSpotRegistry().catch(() => null);
+    const symbol = isTradableBinanceSpotSymbol(rawSymbol, null, spotRegistry)
+      ? rawSymbol
+      : (VERIFIED_FALLBACK_SPOT_SYMBOLS[0] || 'BTCUSDT');
+
+    const [klinesRes, tickerRes, depthRes] = await Promise.allSettled([
+      fetchFromBinance(`/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`),
+      fetchFromBinance(`/api/v3/ticker/24hr?symbol=${symbol}`),
+      fetchFromBinance(`/api/v3/depth?symbol=${symbol}&limit=20`),
     ]);
 
-    if (infoRes.ok && tickerRes.ok) {
-      const info = await infoRes.json();
-      const tickers = await tickerRes.json();
-      const spotUsdtSet = new Set(
-        (info.symbols || [])
-          .filter((s: any) => s.status === 'TRADING' && s.quoteAsset === 'USDT' && s.isSpotTradingAllowed)
-          .map((s: any) => s.symbol)
-      );
+    const klines =
+      klinesRes.status === 'fulfilled' ? await klinesRes.value.json() : [];
+    const ticker =
+      tickerRes.status === 'fulfilled' ? await tickerRes.value.json() : null;
+    const depth =
+      depthRes.status === 'fulfilled' ? await depthRes.value.json() : null;
 
-      const matchedCount = tickers.filter((t: any) => spotUsdtSet.has(t.symbol)).length;
-      return NextResponse.json({
-        success: true,
-        symbolsCount: spotUsdtSet.size,
-        tickersCount: matchedCount,
-        timestamp: Date.now(),
-        source: 'direct-binance-fallback',
-      });
-    }
-  } catch (err: any) {
-    console.error('[API Proxy] Direct sync error:', err.message);
+    return NextResponse.json({
+      ok: Array.isArray(klines) && klines.length > 0,
+      symbol,
+      requestedSymbol: rawSymbol,
+      interval,
+      timestamp: Date.now(),
+      klines: Array.isArray(klines) ? klines : [],
+      ticker,
+      depth,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[API Market Sync] Failed for ${rawSymbol}:`, message);
+    return NextResponse.json(
+      { ok: false, symbol: rawSymbol, interval, error: message, klines: [], ticker: null, depth: null },
+      { status: 502 }
+    );
   }
-
-  return NextResponse.json({ error: 'Failed to synchronize with Binance' }, { status: 500 });
 }

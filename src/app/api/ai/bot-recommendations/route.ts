@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { askAI, parseJsonLoose } from '@/lib/ai-client';
 import { getProvider, AI_PROVIDERS, type AIProviderId } from '@/lib/ai/providers';
 import { getActiveProvidersList, getModel, resolveApiKey } from '@/lib/ai/settings';
+import {
+  getVerifiedBinanceSpotRegistry,
+  isTradableBinanceSpotSymbol,
+} from '@/lib/binance-spot-sync';
 
 export interface AIBotRecommendation {
   id: string;
@@ -27,28 +31,6 @@ export interface AIBotRecommendation {
   aiModel: string; // "claude-3-5-sonnet-latest" | "gemini-2.0-flash" | ...
 }
 
-// Moedas estáveis ou atreladas que NÃO devem ser operadas por robôs direcionais/volatilidade
-const STABLE_AND_PEGGED = new Set([
-  'USDC', 'FDUSD', 'TUSD', 'USDD', 'DAI', 'BUSD', 'EUR', 'AEUR', 'USDP', 
-  'WBTC', 'WBETH', 'TBTC', 'PAXG', 'UST', 'USDE', 'USDJ', 'CUSD',
-]);
-
-// Tokens deslistados, suspensos ou em status BREAK na Binance Spot
-const KNOWN_DELISTED_OR_HALTED = new Set([
-  'ACA', 'VIC', 'MATIC', 'MKR', 'AKT', 'STG', 'IDEX', 'WTC', 'WABI', 'TORN', 'VGX',
-  'NULS', 'DREP', 'MOB', 'PNT', 'BTG', 'HIFI', 'EPX', 'FOR', 'LOOM', 'REEF', 'BOND',
-  'DOCK', 'POLS', 'MDX', 'VOXEL', 'WRX', 'UNFI', 'BLZ', 'KEY', 'AMB', 'KP3R', 'AKRO',
-  'MULTIA', 'OMG', 'WAVES', 'WNXM', 'XEM', 'DGB'
-]);
-
-function isTradableCrypto(sym: string): boolean {
-  if (!sym.endsWith('USDT')) return false;
-  if (sym.includes('UP') || sym.includes('DOWN') || sym.includes('BEAR') || sym.includes('BULL')) return false;
-  const base = sym.replace('USDT', '');
-  if (STABLE_AND_PEGGED.has(base) || KNOWN_DELISTED_OR_HALTED.has(base)) return false;
-  return true;
-}
-
 function shuffleArray<T>(array: T[]): T[] {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
@@ -66,18 +48,21 @@ export async function POST(request: NextRequest) {
     const tradingMode: string = body.tradingMode === 'live' ? 'live' : 'paper';
     const focusCategory: string = body.category || 'all'; // 'all' | 'gainers' | 'hot_altcoins' | 'dip_hunters' | 'blue_chips'
 
-    // 1. Filtrar ativos cripto reais e válidos (excluindo stablecoins e tokens alavancados)
+    const spotRegistry = await getVerifiedBinanceSpotRegistry().catch(() => null);
+
+    // 1. Filtrar ativos cripto reais e 100% válidos na Binance Spot
+    // (excluindo ações tokenizadas *BUSDT, stablecoins, tokens alavancados e pares em BREAK)
     const allValid = Object.entries(marketData)
-      .filter(([sym]) => isTradableCrypto(sym))
+      .filter(([sym, data]) => isTradableBinanceSpotSymbol(sym, data, spotRegistry))
       .map(([symbol, data]: [string, any]) => ({
-        symbol,
+        symbol: symbol.toUpperCase(),
         price: Number(data.price) || 0,
         change24h: Number(data.priceChangePercent) || 0,
         volume: Number(data.quoteVolume) || 0,
         high: Number(data.high) || Number(data.price) * 1.02,
         low: Number(data.low) || Number(data.price) * 0.98,
       }))
-      .filter((c) => c.price > 0 && c.volume > 200000); // Mínimo $200k de volume 24h
+      .filter((c) => c.price > 0 && c.volume > 250000); // Mínimo $250k de volume 24h
 
     // 2. Classificar por perfis de oportunidade no mercado atual (amostras amplas)
     // A) Maiores Altas com Volume (Momentum / Breakout) — top 40 ordenadas
@@ -117,7 +102,7 @@ export async function POST(request: NextRequest) {
     const selectedSymbols = new Set<string>();
     const diversePool: typeof allValid = [];
 
-    const addRandomFromList = (list: typeof allValid, count: number, samplePoolSize = 35) => {
+    const addRandomFromList = (list: typeof allValid, _count: number, samplePoolSize = 35) => {
       const candidates = shuffleArray(list.slice(0, samplePoolSize));
       for (const item of candidates) {
         if (!selectedSymbols.has(item.symbol)) {
@@ -153,7 +138,7 @@ export async function POST(request: NextRequest) {
       addRandomFromList(blueChips, 2, 7);
     }
 
-    // Se o pool for pequeno, adicionar lista ampla de backup
+    // Se o pool for pequeno, adicionar lista ampla de backup verificada na Binance Spot
     if (diversePool.length < 6) {
       const fallbackPool = allValid.length > 0 ? shuffleArray(allValid).slice(0, 15) : [
         { symbol: 'SUIUSDT', price: 1.85, change24h: 8.4, volume: 320000000, high: 1.95, low: 1.72 },
@@ -167,33 +152,35 @@ export async function POST(request: NextRequest) {
         { symbol: 'BTCUSDT', price: 65000, change24h: 1.8, volume: 1500000000, high: 66000, low: 64200 },
       ];
       for (const item of fallbackPool) {
-        if (!selectedSymbols.has(item.symbol)) {
+        if (!selectedSymbols.has(item.symbol) && isTradableBinanceSpotSymbol(item.symbol, null, spotRegistry)) {
+          selectedSymbols.add(item.symbol);
           diversePool.push(item);
         }
       }
     }
 
-    // 4. Montar resumo dinâmico para as IAs (com até 18 ativos variados)
-    const marketSummary = shuffleArray(diversePool)
-      .slice(0, 16)
+    // 4. Montar resumo dinâmico para as IAs (com até 16 ativos variados)
+    const candidateSubset = shuffleArray(diversePool).slice(0, 16);
+    const allowedSymbolsList = candidateSubset.map((c) => c.symbol).join(', ');
+    const marketSummary = candidateSubset
       .map((c) => `${c.symbol}: Preço $${c.price.toLocaleString()}, Variação 24h: ${c.change24h > 0 ? '+' : ''}${c.change24h.toFixed(2)}%, Vol 24h: $${(c.volume / 1e6).toFixed(1)}M`)
       .join('\n');
 
     const prompt = `Você é um gestor quantitativo sênior de fundos cripto.
-Analise os ativos abaixo e gere exatamente 6 recomendações DIVERSIFICADAS de estratégias para robôs automatizados de trading.
-REGRA CRÍTICA DE DIVERSIDADE:
-- VARIE OS PARES SUGERIDOS! NÃO se limite a Bitcoin e Ethereum. Escolha altcoins líquidas com forte momento entre a lista fornecida (ex: SUI, RENDER, NEAR, TAO, INJ, AVAX, PEPE, TIA, SEI, etc.).
-- No máximo 1 robô pode ser em BTC ou ETH. Os outros 5 DEVEM ser em altcoins com oportunidades no gráfico intradiário.
-- NUNCA sugira stablecoins (como USDC, FDUSD ou USDT).
+Analise os ativos abaixo e gere exatamente 6 recomendações DIVERSIFICADAS de estratégias para robôs automatizados de trading na Binance Spot.
+REGRA CRÍTICA DE ELEGIBILIDADE BINANCE SPOT:
+- Escolha EXCLUSIVAMENTE símbolos presentes nesta lista verificada da Binance Spot: [${allowedSymbolsList}].
+- NUNCA sugira ações tokenizadas (*BUSDT), stablecoins (USDC, FDUSD, RLUSD, UUSDT) ou ativos fora da lista acima.
+- No máximo 1 robô pode ser em BTCUSDT ou ETHUSDT. Os outros 5 DEVEM ser em altcoins líquidas da lista.
 - Distribua as 6 recomendações entre os horizontes de tempo:
   * 2 robôs para SCALPING RÁPIDO (timeframe 15m, duração 15 a 45 min)
   * 2 robôs para DAY TRADE (timeframe 1h, duração 2h a 6h)
   * 2 robôs para SWING TRADE (timeframe 4h ou 1d, duração 1 a 3 dias)
 - Para cada estratégia, defina:
   1. Estratégia de IA ("QUANT_ENSEMBLE", "MACD", "RSI", "GRID", "BREAKOUT" ou "MEAN_REVERSION")
-  2. MONTANTE DE ENTRADA IDEAL em USDT (considerando capital total de $${availableCash.toFixed(2)} USDT, entre $10 e $${Math.max(50, availableCash * 0.25).toFixed(0)} USDT)
+  2. MONTANTE DE ENTRADA IDEAL em USDT (mínimo $20 USDT, considerando capital total de $${availableCash.toFixed(2)} USDT)
   3. Duração e Timeframe adequados
-  4. Alvos de Take Profit e Stop Loss matematicamente favoráveis (Risco/Retorno mínimo de 1.8:1)
+  4. Alvos de Take Profit e Stop Loss matematicamente favoráveis (Stop Loss <= 2.0% e Risco/Retorno mínimo de 2.0:1)
 
 DADOS DE MERCADO ATUAIS:
 ${marketSummary}
@@ -211,23 +198,21 @@ Responda APENAS com um array JSON com 6 objetos no formato:
     "operationalTimeframe": "15m",
     "estimatedDuration": "Scalping Rápido (15-45 min)",
     "timeHorizonType": "SCALPING",
-    "takeProfit": 4.5,
-    "stopLoss": 2.0,
+    "takeProfit": 4.2,
+    "stopLoss": 1.8,
     "trailingStop": true,
     "trailingStopDistance": 0.8,
     "confidenceScore": 92,
     "marketRegime": "ALTA_VOLATILIDADE",
     "technicalReasoning": "Justificativa analítica com dados técnicos do porquê desta moeda, estratégia, montante e tempo",
-    "riskRewardRatio": "2.25:1"
+    "riskRewardRatio": "2.3:1"
   }
 ]`;
 
     // 5. Execução Multi-IA Simultânea (Paralela)
-    // Identificar os provedores ativos que possuem chaves configuradas
     const activeProviderIds = getActiveProvidersList();
     const providersToQuery: AIProviderId[] = activeProviderIds.filter((p) => !!resolveApiKey(p).key);
 
-    // Se nenhum provedor ativo tiver chave, checar se algum outro configurado possui chave
     if (providersToQuery.length === 0) {
       for (const p of AI_PROVIDERS) {
         if (resolveApiKey(p.id).key && !providersToQuery.includes(p.id)) {
@@ -240,13 +225,12 @@ Responda APENAS com um array JSON com 6 objetos no formato:
     const queryResultsSummary: { id: string; name: string; model: string; count: number; error?: string }[] = [];
 
     if (providersToQuery.length > 0) {
-      // Dispara consultas em paralelo usando Promise.allSettled
       const queries = providersToQuery.map(async (providerId) => {
         const pInfo = getProvider(providerId);
         const pModel = getModel(providerId);
         try {
           const res = await askAI({
-            system: 'Você é um especialista em robôs de trading quantitativo. Responda apenas com array JSON válido, sem texto explicativo adicional.',
+            system: 'Você é um especialista em robôs de trading quantitativo na Binance Spot. Responda apenas com array JSON válido, sem texto explicativo adicional.',
             messages: [{ role: 'user', content: prompt }],
             maxTokens: 4000,
             provider: providerId,
@@ -254,20 +238,24 @@ Responda APENAS com um array JSON com 6 objetos no formato:
 
           const parsed = parseJsonLoose<any[]>(res.text);
           if (Array.isArray(parsed) && parsed.length >= 2) {
-            const validRecs = parsed.filter((rec) => isTradableCrypto(rec.symbol));
+            const validRecs = parsed.filter((rec) =>
+              rec?.symbol && isTradableBinanceSpotSymbol(String(rec.symbol), marketData[String(rec.symbol).toUpperCase()], spotRegistry)
+            );
             if (validRecs.length > 0) {
               const enriched: AIBotRecommendation[] = validRecs.map((item, idx) => {
-                const amount = Math.max(10, Math.min(availableCash * 0.4, Number(item.allocationAmount) || 50));
-                let sl = Math.max(1.8, Math.min(3.5, Number(item.stopLoss) || 2.2));
-                let tp = Math.max(3.8, Number(item.takeProfit) || 5.2);
-                if (tp < sl * 2.2) {
-                  tp = Number((sl * 2.25).toFixed(1));
+                const normalizedSymbol = String(item.symbol).trim().toUpperCase();
+                const amount = Math.max(20, Math.min(Math.max(25, availableCash * 0.4), Number(item.allocationAmount) || 50));
+                const sl = Math.max(1.2, Math.min(2.0, Number(item.stopLoss) || 1.8));
+                let tp = Math.max(3.6, Number(item.takeProfit) || 4.2);
+                if (tp < sl * 2.0) {
+                  tp = Number((sl * 2.2).toFixed(1));
                 }
-                const trailing = Math.max(1.2, Number(item.trailingStopDistance) || 1.4);
+                const trailing = Math.max(0.6, Math.min(1.5, Number(item.trailingStopDistance) || 0.8));
 
                 return {
                   ...item,
-                  id: `rec-${providerId}-${Date.now()}-${idx}-${item.symbol}`,
+                  symbol: normalizedSymbol,
+                  id: `rec-${providerId}-${Date.now()}-${idx}-${normalizedSymbol}`,
                   allocationAmount: amount,
                   allocationPct: parseFloat(((amount / Math.max(1, availableCash)) * 100).toFixed(1)),
                   takeProfit: tp,
@@ -352,20 +340,14 @@ Responda APENAS com um array JSON com 6 objetos no formato:
     };
 
     const usedCoins = new Set<string>();
-    // Slot 0: Líder de Alta com Fluxo Comprador (Gainer / Breakout)
     const slot0Coin = pickUnique(gainers.length > 0 ? gainers : hotAltcoins, usedCoins, diversePool);
-    // Slot 1: Altcoin de Alta Performance / Narrativa (IA, L1, Web3)
     const slot1Coin = pickUnique(hotAltcoins.length > 0 ? hotAltcoins : volatile, usedCoins, diversePool);
-    // Slot 2: Oportunidade de Repique Técnico (RSI Sobrevendido / Dip Hunter)
     const slot2Coin = pickUnique(dipHunters.length > 0 ? dipHunters : volatile, usedCoins, diversePool);
-    // Slot 3: Day Trade de Momentum e Volume
     const slot3Coin = pickUnique(volatile.length > 0 ? volatile : hotAltcoins, usedCoins, diversePool);
-    // Slot 4: Consolidada ou Swing Trade (Blue Chip ou Grande Altcoin)
     const slot4Coin = pickUnique(blueChips.length > 0 ? blueChips : hotAltcoins, usedCoins, diversePool);
-    // Slot 5: Joia de Mercado / Diversificação
     const slot5Coin = pickUnique(shuffleArray(diversePool), usedCoins, allValid);
 
-    const slotCoins = [slot0Coin, slot1Coin, slot2Coin, slot3Coin, slot4Coin, slot5Coin];
+    const slotCoins = [slot0Coin, slot1Coin, slot2Coin, slot3Coin, slot4Coin, slot5Coin].filter(Boolean);
 
     const fallbackRecommendations: AIBotRecommendation[] = slotCoins.map((coin, idx) => {
       const cleanSym = coin.symbol.replace('USDT', '');
@@ -374,11 +356,11 @@ Responda APENAS com um array JSON com 6 objetos no formato:
       let timeframe = "1h";
       let estimatedDuration = "Day Trade (2h a 6h)";
       let horizonType: AIBotRecommendation["timeHorizonType"] = "DAY_TRADE";
-      let tp = 3.6;
+      let tp = 3.8;
       let sl = 1.8;
       let trailing = 0.8;
       let regime: AIBotRecommendation["marketRegime"] = "TENDENCIA_ALTA";
-      let allocAmount = Math.max(15, Math.min(400, Math.round(availableCash * 0.08)));
+      let allocAmount = Math.max(20, Math.min(400, Math.round(availableCash * 0.08)));
       let reasoning = "";
 
       if (idx === 0) {
@@ -386,64 +368,64 @@ Responda APENAS com um array JSON com 6 objetos no formato:
         timeframe = "15m";
         estimatedDuration = "Scalping Rápido (15 a 45 min)";
         horizonType = "SCALPING";
-        tp = 5.6;
-        sl = 2.2;
-        trailing = 1.4;
+        tp = 4.5;
+        sl = 1.8;
+        trailing = 0.8;
         regime = "ALTA_VOLATILIDADE";
-        allocAmount = Math.max(15, Math.round(availableCash * 0.06));
-        reasoning = `Fluxo comprador e volatilidade em expansão em ${cleanSym} (${coin.change24h > 0 ? '+' : ''}${coin.change24h.toFixed(1)}% nas 24h). Rompimento com alvo estendido de +5.6% e trailing stop de 1.4%.`;
+        allocAmount = Math.max(20, Math.round(availableCash * 0.06));
+        reasoning = `Fluxo comprador e volatilidade em expansão em ${cleanSym} (${coin.change24h > 0 ? '+' : ''}${coin.change24h.toFixed(1)}% nas 24h). Rompimento com alvo de +4.5% e stop estrito em 1.8%.`;
       } else if (idx === 1) {
         strategy = "RSI";
         timeframe = "15m";
         estimatedDuration = "Scalping em Fundo / Repique (30 a 90 min)";
         horizonType = "SCALPING";
-        tp = 4.8;
-        sl = 2.0;
-        trailing = 1.3;
+        tp = 4.2;
+        sl = 1.8;
+        trailing = 0.8;
         regime = "CORRECAO_SOBREVENDA";
-        allocAmount = Math.max(15, Math.round(availableCash * 0.07));
-        reasoning = `${cleanSym} atingiu sobrevenda técnica no curto prazo (${coin.change24h.toFixed(1)}% nas 24h). Repique com R:R de 2.4:1 (alvo +4.8% / stop -2.0%).`;
+        allocAmount = Math.max(20, Math.round(availableCash * 0.07));
+        reasoning = `${cleanSym} atingiu sobrevenda técnica no curto prazo (${coin.change24h.toFixed(1)}% nas 24h). Repique com R:R de 2.3:1 (alvo +4.2% / stop -1.8%).`;
       } else if (idx === 2) {
         strategy = "MACD";
         timeframe = "1h";
         estimatedDuration = "Day Trade de Momentum (2h a 6h)";
         horizonType = "DAY_TRADE";
-        tp = 5.2;
-        sl = 2.2;
-        trailing = 1.4;
+        tp = 4.4;
+        sl = 1.8;
+        trailing = 0.9;
         regime = "TENDENCIA_ALTA";
         allocAmount = Math.max(20, Math.round(availableCash * 0.10));
-        reasoning = `Cruzamento altista sustentado por volume em ${cleanSym}. Operação horária com relação risco/retorno favorável de 2.36:1 em continuação de tendência.`;
+        reasoning = `Cruzamento altista sustentado por volume em ${cleanSym}. Operação horária com relação risco/retorno favorável de 2.44:1 em continuação de tendência.`;
       } else if (idx === 3) {
         strategy = "QUANT_ENSEMBLE";
         timeframe = "1h";
         estimatedDuration = "Day Trade Algorítmico (3h a 8h)";
         horizonType = "DAY_TRADE";
-        tp = 5.5;
-        sl = 2.3;
-        trailing = 1.4;
+        tp = 4.6;
+        sl = 1.9;
+        trailing = 0.9;
         regime = "TENDENCIA_ALTA";
         allocAmount = Math.max(20, Math.round(availableCash * 0.10));
-        reasoning = `Modelo de ensemble combinando fluxo de ordens e momentum em ${cleanSym}. Confluência de indicadores com assimetria de 2.39:1.`;
+        reasoning = `Modelo de ensemble combinando fluxo de ordens e momentum em ${cleanSym}. Confluência de indicadores com assimetria de 2.42:1.`;
       } else if (idx === 4) {
         strategy = "GRID";
         timeframe = "4h";
         estimatedDuration = "Grid Contínuo de Faixa (1 a 3 dias)";
         horizonType = "SWING_TRADE";
-        tp = 4.5;
-        sl = 2.0;
-        trailing = 1.3;
+        tp = 4.2;
+        sl = 1.8;
+        trailing = 0.8;
         regime = "LATERAL_ACUMULACAO";
         allocAmount = Math.max(25, Math.round(availableCash * 0.12));
-        reasoning = `${cleanSym} consolidando em canal lateral bem definido. Algoritmo de Grid com meta de 4.5% e stop de 2.0% para evitar ruído.`;
+        reasoning = `${cleanSym} consolidando em canal lateral bem definido. Algoritmo de Grid com meta de 4.2% e stop de 1.8% para evitar ruído.`;
       } else {
         strategy = "MEAN_REVERSION";
         timeframe = "4h";
         estimatedDuration = "Swing de Reversão (1 a 4 dias)";
         horizonType = "SWING_TRADE";
-        tp = 6.0;
-        sl = 2.5;
-        trailing = 1.5;
+        tp = 4.8;
+        sl = 2.0;
+        trailing = 1.0;
         regime = "LATERAL_ACUMULACAO";
         allocAmount = Math.max(20, Math.round(availableCash * 0.09));
         reasoning = `Desvio padrão estatístico ampliado em ${cleanSym}. Posição de swing trade estruturada para retorno à média móvel exponencial com R:R de 2.4:1.`;

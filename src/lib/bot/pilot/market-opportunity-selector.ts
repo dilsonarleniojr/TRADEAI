@@ -2,6 +2,7 @@ import { PreciseMath } from "./precise-math";
 import { TradeSignal, PilotTradeValidator } from "./pilot-trade-validator";
 import { ExchangeMetadataService, SymbolFilters } from "./exchange-metadata-service";
 import { calculateEMA, calculateRSI, relativeATR, calculateADX } from "../indicators";
+import { getVerifiedBinanceSpotRegistry, isTradableBinanceSpotSymbol } from "@/lib/binance-spot-sync";
 import type { KlineData } from "@/lib/store";
 
 export type StrategyType = "AUTO" | "CONFLUENCE" | "MOMENTUM" | "MEAN_REVERSION";
@@ -204,9 +205,10 @@ export class MarketOpportunitySelector {
    */
   public async fetchCandidateTickers(baseUrl = "https://api.binance.com"): Promise<CandidateMarketData[]> {
     try {
-      const [tickerRes, bookRes] = await Promise.all([
+      const [tickerRes, bookRes, spotRegistry] = await Promise.all([
         fetch(`${baseUrl}/api/v3/ticker/24hr`, { signal: AbortSignal.timeout(5000), cache: "no-store" }),
         fetch(`${baseUrl}/api/v3/ticker/bookTicker`, { signal: AbortSignal.timeout(5000), cache: "no-store" }),
+        getVerifiedBinanceSpotRegistry().catch(() => null),
       ]);
 
       if (!tickerRes.ok || !bookRes.ok) {
@@ -225,7 +227,12 @@ export class MarketOpportunitySelector {
 
       for (const t of tickers) {
         const symbol: string = t.symbol;
-        if (!symbol.endsWith("USDT") || MarketOpportunitySelector.EXCLUDED_SYMBOLS.has(symbol)) {
+        if (
+          !symbol ||
+          !symbol.endsWith("USDT") ||
+          MarketOpportunitySelector.EXCLUDED_SYMBOLS.has(symbol) ||
+          !isTradableBinanceSpotSymbol(symbol, t, spotRegistry)
+        ) {
           continue;
         }
 
@@ -684,6 +691,8 @@ export class MarketOpportunitySelector {
     strategy: StrategyType | string = "AUTO"
   ): EvaluatedOpportunity | null {
     if (klines15m.length < 25) return null;
+    if (!isTradableBinanceSpotSymbol(candidate.symbol)) return null;
+    if (filters.status && filters.status !== "TRADING") return null;
 
     const closes = klines15m.map((k) => k.close);
     const lastClose = closes[closes.length - 1];
@@ -715,11 +724,15 @@ export class MarketOpportunitySelector {
     // 4. Calibração Dinâmica de Parâmetros Operacionais por ATR
     // Entrada base no bestBid para garantir LIMIT_MAKER Post-Only (GTX)
     const entryPrice = this.metadataService.quantizePrice(candidate.bestBid, filters);
+    if (entryPrice <= 0) return null;
     const atrValue = lastClose * relAtr;
 
-    // Stop-Loss em 1.2x ATR abaixo da entrada
-    const rawSl = entryPrice - atrValue * 1.2;
+    // Stop-Loss em 1.2x ATR abaixo da entrada, limitado a 1.75% para garantir viabilidade
+    // tanto no aporte mínimo de $15 USD quanto na banca piloto de $70 USD (SL <= 2.0% líquido de taxas)
+    const effectiveSlDistance = Math.min(atrValue * 1.2, entryPrice * 0.0175);
+    const rawSl = Math.max(filters.tickSize, entryPrice - effectiveSlDistance);
     const stopLoss = this.metadataService.quantizePrice(rawSl, filters);
+    if (stopLoss <= 0 || stopLoss >= entryPrice) return null;
 
     // Take-Profit analítico com garantia de R:R líquido >= 1.80x (compensando comissões e tickSize)
     const minSafeTp = PilotTradeValidator.calculateTargetTakeProfit(entryPrice, stopLoss, 1.80, filters);
@@ -727,13 +740,20 @@ export class MarketOpportunitySelector {
     const atrTp = this.metadataService.quantizePrice(rawTpAtr, filters);
     const takeProfit = Math.max(atrTp, minSafeTp);
 
-    // 5. Verificação de Viabilidade de Risco
-    const baseNav = Math.max(70.0, currentBalance);
+    // 5. Verificação de Viabilidade de Risco (deve ser executável tanto no preset mínimo de $15 quanto no saldo atual)
+    const validationNav = Math.min(15.0, Math.max(15.0, currentBalance));
     const minQty = Math.ceil(PilotTradeValidator.TARGET_NOTIONAL_MIN_USD / entryPrice / filters.stepSize) * filters.stepSize;
-    const lossAtMinLot = minQty * (entryPrice - stopLoss);
+    if (minQty < filters.minQty || minQty * entryPrice < filters.minNotional) {
+      return null;
+    }
+    const netRiskPerUnit =
+      (entryPrice - stopLoss) +
+      entryPrice * PilotTradeValidator.MAKER_FEE_RATE +
+      stopLoss * PilotTradeValidator.TAKER_FEE_RATE;
+    const lossAtMinLot = minQty * netRiskPerUnit;
 
-    if (lossAtMinLot > baseNav * PilotTradeValidator.MAX_RISK_PERCENT * 1.05) {
-      return null; // Stop-loss largo demais para o capital
+    if (lossAtMinLot > validationNav * PilotTradeValidator.MAX_RISK_PERCENT) {
+      return null; // Stop-loss ou stepSize incompatível com o aporte mínimo de $15 USD
     }
 
     // 6. Cálculo do Gatilho Ótimo / Condição de Disparo (Radar Sniper)

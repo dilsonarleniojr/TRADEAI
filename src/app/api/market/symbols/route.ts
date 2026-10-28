@@ -1,73 +1,58 @@
 import { NextResponse } from 'next/server';
-import { fetchFromBinanceService } from '@/lib/binance-service';
+import { getAssetCategory, getCryptoName, getCryptoIcon, CRYPTO_LIST } from '@/lib/crypto-meta';
+import { getVerifiedBinanceSpotRegistry, isTradableBinanceSpotSymbol } from '@/lib/binance-spot-sync';
 
-interface CachedSymbols {
-  data: any[];
-  timestamp: number;
-}
-
-let cachedSymbols: CachedSymbols | null = null;
-const CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutos
+let cachedSymbols: { symbol: string; name: string; icon: string; category: string }[] | null = null;
+let lastFetchTime = 0;
+const CACHE_DURATION = 1000 * 60 * 60; // 1 hour
 
 export async function GET() {
-  const now = Date.now();
-  if (cachedSymbols && now - cachedSymbols.timestamp < CACHE_TTL_MS) {
-    return NextResponse.json({
-      data: cachedSymbols.data,
-      count: cachedSymbols.data.length,
-      timestamp: cachedSymbols.timestamp,
-      cached: true,
-    });
-  }
-
-  // 1. Try microservice with circuit breaker
-  const localRes = await fetchFromBinanceService('/api/market/symbols', 300);
-  if (localRes) {
-    try {
-      const data = await localRes.json();
-      if (data?.data && Array.isArray(data.data)) {
-        cachedSymbols = { data: data.data, timestamp: now };
-        return NextResponse.json(data);
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  // 2. Fallback direct to Binance exchangeInfo
   try {
-    const resp = await fetch('https://api.binance.com/api/v3/exchangeInfo', {
-      signal: AbortSignal.timeout(8000),
-      cache: 'no-store',
-    });
-    if (resp.ok) {
-      const info = await resp.json();
-      const spotUsdt = (info.symbols || [])
-        .filter((s: any) => s.status === 'TRADING' && s.quoteAsset === 'USDT' && s.isSpotTradingAllowed)
-        .map((s: any) => ({
-          symbol: s.symbol,
-          name: s.baseAsset,
-          short: s.baseAsset,
-          category: 'Inovação',
-          baseAsset: s.baseAsset,
-          quoteAsset: 'USDT',
-          isSpotTradingAllowed: true,
-        }));
-      cachedSymbols = { data: spotUsdt, timestamp: now };
-      return NextResponse.json({ data: spotUsdt, count: spotUsdt.length, timestamp: now });
+    const now = Date.now();
+    if (cachedSymbols && (now - lastFetchTime < CACHE_DURATION)) {
+      return NextResponse.json({ symbols: cachedSymbols });
     }
-  } catch (err: any) {
-    console.error('[API Proxy] Direct Binance exchangeInfo error:', err.message);
-  }
 
-  if (cachedSymbols) {
+    const spotRegistry = await getVerifiedBinanceSpotRegistry();
+
+    if (spotRegistry.size === 0) {
+      throw new Error('Binance Spot registry returned empty symbol set');
+    }
+
+    const usdtSymbols = Array.from(spotRegistry.values())
+      .filter((s) => isTradableBinanceSpotSymbol(s.symbol, null, spotRegistry))
+      .map((s) => {
+        const baseAsset = s.baseAsset;
+        const symbol = s.symbol;
+        return {
+          symbol,
+          name: getCryptoName(baseAsset),
+          icon: getCryptoIcon(baseAsset),
+          category: getAssetCategory(baseAsset),
+        };
+      });
+
+    // Sort symbols: first the ones in our predefined CRYPTO_LIST, then alphabetically
+    const predefinedOrder = new Map(CRYPTO_LIST.map((c, index) => [c.symbol, index]));
+    
+    usdtSymbols.sort((a: { symbol: string }, b: { symbol: string }) => {
+      const orderA = predefinedOrder.has(a.symbol) ? predefinedOrder.get(a.symbol)! : 999999;
+      const orderB = predefinedOrder.has(b.symbol) ? predefinedOrder.get(b.symbol)! : 999999;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      return a.symbol.localeCompare(b.symbol);
+    });
+
+    cachedSymbols = usdtSymbols;
+    lastFetchTime = now;
+
+    return NextResponse.json({ symbols: usdtSymbols });
+  } catch (error) {
+    console.error('Error fetching Binance symbols:', error);
+    // Fallback to static list (also sanitized against delisted/halted symbols)
     return NextResponse.json({
-      data: cachedSymbols.data,
-      count: cachedSymbols.data.length,
-      timestamp: cachedSymbols.timestamp,
-      stale: true,
+      symbols: CRYPTO_LIST.filter((c) => isTradableBinanceSpotSymbol(c.symbol)),
     });
   }
-
-  return NextResponse.json({ error: 'Failed to fetch symbols' }, { status: 500 });
 }

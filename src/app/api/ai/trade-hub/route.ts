@@ -11,6 +11,12 @@ import {
   calculatePearsonCorrelation,
   getCryptoSector,
 } from '@/lib/bot/indicators';
+import {
+  getVerifiedBinanceSpotRegistry,
+  isTradableBinanceSpotSymbol,
+  quantizeToBinanceTick,
+  type VerifiedSpotSymbolMeta,
+} from '@/lib/binance-spot-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,8 +29,10 @@ interface BaseResponse {
   error?: string;
 }
 
-// Helper: fetch 24hr tickers from Binance
-async function fetchBinanceTickers(): Promise<Record<string, any>> {
+// Helper: fetch 24hr tickers from Binance (filtered strictly for tradable Binance Spot crypto pairs)
+async function fetchBinanceTickers(
+  spotRegistry?: Map<string, VerifiedSpotSymbolMeta> | null
+): Promise<Record<string, any>> {
   try {
     const res = await fetch('https://api.binance.com/api/v3/ticker/24hr', {
       signal: AbortSignal.timeout(6000),
@@ -34,13 +42,15 @@ async function fetchBinanceTickers(): Promise<Record<string, any>> {
     const list: any[] = await res.json();
     const map: Record<string, any> = {};
     for (const item of list) {
-      if (item.symbol.endsWith('USDT')) {
+      if (item?.symbol && isTradableBinanceSpotSymbol(item.symbol, item, spotRegistry)) {
         map[item.symbol] = {
           price: parseFloat(item.lastPrice),
           priceChangePercent: parseFloat(item.priceChangePercent),
           quoteVolume: parseFloat(item.quoteVolume),
           high: parseFloat(item.highPrice),
           low: parseFloat(item.lowPrice),
+          bidPrice: parseFloat(item.bidPrice || '0'),
+          askPrice: parseFloat(item.askPrice || '0'),
         };
       }
     }
@@ -133,7 +143,8 @@ export async function POST(request: Request) {
     switch (tool) {
       // 1. GERADOR DE IDEIAS DE TROCA
       case 'trade_ideas': {
-        const tickers = await fetchBinanceTickers();
+        const spotRegistry = await getVerifiedBinanceSpotRegistry().catch(() => null);
+        const tickers = await fetchBinanceTickers(spotRegistry);
         const category = params.category || 'all';
         const horizon = params.horizon || 'all'; // 'all' | 'fast' | 'long'
         const decorrelateRisk = Boolean(params.decorrelateRisk);
@@ -143,8 +154,9 @@ export async function POST(request: Request) {
           ? params.excludeSymbols.map((s: any) => String(s).toUpperCase())
           : [];
         const isExcluded = (sym: string) => {
+          const upper = String(sym || '').toUpperCase();
+          if (!isTradableBinanceSpotSymbol(upper, tickers[upper], spotRegistry)) return true;
           if (excludeSymbols.length === 0) return false;
-          const upper = sym.toUpperCase();
           const base = upper.replace('USDT', '');
           return excludeSymbols.includes(upper) || excludeSymbols.includes(base);
         };
@@ -432,62 +444,69 @@ REGRAS ESTRITAS:
           },
         ];
 
+        const buildQuantIdeaForSymbol = (sym: string, idx: number) => {
+          const t = tickers[sym] || { price: 100, priceChangePercent: 1.5, high: 105, low: 95, quoteVolume: 50000000 };
+          const p = Number(t?.price || 100);
+          const tickSize = spotRegistry?.get(sym)?.tickSize;
+          const strat = STRATEGY_PRESETS[idx % STRATEGY_PRESETS.length];
+          const isFast = horizon === 'fast' ? true : horizon === 'long' ? false : idx % 2 === 0;
+
+          // Guardrail institucional Binance Spot: setups de investimento Spot sempre LONG com Stop Loss <= 2.0%
+          const slDist = isFast ? p * 0.014 : p * 0.018;
+          const tp1Dist = slDist * (isFast ? 2.1 : 2.4);
+          const tp2Dist = slDist * (isFast ? 3.1 : 3.6);
+
+          const cInfo = correlationMap[sym] || {
+            r: 0.65,
+            label: 'Correlação Moderada',
+            sector: getCryptoSector(sym).sector,
+            isDecorrelated: getCryptoSector(sym).isAlternative,
+          };
+
+          return {
+            symbol: sym,
+            name: sym.replace('USDT', ''),
+            type: 'LONG',
+            horizon: isFast ? 'RAPIDO' : 'MEDIO_LONGO',
+            horizonLabel: isFast ? 'Aplicação Rápida (Day / Scalp)' : idx === 1 ? 'Médio Prazo (Swing Trade)' : 'Longo Prazo (Position / Estrutural)',
+            holdingPeriod: isFast ? 'Intraday (30 min a 4 horas)' : idx === 1 ? 'Swing Trade (2 a 7 dias)' : 'Longo Prazo (2 a 6 semanas)',
+            strategyType: strat.name,
+            entryPrice: quantizeToBinanceTick(p, tickSize),
+            tp1: quantizeToBinanceTick(p + tp1Dist, tickSize),
+            tp2: quantizeToBinanceTick(p + tp2Dist, tickSize),
+            stopLoss: quantizeToBinanceTick(p - slDist, tickSize, 'floor'),
+            riskReward: isFast ? 2.3 : 2.6,
+            winProbability: isFast ? 75 - (idx * 2) : 73 - (idx * 2),
+            technicalReason: strat.tech,
+            fundamentalReason: strat.fund,
+            timeframe: isFast ? strat.tfFast : strat.tfLong,
+            correlationBeta: cInfo.r,
+            correlationLabel: cInfo.label,
+            sector: cInfo.sector,
+            isDecorrelated: cInfo.isDecorrelated,
+            sources: {
+              exchange: 'Binance Spot Live API v3',
+              pricing: 'Livro de Ofertas & Tickers 24h',
+              indicators: isFast ? 'Pivots 15m/1h + Micro-Volume L2' : 'Pivots D1 + EMA 21/50 + RSI 14',
+              aiModel: 'Motor Quantitativo TradeAI V3 (Algorítmico)',
+            },
+          };
+        };
+
         let parsed = parseJsonLoose<any[]>(rawAI);
         if (!Array.isArray(parsed) || parsed.length === 0) {
-          // Robust Algorithmic Quant Generator com alta diversidade e rotação
-          parsed = candidateSymbols.slice(0, 5).map((sym, idx) => {
-            const t = tickers[sym] || { price: 100, priceChangePercent: 1.5, high: 105, low: 95, quoteVolume: 50000000 };
-            const p = Number(t?.price || 100);
-            const isLong = (t?.priceChangePercent ?? 0) > -3;
-            const strat = STRATEGY_PRESETS[idx % STRATEGY_PRESETS.length];
-
-            // Determinar horizonte se solicitado ou intercalar
-            const isFast = horizon === 'fast' ? true : horizon === 'long' ? false : idx % 2 === 0;
-
-            const slDist = isFast ? p * 0.013 : p * 0.035;
-            const tp1Dist = slDist * (isFast ? 1.8 : 2.2);
-            const tp2Dist = slDist * (isFast ? 2.8 : 3.4);
-
-            const cInfo = correlationMap[sym] || {
-              r: 0.65,
-              label: 'Correlação Moderada',
-              sector: getCryptoSector(sym).sector,
-              isDecorrelated: getCryptoSector(sym).isAlternative,
-            };
-
-            return {
-              symbol: sym,
-              name: sym.replace('USDT', ''),
-              type: isLong ? 'LONG' : 'SHORT',
-              horizon: isFast ? 'RAPIDO' : 'MEDIO_LONGO',
-              horizonLabel: isFast ? 'Aplicação Rápida (Day / Scalp)' : idx === 1 ? 'Médio Prazo (Swing Trade)' : 'Longo Prazo (Position / Estrutural)',
-              holdingPeriod: isFast ? 'Intraday (30 min a 4 horas)' : idx === 1 ? 'Swing Trade (2 a 7 dias)' : 'Longo Prazo (2 a 6 semanas)',
-              strategyType: strat.name,
-              entryPrice: Number(p.toFixed(p > 10 ? 2 : 4)),
-              tp1: Number((isLong ? p + tp1Dist : p - tp1Dist).toFixed(p > 10 ? 2 : 4)),
-              tp2: Number((isLong ? p + tp2Dist : p - tp2Dist).toFixed(p > 10 ? 2 : 4)),
-              stopLoss: Number((isLong ? p - slDist : p + slDist).toFixed(p > 10 ? 2 : 4)),
-              riskReward: isFast ? 2.3 : 2.9,
-              winProbability: isFast ? 75 - (idx * 2) : 71 - (idx * 2),
-              technicalReason: strat.tech,
-              fundamentalReason: strat.fund,
-              timeframe: isFast ? strat.tfFast : strat.tfLong,
-              correlationBeta: cInfo.r,
-              correlationLabel: cInfo.label,
-              sector: cInfo.sector,
-              isDecorrelated: cInfo.isDecorrelated,
-              sources: {
-                exchange: 'Binance Spot Live API v3',
-                pricing: 'Livro de Ofertas & Tickers 24h',
-                indicators: isFast ? 'Pivots 15m/1h + Micro-Volume L2' : 'Pivots D1 + EMA 21/50 + RSI 14',
-                aiModel: 'Motor Quantitativo TradeAI V3 (Algorítmico)',
-              },
-            };
-          });
+          parsed = candidateSymbols.slice(0, 5).map((sym, idx) => buildQuantIdeaForSymbol(sym, idx));
         } else {
-          // Enriquecer objetos retornados pela IA com fontes padronizadas, campos de horizonte e correlação
-          parsed = parsed.map((item, idx) => {
-            const sym = String(item.symbol || '').toUpperCase();
+          // Filtrar apenas símbolos 100% válidos e operáveis na Binance Spot
+          const validAiItems = parsed.filter((item) => {
+            const sym = String(item?.symbol || '').trim().toUpperCase();
+            return !isExcluded(sym) && isTradableBinanceSpotSymbol(sym, tickers[sym], spotRegistry);
+          });
+
+          parsed = validAiItems.map((item, idx) => {
+            const sym = String(item.symbol || '').trim().toUpperCase();
+            const livePrice = Number(tickers[sym]?.price || item.entryPrice || 100);
+            const tickSize = spotRegistry?.get(sym)?.tickSize;
             const isFast = item.horizon === 'RAPIDO' || (item.timeframe && ['15m', '1h', '1H', '30m', '5m'].includes(item.timeframe));
             const cInfo = correlationMap[sym] || {
               r: 0.65,
@@ -496,8 +515,29 @@ REGRAS ESTRITAS:
               isDecorrelated: getCryptoSector(sym).isAlternative,
             };
 
+            const entryVal = quantizeToBinanceTick(livePrice, tickSize);
+            const rawSl = Number(item.stopLoss);
+            const safeSl =
+              rawSl > 0 && rawSl < livePrice && (livePrice - rawSl) / livePrice <= 0.02
+                ? rawSl
+                : livePrice * (isFast ? 0.986 : 0.982);
+            const slVal = quantizeToBinanceTick(safeSl, tickSize, 'floor');
+            const riskDist = Math.max(livePrice * 0.012, entryVal - slVal);
+
+            const rawTp1 = Number(item.tp1);
+            const safeTp1 = rawTp1 > entryVal + riskDist * 1.6 ? rawTp1 : entryVal + riskDist * 2.1;
+            const rawTp2 = Number(item.tp2);
+            const safeTp2 = rawTp2 > safeTp1 ? rawTp2 : entryVal + riskDist * 3.1;
+
             return {
               ...item,
+              symbol: sym,
+              type: 'LONG',
+              entryPrice: entryVal,
+              stopLoss: slVal,
+              tp1: quantizeToBinanceTick(safeTp1, tickSize),
+              tp2: quantizeToBinanceTick(safeTp2, tickSize),
+              riskReward: Math.max(2.0, Number(item.riskReward) || 2.3),
               horizon: isFast ? 'RAPIDO' : 'MEDIO_LONGO',
               horizonLabel: item.horizonLabel || (isFast ? 'Aplicação Rápida (Day / Scalp)' : 'Médio/Longo Prazo (Swing Trade)'),
               holdingPeriod: item.holdingPeriod || (isFast ? 'Intraday (30 min a 4 horas)' : 'Médio Prazo (2 a 7 dias)'),
@@ -515,6 +555,18 @@ REGRAS ESTRITAS:
               },
             };
           });
+
+          // Completar com candidatos verificados se a IA retornou menos de 5 pares válidos
+          if (parsed.length < 5) {
+            const existingSyms = new Set(parsed.map((i) => i.symbol));
+            for (const candSym of candidateSymbols) {
+              if (parsed.length >= 5) break;
+              if (!existingSyms.has(candSym)) {
+                existingSyms.add(candSym);
+                parsed.push(buildQuantIdeaForSymbol(candSym, parsed.length));
+              }
+            }
+          }
 
           // Filtrar se o usuário pediu especificamente um horizonte
           if (horizon === 'fast') {
@@ -534,10 +586,8 @@ REGRAS ESTRITAS:
           }
         }
 
-        // Filtro estrito de Não-Canibalização: Expurgar deterministicamente qualquer ativo sob custódia
-        if (excludeSymbols.length > 0) {
-          parsed = parsed.filter((item) => !isExcluded(item.symbol));
-        }
+        // Filtro estrito de Não-Canibalização e Elegibilidade Spot
+        parsed = parsed.filter((item) => !isExcluded(item.symbol));
 
         return NextResponse.json({
           success: true,

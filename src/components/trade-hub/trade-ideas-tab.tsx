@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useCryptoStore } from "@/lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { FastCloseBadge } from "@/components/bot/fast-close-badge";
+import { isTradableBinanceSpotSymbol } from "@/lib/binance-spot-sync";
 import {
   Sparkles,
   TrendingUp,
@@ -220,11 +221,11 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
       ? idea.entryPrice
       : (tickers[cleanSym]?.price || 1);
 
-    // Stop Loss percentual calibrado pelo preço sugerido
+    // Stop Loss percentual calibrado pelo preço sugerido (respeitando guardrail institucional <= 2.0%)
     let slPct = idea.stopLoss > 0 && curPrice > 0
       ? Math.abs(Number((((curPrice - idea.stopLoss) / curPrice) * 100).toFixed(2)))
-      : (idea.horizon === "RAPIDO" ? 1.2 : 3.0);
-    slPct = Math.max(0.8, Math.min(5.0, slPct));
+      : (idea.horizon === "RAPIDO" ? 1.4 : 1.8);
+    slPct = Math.max(0.8, Math.min(2.0, slPct));
 
     // Take Profit percentual calibrado pelo alvo 1
     let tpPct = idea.tp1 > 0 && curPrice > 0
@@ -504,9 +505,12 @@ Fontes: Binance Spot Live API, Floor Trader Pivots, RSI 14, TradeAI Quant Engine
           ))}
         </div>
       ) : (() => {
+        const validSpotIdeas = ideas.filter((idea) =>
+          isTradableBinanceSpotSymbol(normalizeSym(idea.symbol), tickers[normalizeSym(idea.symbol)])
+        );
         const displayedIdeas = hideActiveBots
-          ? ideas.filter((idea) => !activeBotSymbols.includes(normalizeSym(idea.symbol)))
-          : ideas;
+          ? validSpotIdeas.filter((idea) => !activeBotSymbols.includes(normalizeSym(idea.symbol)))
+          : validSpotIdeas;
 
         if (ideas.length > 0 && displayedIdeas.length === 0 && hideActiveBots) {
           return (
