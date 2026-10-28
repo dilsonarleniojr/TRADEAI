@@ -244,22 +244,22 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
           <GlobalCommandSearch />
         </div>
 
-        {/* Bloco 3 - Direita: Saldo + Modo + Ações Rápidas */}
-        <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+        {/* Bloco 3 - Direita: CTA Primário + Telemetria Unificada + Modo + Ações Rápidas (Escala 4/8pt) */}
+        <div className="flex items-center gap-2 shrink-0">
           {/* Mobile search trigger */}
           <div className="md:hidden">
             <GlobalCommandSearch compactOnly />
           </div>
 
-          {/* Botão de Operação Direta com IA */}
+          {/* CTA Primário: Operação Direta com IA (Hierarquia Visual de Destaque) */}
           {mounted && (
             <Button
               size="sm"
               onClick={() => setDirectTradeModalOpen(true)}
-              className="h-7.5 gap-1.5 px-2.5 bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-black font-extrabold text-[11px] tracking-wide shadow-[0_0_12px_rgba(6,182,212,0.35)] rounded-lg cursor-pointer shrink-0 transition-transform active:scale-95"
+              className="h-8 gap-2 px-3 bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-extrabold text-xs tracking-wide shadow-[0_0_14px_rgba(6,182,212,0.38)] rounded-lg cursor-pointer shrink-0 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 active:scale-95"
               title="Iniciar Operação Direta com IA"
             >
-              <Zap className="w-3.5 h-3.5 fill-current text-black" />
+              <Zap className="w-3.5 h-3.5 fill-current text-slate-950 shrink-0" />
               <span className="hidden sm:inline">Operação Direta IA</span>
               <span className="sm:hidden">Direto</span>
             </Button>
@@ -272,12 +272,12 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
               onClick={() => setActiveSection("bot")}
               title={`PnL Não Realizado da Frota: ${fleetMetrics.unrealizedPnl >= 0 ? '+' : '-'}$${formatPrice(Math.abs(fleetMetrics.unrealizedPnl))} (${fleetMetrics.positionsCount} ${fleetMetrics.positionsCount === 1 ? 'posição ativa' : 'posições ativas'}) — Clique para abrir a Central de Robôs`}
               className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all cursor-pointer shrink-0 select-none active:scale-95",
+                "flex items-center gap-2 h-8 px-2.5 rounded-lg border transition-all duration-150 cursor-pointer shrink-0 select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95",
                 fleetMetrics.positionsCount > 0
                   ? fleetMetrics.unrealizedPnl >= 0
                     ? "bg-emerald-500/[0.08] border-emerald-500/35 hover:bg-emerald-500/15 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
                     : "bg-rose-500/[0.08] border-rose-500/35 hover:bg-rose-500/15 shadow-[0_0_12px_rgba(244,63,94,0.15)]"
-                  : "bg-white/[0.03] border-white/[0.07] hover:bg-white/[0.06]"
+                  : "bg-white/[0.03] border-white/[0.08] hover:bg-white/[0.06]"
               )}
             >
               <div className="relative shrink-0 flex items-center justify-center">
@@ -288,7 +288,7 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
                       ? fleetMetrics.unrealizedPnl >= 0
                         ? "text-emerald-400"
                         : "text-rose-400"
-                      : "text-slate-400"
+                      : "text-slate-300"
                   )}
                 />
                 {fleetMetrics.positionsCount > 0 && (
@@ -308,20 +308,20 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
                   </span>
                 )}
               </div>
-              <div className="flex flex-col text-left leading-tight">
-                <span className="hidden sm:flex text-[9px] uppercase tracking-wider text-slate-400 font-medium items-center gap-1">
+              <div className="flex flex-col text-left leading-none">
+                <span className="hidden sm:flex text-[10px] uppercase tracking-wider text-slate-300 font-semibold items-center gap-1">
                   <span>PnL Frota</span>
                   {fleetMetrics.positionsCount > 0 && (
-                    <span className="text-[8px] font-mono text-cyan-400 font-bold">
+                    <span className="font-mono text-cyan-300 font-bold">
                       ({fleetMetrics.positionsCount})
                     </span>
                   )}
                 </span>
                 <span
                   className={cn(
-                    "text-xs font-bold font-mono tabular-nums",
+                    "text-xs font-bold font-mono tabular-nums mt-0.5",
                     fleetMetrics.positionsCount === 0
-                      ? "text-slate-400"
+                      ? "text-slate-300"
                       : fleetMetrics.unrealizedPnl >= 0
                       ? "text-emerald-400"
                       : "text-rose-400"
@@ -337,11 +337,11 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
           )}
 
           {/* Saldo da Conta */}
-          <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/[0.03] border border-white/[0.07] shadow-sm shrink-0">
+          <div className="hidden sm:flex items-center gap-2 h-8 px-2.5 rounded-lg bg-white/[0.03] border border-white/[0.08] shadow-sm shrink-0">
             <Wallet className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-            <div className="flex flex-col text-left leading-tight">
-              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">Saldo</span>
-              <span className="text-xs font-bold font-mono text-slate-100 tabular-nums" suppressHydrationWarning>
+            <div className="flex flex-col text-left leading-none">
+              <span className="text-[10px] uppercase tracking-wider text-slate-300 font-semibold">Saldo</span>
+              <span className="text-xs font-bold font-mono text-slate-100 tabular-nums mt-0.5" suppressHydrationWarning>
                 ${portfolio?.totalValue !== undefined ? formatPrice(portfolio.totalValue) : "0.00"}
               </span>
             </div>
@@ -350,8 +350,8 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
                 variant="outline"
                 suppressHydrationWarning
                 className={cn(
-                  "text-[9px] font-mono px-1 py-0 h-4 border-none rounded",
-                  portfolio.pnlPercent >= 0 ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400"
+                  "text-[10px] font-mono px-1.5 py-0 h-4 border-none rounded tabular-nums",
+                  portfolio.pnlPercent >= 0 ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"
                 )}
               >
                 {portfolio.pnlPercent >= 0 ? "+" : ""}{portfolio.pnlPercent.toFixed(1)}%

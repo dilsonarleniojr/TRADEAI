@@ -77,6 +77,7 @@ export function TradeJournalPanel() {
   } | null>(null);
   const [showCoTPromptDrawer, setShowCoTPromptDrawer] = useState<boolean>(false);
   const [copiedPrompt, setCopiedPrompt] = useState<boolean>(false);
+  const [isCompacting, setIsCompacting] = useState<boolean>(false);
   const [compactionReport, setCompactionReport] = useState<ColdTierCompactionReport | null>(() =>
     tradeJournalEngine.getLastCompactionReport()
   );
@@ -199,12 +200,27 @@ export function TradeJournalPanel() {
     }
   }, [filteredRecords, horizonWindow, filterMode]);
 
+  const hasActiveFilters =
+    filterMode !== "all" ||
+    filterOutcome !== "all" ||
+    searchSymbol.trim().length > 0 ||
+    quickChip !== "ALL";
+
+  const handleResetFilters = () => {
+    setFilterMode("all");
+    setFilterOutcome("all");
+    setSearchSymbol("");
+    setQuickChip("ALL");
+  };
+
   const handleRunColdTierCompaction = async () => {
-    const report = tradeJournalEngine.runColdTierCompaction(records, 1000, {
-      includeColumnarArchive: true,
-    });
-    setCompactionReport(report);
+    if (isCompacting) return;
+    setIsCompacting(true);
     try {
+      const report = tradeJournalEngine.runColdTierCompaction(records, 1000, {
+        includeColumnarArchive: true,
+      });
+      setCompactionReport(report);
       await fetch("/api/journal/rollup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -212,6 +228,8 @@ export function TradeJournalPanel() {
       });
     } catch {
       // Ignora falha de rede se offline
+    } finally {
+      setIsCompacting(false);
     }
   };
 
@@ -268,80 +286,114 @@ export function TradeJournalPanel() {
 
   return (
     <div className="w-full bg-[#0b0e14] border border-[#1f2937] rounded-xl overflow-hidden shadow-2xl text-slate-200">
-      {/* Header com Abas de Navegação */}
-      <div className="flex flex-wrap items-center justify-between border-b border-[#1f2937] bg-[#111827]/80 px-6 py-4 backdrop-blur-md">
+      {/* Header com Abas de Navegação e CTA Primário (4/8pt Grid: px-6=24px, py-4=16px, gap-4=16px) */}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#1f2937] bg-[#111827]/90 px-6 py-4 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
             <LineChart className="w-5 h-5" />
           </div>
           <div>
             <h2 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-              Trade Journal & Performance Engine
-              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 font-mono">
+              Trade Journal &amp; Performance Engine
+              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-300 font-mono">
                 v2.6 Institutional
               </span>
             </h2>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-300 mt-0.5">
               Análise Pós-Trade, Rastreamento MAE/MFE, Desbalanceamento L2 e Notificações Remotas
             </p>
           </div>
         </div>
 
-        {/* Abas */}
-        <div className="flex items-center gap-1 bg-[#1a2234] p-1 rounded-lg border border-[#2d3748]">
+        {/* Cluster de Ação Primária (CTA) + Abas de Navegação */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* CTA Primário: Auditoria Copiloto Quant Pós-Trade (Destaque de Hierarquia Visual) */}
           <button
-            onClick={() => setActiveTab("journal")}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-              activeTab === "journal"
-                ? "bg-emerald-600 text-white shadow-sm"
-                : "text-slate-400 hover:text-slate-200"
+            type="button"
+            onClick={() => setShowCoTPromptDrawer((prev) => !prev)}
+            aria-expanded={showCoTPromptDrawer}
+            className={`inline-flex items-center gap-2 h-9 px-4 rounded-lg text-xs font-bold tracking-wide transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 active:scale-[0.98] ${
+              showCoTPromptDrawer
+                ? "bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/25 border border-cyan-300"
+                : "bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 shadow-md shadow-cyan-500/20"
             }`}
           >
-            Diário de Trades
+            <Brain className="w-4 h-4 shrink-0" />
+            <span>{showCoTPromptDrawer ? "Ocultar Copiloto Quant" : "Auditar com Copiloto Quant"}</span>
+            <kbd className="px-1.5 py-0.5 rounded bg-slate-950/25 text-slate-950 font-mono text-xs font-extrabold">
+              Alt+J
+            </kbd>
           </button>
-          <button
-            onClick={() => setActiveTab("orderflow")}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-all ${
-              activeTab === "orderflow"
-                ? "bg-purple-600 text-white shadow-sm"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
+
+          {/* Abas Secundárias (Segmented Control 8pt Grid) */}
+          <div
+            role="tablist"
+            aria-label="Seções do Trade Journal"
+            className="flex items-center gap-1 bg-[#141c2b] p-1 rounded-lg border border-[#2d3748]"
           >
-            <Activity className="w-3.5 h-3.5" />
-            Order Flow & RVOL
-            {anomalies.length > 0 && (
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab("telegram")}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-all ${
-              activeTab === "telegram"
-                ? "bg-blue-600 text-white shadow-sm"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Bell className="w-3.5 h-3.5" />
-            Telegram Bot
-            {telegramConfig.enabled && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            )}
-          </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "journal"}
+              onClick={() => setActiveTab("journal")}
+              className={`h-8 px-3 rounded-md text-xs font-semibold transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-[0.98] ${
+                activeTab === "journal"
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : "text-slate-300 hover:text-white hover:bg-slate-800/60"
+              }`}
+            >
+              Diário de Trades
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "orderflow"}
+              onClick={() => setActiveTab("orderflow")}
+              className={`h-8 px-3 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 active:scale-[0.98] ${
+                activeTab === "orderflow"
+                  ? "bg-purple-600 text-white shadow-sm"
+                  : "text-slate-300 hover:text-white hover:bg-slate-800/60"
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              Order Flow &amp; RVOL
+              {anomalies.length > 0 && (
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              )}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "telegram"}
+              onClick={() => setActiveTab("telegram")}
+              className={`h-8 px-3 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 active:scale-[0.98] ${
+                activeTab === "telegram"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-300 hover:text-white hover:bg-slate-800/60"
+              }`}
+            >
+              <Bell className="w-3.5 h-3.5" />
+              Telegram Bot
+              {telegramConfig.enabled && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Conteúdo Principal */}
+      {/* Conteúdo Principal (p-6 = 24px) */}
       <div className="p-6">
         {/* ABA 1: DIÁRIO DE TRADES */}
         {activeTab === "journal" && (
           <div className="space-y-6">
-            {/* Grade de KPIs Institucionais */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-              <div className="bg-[#131b2a] border border-[#1f2937] p-3.5 rounded-xl">
-                <span className="text-[11px] text-slate-400 uppercase tracking-wider block font-semibold">
+            {/* Grade de KPIs Institucionais (Escala 4/8pt: gap-4=16px, p-4=16px, tipografia WCAG AA) */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div className="bg-[#131b2a] border border-[#1f2937] hover:border-slate-700 p-4 rounded-xl transition-colors">
+                <span className="text-xs text-slate-300 uppercase tracking-wider block font-semibold">
                   Net PnL Líquido
                 </span>
-                <div className="mt-1 flex items-baseline gap-1.5">
+                <div className="mt-2 flex items-baseline gap-1.5 tabular-nums">
                   <span
                     className={`text-xl font-bold font-mono ${
                       metrics.totalNetPnl >= 0 ? "text-emerald-400" : "text-rose-400"
@@ -349,32 +401,32 @@ export function TradeJournalPanel() {
                   >
                     {metrics.totalNetPnl >= 0 ? "+" : ""}${metrics.totalNetPnl.toFixed(2)}
                   </span>
-                  <span className="text-[10px] text-slate-500 font-mono">USD</span>
+                  <span className="text-xs text-slate-400 font-mono">USD</span>
                 </div>
-                <span className="text-[10px] text-slate-400 mt-1 block">
+                <span className="text-xs text-slate-300 mt-1.5 block font-mono tabular-nums">
                   Taxas: -${metrics.totalFees.toFixed(2)} USD
                 </span>
               </div>
 
-              <div className="bg-[#131b2a] border border-[#1f2937] p-3.5 rounded-xl">
-                <span className="text-[11px] text-slate-400 uppercase tracking-wider block font-semibold">
-                  Taxa de Acerto (Win Rate)
+              <div className="bg-[#131b2a] border border-[#1f2937] hover:border-slate-700 p-4 rounded-xl transition-colors">
+                <span className="text-xs text-slate-300 uppercase tracking-wider block font-semibold">
+                  Taxa de Acerto
                 </span>
-                <div className="mt-1 flex items-baseline gap-1.5">
+                <div className="mt-2 flex items-baseline gap-1.5 tabular-nums">
                   <span className="text-xl font-bold font-mono text-white">
                     {metrics.winRate.toFixed(1)}%
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400 mt-1 block">
+                <span className="text-xs text-slate-300 mt-1.5 block font-mono tabular-nums">
                   {metrics.winTrades}W / {metrics.lossTrades}L ({metrics.totalTrades} trades)
                 </span>
               </div>
 
-              <div className="bg-[#131b2a] border border-[#1f2937] p-3.5 rounded-xl">
-                <span className="text-[11px] text-slate-400 uppercase tracking-wider block font-semibold">
+              <div className="bg-[#131b2a] border border-[#1f2937] hover:border-slate-700 p-4 rounded-xl transition-colors">
+                <span className="text-xs text-slate-300 uppercase tracking-wider block font-semibold">
                   Profit Factor
                 </span>
-                <div className="mt-1 flex items-baseline gap-1.5">
+                <div className="mt-2 flex items-baseline gap-1.5 tabular-nums">
                   <span
                     className={`text-xl font-bold font-mono ${
                       metrics.profitFactor >= 1.5
@@ -387,149 +439,156 @@ export function TradeJournalPanel() {
                     {metrics.profitFactor.toFixed(2)}
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400 mt-1 block">
+                <span className="text-xs text-slate-300 mt-1.5 block font-mono tabular-nums">
                   Payoff Ratio: {metrics.payoffRatio.toFixed(2)}x
                 </span>
               </div>
 
-              <div className="bg-[#131b2a] border border-[#1f2937] p-3.5 rounded-xl">
-                <span className="text-[11px] text-slate-400 uppercase tracking-wider block font-semibold flex items-center justify-between">
-                  MAE Médio
-                  <span className="text-[9px] text-rose-400/80 lowercase">pior excursão</span>
+              <div className="bg-[#131b2a] border border-[#1f2937] hover:border-slate-700 p-4 rounded-xl transition-colors">
+                <span className="text-xs text-slate-300 uppercase tracking-wider flex items-center justify-between font-semibold">
+                  <span>MAE Médio</span>
+                  <span className="text-xs text-rose-300 font-normal lowercase">risco</span>
                 </span>
-                <div className="mt-1 flex items-baseline gap-1.5">
+                <div className="mt-2 flex items-baseline gap-1.5 tabular-nums">
                   <span className="text-xl font-bold font-mono text-rose-400">
                     {metrics.avgMaePercent.toFixed(2)}%
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400 mt-1 block">
+                <span className="text-xs text-slate-300 mt-1.5 block font-mono tabular-nums">
                   Drawdown máx: {metrics.maxDrawdownPercent.toFixed(1)}%
                 </span>
               </div>
 
-              <div className="bg-[#131b2a] border border-[#1f2937] p-3.5 rounded-xl">
-                <span className="text-[11px] text-slate-400 uppercase tracking-wider block font-semibold flex items-center justify-between">
-                  MFE Médio
-                  <span className="text-[9px] text-emerald-400/80 lowercase">pico de lucro</span>
+              <div className="bg-[#131b2a] border border-[#1f2937] hover:border-slate-700 p-4 rounded-xl transition-colors">
+                <span className="text-xs text-slate-300 uppercase tracking-wider flex items-center justify-between font-semibold">
+                  <span>MFE Médio</span>
+                  <span className="text-xs text-emerald-300 font-normal lowercase">pico</span>
                 </span>
-                <div className="mt-1 flex items-baseline gap-1.5">
+                <div className="mt-2 flex items-baseline gap-1.5 tabular-nums">
                   <span className="text-xl font-bold font-mono text-emerald-400">
                     +{metrics.avgMfePercent.toFixed(2)}%
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400 mt-1 block">
+                <span className="text-xs text-slate-300 mt-1.5 block font-mono tabular-nums">
                   Duração média: {metrics.avgDurationMinutes.toFixed(1)}m
                 </span>
               </div>
 
-              <div className="bg-[#131b2a] border border-[#1f2937] p-3.5 rounded-xl">
-                <span className="text-[11px] text-slate-400 uppercase tracking-wider block font-semibold">
+              <div className="bg-[#131b2a] border border-[#1f2937] hover:border-slate-700 p-4 rounded-xl transition-colors">
+                <span className="text-xs text-slate-300 uppercase tracking-wider block font-semibold">
                   Índice de Sharpe
                 </span>
-                <div className="mt-1 flex items-baseline gap-1.5">
+                <div className="mt-2 flex items-baseline gap-1.5 tabular-nums">
                   <span className="text-xl font-bold font-mono text-cyan-400">
                     {metrics.sharpeRatio.toFixed(2)}
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400 mt-1 block">
+                <span className="text-xs text-slate-300 mt-1.5 block font-mono tabular-nums">
                   Sortino: {metrics.sortinoRatio.toFixed(2)}
                 </span>
               </div>
             </div>
 
             {/* Curva de Patrimônio (Equity Curve) em SVG de Alta Resolução */}
-            <div className="bg-[#131b2a] border border-[#1f2937] p-5 rounded-xl">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-emerald-400" />
-                  <h3 className="text-sm font-semibold text-white">
-                    Curva de Patrimônio Acumulado (Equity Curve)
-                  </h3>
-                  <span className="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    Stream Real-Time (BroadcastChannel + CustomEvent)
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300 font-mono">
-                    Worker IDB + SQLite WAL • Batch {persistenceStats.debounceMs}ms (
-                    {persistenceStats.totalRecordsPersisted} salvos
-                    {persistenceStats.lastFlushDurationMs > 0
-                      ? ` • ${persistenceStats.lastFlushDurationMs}ms`
-                      : ""}
-                    )
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleRunColdTierCompaction}
-                    title="Executar Compactação Colunar TJC1 e Agregação Diária Imutável UTC (Daily Rollup)"
-                    className="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-mono transition-colors cursor-pointer"
-                  >
-                    Cold-Tier TJC1 • Daily Rollup O(1)
-                    {compactionReport && compactionReport.compressionRatio > 1
-                      ? ` (${compactionReport.compressionRatio}x • ${compactionReport.totalRollupDays}d)`
-                      : ""}
-                  </button>
+            <div className="bg-[#131b2a] border border-[#1f2937] p-6 rounded-xl space-y-4">
+              {/* Linha 1 de Hierarquia: Título + Controles Interativos de Visualização */}
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2.5">
+                  <TrendingUp className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <div>
+                    <h3 className="text-base font-bold text-white leading-tight">
+                      Curva de Patrimônio Acumulado &amp; Underwater Drawdown
+                    </h3>
+                    <p className="text-xs text-slate-300 font-mono tabular-nums mt-0.5">
+                      Base Inicial: $1,000.00 USD ({metrics.equityCurve.length} pontos amostrados)
+                    </p>
+                  </div>
                 </div>
+
+                {/* Controles de Janela Temporal e Camadas (Escala 8pt: h-8 = 32px) */}
                 <div className="flex flex-wrap items-center gap-2">
                   {/* Seletor de Janela Temporal (Tick-by-Tick vs Daily Rollup O(1) para >50.000 trades) */}
-                  <div className="flex items-center gap-0.5 bg-[#0b0e14] p-0.5 rounded-md border border-[#1f2937]">
+                  <div
+                    role="group"
+                    aria-label="Janela temporal da curva de patrimônio"
+                    className="flex items-center gap-1 bg-[#0b0e14] p-1 rounded-lg border border-[#1f2937]"
+                  >
                     {(["LIVE", "30D", "90D", "1Y", "ALL"] as LongHorizonWindow[]).map((win) => (
                       <button
                         key={win}
                         type="button"
                         onClick={() => setHorizonWindow(win)}
-                        className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all cursor-pointer ${
+                        className={`h-7 px-2.5 rounded-md text-xs font-mono transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95 ${
                           horizonWindow === win
-                            ? "bg-emerald-600 text-white font-bold"
-                            : "text-slate-400 hover:text-slate-200"
+                            ? "bg-emerald-600 text-white font-bold shadow-sm"
+                            : "text-slate-300 hover:text-white hover:bg-slate-800/60"
                         }`}
                       >
                         {win === "LIVE" ? "TICKS" : `${win} O(1)`}
                       </button>
                     ))}
                   </div>
+
                   {/* Toggle Underwater Drawdown Layer */}
                   <button
                     type="button"
+                    aria-pressed={showUnderwaterDrawdown}
                     onClick={() => setShowUnderwaterDrawdown((prev) => !prev)}
-                    className={`px-2.5 py-0.5 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
+                    className={`h-8 px-3 rounded-lg text-xs font-mono border transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 active:scale-[0.98] ${
                       showUnderwaterDrawdown
-                        ? "bg-rose-500/15 border-rose-500/40 text-rose-300"
-                        : "bg-[#0b0e14] border-[#1f2937] text-slate-400 hover:text-slate-200"
+                        ? "bg-rose-500/15 border-rose-500/40 text-rose-200 font-semibold"
+                        : "bg-[#0b0e14] border-[#1f2937] text-slate-300 hover:text-white"
                     }`}
                   >
                     Underwater DD: {showUnderwaterDrawdown ? "ON" : "OFF"}
                   </button>
 
-                  {/* Toggle Copiloto Quant & Prompt CoT */}
+                  {/* Botão de Compactação Colunar TJC1 com Estado de Loading Explícito */}
                   <button
                     type="button"
-                    onClick={() => setShowCoTPromptDrawer((prev) => !prev)}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
-                      showCoTPromptDrawer
-                        ? "bg-cyan-500/20 border-cyan-500/40 text-cyan-200"
-                        : "bg-cyan-500/10 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20"
-                    }`}
+                    onClick={handleRunColdTierCompaction}
+                    disabled={isCompacting}
+                    aria-busy={isCompacting}
+                    title="Executar Compactação Colunar TJC1 e Agregação Diária Imutável UTC (Daily Rollup)"
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#0b0e14] hover:bg-cyan-950/50 border border-cyan-500/30 text-cyan-300 text-xs font-mono transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 active:scale-[0.98]"
                   >
-                    <Brain className="w-3.5 h-3.5" />
-                    Copiloto Quant CoT
+                    <RefreshCw className={`w-3.5 h-3.5 ${isCompacting ? "animate-spin text-cyan-400" : ""}`} />
+                    <span>
+                      {isCompacting ? "Compactando TJC1..." : "Rollup O(1)"}
+                      {compactionReport && compactionReport.compressionRatio > 1 && !isCompacting
+                        ? ` (${compactionReport.compressionRatio}x • ${compactionReport.totalRollupDays}d)`
+                        : ""}
+                    </span>
                   </button>
-
-                  {lastLiveExecution && (
-                    <span className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded font-mono">
-                      ⚡ {lastLiveExecution.event.source === "DIRECT_AI_TRADE" ? "Direct AI" : "Live Fleet"} •{" "}
-                      {lastLiveExecution.record.symbol} ({lastLiveExecution.event.triggerType || lastLiveExecution.record.exitReason}){" "}
-                      {lastLiveExecution.record.netPnl >= 0 ? "+" : ""}${lastLiveExecution.record.netPnl.toFixed(2)}
-                    </span>
-                  )}
-                  {metrics.equityCurve.length > 200 && (
-                    <span className="text-[11px] text-cyan-300 bg-cyan-950/60 border border-cyan-800/60 px-1.5 py-0.5 rounded font-mono">
-                      LTTB Ativo (60 pts / {metrics.equityCurve.length} trades)
-                    </span>
-                  )}
-                  <span className="text-xs text-slate-300 font-mono tabular-nums">
-                    Base Inicial: $1,000.00 USD ({metrics.equityCurve.length} pts)
-                  </span>
                 </div>
+              </div>
+
+              {/* Linha 2 de Hierarquia: Barra de Telemetria de Infraestrutura (Separada das Ações) */}
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#1f2937]/70">
+                <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 font-mono">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Stream Real-Time (BroadcastChannel + CustomEvent)
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-purple-500/10 border border-purple-500/25 text-purple-200 font-mono tabular-nums">
+                  Worker IDB + SQLite WAL • Batch {persistenceStats.debounceMs}ms (
+                  {persistenceStats.totalRecordsPersisted} salvos
+                  {persistenceStats.lastFlushDurationMs > 0
+                    ? ` • ${persistenceStats.lastFlushDurationMs}ms`
+                    : ""}
+                  )
+                </span>
+                {lastLiveExecution && (
+                  <span className="text-xs text-amber-200 bg-amber-500/15 border border-amber-500/30 px-2.5 py-1 rounded-md font-mono tabular-nums">
+                    ⚡ {lastLiveExecution.event.source === "DIRECT_AI_TRADE" ? "Direct AI" : "Live Fleet"} •{" "}
+                    {lastLiveExecution.record.symbol} ({lastLiveExecution.event.triggerType || lastLiveExecution.record.exitReason}){" "}
+                    {lastLiveExecution.record.netPnl >= 0 ? "+" : ""}${lastLiveExecution.record.netPnl.toFixed(2)}
+                  </span>
+                )}
+                {metrics.equityCurve.length > 200 && (
+                  <span className="text-xs text-cyan-200 bg-cyan-950/60 border border-cyan-800/60 px-2.5 py-1 rounded-md font-mono tabular-nums">
+                    LTTB Ativo (60 pts / {metrics.equityCurve.length} trades)
+                  </span>
+                )}
               </div>
 
               {/* Barra de Inspeção Crosshair Ponto-a-Ponto */}
@@ -576,9 +635,16 @@ export function TradeJournalPanel() {
                 onMouseLeave={() => setHoveredCurvePoint(null)}
               >
                 {metrics.equityCurve.length <= 1 ? (
-                  <div className="text-xs text-slate-400 flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    Aguardando encerramento de trades para plotar a curva de patrimônio contínua.
+                  <div className="flex flex-col items-center justify-center gap-2 text-center px-4">
+                    <div className="p-2 rounded-full bg-slate-800/80 border border-slate-700 text-emerald-400">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <p className="text-xs font-medium text-slate-200">
+                      Aguardando encerramento de trades para plotar a curva de patrimônio contínua.
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      Eventos de <code className="text-emerald-300">PARTIAL_TAKE_PROFIT</code> e fechamentos finais atualizam o gráfico em tempo real via BroadcastChannel.
+                    </p>
                   </div>
                 ) : (
                   <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 160">
@@ -754,22 +820,24 @@ export function TradeJournalPanel() {
               )}
             </div>
 
-            {/* Barra de Filtros, Quick Filter Chips e Exportação */}
-            <div className="space-y-2.5 bg-[#131b2a] border border-[#1f2937] p-3.5 rounded-xl">
+            {/* Barra de Filtros, Quick Filter Chips e Exportação (4/8pt Grid: p-4=16px, gap-3=12px, h-8=32px) */}
+            <div className="space-y-3 bg-[#131b2a] border border-[#1f2937] p-4 rounded-xl">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     type="text"
+                    aria-label="Filtrar trades por símbolo do ativo"
                     placeholder="Filtrar por par (ex: BTC, SOL)..."
                     value={searchSymbol}
                     onChange={(e) => setSearchSymbol(e.target.value)}
-                    className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 w-44 font-mono"
+                    className="h-8 bg-[#0b0e14] border border-[#2d3748] rounded-lg px-3 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/60 focus:border-emerald-500 w-48 font-mono transition-all"
                   />
 
                   <select
+                    aria-label="Filtrar por modo de execução"
                     value={filterMode}
                     onChange={(e: any) => setFilterMode(e.target.value)}
-                    className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                    className="h-8 bg-[#0b0e14] border border-[#2d3748] rounded-lg px-3 text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/60 focus:border-emerald-500 cursor-pointer"
                   >
                     <option value="all">Todos os Modos</option>
                     <option value="live">⚡ Live (Real)</option>
@@ -777,29 +845,42 @@ export function TradeJournalPanel() {
                   </select>
 
                   <select
+                    aria-label="Filtrar por resultado financeiro"
                     value={filterOutcome}
                     onChange={(e: any) => setFilterOutcome(e.target.value)}
-                    className="bg-[#0b0e14] border border-[#2d3748] rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                    className="h-8 bg-[#0b0e14] border border-[#2d3748] rounded-lg px-3 text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/60 focus:border-emerald-500 cursor-pointer"
                   >
                     <option value="all">Todos os Resultados</option>
                     <option value="win">🟢 Apenas Lucros (Wins)</option>
                     <option value="loss">🔴 Apenas Prejuízos (Losses)</option>
                   </select>
+
+                  {hasActiveFilters && (
+                    <button
+                      type="button"
+                      onClick={handleResetFilters}
+                      className="h-8 px-3 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-medium transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 active:scale-95"
+                    >
+                      Limpar Filtros
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
+                    type="button"
                     onClick={handleExportCsv}
                     disabled={filteredRecords.length === 0}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a2234] border border-[#2d3748] text-xs font-medium text-slate-200 hover:text-white hover:bg-[#222d42] disabled:opacity-40 transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#1a2234] border border-[#2d3748] text-xs font-medium text-slate-200 hover:text-white hover:bg-[#222d42] disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-[0.98]"
                   >
                     <Download className="w-3.5 h-3.5 text-emerald-400" />
                     Exportar CSV
                   </button>
                   <button
+                    type="button"
                     onClick={handleExportJson}
                     disabled={filteredRecords.length === 0}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a2234] border border-[#2d3748] text-xs font-medium text-slate-200 hover:text-white hover:bg-[#222d42] disabled:opacity-40 transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#1a2234] border border-[#2d3748] text-xs font-medium text-slate-200 hover:text-white hover:bg-[#222d42] disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 active:scale-[0.98]"
                   >
                     <Download className="w-3.5 h-3.5 text-cyan-400" />
                     Exportar JSON
@@ -808,8 +889,8 @@ export function TradeJournalPanel() {
               </div>
 
               {/* Quick Filter Chips em 1 Clique */}
-              <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-[#1f2937]/80">
-                <span className="text-xs text-slate-400 font-medium mr-1">Filtro Rápido:</span>
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#1f2937]/80">
+                <span className="text-xs text-slate-300 font-semibold mr-1">Filtro Rápido:</span>
                 {(
                   [
                     { id: "ALL", label: "Todos" },
@@ -823,11 +904,12 @@ export function TradeJournalPanel() {
                   <button
                     key={chip.id}
                     type="button"
+                    aria-pressed={quickChip === chip.id}
                     onClick={() => setQuickChip(chip.id)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors cursor-pointer ${
+                    className={`h-7 px-3 rounded-md text-xs font-mono transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95 ${
                       quickChip === chip.id
                         ? "bg-emerald-600 text-white font-semibold shadow-sm"
-                        : "bg-[#0b0e14] text-slate-300 hover:text-white border border-[#2d3748]"
+                        : "bg-[#0b0e14] text-slate-300 hover:text-white hover:border-slate-600 border border-[#2d3748]"
                     }`}
                   >
                     {chip.label}
@@ -840,7 +922,7 @@ export function TradeJournalPanel() {
             <div className="overflow-x-auto rounded-xl border border-[#1f2937] bg-[#111827]">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-[#1f2937] bg-[#141d2e] text-slate-300 text-xs font-semibold uppercase tracking-wider">
+                  <tr className="border-b border-[#1f2937] bg-[#141d2e] text-slate-200 text-xs font-semibold uppercase tracking-wider">
                     <th className="py-3 px-4">Ativo / Robô</th>
                     <th className="py-3 px-3">Modo</th>
                     <th className="py-3 px-3">Preço Entrada / Saída</th>
@@ -855,8 +937,41 @@ export function TradeJournalPanel() {
                 <tbody className="divide-y divide-[#1f2937]/50 font-mono tabular-nums">
                   {filteredRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-8 text-center text-slate-400 font-sans">
-                        Nenhum registro de trade encontrado para os filtros selecionados.
+                      <td colSpan={9} className="py-12 px-6 text-center font-sans">
+                        <div className="max-w-md mx-auto flex flex-col items-center justify-center gap-3">
+                          <div className="p-3 rounded-full bg-slate-800/90 border border-slate-700 text-cyan-400">
+                            <Sliders className="w-6 h-6" />
+                          </div>
+                          <div className="space-y-1">
+                            <h4 className="text-sm font-bold text-white">
+                              Nenhum registro de trade encontrado
+                            </h4>
+                            <p className="text-xs text-slate-300 leading-relaxed">
+                              {hasActiveFilters
+                                ? "Os filtros selecionados não retornaram execuções. Limpe os filtros ativos para visualizar todo o histórico pós-trade."
+                                : "Ainda não há operações encerradas na sessão atual. Assim que o Direct AI Trade ou a Frota ao Vivo realizar TP1/TP2 ou fechamento total, o registro aparecerá instantaneamente."}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                            {hasActiveFilters && (
+                              <button
+                                type="button"
+                                onClick={handleResetFilters}
+                                className="inline-flex items-center gap-1.5 h-8 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-95"
+                              >
+                                Resetar Filtros Ativos
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setShowCoTPromptDrawer(true)}
+                              className="inline-flex items-center gap-1.5 h-8 px-4 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-200 text-xs font-semibold transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 active:scale-95"
+                            >
+                              <Brain className="w-3.5 h-3.5" />
+                              Inspecionar Copiloto Quant (Alt+J)
+                            </button>
+                          </div>
+                        </div>
                       </td>
                     </tr>
                   ) : (

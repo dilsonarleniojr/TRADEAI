@@ -138,31 +138,33 @@ export function Sidebar() {
         {/* Separator */}
         <div className="w-full h-px bg-white/[0.07] mb-2.5" />
 
-        {/* Nav Items */}
+        {/* Nav Items (Escala 4/8pt + Contraste WCAG AA + Estados Explícitos) */}
         <nav className="flex flex-col gap-1 flex-1">
           {desktopNavItems.map((item) => {
             const isActive = activeSection === item.id;
 
             const buttonContent = (
               <button
+                type="button"
+                aria-current={isActive ? "page" : undefined}
                 onClick={() => setActiveSection(item.id)}
                 className={cn(
-                  "relative rounded-lg flex items-center transition-all duration-150 text-left w-full group cursor-pointer",
+                  "relative rounded-lg flex items-center transition-all duration-150 text-left w-full group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 active:scale-[0.98]",
                   isExpanded ? "px-2.5 py-2 gap-2.5" : "w-10 h-10 justify-center mx-auto",
                   isActive
-                    ? "bg-cyan-500/15 text-cyan-400 font-semibold border border-cyan-500/30 shadow-sm"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
+                    ? "bg-cyan-500/15 text-cyan-300 font-semibold border border-cyan-500/35 shadow-sm"
+                    : "text-slate-300 hover:text-white hover:bg-white/[0.06]"
                 )}
               >
-                <item.icon className={cn("w-4 h-4 shrink-0 transition-transform group-hover:scale-105", isActive ? "text-cyan-400" : "text-slate-400")} />
+                <item.icon className={cn("w-4 h-4 shrink-0 transition-transform group-hover:scale-105", isActive ? "text-cyan-400" : "text-slate-300")} />
 
                 {isExpanded && (
                   <div className="flex flex-col min-w-0 leading-tight flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium truncate">{item.label}</span>
-                      <span className="text-[9px] font-mono text-slate-400 bg-white/[0.04] px-1 rounded border border-white/[0.06]">[{item.shortcut}]</span>
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-xs font-semibold truncate">{item.label}</span>
+                      <span className="text-[10px] font-mono text-slate-300 bg-white/[0.06] px-1.5 py-0.5 rounded border border-white/[0.08]">[{item.shortcut}]</span>
                     </div>
-                    <span className="text-[9px] text-slate-500 truncate">{item.desc}</span>
+                    <span className="text-[10px] text-slate-300/80 truncate mt-0.5">{item.desc}</span>
                   </div>
                 )}
 
