@@ -4,6 +4,7 @@ import { getBinanceCredentials } from '@/lib/binance-session';
 import { isRateLimited } from '@/lib/rate-limit';
 import crypto from 'crypto';
 import { memoryCache } from '@/lib/cache/memory-cache';
+import { submitSpotOrder } from '@/lib/binance/order-submit';
 
 // Limites de segurança para ordens em dinheiro real (em USDT). Configuráveis por variável de ambiente.
 const MAX_ORDER_USD = Number(process.env.MAX_LIVE_ORDER_USD) || 500;
@@ -309,18 +310,14 @@ async function executeBinanceOrder(
     }
   }
 
-  const signature = crypto
-    .createHmac('sha256', apiSecret)
-    .update(queryString)
-    .digest('hex');
-
-  const url = `${baseUrl}/api/v3/order?${queryString}&signature=${signature}`;
-
-  const response = await fetchBinanceWithBackoff(url, {
-    method: 'POST',
-    headers: {
-      'X-MBX-APIKEY': apiKey,
-    },
+  // Envio único com newClientOrderId: nunca reenvia em 5xx/timeout (status desconhecido), consulta a ordem.
+  const response = await submitSpotOrder({
+    baseUrl,
+    symbol,
+    queryString,
+    apiKey,
+    apiSecret,
+    getTimestamp: () => getSynchronizedTimestamp(baseUrl),
   });
 
   if (!response.ok) {
