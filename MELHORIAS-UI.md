@@ -1,4 +1,4 @@
-# Control de Melhorias de UI / Frontend — TRADEAI
+# Controle de Melhorias de UI / Frontend — TRADEAI
 
 Este documento registra o backlog priorizado e o histórico de iterações de melhorias na interface de usuário do TRADEAI.
 
@@ -9,6 +9,7 @@ Este documento registra o backlog priorizado e o histórico de iterações de me
 - `src/components/chart/` (Candlestick Chart Wrapper, Order Book, Quick Trade)
 - `src/components/header/` e `src/components/header.tsx` (Global Status Bar, Theme Toggle, User Profile)
 - `src/components/sidebar.tsx` (Navegação lateral, Mobile Drawer, Safe Areas)
+- `src/components/institutional/` (Microstructure Panel, Bot Health Panel)
 
 ---
 
@@ -25,7 +26,7 @@ Este documento registra o backlog priorizado e o histórico de iterações de me
 
 | ID | Prioridade | Categoria | Tela/Componente (arquivo:linha) | Problema | Impacto no Usuário | Status |
 |---|---|---|---|---|---|---|
-| UI-001 | Crítico | Segurança da Operação | `src/components/smart-trading/trading/order-panel.tsx:377` | Ausência de modal de confirmação prévia no envio de ordem no modo REAL (Spot Live). | Risco de envio acidental de ordens reais por clique não intencional. | pendente |
+| UI-001 | Crítico | Segurança da Operação | `src/components/smart-trading/trading/order-panel.tsx:377` | Ausência de modal de confirmação prévia no envio de ordem no modo REAL (Spot Live). | Risco de envio acidental de ordens reais por clique não intencional. | concluído (252374df, ui-audit/2026-11-08-UI-001-after) |
 | UI-002 | Crítico | Segurança da Operação | `src/components/bot/direct-ai-trade-modal.tsx:2100` | Falta de badge e aviso de confirmação inequívoca de PAPER vs LIVE antes da execução de trade por IA. | Usuário pode executar ordens assistidas por IA com dinheiro real achando que está em ambiente simulado. | pendente |
 | UI-003 | Crítico | Segurança da Operação | `src/components/chart/quick-trade.tsx:120` | Botões de Quick Trade sem trava anti-duplo clique durante requisições assíncronas. | Risco de envio de ordens duplicadas em sequência por duplo clique do usuário. | pendente |
 | UI-004 | Alto | Leitura Financeira | `src/components/dashboard/open-orders.tsx:85` | Tabela de ordens abertas sem `tabular-nums` nos preços e quantidades. | Salto e oscilação horizontal dos números ao atualizar dados via WebSocket. | pendente |
@@ -33,6 +34,7 @@ Este documento registra o backlog priorizado e o histórico de iterações de me
 | UI-006 | Alto | Acessibilidade | `src/components/header.tsx:110` | Botões compostos apenas por ícones sem o atributo `aria-label`. | Leitores de tela não conseguem narrar a função dos botões no cabeçalho. | pendente |
 | UI-007 | Alto | Responsividade | `src/components/dashboard/recent-trades.tsx:60` | Tabela de trades recentes quebra o layout e gera rolagem na página inteira em 390px (mobile). | Experiência de navegação móvel degradada e desalinhamento de tela. | pendente |
 | UI-008 | Alto | Acessibilidade | `src/components/sidebar.tsx:90` | Links/botões da navegação lateral mobile com área de toque inferior a 44x44px e sem foco visível. | Dificuldade de seleção no mobile e problemas na navegação por teclado. | pendente |
+| UI-013 | Alto | Leitura Financeira | `src/components/institutional/microstructure-panel.tsx:30` | Painel de microestrutura e profundidade L2 sem `tabular-nums` nos preços, volumes e slippage. | Oscilação horizontal nos números de cotação durante atualizações de alta frequência. | pendente |
 | UI-009 | Médio | Leitura Financeira | `src/components/dashboard/realtime-net-pnl-panel.tsx:320` | Variação de PnL dependendo unicamente da cor verde/vermelho sem sinal `+` nem suporte a leitores de tela. | Prejuízo de acessibilidade para usuários com daltonismo. | pendente |
 | UI-010 | Médio | Desempenho | `src/components/chart/candlestick-chart-wrapper.tsx:450` | Re-renderização excessiva do wrapper do gráfico de candlestick a cada tick do WebSocket. | Alto uso de CPU e pequenos travamentos na animação do gráfico. | pendente |
 | UI-011 | Médio | Consistência | `src/components/smart-trading/ui/modal.tsx:40` | Modais do Smart Trading utilizando cores e bordas inline fora dos tokens semânticos do Tailwind/shadcn. | Inconsistência de contraste e bordas entre os temas claro e escuro. | pendente |
@@ -41,6 +43,17 @@ Este documento registra o backlog priorizado e o histórico de iterações de me
 ---
 
 ## Histórico
+
+### [Iteração 1] — 08/11/2026
+- **Item Executado:** `UI-001` (Modal de confirmação de ordem em modo REAL em `src/components/smart-trading/trading/order-panel.tsx`).
+- **Ações:**
+  - Implementado modal de confirmação prévia com resumo da operação (lado, símbolo, cotação, quantidade estimada e valor total em USDT) ao submeter ordens com `tradingMode === 'live'`.
+  - Adicionado alerta vermelho de risco de dinheiro real e botão duplo de confirmação.
+  - Criado teste unitário `tests/unit/smart-order-panel-confirmation.test.ts` (3 novos testes adicionados, todos aprovados).
+  - Verificação de tipos TypeScript (`npx tsc --noEmit`) e linter (`eslint`) sem erros.
+  - Screenshots "DEPOIS" capturados em `ui-audit/2026-11-08-UI-001-after/`.
+- **Exploração:** Auditada a área `src/components/institutional/` e mapeado o item `UI-013` (falta de `tabular-nums` no painel de microestrutura e profundidade L2).
+- **Commit:** `252374df` (`fix(ui-smart-trading): adicionar modal de confirmação de ordem em modo real [UI-001]`).
 
 ### [Iteração 0] — 08/11/2026
 - **Ações:**
