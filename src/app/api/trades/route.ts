@@ -8,6 +8,7 @@ import { submitSpotOrder } from '@/lib/binance/order-submit';
 import { fetchSymbolFilters, fetchCurrentPrice } from '@/lib/binance/market-info';
 import { formatQtyDown, formatQtyUp, formatPriceNearest } from '@/lib/binance/quantize';
 import { fetchFreeBalance } from '@/lib/binance/account';
+import { BINANCE_RECV_WINDOW_MS } from '@/lib/binance/time';
 
 // Limites de segurança para ordens em dinheiro real (em USDT). Configuráveis por variável de ambiente.
 const MAX_ORDER_USD = Number(process.env.MAX_LIVE_ORDER_USD) || 500;
@@ -122,7 +123,7 @@ async function executeBinanceOrder(
     let freeQuote = -1;
     let lockedQuote = 0;
     try {
-      const accQuery = `omitZeroBalances=true&timestamp=${timestamp}&recvWindow=60000`;
+      const accQuery = `omitZeroBalances=true&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
       const accSig = crypto.createHmac('sha256', apiSecret).update(accQuery).digest('hex');
       const accRes = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/account?${accQuery}&signature=${accSig}`, {
         headers: { 'X-MBX-APIKEY': apiKey },
@@ -187,19 +188,19 @@ async function executeBinanceOrder(
       const qtyClean = formatQtyDown(Math.max(minQty, finalSpend / targetPrice), stepSize);
 
       if (orderType === 'LIMIT_MAKER') {
-        queryString = `symbol=${symbol}&side=BUY&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
+        queryString = `symbol=${symbol}&side=BUY&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
       } else {
-        queryString = `symbol=${symbol}&side=BUY&type=LIMIT&timeInForce=GTC&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
+        queryString = `symbol=${symbol}&side=BUY&type=LIMIT&timeInForce=GTC&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
       }
     } else if (quoteOrderQtyAllowed) {
       const quoteClean = finalSpend.toFixed(2);
-      queryString = `symbol=${symbol}&side=BUY&type=MARKET&quoteOrderQty=${quoteClean}&timestamp=${timestamp}&recvWindow=60000`;
+      queryString = `symbol=${symbol}&side=BUY&type=MARKET&quoteOrderQty=${quoteClean}&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
     } else {
       // If quoteOrderQty not supported, calculate clean base quantity
       const refPrice = currentPrice > 0 ? currentPrice : (desiredTotal / quantity);
       const safeQty = Math.max(quantity, (minNotional * 1.05) / refPrice);
       const qtyClean = formatQtyUp(Math.max(minQty, safeQty), stepSize);
-      queryString = `symbol=${symbol}&side=BUY&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=60000`;
+      queryString = `symbol=${symbol}&side=BUY&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
     }
   } else {
     // For SELL: Verify available base asset balance on Binance
@@ -215,7 +216,7 @@ async function executeBinanceOrder(
       apiKey,
       apiSecret,
       timestamp,
-      recvWindow: 60000,
+      recvWindow: BINANCE_RECV_WINDOW_MS,
       fetchImpl: fetchBinanceWithBackoff,
     });
 
@@ -244,11 +245,11 @@ async function executeBinanceOrder(
     }
 
     if (orderType === 'LIMIT_MAKER') {
-      queryString = `symbol=${symbol}&side=SELL&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
+      queryString = `symbol=${symbol}&side=SELL&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
     } else if (orderType === 'LIMIT') {
-      queryString = `symbol=${symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
+      queryString = `symbol=${symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
     } else {
-      queryString = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=60000`;
+      queryString = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
     }
   }
 
@@ -313,7 +314,7 @@ export async function GET(request: NextRequest) {
       }
       const baseUrl = testnet ? 'https://testnet.binance.vision' : 'https://api.binance.com';
       const timestamp = await getSynchronizedTimestamp(baseUrl);
-      const query = `symbol=${orderSymbol}&orderId=${binanceOrderId}&timestamp=${timestamp}&recvWindow=60000`;
+      const query = `symbol=${orderSymbol}&orderId=${binanceOrderId}&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
       const signature = crypto.createHmac('sha256', apiSecret).update(query).digest('hex');
 
       const res = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/order?${query}&signature=${signature}`, {
@@ -720,7 +721,7 @@ export async function DELETE(request: NextRequest) {
       const { apiKey, apiSecret, testnet } = getBinanceCredentials(request);
       const baseUrl = testnet ? 'https://testnet.binance.vision' : 'https://api.binance.com';
       const timestamp = await getSynchronizedTimestamp(baseUrl);
-      const query = `symbol=${orderSymbol}&orderId=${binanceOrderId}&timestamp=${timestamp}&recvWindow=60000`;
+      const query = `symbol=${orderSymbol}&orderId=${binanceOrderId}&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
       const signature = crypto.createHmac('sha256', apiSecret).update(query).digest('hex');
 
       const cancelRes = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/order?${query}&signature=${signature}`, {

@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { BINANCE_RECV_WINDOW_MS } from "@/lib/binance/time";
 
 // Envio de ordem Spot sem risco de duplicidade.
 // Doc oficial (General API Information → HTTP Return Codes): um 5XX "NÃO deve ser tratado como falha;
@@ -45,7 +46,7 @@ async function findOrderByClientId(
   clientOrderId: string
 ): Promise<Response> {
   const timestamp = await opts.getTimestamp();
-  const query = `symbol=${opts.symbol}&origClientOrderId=${clientOrderId}&timestamp=${timestamp}&recvWindow=10000`;
+  const query = `symbol=${opts.symbol}&origClientOrderId=${clientOrderId}&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
   let res: Response;
   try {
     res = await fetchImpl(`${opts.baseUrl}/api/v3/order?${query}&signature=${sign(query, opts.apiSecret)}`, {

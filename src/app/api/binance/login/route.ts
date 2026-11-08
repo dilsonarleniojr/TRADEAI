@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
+import { BINANCE_RECV_WINDOW_MS, getBinanceTimestamp } from '@/lib/binance/time';
 import {
   clearBinanceSession,
   isSameOrigin,
@@ -48,8 +49,8 @@ export async function POST(request: Request) {
       ? 'https://testnet.binance.vision'
       : 'https://api.binance.com';
 
-    const timestamp = Date.now();
-    const queryString = `timestamp=${timestamp}&recvWindow=60000`;
+    const timestamp = await getBinanceTimestamp(baseUrl);
+    const queryString = `timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
     
     // Criar a assinatura HMAC-SHA256
     const signature = crypto

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { BINANCE_RECV_WINDOW_MS } from "@/lib/binance/time";
 import { getBinanceCredentials } from "@/lib/binance-session";
 import crypto from "crypto";
 
@@ -33,7 +34,7 @@ export async function GET(request: Request) {
 
     const baseUrl = testnet ? "https://testnet.binance.vision" : "https://api.binance.com";
     const timestamp = await getSynchronizedTimestamp(baseUrl);
-    const query = `timestamp=${timestamp}&recvWindow=60000`;
+    const query = `timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
     const signature = crypto.createHmac("sha256", apiSecret).update(query).digest("hex");
 
     const res = await fetch(`${baseUrl}/api/v3/openOrders?${query}&signature=${signature}`, {
@@ -101,7 +102,7 @@ export async function DELETE(request: Request) {
 
     if (cancelAllForSymbol && symbol) {
       const timestamp = await getSynchronizedTimestamp(baseUrl);
-      const query = `symbol=${symbol}&timestamp=${timestamp}&recvWindow=60000`;
+      const query = `symbol=${symbol}&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
       const signature = crypto.createHmac("sha256", apiSecret).update(query).digest("hex");
 
       const cancelRes = await fetch(`${baseUrl}/api/v3/openOrders?${query}&signature=${signature}`, {
@@ -118,7 +119,7 @@ export async function DELETE(request: Request) {
 
     if (symbol && orderId) {
       const timestamp = await getSynchronizedTimestamp(baseUrl);
-      const query = `symbol=${symbol}&orderId=${orderId}&timestamp=${timestamp}&recvWindow=60000`;
+      const query = `symbol=${symbol}&orderId=${orderId}&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
       const signature = crypto.createHmac("sha256", apiSecret).update(query).digest("hex");
 
       const cancelRes = await fetch(`${baseUrl}/api/v3/order?${query}&signature=${signature}`, {

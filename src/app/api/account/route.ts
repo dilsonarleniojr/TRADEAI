@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getBinanceCredentials } from '@/lib/binance-session';
 import crypto from 'crypto';
+import { BINANCE_RECV_WINDOW_MS, getBinanceTimestamp } from '@/lib/binance/time';
 
 import { fetchFromBinanceService } from '@/lib/binance-service';
 
@@ -33,17 +34,17 @@ async function fetchBinanceAccount(apiKey: string, apiSecret: string, testnet: b
     throw new Error("API Key or Secret missing.");
   }
 
-  const timestamp = Date.now();
+  const baseUrl = testnet
+      ? 'https://testnet.binance.vision'
+      : 'https://api.binance.com';
+
+  const timestamp = await getBinanceTimestamp(baseUrl);
   // omitZeroBalances: devolve só os ativos com saldo
-  const queryString = `omitZeroBalances=true&timestamp=${timestamp}&recvWindow=60000`;
+  const queryString = `omitZeroBalances=true&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
   const signature = crypto
     .createHmac('sha256', apiSecret)
     .update(queryString)
     .digest('hex');
-
-  const baseUrl = testnet
-      ? 'https://testnet.binance.vision'
-      : 'https://api.binance.com';
 
   const url = `${baseUrl}/api/v3/account?${queryString}&signature=${signature}`;
   const response = await fetch(url, {
