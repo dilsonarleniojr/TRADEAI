@@ -27,7 +27,7 @@ Este documento registra o backlog priorizado e o histórico de iterações de me
 | ID | Prioridade | Categoria | Tela/Componente (arquivo:linha) | Problema | Impacto no Usuário | Status |
 |---|---|---|---|---|---|---|
 | UI-001 | Crítico | Segurança da Operação | `src/components/smart-trading/trading/order-panel.tsx:377` | Ausência de modal de confirmação prévia no envio de ordem no modo REAL (Spot Live). | Risco de envio acidental de ordens reais por clique não intencional. | concluído (252374df, ui-audit/2026-11-08-UI-001-after) |
-| UI-002 | Crítico | Segurança da Operação | `src/components/bot/direct-ai-trade-modal.tsx:2100` | Falta de badge e aviso de confirmação inequívoca de PAPER vs LIVE antes da execução de trade por IA. | Usuário pode executar ordens assistidas por IA com dinheiro real achando que está em ambiente simulado. | pendente |
+| UI-002 | Crítico | Segurança da Operação | `src/components/bot/direct-ai-trade-modal.tsx:2100` | Falta de badge e aviso de confirmação inequívoca de PAPER vs LIVE antes da execução de trade por IA. | Usuário pode executar ordens assistidas por IA com dinheiro real achando que está em ambiente simulado. | concluído (670cb815, ui-audit/2026-11-08-UI-002-after) |
 | UI-003 | Crítico | Segurança da Operação | `src/components/chart/quick-trade.tsx:120` | Botões de Quick Trade sem trava anti-duplo clique durante requisições assíncronas. | Risco de envio de ordens duplicadas em sequência por duplo clique do usuário. | pendente |
 | UI-004 | Alto | Leitura Financeira | `src/components/dashboard/open-orders.tsx:85` | Tabela de ordens abertas sem `tabular-nums` nos preços e quantidades. | Salto e oscilação horizontal dos números ao atualizar dados via WebSocket. | pendente |
 | UI-005 | Alto | Leitura Financeira | `src/components/chart/order-book.tsx:140` | Livro de ofertas L2 sem `tabular-nums` e sem indicador de cotação desatualizada/desconexão. | Dificuldade de leitura de números e falta de aviso sobre dados de mercado obsoletos. | pendente |
@@ -38,11 +38,23 @@ Este documento registra o backlog priorizado e o histórico de iterações de me
 | UI-009 | Médio | Leitura Financeira | `src/components/dashboard/realtime-net-pnl-panel.tsx:320` | Variação de PnL dependendo unicamente da cor verde/vermelho sem sinal `+` nem suporte a leitores de tela. | Prejuízo de acessibilidade para usuários com daltonismo. | pendente |
 | UI-010 | Médio | Desempenho | `src/components/chart/candlestick-chart-wrapper.tsx:450` | Re-renderização excessiva do wrapper do gráfico de candlestick a cada tick do WebSocket. | Alto uso de CPU e pequenos travamentos na animação do gráfico. | pendente |
 | UI-011 | Médio | Consistência | `src/components/smart-trading/ui/modal.tsx:40` | Modais do Smart Trading utilizando cores e bordas inline fora dos tokens semânticos do Tailwind/shadcn. | Inconsistência de contraste e bordas entre os temas claro e escuro. | pendente |
+| UI-014 | Médio | Acessibilidade | `src/components/journal/trade-journal-panel.tsx:1330` | Botões de filtros rápidos sem `aria-label` e falta de descrições acessíveis para leitores de tela na tabela pós-trade. | Usuários de leitor de tela não recebem narração adequada dos filtros e do estado do diário. | pendente |
 | UI-012 | Baixo | Consistência | `src/components/footer.tsx:30` | Desalinhamento pontual de margens do rodapé em telas ultra-wide (1440px+). | Pequeno impacto estético visual em monitores grandes. | pendente |
 
 ---
 
 ## Histórico
+
+### [Iteração 2] — 08/11/2026
+- **Item Executado:** `UI-002` (Badges de ambiente PAPER vs LIVE e modal de confirmação dupla no Direct AI Trade Modal em `src/components/bot/direct-ai-trade-modal.tsx`).
+- **Ações:**
+  - Adicionado banner/badge inequívoco destacando o modo operacional ativo (`LIVE SPOT BINANCE` em vermelho x `PAPER SIMULADO` em ciano) na tela de configuração e no botão de ação.
+  - Implementado modal de confirmação de risco pré-ordem para execuções no modo REAL (`live`), detalhando valor em USDT, estratégia, duração e ativo alvo.
+  - Criado helper e suite de testes unitários `tests/unit/direct-ai-trade-confirmation.test.ts` (3 novos testes adicionados, 344/344 aprovados no total).
+  - Verificação de tipos TypeScript (`npx tsc --noEmit`) e linter (`eslint`) sem erros.
+  - Screenshots "DEPOIS" capturados em `ui-audit/2026-11-08-UI-002-after/`.
+- **Exploração:** Auditada a área `src/components/journal/` e mapeado o item `UI-014` (acessibilidade de botões e leitor de tela no painel do diário pós-trade).
+- **Commit:** `670cb815` (`fix(ui-bot): adicionar badges e confirmação de modo real no direct ai trade modal [UI-002]`).
 
 ### [Iteração 1] — 08/11/2026
 - **Item Executado:** `UI-001` (Modal de confirmação de ordem em modo REAL em `src/components/smart-trading/trading/order-panel.tsx`).
