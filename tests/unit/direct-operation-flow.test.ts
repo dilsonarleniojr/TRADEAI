@@ -1,11 +1,20 @@
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "bun:test";
+import { join } from "path";
 import { CurrencyPairNormalizer } from "@/lib/bot/pilot/currency-pair-normalizer";
 import { DirectOperationManager } from "@/lib/bot/pilot/direct-operation-manager";
 import { ExchangeMetadataService } from "@/lib/bot/pilot/exchange-metadata-service";
 import { MarketOpportunitySelector } from "@/lib/bot/pilot/market-opportunity-selector";
 import { PreciseMath } from "@/lib/bot/pilot/precise-math";
+import { installBinanceReplay } from "../helpers/binance-replay";
 
 describe("Operação Direta com IA & Normalização de Cotação", () => {
+  // Sem rede: dados reais de mercado gravados em tests/fixtures (determinístico, sem instabilidade).
+  let restoreFetch: () => void;
+  beforeAll(() => {
+    restoreFetch = installBinanceReplay(join(import.meta.dir, "../fixtures/binance-direct-operation.json"));
+  });
+  afterAll(() => restoreFetch());
+
   beforeEach(() => {
     DirectOperationManager.resetMocks();
 
