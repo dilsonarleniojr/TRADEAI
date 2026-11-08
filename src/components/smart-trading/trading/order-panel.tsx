@@ -160,8 +160,7 @@ export function SmartOrderPanel({
 
         const modeLabel = tradingMode === "live" ? "🟢 DINHEIRO REAL (Binance)" : "🧪 SIMULADO (Paper)";
         setSuccessToast(
-          `[${modeLabel}] Ordem ${side} de ${execQty.toFixed(6)} ${assetBase} executada a $${execPrice.toFixed(2)}! ${
-            orderId ? `(ID: ${orderId})` : ""
+          `[${modeLabel}] Ordem ${side} de ${execQty.toFixed(6)} ${assetBase} executada a $${execPrice.toFixed(2)}! ${orderId ? `(ID: ${orderId})` : ""
           }`
         );
 
@@ -392,8 +391,8 @@ export function SmartOrderPanel({
               ? `Comprar ${assetBase} (Dinheiro Real)`
               : `Vender ${assetBase} (Dinheiro Real)`
             : side === "BUY"
-            ? `Comprar ${assetBase} (Simulado)`
-            : `Vender ${assetBase} (Simulado)`}
+              ? `Comprar ${assetBase} (Simulado)`
+              : `Vender ${assetBase} (Simulado)`}
         </SmartButton>
       </div>
 
