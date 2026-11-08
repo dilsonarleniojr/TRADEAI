@@ -5,6 +5,7 @@ import { isRateLimited } from '@/lib/rate-limit';
 import crypto from 'crypto';
 import { memoryCache } from '@/lib/cache/memory-cache';
 import { submitSpotOrder } from '@/lib/binance/order-submit';
+import { fetchSymbolFilters, fetchCurrentPrice } from '@/lib/binance/market-info';
 
 // Limites de segurança para ordens em dinheiro real (em USDT). Configuráveis por variável de ambiente.
 const MAX_ORDER_USD = Number(process.env.MAX_LIVE_ORDER_USD) || 500;
@@ -101,52 +102,14 @@ async function executeBinanceOrder(
     ? 'https://testnet.binance.vision'
     : 'https://api.binance.com';
 
-  // 1. Fetch symbol exchange filters (LOT_SIZE, NOTIONAL, PRICE_FILTER)
-  let stepSize = 0.00001;
-  let minQty = 0.00001;
-  let minNotional = 5.0;
-  let tickSize = 0.01;
-  let quoteOrderQtyAllowed = true;
-
-  try {
-    const infoRes = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/exchangeInfo?symbol=${symbol}`);
-    if (infoRes.ok) {
-      const info = await infoRes.json();
-      const symbolInfo = info.symbols?.[0];
-      if (symbolInfo) {
-        quoteOrderQtyAllowed = !!symbolInfo.quoteOrderQtyMarketAllowed;
-        const lotFilter = symbolInfo.filters?.find((f: any) => f.filterType === 'LOT_SIZE');
-        if (lotFilter) {
-          stepSize = parseFloat(lotFilter.stepSize) || stepSize;
-          minQty = parseFloat(lotFilter.minQty) || minQty;
-        }
-        const notionalFilter = symbolInfo.filters?.find(
-          (f: any) => f.filterType === 'NOTIONAL' || f.filterType === 'MIN_NOTIONAL'
-        );
-        if (notionalFilter) {
-          minNotional = parseFloat(notionalFilter.minNotional) || 5.0;
-        }
-        const priceFilter = symbolInfo.filters?.find((f: any) => f.filterType === 'PRICE_FILTER');
-        if (priceFilter) {
-          tickSize = parseFloat(priceFilter.tickSize) || 0.01;
-        }
-      }
-    }
-  } catch (err: any) {
-    console.warn('[Trades API] Failed to fetch symbol filters:', err.message);
-  }
-
-  // 2. Fetch current market price
-  let currentPrice = 0;
-  try {
-    const priceRes = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/ticker/price?symbol=${symbol}`);
-    if (priceRes.ok) {
-      const priceData = await priceRes.json();
-      currentPrice = parseFloat(priceData.price) || 0;
-    }
-  } catch (err: any) {
-    console.warn('[Trades API] Failed to fetch ticker price:', err.message);
-  }
+  // 1. Filtros reais do símbolo (LOT_SIZE, PRICE_FILTER, NOTIONAL) e 2. preço atual.
+  // Falha fechada: sem esses dados a ordem não é enviada (erros FILTERS_UNAVAILABLE / PRICE_UNAVAILABLE).
+  const { stepSize, minQty, minNotional, tickSize, quoteOrderQtyAllowed } = await fetchSymbolFilters(
+    baseUrl,
+    symbol,
+    fetchBinanceWithBackoff
+  );
+  const currentPrice = await fetchCurrentPrice(baseUrl, symbol, fetchBinanceWithBackoff);
 
   let queryString = "";
   const timestamp = await getSynchronizedTimestamp(baseUrl);
