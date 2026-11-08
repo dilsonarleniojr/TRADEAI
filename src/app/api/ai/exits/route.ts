@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isRateLimited } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/client-ip";
 import { loadSnapshot } from "@/lib/ai-market";
 import { planExit, type ExitPlan, type PositionInput } from "@/lib/ai-entries";
 
@@ -7,7 +8,7 @@ const MAX_POSITIONS = 10;
 
 // Sugestões de saída (stop, alvos, realização parcial) para as posições abertas do usuário.
 export async function POST(request: NextRequest) {
-  const ip = request.headers.get("x-forwarded-for") || "127.0.0.1";
+  const ip = getClientIp(request);
   if (isRateLimited(`exits:${ip}`, 12)) {
     return NextResponse.json({ success: false, error: "Muitas solicitações. Aguarde um minuto." }, { status: 429 });
   }

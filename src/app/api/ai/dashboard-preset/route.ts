@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { askAIOnce, parseJsonLoose } from "@/lib/ai-client";
 import { isRateLimited } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/client-ip";
 
 const MIN_WIDGETS = 4;
 const MAX_WIDGETS = 8;
@@ -11,7 +12,7 @@ interface WidgetInfo {
 }
 
 export async function POST(request: NextRequest) {
-  const ip = request.headers.get("x-forwarded-for") || "127.0.0.1";
+  const ip = getClientIp(request);
   if (isRateLimited(`preset:${ip}`, 6)) {
     return NextResponse.json({ success: false, error: "Muitas solicitações. Aguarde um minuto." }, { status: 429 });
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { askAIOnce, parseJsonLoose } from "@/lib/ai-client";
 import { isRateLimited } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/client-ip";
 import { loadSnapshot } from "@/lib/ai-market";
 import { combineWithAi, computeIndicators, planEntry, type TradeEntry } from "@/lib/ai-entries";
 import { getActiveProvider } from "@/lib/ai/settings";
@@ -17,7 +18,7 @@ const CACHE_MS = 60_000;
 const cache = new Map<string, { at: number; entries: TradeEntry[] }>();
 
 export async function POST(request: NextRequest) {
-  const ip = request.headers.get("x-forwarded-for") || "127.0.0.1";
+  const ip = getClientIp(request);
   if (isRateLimited(`entries:${ip}`, 12)) {
     return NextResponse.json({ success: false, error: "Muitas solicitações. Aguarde um instante." }, { status: 429 });
   }

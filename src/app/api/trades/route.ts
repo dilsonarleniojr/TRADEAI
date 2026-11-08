@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getBinanceCredentials } from '@/lib/binance-session';
 import { isRateLimited } from '@/lib/rate-limit';
+import { getClientIp } from '@/lib/client-ip';
 import crypto from 'crypto';
 import { memoryCache } from '@/lib/cache/memory-cache';
 import { submitSpotOrder } from '@/lib/binance/order-submit';
@@ -385,7 +386,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // 1. Rate Limiting Check (120 req/min para acomodar múltiplos robôs em operação simultânea)
-    const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
+    const ip = getClientIp(request);
     if (isRateLimited(ip, 120)) {
       return NextResponse.json(
         { success: false, error: 'Too many requests. Please wait before executing more trades.', code: 'RATE_LIMITED' },

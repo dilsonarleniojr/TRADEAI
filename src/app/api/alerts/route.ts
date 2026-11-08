@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { isRateLimited } from '@/lib/rate-limit';
+import { getClientIp } from '@/lib/client-ip';
 
 // GET /api/alerts - Get all price alerts
 export async function GET() {
@@ -26,7 +27,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     // 1. Rate Limiting Check
-    const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
+    const ip = getClientIp(request);
     if (isRateLimited(ip, 30)) {
       return NextResponse.json(
         { success: false, error: 'Too many requests. Please wait before creating more alerts.' },
