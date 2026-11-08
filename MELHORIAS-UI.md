@@ -28,7 +28,7 @@ Este documento registra o backlog priorizado e o histórico de iterações de me
 |---|---|---|---|---|---|---|
 | UI-001 | Crítico | Segurança da Operação | `src/components/smart-trading/trading/order-panel.tsx:377` | Ausência de modal de confirmação prévia no envio de ordem no modo REAL (Spot Live). | Risco de envio acidental de ordens reais por clique não intencional. | concluído (252374df, ui-audit/2026-11-08-UI-001-after) |
 | UI-002 | Crítico | Segurança da Operação | `src/components/bot/direct-ai-trade-modal.tsx:2100` | Falta de badge e aviso de confirmação inequívoca de PAPER vs LIVE antes da execução de trade por IA. | Usuário pode executar ordens assistidas por IA com dinheiro real achando que está em ambiente simulado. | concluído (670cb815, ui-audit/2026-11-08-UI-002-after) |
-| UI-003 | Crítico | Segurança da Operação | `src/components/chart/quick-trade.tsx:120` | Botões de Quick Trade sem trava anti-duplo clique durante requisições assíncronas. | Risco de envio de ordens duplicadas em sequência por duplo clique do usuário. | pendente |
+| UI-003 | Crítico | Segurança da Operação | `src/components/chart/quick-trade.tsx:120` | Botões de Quick Trade sem trava anti-duplo clique durante requisições assíncronas. | Risco de envio de ordens duplicadas em sequência por duplo clique do usuário. | concluído (ui-audit/2026-11-08-UI-003-after) |
 | UI-004 | Alto | Leitura Financeira | `src/components/dashboard/open-orders.tsx:85` | Tabela de ordens abertas sem `tabular-nums` nos preços e quantidades. | Salto e oscilação horizontal dos números ao atualizar dados via WebSocket. | pendente |
 | UI-005 | Alto | Leitura Financeira | `src/components/chart/order-book.tsx:140` | Livro de ofertas L2 sem `tabular-nums` e sem indicador de cotação desatualizada/desconexão. | Dificuldade de leitura de números e falta de aviso sobre dados de mercado obsoletos. | pendente |
 | UI-006 | Alto | Acessibilidade | `src/components/header.tsx:110` | Botões compostos apenas por ícones sem o atributo `aria-label`. | Leitores de tela não conseguem narrar a função dos botões no cabeçalho. | pendente |
@@ -44,6 +44,17 @@ Este documento registra o backlog priorizado e o histórico de iterações de me
 ---
 
 ## Histórico
+
+### [Iteração 3] — 08/11/2026
+- **Item Executado:** `UI-003` (Trava anti-duplo clique e redesign Clean & Light no Quick Trade em `src/components/chart/quick-trade.tsx`).
+- **Ações:**
+  - Implementado estado `isSubmitting` e trava assíncrona anti-duplo clique no envio de ordens instantâneas e agendadas.
+  - Criada biblioteca de guarda de execução e validação `src/components/chart/quick-trade-guard.ts`.
+  - Atualizada a interface do Quick Trade seguindo a diretriz Modo Clean & Light: removidos gradientes pesados e brilhos neon brutos (`gradient-border`, `btn-gradient-green`, `shadow-crypto-green/20`), adotados contornos limpos (`border-border/50`), superfícies discretas e indicador visual de carregamento (`Loader2` animado nos botões de submissão).
+  - Criada suite de testes unitários `tests/unit/quick-trade-anti-double-click.test.ts` (338 → 347 testes aprovados no total).
+  - Checagem de tipos TypeScript (`npx tsc --noEmit`) e linter (`eslint`) sem erros.
+  - Screenshots "DEPOIS" capturados em `ui-audit/2026-11-08-UI-003-after/`.
+- **Commit:** `fix(ui-chart): adicionar trava anti-duplo clique e redesign clean no quick trade [UI-003]`.
 
 ### [Iteração 2] — 08/11/2026
 - **Item Executado:** `UI-002` (Badges de ambiente PAPER vs LIVE e modal de confirmação dupla no Direct AI Trade Modal em `src/components/bot/direct-ai-trade-modal.tsx`).
