@@ -5,18 +5,19 @@ Branch `melhoria-enxuto` (worktree `/media/DCORREA/TradeAi/TRADEAI.worktrees/mel
 ## Placar
 | Métrica | Início (08/11/2026) | Atual |
 |---|---|---|
-| Arquivos em `src/` | 405 | 405 |
-| Arquivos inalcançáveis (analisador) | 51 (9.880 linhas) | 51 |
+| Arquivos em `src/` | 405 | 383 |
+| Arquivos inalcançáveis (analisador) | 51 (9.880 linhas) | 29 (6.677 linhas) |
 | Dependências em `package.json` | ver `package.json` | — |
 | Dependências sem import | 31 (2 falsos positivos: `react-dom`, `sharp`) | 31 |
-| Bundle JS (`.next/static/chunks`) | 3,66 MB / 0,99 MB gzip | — |
-| Testes / tsc / build | 338/0 · 0 erros · ok (43 s) | — |
+| Bundle JS (`.next/static/chunks`) | 3,66 MB / 0,99 MB gzip | 3,66 MB (inalterado) |
+| Linhas removidas | 0 | 3.181 |
+| Testes / tsc / build | 338/0 · 0 erros · ok (43 s) | 338/0 · 0 · ok |
 
 Status: pendente / concluído (hash) / [APROVAÇÃO] / [BLOQUEADO: motivo] / [COORDENAR] (depende do loop de backend)
 
 | ID | Prioridade | Tipo | Alvo | Evidência | Ganho estimado | Status |
 |----|-----------|------|------|-----------|----------------|--------|
-| E-01 | Alto | Arquivos | Componentes shadcn sem uso em `src/components/ui/`: `sidebar`, `chart`, `menubar`, `context-menu`, `carousel`, `calendar`, `navigation-menu`, `form`, `pagination`, `breadcrumb`, `input-otp`, `toggle-group`, `accordion`, `resizable`, `avatar`, `toggle`, `radio-group`, `hover-card`, `collapsible`, `sonner`, `aspect-ratio` + `src/hooks/use-mobile.ts` (só usado por `ui/sidebar`) | Analisador: nenhum import a partir das entradas | ~3.300 linhas, 22 arquivos (podem voltar via CLI do shadcn) | pendente |
+| E-01 | Alto | Arquivos | Componentes shadcn sem uso em `src/components/ui/`: `sidebar`, `chart`, `menubar`, `context-menu`, `carousel`, `calendar`, `navigation-menu`, `form`, `pagination`, `breadcrumb`, `input-otp`, `toggle-group`, `accordion`, `resizable`, `avatar`, `toggle`, `radio-group`, `hover-card`, `collapsible`, `sonner`, `aspect-ratio` + `src/hooks/use-mobile.ts` (só usado por `ui/sidebar`) | Analisador: nenhum import a partir das entradas | ~3.300 linhas, 22 arquivos (podem voltar via CLI do shadcn) | concluído (f1b0c2f7) — 22 arquivos, -3.181 linhas |
 | E-02 | Alto | Dependências | Pacotes usados só pelos arquivos de E-01: `@radix-ui/react-{accordion,aspect-ratio,avatar,collapsible,context-menu,hover-card,menubar,navigation-menu,radio-group,toggle,toggle-group}`, `embla-carousel-react`, `input-otp`, `react-day-picker`, `react-resizable-panels`, `react-hook-form`, `@hookform/resolvers` (confirmar `sonner`, `recharts`, `date-fns` antes) | Analisador + depende de E-01 | ~17 pacotes | pendente (após E-01) |
 | E-03 | Alto | Dependências | Pacotes sem nenhum import no projeto: `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`, `@reactuses/core`, `@tanstack/react-query`, `@tanstack/react-table`, `next-auth`, `next-intl`, `react-syntax-highlighter`, `uuid`, `zod`, `date-fns` | Analisador; grep em `src`, `tests`, `next.config.ts`, `mini-services/*/index.ts` sem ocorrência | ~12 pacotes | pendente |
 | E-04 | Médio | Arquivos | Componentes de app sem import: `dashboard/{market-overview,telemetry-panel,portfolio-allocation,mobile-section}`, `bot/{decision-gate,surgical-panel,drawdown-meter,telemetry-ribbon,execution-queue}`, `gamification/trader-level-card` | Analisador | ~1.400 linhas, 10 arquivos | pendente (checar `git log` de cada um: se editado nas últimas 2 semanas → [APROVAÇÃO]) |
@@ -26,7 +27,7 @@ Status: pendente / concluído (hash) / [APROVAÇÃO] / [BLOQUEADO: motivo] / [CO
 
 ## Próximas análises (uma por iteração, na exploração)
 - Exports sem uso dentro de arquivos usados (funções/constantes exportadas que ninguém importa).
-- Maiores chunks do bundle (812 KB, 433 KB, 354 KB): identificar a origem e se há biblioteca pesada importada inteira.
+- ~~Maiores chunks do bundle~~ (iteração 1): o de 812 KB contém o código de Operação Direta/Radar/Backtest (app, não biblioteca); o de 354 KB é `recharts`. `src/app/page.tsx` já carrega 8 seções com `dynamic()`. Reduzir mais é otimização de carregamento, fora do escopo deste loop (anotado para o dono).
 - Código duplicado trivial (ex.: várias implementações de sincronização de relógio, helpers de formatação).
 - `console.log` em caminhos quentes (ticks de preço) e logs de debug esquecidos.
 - `scripts/*.kt`, `scratch/`, `examples/`, `download/`, `upload/`: o que é usado pelo app ou pelo build.
@@ -38,3 +39,4 @@ Status: pendente / concluído (hash) / [APROVAÇÃO] / [BLOQUEADO: motivo] / [CO
 
 ## Histórico
 - 08/11/2026 — Iteração 0 — worktree com `node_modules` próprio; linha de base (338/0, tsc 0, build ok 43 s, bundle 3,66 MB); analisador em `.claude/tools/deadcode.cjs`; backlog E-01…E-07.
+- 08/11/2026 — Iteração 1 — E-01 concluído (22 arquivos, -3.181 linhas; 338/0, tsc 0, build ok; bundle inalterado) — análise de chunks feita, sem item novo — f1b0c2f7
