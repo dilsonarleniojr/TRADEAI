@@ -7,6 +7,7 @@ import { memoryCache } from '@/lib/cache/memory-cache';
 import { submitSpotOrder } from '@/lib/binance/order-submit';
 import { fetchSymbolFilters, fetchCurrentPrice } from '@/lib/binance/market-info';
 import { formatQtyDown, formatQtyUp, formatPriceNearest } from '@/lib/binance/quantize';
+import { fetchFreeBalance } from '@/lib/binance/account';
 
 // Limites de segurança para ordens em dinheiro real (em USDT). Configuráveis por variável de ambiente.
 const MAX_ORDER_USD = Number(process.env.MAX_LIVE_ORDER_USD) || 500;
@@ -207,65 +208,47 @@ async function executeBinanceOrder(
     const priceClean = formatPriceNearest(targetPrice, tickSize);
 
     const baseAsset = symbol.replace(/USDT$|BUSD$|USDC$/, "");
-    try {
-      const accQuery = `omitZeroBalances=true&timestamp=${timestamp}&recvWindow=60000`;
-      const accSig = crypto.createHmac('sha256', apiSecret).update(accQuery).digest('hex');
-      const accRes = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/account?${accQuery}&signature=${accSig}`, {
-        headers: { 'X-MBX-APIKEY': apiKey },
-      });
-      if (accRes.ok) {
-        const accData = await accRes.json();
-        const assetBal = accData.balances?.find((b: any) => b.asset === baseAsset);
-        const freeQty = assetBal ? parseFloat(assetBal.free) : 0;
-        
-        if (freeQty <= 0) {
-          const err: any = new Error(`Você não possui saldo de ${baseAsset} na sua conta da Binance para vender no mercado Spot.`);
-          err.code = "NO_BALANCE";
-          throw err;
-        }
+    // Falha fechada: sem saldo confirmado na Binance a venda não é enviada (BALANCE_UNAVAILABLE).
+    const freeQty = await fetchFreeBalance({
+      baseUrl,
+      asset: baseAsset,
+      apiKey,
+      apiSecret,
+      timestamp,
+      recvWindow: 60000,
+      fetchImpl: fetchBinanceWithBackoff,
+    });
 
-        const maxSellable = Number(formatQtyDown(freeQty, stepSize));
-
-        // Se sellAll for solicitado ou se a quantidade for >= 80% do saldo, vende TODO o montante livre na Binance
-        const isFullClose = Boolean(sellAll) || quantity >= maxSellable * 0.8;
-        const qtyTarget = isFullClose ? maxSellable : Math.min(quantity, maxSellable);
-        const qtyClean = formatQtyDown(qtyTarget, stepSize);
-        const qtyCleanNum = Number(qtyClean);
-
-        if (currentPrice > 0 && qtyCleanNum * currentPrice < minNotional) {
-          const err: any = new Error(
-            `O valor da sua posição de ${baseAsset} ($${(qtyCleanNum * currentPrice).toFixed(2)} USDT) é inferior ao mínimo exigido pela Binance ($${minNotional} USDT).`
-          );
-          err.code = "MIN_NOTIONAL_DUST";
-          err.residualUsdt = qtyCleanNum * currentPrice;
-          err.baseAsset = baseAsset;
-          throw err;
-        }
-
-        if (orderType === 'LIMIT_MAKER') {
-          queryString = `symbol=${symbol}&side=SELL&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
-        } else if (orderType === 'LIMIT') {
-          queryString = `symbol=${symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
-        } else {
-          queryString = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=60000`;
-        }
-      }
-    } catch (accErr: any) {
-      if (accErr.code === "NO_BALANCE" || accErr.code === "MIN_NOTIONAL_DUST" || accErr.message.includes("inferior ao mínimo")) {
-        throw accErr;
-      }
-      console.warn('[Trades API] Account balance check bypassed:', accErr.message);
+    if (freeQty <= 0) {
+      const err: any = new Error(`Você não possui saldo de ${baseAsset} na sua conta da Binance para vender no mercado Spot.`);
+      err.code = "NO_BALANCE";
+      throw err;
     }
 
-    if (!queryString) {
-      const qtyClean = formatQtyDown(quantity, stepSize);
-      if (orderType === 'LIMIT_MAKER') {
-        queryString = `symbol=${symbol}&side=SELL&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
-      } else if (orderType === 'LIMIT') {
-        queryString = `symbol=${symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
-      } else {
-        queryString = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=60000`;
-      }
+    const maxSellable = Number(formatQtyDown(freeQty, stepSize));
+
+    // Se sellAll for solicitado ou se a quantidade for >= 80% do saldo, vende TODO o montante livre na Binance
+    const isFullClose = Boolean(sellAll) || quantity >= maxSellable * 0.8;
+    const qtyTarget = isFullClose ? maxSellable : Math.min(quantity, maxSellable);
+    const qtyClean = formatQtyDown(qtyTarget, stepSize);
+    const qtyCleanNum = Number(qtyClean);
+
+    if (currentPrice > 0 && qtyCleanNum * currentPrice < minNotional) {
+      const err: any = new Error(
+        `O valor da sua posição de ${baseAsset} ($${(qtyCleanNum * currentPrice).toFixed(2)} USDT) é inferior ao mínimo exigido pela Binance ($${minNotional} USDT).`
+      );
+      err.code = "MIN_NOTIONAL_DUST";
+      err.residualUsdt = qtyCleanNum * currentPrice;
+      err.baseAsset = baseAsset;
+      throw err;
+    }
+
+    if (orderType === 'LIMIT_MAKER') {
+      queryString = `symbol=${symbol}&side=SELL&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
+    } else if (orderType === 'LIMIT') {
+      queryString = `symbol=${symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
+    } else {
+      queryString = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=60000`;
     }
   }
 
