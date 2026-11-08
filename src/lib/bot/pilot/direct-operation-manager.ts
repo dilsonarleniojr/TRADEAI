@@ -19,6 +19,7 @@ import type { SpoofingAlert } from '@/lib/order-book-imbalance';
 import { LockFreeSPSCQueue } from '@/lib/performance/lock-free-spsc-queue';
 import { tradeJournalEngine, type ExecutionTriggerType } from '@/lib/journal/trade-journal-engine';
 import { isTradableBinanceSpotSymbol } from '@/lib/binance-spot-sync';
+import { BINANCE_RECV_WINDOW_MS, getBinanceTimestamp } from '@/lib/binance/time';
 
 export interface DirectOperationSession {
   id: string;
@@ -1787,10 +1788,14 @@ export class DirectOperationManager {
    */
   public static async reconcileOrphanOrders(
     credentials: BinanceCredentials
-  ): Promise<{ cancelledOrdersCount: number; checkedAt: number }> {
+  ): Promise<{ cancelledOrdersCount: number; checkedAt: number; errors?: string[] }> {
     if (!credentials || !credentials.apiKey || !credentials.apiSecret) {
       return { cancelledOrdersCount: 0, checkedAt: Date.now() };
     }
+
+    // Ambiente conforme a credencial: credencial de testnet nunca cancela ordens na conta real.
+    const baseUrl = credentials.testnet ? 'https://testnet.binance.vision' : 'https://api.binance.com';
+    const errors: string[] = [];
 
     try {
       const activeSymbols = new Set(
@@ -1805,13 +1810,13 @@ export class DirectOperationManager {
       for (const sym of recent) {
         if (!activeSymbols.has(sym)) {
           try {
-            const timestamp = Date.now();
-            const queryString = `symbol=${sym}&timestamp=${timestamp}`;
+            const timestamp = await getBinanceTimestamp(baseUrl);
+            const queryString = `symbol=${sym}&timestamp=${timestamp}&recvWindow=${BINANCE_RECV_WINDOW_MS}`;
             const crypto = await import("crypto");
             const signature = crypto.createHmac("sha256", credentials.apiSecret).update(queryString).digest("hex");
 
             const cancelRes = await fetch(
-              `https://api.binance.com/api/v3/openOrders?${queryString}&signature=${signature}`,
+              `${baseUrl}/api/v3/openOrders?${queryString}&signature=${signature}`,
               {
                 method: "DELETE",
                 headers: { "X-MBX-APIKEY": credentials.apiKey },
@@ -1822,14 +1827,24 @@ export class DirectOperationManager {
               if (Array.isArray(resJson)) {
                 cancelledCount += resJson.length;
               }
+            } else {
+              const body = await cancelRes.text().catch(() => '');
+              errors.push(`${sym}: HTTP ${cancelRes.status} ${body.slice(0, 200)}`);
             }
-          } catch {}
+          } catch (err: any) {
+            errors.push(`${sym}: ${err?.message || err}`);
+          }
         }
       }
 
-      return { cancelledOrdersCount: cancelledCount, checkedAt: Date.now() };
-    } catch {
-      return { cancelledOrdersCount: 0, checkedAt: Date.now() };
+      if (errors.length > 0) {
+        console.warn('[DirectOperationManager] Falhas ao cancelar ordens órfãs:', errors);
+      }
+      return { cancelledOrdersCount: cancelledCount, checkedAt: Date.now(), errors };
+    } catch (err: any) {
+      errors.push(err?.message || String(err));
+      console.warn('[DirectOperationManager] Falha na reconciliação de ordens órfãs:', errors);
+      return { cancelledOrdersCount: 0, checkedAt: Date.now(), errors };
     }
   }
 
