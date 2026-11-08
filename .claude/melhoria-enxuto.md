@@ -38,6 +38,7 @@ fica em `MELHORIAS-ENXUTO.md` na raiz deste worktree. Leia esse arquivo primeiro
 5. Uma melhoria por iteração (um grupo coeso: ex. "componentes shadcn sem uso + suas dependências").
 6. Para dependências: `bun remove <pacotes>` (atualiza `package.json` e `bun.lock`). Confirme antes com grep
    que nenhum arquivo restante importa o pacote.
+6b. Preserve as quebras de linha de cada arquivo (alguns usam CRLF). Em scripts Python use `open(..., newline="")`; antes do commit, `git diff --stat` deve ser igual a `git diff --stat --ignore-cr-at-eol`.
 7. Se testes, `tsc` ou build já estiverem quebrados no início, a iteração é dedicada a isso.
 
 ## Iteração
