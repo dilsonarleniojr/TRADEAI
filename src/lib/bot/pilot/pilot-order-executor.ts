@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { EnvironmentCleanupService } from './environment-cleanup-service';
 import { PreciseMath } from './precise-math';
 import { ExchangeMetadataService, SymbolFilters } from './exchange-metadata-service';
+import { submitSpotOrder } from '@/lib/binance/order-submit';
 
 export interface BinanceCredentials {
   apiKey: string;
@@ -72,16 +73,7 @@ export class PilotOrderExecutor {
     const cleanQuoteSpend = notionalUsd.toFixed(2);
     let queryString = `symbol=${symbol}&side=BUY&type=MARKET&quoteOrderQty=${cleanQuoteSpend}&timestamp=${timestamp}&recvWindow=10000`;
 
-    const signature = crypto.createHmac('sha256', apiSecret).update(queryString).digest('hex');
-    const url = `${baseUrl}/api/v3/order?${queryString}&signature=${signature}`;
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'X-MBX-APIKEY': apiKey,
-      },
-      signal: AbortSignal.timeout(6000),
-    });
+    const res = await this.submitOrder(baseUrl, symbol, queryString, apiKey, apiSecret);
 
     if (!res.ok) {
       const errText = await res.text();
@@ -159,16 +151,7 @@ export class PilotOrderExecutor {
     const qtyString = cleanQty.toFixed(precision);
 
     const queryString = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${qtyString}&timestamp=${timestamp}&recvWindow=10000`;
-    const signature = crypto.createHmac('sha256', apiSecret).update(queryString).digest('hex');
-    const url = `${baseUrl}/api/v3/order?${queryString}&signature=${signature}`;
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'X-MBX-APIKEY': apiKey,
-      },
-      signal: AbortSignal.timeout(6000),
-    });
+    const res = await this.submitOrder(baseUrl, symbol, queryString, apiKey, apiSecret);
 
     if (!res.ok) {
       const errText = await res.text();
@@ -196,6 +179,30 @@ export class PilotOrderExecutor {
       avgPrice,
       transactTime: orderData.transactTime || Date.now(),
     };
+  }
+
+  /**
+   * Envia a ordem uma única vez com newClientOrderId. Em 5xx/timeout (status desconhecido)
+   * consulta a ordem pelo clientOrderId em vez de reenviar (ver src/lib/binance/order-submit.ts).
+   */
+  private submitOrder(
+    baseUrl: string,
+    symbol: string,
+    queryString: string,
+    apiKey: string,
+    apiSecret: string
+  ): Promise<Response> {
+    return submitSpotOrder({
+      baseUrl,
+      symbol,
+      queryString,
+      apiKey,
+      apiSecret,
+      getTimestamp: async () => {
+        await this.cleanupService.syncServerTime(baseUrl);
+        return this.cleanupService.getSynchronizedTimestamp();
+      },
+    });
   }
 
   /**
