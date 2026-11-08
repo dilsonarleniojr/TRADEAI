@@ -20,6 +20,7 @@ iterações fica em `MELHORIAS.md` na raiz deste worktree. Leia esse arquivo pri
 4. Não invente endpoints, limites ou códigos de erro da Binance. Confira na documentação oficial (developers.binance.com) e cite a fonte no commit. Na dúvida, registre "a confirmar" e não implemente.
 5. Itens [APROVAÇÃO] ficam só registrados, sem implementação. Use [APROVAÇÃO] para itens novos que envolvam arquitetura, schema de banco, infraestrutura, autenticação, regras de risco ou qualquer mudança no comportamento financeiro.
 6. Uma melhoria por iteração, com mudança pequena e testada. Mantenha o estilo do arquivo (mensagens de erro em português).
+6b. Preserve as quebras de linha de cada arquivo (alguns usam CRLF, ex.: `src/app/api/trades/route.ts`, `src/app/api/alerts/route.ts`). Em scripts Python use `open(..., newline="")`. Antes do commit, confira `git diff --stat` contra `git diff --stat --ignore-cr-at-eol`: devem ser iguais.
 7. Se a suíte de testes ou o `tsc` já estiverem vermelhos no início, dedique a iteração a entender e corrigir isso, ou registre o bloqueio.
 
 ## Iteração
