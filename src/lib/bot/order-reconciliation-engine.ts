@@ -3,6 +3,8 @@
  * Fulfills Pillar 1 (I/O Resiliency), Pillar 2 (Safety Nets) & Pillar 4 (Structured Logging)
  */
 
+import { formatQtyDown, formatPriceNearest } from "@/lib/binance/quantize";
+
 export interface SymbolExchangeFilter {
   symbol: string;
   tickSize: number;
@@ -40,17 +42,9 @@ export function sanitizeOrderToExchangeFilters(
     };
   }
 
-  // Ajuste de Precisão Decimal com base no tickSize e stepSize
-  const priceDecimals = Math.max(0, Math.round(-Math.log10(filter.tickSize)));
-  const qtyDecimals = Math.max(0, Math.round(-Math.log10(filter.stepSize)));
-
-  const stepCount = Math.floor(quantity / filter.stepSize);
-  const rawQty = stepCount * filter.stepSize;
-  const sanitizedQuantity = Number(rawQty.toFixed(qtyDecimals));
-
-  const tickCount = Math.round(price / filter.tickSize);
-  const rawPrice = tickCount * filter.tickSize;
-  const sanitizedPrice = Number(rawPrice.toFixed(priceDecimals));
+  // Ajuste exato ao stepSize (para baixo) e ao tickSize (mais próximo), sem resíduo de float
+  const sanitizedQuantity = Number(formatQtyDown(quantity, filter.stepSize));
+  const sanitizedPrice = Number(formatPriceNearest(price, filter.tickSize));
 
   const notionalUsdt = Number((sanitizedPrice * sanitizedQuantity).toFixed(4));
 

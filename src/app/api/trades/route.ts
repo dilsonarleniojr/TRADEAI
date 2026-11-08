@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { memoryCache } from '@/lib/cache/memory-cache';
 import { submitSpotOrder } from '@/lib/binance/order-submit';
 import { fetchSymbolFilters, fetchCurrentPrice } from '@/lib/binance/market-info';
+import { formatQtyDown, formatQtyUp, formatPriceNearest } from '@/lib/binance/quantize';
 
 // Limites de segurança para ordens em dinheiro real (em USDT). Configuráveis por variável de ambiente.
 const MAX_ORDER_USD = Number(process.env.MAX_LIVE_ORDER_USD) || 500;
@@ -181,10 +182,8 @@ async function executeBinanceOrder(
     const isLimit = orderType === 'LIMIT' || orderType === 'LIMIT_MAKER';
     if (isLimit) {
       const targetPrice = limitPrice && limitPrice > 0 ? limitPrice : currentPrice;
-      const pricePrecision = Math.max(0, Math.round(-Math.log10(tickSize)));
-      const priceClean = (Math.round(targetPrice / tickSize) * tickSize).toFixed(pricePrecision);
-      const precision = Math.max(0, Math.round(-Math.log10(stepSize)));
-      const qtyClean = Math.max(minQty, parseFloat((Math.floor((finalSpend / targetPrice) / stepSize) * stepSize).toFixed(precision)));
+      const priceClean = formatPriceNearest(targetPrice, tickSize);
+      const qtyClean = formatQtyDown(Math.max(minQty, finalSpend / targetPrice), stepSize);
 
       if (orderType === 'LIMIT_MAKER') {
         queryString = `symbol=${symbol}&side=BUY&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
@@ -198,16 +197,14 @@ async function executeBinanceOrder(
       // If quoteOrderQty not supported, calculate clean base quantity
       const refPrice = currentPrice > 0 ? currentPrice : (desiredTotal / quantity);
       const safeQty = Math.max(quantity, (minNotional * 1.05) / refPrice);
-      const precision = Math.max(0, Math.round(-Math.log10(stepSize)));
-      const qtyClean = Math.max(minQty, parseFloat((Math.ceil(safeQty / stepSize) * stepSize).toFixed(precision)));
+      const qtyClean = formatQtyUp(Math.max(minQty, safeQty), stepSize);
       queryString = `symbol=${symbol}&side=BUY&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=60000`;
     }
   } else {
     // For SELL: Verify available base asset balance on Binance
     const isLimit = orderType === 'LIMIT' || orderType === 'LIMIT_MAKER';
     const targetPrice = limitPrice && limitPrice > 0 ? limitPrice : currentPrice;
-    const pricePrecision = Math.max(0, Math.round(-Math.log10(tickSize)));
-    const priceClean = (Math.round(targetPrice / tickSize) * tickSize).toFixed(pricePrecision);
+    const priceClean = formatPriceNearest(targetPrice, tickSize);
 
     const baseAsset = symbol.replace(/USDT$|BUSD$|USDC$/, "");
     try {
@@ -227,20 +224,20 @@ async function executeBinanceOrder(
           throw err;
         }
 
-        const precision = Math.max(0, Math.round(-Math.log10(stepSize)));
-        const maxSellable = Math.floor(freeQty / stepSize) * stepSize;
+        const maxSellable = Number(formatQtyDown(freeQty, stepSize));
 
         // Se sellAll for solicitado ou se a quantidade for >= 80% do saldo, vende TODO o montante livre na Binance
         const isFullClose = Boolean(sellAll) || quantity >= maxSellable * 0.8;
         const qtyTarget = isFullClose ? maxSellable : Math.min(quantity, maxSellable);
-        const qtyClean = parseFloat(qtyTarget.toFixed(precision));
+        const qtyClean = formatQtyDown(qtyTarget, stepSize);
+        const qtyCleanNum = Number(qtyClean);
 
-        if (currentPrice > 0 && qtyClean * currentPrice < minNotional) {
+        if (currentPrice > 0 && qtyCleanNum * currentPrice < minNotional) {
           const err: any = new Error(
-            `O valor da sua posição de ${baseAsset} ($${(qtyClean * currentPrice).toFixed(2)} USDT) é inferior ao mínimo exigido pela Binance ($${minNotional} USDT).`
+            `O valor da sua posição de ${baseAsset} ($${(qtyCleanNum * currentPrice).toFixed(2)} USDT) é inferior ao mínimo exigido pela Binance ($${minNotional} USDT).`
           );
           err.code = "MIN_NOTIONAL_DUST";
-          err.residualUsdt = qtyClean * currentPrice;
+          err.residualUsdt = qtyCleanNum * currentPrice;
           err.baseAsset = baseAsset;
           throw err;
         }
@@ -261,8 +258,7 @@ async function executeBinanceOrder(
     }
 
     if (!queryString) {
-      const precision = Math.max(0, Math.round(-Math.log10(stepSize)));
-      const qtyClean = parseFloat(quantity.toFixed(precision));
+      const qtyClean = formatQtyDown(quantity, stepSize);
       if (orderType === 'LIMIT_MAKER') {
         queryString = `symbol=${symbol}&side=SELL&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
       } else if (orderType === 'LIMIT') {
