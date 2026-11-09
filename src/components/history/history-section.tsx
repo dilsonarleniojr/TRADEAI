@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useCryptoStore } from "@/lib/store";
-import { formatPrice } from "@/lib/format";
+import { formatPrice, formatCurrency } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TradeTable } from "./trade-table";
@@ -31,7 +31,7 @@ export function HistorySection() {
   useShallow((s) => ({ trades: s.trades }))
 );
 
-  const [activeHistoryTab, setActiveHistoryTab] = useState<"bots" | "trades">("bots");
+  const [activeHistoryTab, setActiveHistoryTab] = useState<"bots" | "trades">("trades");
 
   // Filter states
   const [symbolSearch, setSymbolSearch] = useState("");
@@ -119,7 +119,7 @@ export function HistorySection() {
     },
     {
       label: "PnL Total",
-      value: `${stats.totalPnl >= 0 ? "+" : ""}$${formatPrice(stats.totalPnl)}`,
+      value: formatCurrency(stats.totalPnl, { showSign: true }),
       icon: DollarSign,
       color: stats.totalPnl >= 0 ? "text-crypto-green" : "text-crypto-red",
       bgColor: stats.totalPnl >= 0 ? "bg-crypto-green/10" : "bg-crypto-red/10",
@@ -127,7 +127,7 @@ export function HistorySection() {
     },
     {
       label: "L/P Médio por Trade",
-      value: `${stats.avgPnl >= 0 ? "+" : ""}$${formatPrice(stats.avgPnl)}`,
+      value: formatCurrency(stats.avgPnl, { showSign: true }),
       icon: TrendingUp,
       color: stats.avgPnl >= 0 ? "text-crypto-green" : "text-crypto-red",
       bgColor: stats.avgPnl >= 0 ? "bg-crypto-green/10" : "bg-crypto-red/10",

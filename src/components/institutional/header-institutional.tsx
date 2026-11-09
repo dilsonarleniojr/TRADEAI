@@ -128,7 +128,7 @@ export function InstitutionalHeader() {
               </div>
               <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Telemetria Contínua Binance L2 + SQLite WAL (Zero Mock)
+                Telemetria Contínua Binance L2 + Base Local
               </p>
             </div>
           </div>

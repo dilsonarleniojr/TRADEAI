@@ -8,6 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { BotCard } from "./bot-card";
 import { CompactBotRow } from "./compact-bot-row";
 import { BotDialog } from "./bot-dialog";
@@ -63,6 +71,7 @@ import {
   LayoutList,
   Search,
   X,
+  MoreHorizontal,
 } from "lucide-react";
 import { calculateRiskMetrics } from "@/lib/bot/risk-metrics";
 import { motion, AnimatePresence } from "framer-motion";
@@ -199,7 +208,7 @@ export function BotSection() {
     const totalPnl = safeBots.reduce((sum, b) => sum + (b?.stats?.realizedPnl || 0), 0);
     const totalTrades = safeBots.reduce((sum, b) => sum + (b?.stats?.totalTrades || 0), 0);
     const totalWins = safeBots.reduce((sum, b) => sum + (b?.stats?.winTrades || 0), 0);
-    const winRate = totalTrades > 0 ? (totalWins / Math.max(1, totalTrades)) * 100 : 100;
+    const winRate = totalTrades > 0 ? (totalWins / totalTrades) * 100 : 0;
     return {
       totalPnl,
       totalTrades,
@@ -402,271 +411,225 @@ export function BotSection() {
             </div>
           </div>
 
-          {/* Global Fleet Controls */}
+          {/* Ações Rápidas da Frota */}
           <div className="flex items-center gap-2 flex-wrap">
             <Button
               size="sm"
-              onClick={() => {
-                const limit = protectionSettings?.maxSimultaneousPositions || 5;
-                const res = activateTopProfitableBots(limit);
-                toast({
-                  title: `🏆 Frota Otimizada (Top ${limit} Bots)`,
-                  description: res.activated.length > 0
-                    ? `${res.activated.length} robô(s) lucrativos priorizados. Robôs em prejuízo foram pausados.`
-                    : "Os robôs mais lucrativos já estão selecionados e operando.",
-                });
-              }}
-              disabled={bots.length === 0}
-              className="h-9 px-3.5 bg-gradient-to-r from-amber-500 via-emerald-600 to-teal-500 hover:from-amber-400 hover:to-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/25 border border-amber-400/30 cursor-pointer disabled:opacity-50 transition-all duration-200 hover:scale-[1.02]"
-              title={`Sugerir e ativar automaticamente até ${protectionSettings?.maxSimultaneousPositions || 5} robôs com melhor histórico de lucro`}
-            >
-              <Award className="w-3.5 h-3.5 mr-1.5 text-amber-200 animate-pulse" />
-              Top {protectionSettings?.maxSimultaneousPositions || 5} Lucrativos
-            </Button>
-
-            <Button
-              size="sm"
-              onClick={() => {
-                toggleAllBots(true);
-                toast({
-                  title: "Frota Iniciada",
-                  description: `Todos os ${bots.length} robôs foram ativados.`,
-                });
-              }}
-              disabled={bots.length === 0 || activeBots.length === bots.length}
-              className="h-9 px-3.5 bg-gradient-to-r from-crypto-green to-emerald-600 hover:from-crypto-green/90 text-white text-xs font-semibold shadow-md shadow-crypto-green/20 cursor-pointer disabled:opacity-50"
-            >
-              <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
-              Iniciar Todos ({bots.length})
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const inPos = inPositionBots.length;
-                if (inPos > 0) {
-                  if (
-                    !window.confirm(
-                      `⚠️ ATENÇÃO: Existem ${inPos} robô(s) com posições abertas em custódia!\n\nAo pausar a frota, os ativos serão MANTIDOS em sua carteira sem serem vendidos a mercado.\n\nDeseja pausar todos os robôs mesmo assim? (Caso deseje liquidar antes, pause cada robô individualmente ou use o fechamento manual)`
-                    )
-                  ) {
-                    return;
-                  }
-                }
-                toggleAllBots(false);
-                toast({
-                  title: "Frota Pausada",
-                  description: inPos > 0
-                    ? `Todos os robôs foram pausados. As ${inPos} posições ativas continuam mantidas em carteira.`
-                    : "Todos os robôs foram pausados.",
-                });
-              }}
-              disabled={bots.length === 0 || activeBots.length === 0}
-              className="h-9 px-3.5 border-amber-500/40 text-amber-400 hover:bg-amber-500/10 text-xs font-semibold cursor-pointer disabled:opacity-50"
-              title="Pausar todos os robôs em execução"
-            >
-              <Pause className="w-3.5 h-3.5 mr-1.5" />
-              Pausar Todos {activeBots.length > 0 ? `(${activeBots.length})` : ""}
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (bots.length === 0) return;
-                const inPositionCount = inPositionBots.length;
-                const warnMsg =
-                  inPositionCount > 0
-                    ? `⚠️ ATENÇÃO: Existem ${inPositionCount} robô(s) com posições abertas!\n\nDeseja realmente excluir TODOS os ${bots.length} robôs da frota? As ordens ativas não serão mais gerenciadas automaticamente por eles.`
-                    : `Deseja realmente excluir TODOS os ${bots.length} robôs da frota? Esta ação removerá permanentemente as configurações dos robôs.`;
-
-                if (window.confirm(warnMsg)) {
-                  removeAllBots();
-                  toast({
-                    title: "Frota Excluída",
-                    description: "Todos os robôs foram removidos.",
-                    variant: "destructive",
-                  });
-                }
-              }}
-              disabled={bots.length === 0}
-              className="h-9 px-3.5 border-crypto-red/40 text-crypto-red hover:bg-crypto-red/10 text-xs font-semibold cursor-pointer disabled:opacity-50"
-              title="Excluir todos os robôs da frota"
-            >
-              <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-              Excluir Todos
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                syncCustodyPositionsWithBots();
-                toast({
-                  title: "Frota Reconciliada",
-                  description: "As posições dos robôs foram auditadas e alinhadas aos ativos reais do portfólio.",
-                });
-              }}
-              className="h-9 px-3 border-crypto-cyan/40 text-crypto-cyan hover:bg-crypto-cyan/10 text-xs font-semibold cursor-pointer"
-              title="Auditar posições dos robôs e purgar ativos inexistentes na carteira"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
-              Reconciliar com Portfólio
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleFocusTier1Fleet}
-              className="h-9 px-3 border-amber-500/40 text-amber-300 hover:bg-amber-500/15 text-xs font-semibold cursor-pointer bg-amber-500/10 shadow-sm"
-              title="Focar frota nos 4 pares líderes institucionais (BTC, ETH, SOL, BNB) com alocação concentrada e teto de 4 robôs"
-            >
-              <Zap className="w-3.5 h-3.5 mr-1.5 text-amber-400 fill-amber-400" />
-              Focar Líderes Tier-1 (BTC/ETH/SOL/BNB)
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setActiveBotTab("registry");
-                const el = document.getElementById("bot-tabs-section");
-                if (el) el.scrollIntoView({ behavior: "smooth" });
-              }}
-              className="h-9 px-3.5 border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/15 text-xs font-bold cursor-pointer bg-emerald-500/10 shadow-sm"
-              title="Acessar o Registro simples e direto de Lucro e Perda de cada robô"
-            >
-              <Receipt className="w-3.5 h-3.5 mr-1.5 text-emerald-400" />
-              Registro de Lucro & Perda
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setOpenProtectionModal(true)}
-              className="h-9 px-3.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 text-xs font-semibold cursor-pointer bg-emerald-500/5 shadow-sm"
-              title="Configurar modos de proteção de capital e circuit breakers"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 mr-1.5 text-emerald-400" />
-              Modos de Proteção
-              <Badge variant="outline" className="ml-1.5 px-1.5 py-0 text-[10px] border-emerald-500/30 text-emerald-300 bg-emerald-500/15">
-                {Object.values(protectionSettings || {}).filter((v) => v === true).length}/10
-              </Badge>
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsRiskCockpitDialogOpen(true)}
-              className="h-9 px-3 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/15 text-xs font-semibold cursor-pointer bg-indigo-500/10 shadow-sm"
-              title="Visualizar Cockpit de Risco, exposição NAV por ativo e matriz de correlação de Pearson"
-            >
-              <Gauge className="w-3.5 h-3.5 mr-1.5 text-indigo-400" />
-              Cockpit & Correlação
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsBacktestDialogOpen(true)}
-              className="h-9 px-3 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/15 text-xs font-semibold cursor-pointer bg-cyan-500/10 shadow-sm"
-              title="Executar simulação histórica com klines reais, taxas de 0.075% e slippage de 0.05%"
-            >
-              <FlaskConical className="w-3.5 h-3.5 mr-1.5 text-cyan-400" />
-              Backtest Express
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsOrphanOrdersDialogOpen(true)}
-              className="h-9 px-3 border-amber-500/40 text-amber-300 hover:bg-amber-500/15 text-xs font-semibold cursor-pointer bg-amber-500/10 shadow-sm"
-              title="Auditar e reconciliar ordens abertas na exchange que não pertencem à frota local ativa"
-            >
-              <ShieldAlert className="w-3.5 h-3.5 mr-1.5 text-amber-400" />
-              Ordens Órfãs
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsNotificationDialogOpen(true)}
-              className="h-9 px-3 border-sky-500/40 text-sky-300 hover:bg-sky-500/15 text-xs font-semibold cursor-pointer bg-sky-500/10 shadow-sm"
-              title="Configurar canais de alerta em tempo real para Telegram e Discord"
-            >
-              <Bell className="w-3.5 h-3.5 mr-1.5 text-sky-400" />
-              Notificações
-            </Button>
-
-            {tradingMode === "paper" && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  if (confirm("Deseja limpar todos os dados da simulação (histórico, métricas de robôs, posições e saldo virtual)?")) {
-                    await clearSimulatedData();
-                    toast({
-                      title: "Simulação Limpa",
-                      description: "Estatísticas da frota, posições e saldo foram redefinidos para $10.000 USDT.",
-                    });
-                  }
-                }}
-                className="h-9 px-3 border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs font-semibold cursor-pointer"
-                title="Limpar todos os dados e métricas do modo simulado"
-              >
-                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                Limpar Simulação
-              </Button>
-            )}
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (confirm("Deseja zerar as métricas e estatísticas de todos os robôs?")) {
-                  resetAllBotStats();
-                  toast({
-                    title: "Métricas Redefinidas",
-                    description: "Total de trades, acertos e PnL dos robôs foram zerados.",
-                  });
-                }
-              }}
-              className="h-9 px-3 border-border/60 hover:bg-secondary/60 text-muted-foreground hover:text-foreground text-xs font-medium cursor-pointer"
-              title="Zerar métricas de trades dos robôs"
-            >
-              <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-              Zerar Métricas
-            </Button>
-
-            <Button
-              size="sm"
-              onClick={() => setOpenBinanceScannerModal(true)}
-              className="h-9 px-3.5 bg-gradient-to-r from-amber-500 via-amber-600 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-slate-950 text-xs font-black shadow-md shadow-amber-500/25 border border-amber-400/40 cursor-pointer transition-all duration-200 hover:scale-[1.02]"
-              title="Escanear todos os pares binários da Binance e criar os robôs mais lucrativos"
-            >
-              <Trophy className="w-3.5 h-3.5 mr-1.5 text-slate-950 fill-current" />
-              Robôs Mais Lucrativos (Binance)
-            </Button>
-
-            <Button
-              size="sm"
-              onClick={() => setIsAiRecommendationsOpen(true)}
-              className="h-9 px-3.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white text-xs font-bold shadow-md shadow-purple-500/25 border border-purple-400/30 cursor-pointer transition-all duration-200 hover:scale-[1.02]"
-              title="Obter recomendações inteligentes da IA com melhores estratégias, montante de entrada e tempo de operação"
-            >
-              <Brain className="w-3.5 h-3.5 mr-1.5 text-cyan-200 animate-pulse" />
-              Sugestões de IA
-            </Button>
-
-            <Button
-              size="sm"
               onClick={handleOpenCreateDialog}
-              className="h-9 px-3.5 bg-gradient-to-r from-crypto-cyan to-blue-600 hover:from-crypto-cyan/90 text-white text-xs font-semibold shadow-md shadow-crypto-cyan/20 cursor-pointer"
+              className="h-9 px-3.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-md cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5 mr-1.5" />
               Novo Robô
             </Button>
+
+            {activeBots.length === 0 ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  toggleAllBots(true);
+                  toast({
+                    title: "Frota Iniciada",
+                    description: `Todos os ${bots.length} robôs foram ativados.`,
+                  });
+                }}
+                disabled={bots.length === 0}
+                className="h-9 px-3.5 bg-crypto-green hover:bg-crypto-green/90 text-white text-xs font-semibold shadow-md cursor-pointer disabled:opacity-50"
+              >
+                <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
+                Iniciar Todos ({bots.length})
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const inPos = inPositionBots.length;
+                  if (inPos > 0) {
+                    if (
+                      !window.confirm(
+                        `⚠️ ATENÇÃO: Existem ${inPos} robô(s) com posições abertas!\n\nAo pausar a frota, os ativos serão MANTIDOS em sua carteira sem serem vendidos a mercado.\n\nDeseja pausar todos os robôs?`
+                      )
+                    ) {
+                      return;
+                    }
+                  }
+                  toggleAllBots(false);
+                  toast({
+                    title: "Frota Pausada",
+                    description: inPos > 0
+                      ? `Todos os robôs foram pausados. As ${inPos} posições ativas continuam mantidas.`
+                      : "Todos os robôs foram pausados.",
+                  });
+                }}
+                className="h-9 px-3.5 border-amber-500/40 text-amber-500 hover:bg-amber-500/10 text-xs font-semibold cursor-pointer"
+              >
+                <Pause className="w-3.5 h-3.5 mr-1.5" />
+                Pausar Todos ({activeBots.length})
+              </Button>
+            )}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-2.5 text-xs font-medium cursor-pointer gap-1.5"
+                  title="Ações e ferramentas adicionais para a frota"
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                  <span>Mais Ações</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 p-1.5 bg-card border border-border shadow-xl rounded-xl">
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-2 py-1">
+                  Estratégia & IA
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  onClick={() => setIsAiRecommendationsOpen(true)}
+                  className="text-xs cursor-pointer py-1.5 px-2 flex items-center gap-2"
+                >
+                  <Brain className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Sugestões da IA</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setOpenBinanceScannerModal(true)}
+                  className="text-xs cursor-pointer py-1.5 px-2 flex items-center gap-2"
+                >
+                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Scanner Binance (Top Lucro)</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    const limit = protectionSettings?.maxSimultaneousPositions || 5;
+                    const res = activateTopProfitableBots(limit);
+                    toast({
+                      title: `🏆 Frota Otimizada (Top ${limit} Bots)`,
+                      description: res.activated.length > 0
+                        ? `${res.activated.length} robô(s) priorizados.`
+                        : "Os robôs mais lucrativos já estão selecionados.",
+                    });
+                  }}
+                  className="text-xs cursor-pointer py-1.5 px-2 flex items-center gap-2"
+                >
+                  <Award className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Top Lucrativos da Frota</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={handleFocusTier1Fleet}
+                  className="text-xs cursor-pointer py-1.5 px-2 flex items-center gap-2"
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Focar Líderes Tier-1</span>
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator className="my-1 border-border/50" />
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-2 py-1">
+                  Gestão & Risco
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  onClick={() => setOpenProtectionModal(true)}
+                  className="text-xs cursor-pointer py-1.5 px-2 flex items-center gap-2"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Modos de Proteção</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setIsRiskCockpitDialogOpen(true)}
+                  className="text-xs cursor-pointer py-1.5 px-2 flex items-center gap-2"
+                >
+                  <Gauge className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Cockpit & Correlação</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setIsBacktestDialogOpen(true)}
+                  className="text-xs cursor-pointer py-1.5 px-2 flex items-center gap-2"
+                >
+                  <FlaskConical className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Backtest Express</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setIsNotificationDialogOpen(true)}
+                  className="text-xs cursor-pointer py-1.5 px-2 flex items-center gap-2"
+                >
+                  <Bell className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Notificações</span>
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator className="my-1 border-border/50" />
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-2 py-1">
+                  Manutenção
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  onClick={() => {
+                    syncCustodyPositionsWithBots();
+                    toast({
+                      title: "Frota Reconciliada",
+                      description: "As posições dos robôs foram alinhadas à carteira.",
+                    });
+                  }}
+                  className="text-xs cursor-pointer py-1.5 px-2 flex items-center gap-2"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Reconciliar com Portfólio</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (confirm("Deseja zerar as métricas e estatísticas de todos os robôs?")) {
+                      resetAllBotStats();
+                      toast({
+                        title: "Métricas Redefinidas",
+                        description: "Trades, acertos e PnL dos robôs foram zerados.",
+                      });
+                    }
+                  }}
+                  className="text-xs cursor-pointer py-1.5 px-2 flex items-center gap-2"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span>Zerar Métricas</span>
+                </DropdownMenuItem>
+                {tradingMode === "paper" && (
+                  <DropdownMenuItem
+                    onClick={async () => {
+                      if (confirm("Deseja limpar todos os dados da simulação?")) {
+                        await clearSimulatedData();
+                        toast({
+                          title: "Simulação Limpa",
+                          description: "Dados simulados redefinidos.",
+                        });
+                      }
+                    }}
+                    className="text-xs cursor-pointer py-1.5 px-2 flex items-center gap-2 text-amber-500"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Limpar Simulação</span>
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (bots.length === 0) return;
+                    const inPositionCount = inPositionBots.length;
+                    const warnMsg =
+                      inPositionCount > 0
+                        ? `⚠️ ATENÇÃO: Existem ${inPositionCount} robô(s) com posições abertas!\n\nDeseja realmente excluir TODOS os ${bots.length} robôs da frota?`
+                        : `Deseja realmente excluir TODOS os ${bots.length} robôs da frota?`;
+
+                    if (window.confirm(warnMsg)) {
+                      removeAllBots();
+                      toast({
+                        title: "Frota Excluída",
+                        description: "Todos os robôs foram removidos.",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                  disabled={bots.length === 0}
+                  className="text-xs cursor-pointer py-1.5 px-2 flex items-center gap-2 text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                  <span>Excluir Todos os Robôs</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 

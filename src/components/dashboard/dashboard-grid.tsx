@@ -342,361 +342,101 @@ export function DashboardGrid() {
       {/* Top Hero: StatCards */}
       <StatCards />
 
-      {/* Streamlined Terminal Control & View Modes Bar */}
+      {/* Barra de Ações Rápidas & Personalização de Módulos */}
       <motion.div
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2.5 p-2 px-3 rounded-xl bg-[#0d131f]/80 backdrop-blur-xl border border-white/[0.07] shadow-sm"
+        className="flex items-center justify-between gap-2.5 p-2 px-3 rounded-xl bg-card/60 backdrop-blur-xl border border-border/50 shadow-sm"
       >
-        <div className="flex items-center gap-2.5 overflow-x-auto cyan-scrollbar max-w-full pb-1 sm:pb-0">
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-            <span className="text-xs font-bold text-slate-200 tracking-wider uppercase font-mono">Terminal Pro</span>
-          </div>
-          <span className="text-white/10 font-thin shrink-0">|</span>
-          <div
-            role="tablist"
-            aria-label="Presets do painel"
-            className="flex gap-1 p-0.5 rounded-lg bg-black/40 border border-white/[0.06] overflow-x-auto scrollbar-none shrink-0"
-          >
-            {PRESET_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                role="tab"
-                type="button"
-                aria-selected={preset === opt.id}
-                onClick={() => handlePresetChange(opt.id)}
-                className={cn(
-                  "px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap cursor-pointer transition-all duration-150",
-                  preset === opt.id
-                    ? "bg-cyan-500/20 text-cyan-400 font-semibold border border-cyan-500/30 shadow-sm"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-crypto-green" />
+          <span className="text-xs font-semibold text-foreground tracking-wide">
+            Visão Geral do Mercado & Operações
+          </span>
         </div>
 
-        <div className="flex items-center gap-2 ml-auto flex-wrap sm:flex-nowrap shrink-0">
-          <Button
-            size="sm"
-            onClick={() => setDirectTradeOpen(true)}
-            className="h-7 px-2.5 text-xs text-black font-extrabold bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 gap-1.5 cursor-pointer rounded-lg shadow-[0_0_12px_rgba(6,182,212,0.3)] transition-all font-mono"
-            title="Abrir Operação Direta com IA"
-          >
-            <Zap className="w-3.5 h-3.5 fill-current text-black" />
-            <span className="font-bold">Operação Direta IA</span>
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setActiveSection("institutional")}
-            className="h-7 px-2.5 text-xs text-cyan-300 bg-cyan-950/50 border-cyan-500/40 hover:bg-cyan-500/20 gap-1.5 cursor-pointer font-medium rounded-lg shadow-[0_0_12px_rgba(6,182,212,0.2)] font-mono"
-            title="Abrir Cockpit Institucional (PnL Real-Time, OFI, Livro L2 e IA)"
-          >
-            <Zap className="w-3 h-3 text-cyan-400" />
-            <span className="font-semibold hidden xl:inline">Cockpit</span>
-            <span className="font-semibold xl:hidden">Cockpit</span>
-          </Button>
-
+        <div className="flex items-center gap-2 ml-auto">
           <Button
             variant="ghost"
             size="sm"
             onClick={handleSyncMarket}
             disabled={isSyncing}
-            className="h-7 px-2 text-xs text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10 gap-1.5 cursor-pointer font-medium border border-transparent hover:border-cyan-500/20 rounded-lg"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer rounded-lg"
             title="Sincronizar moedas com a Binance"
           >
-            <RefreshCw className={cn("w-3 h-3", isSyncing && "animate-spin text-cyan-400")} />
-            <span className="hidden sm:inline font-mono">503 Moedas</span>
+            <RefreshCw className={cn("w-3 h-3 mr-1", isSyncing && "animate-spin text-crypto-cyan")} />
+            <span className="hidden sm:inline font-mono">500+ Moedas</span>
           </Button>
 
           {customizer}
         </div>
       </motion.div>
 
-      {preset === "all" ? (
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-secondary/25 border border-border/40 p-2 rounded-xl backdrop-blur-sm">
-          <TabsList className="bg-secondary/40 p-1 border border-border/40 grid grid-cols-2 sm:flex sm:flex-row h-auto gap-1">
-            <TabsTrigger
-              value="market"
-              className="text-xs px-3 py-1.5 data-[state=active]:bg-crypto-cyan/20 data-[state=active]:text-crypto-cyan font-bold flex items-center gap-1.5 cursor-pointer"
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              <span>Mercado & Cotações</span>
-            </TabsTrigger>
-
-            <TabsTrigger
-              value="ai"
-              className="text-xs px-3 py-1.5 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-300 font-bold flex items-center gap-1.5 cursor-pointer"
-            >
-              <Brain className="w-3.5 h-3.5 text-purple-400" />
-              <span>IA & Sinais</span>
-            </TabsTrigger>
-
-            <TabsTrigger
-              value="portfolio"
-              className="text-xs px-3 py-1.5 data-[state=active]:bg-crypto-gold/20 data-[state=active]:text-crypto-gold font-bold flex items-center gap-1.5 cursor-pointer"
-            >
-              <Wallet className="w-3.5 h-3.5 text-crypto-gold" />
-              <span>Portfólio & Gestão</span>
-            </TabsTrigger>
-
-            <TabsTrigger
-              value="analytics"
-              className="text-xs px-3 py-1.5 data-[state=active]:bg-crypto-green/20 data-[state=active]:text-crypto-green font-bold flex items-center gap-1.5 cursor-pointer"
-            >
-              <Activity className="w-3.5 h-3.5 text-crypto-green" />
-              <span>Análise Avançada</span>
-            </TabsTrigger>
-          </TabsList>
-
-          {customizer}
-        </div>
-
-        {/* ======================================================== */}
-        {/* TAB 1: MERCADO & COTAÇÕES */}
-        {/* ======================================================== */}
-        <TabsContent value="market" className="space-y-4 m-0 focus-visible:outline-none">
-          {/* Top highlights row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* Grid Integrado de 3 Colunas: Mercado, IA & Ordens */}
+      <div id="dashboard-preset-panel" className="space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
+          {/* Coluna Esquerda: Destaques de Mercado & Favoritos (4 cols) */}
+          <div className="lg:col-span-4 space-y-3.5">
             {isVisible("market-highlights") && (
-              <div className="col-span-1 lg:col-span-2">
-                <WidgetBoundary name="Destaques do Mercado"><MarketHighlights /></WidgetBoundary>
-              </div>
-            )}
-            {isVisible("fear-greed") && (
-              <div className="col-span-1">
-                <WidgetBoundary name="Índice Fear & Greed"><FearGreedIndex /></WidgetBoundary>
-              </div>
-            )}
-          </div>
-
-          {/* Sentiment & News row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {isVisible("market-sentiment") && (
-              <div className="col-span-1">
-                <WidgetBoundary name="Sentimento do Mercado"><MarketSentiment /></WidgetBoundary>
-              </div>
-            )}
-            {isVisible("crypto-news") && (
-              <div className="col-span-1 lg:col-span-2">
-                <WidgetBoundary name="Notícias Cripto"><CryptoNews /></WidgetBoundary>
-              </div>
-            )}
-          </div>
-
-          {/* Complete 503-coins Table */}
-          {isVisible("market-table") && (
-            <div className="w-full">
-              <WidgetBoundary name="Tabela de Moedas (500+)"><MarketTable /></WidgetBoundary>
-            </div>
-          )}
-
-          {/* Watchlist & Price Alerts */}
-          {isVisible("watchlist-alerts") && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <WidgetBoundary name="Favoritos e Alertas"><Watchlist /></WidgetBoundary>
-              <WidgetBoundary name="Favoritos e Alertas"><PriceAlerts /></WidgetBoundary>
-            </div>
-          )}
-        </TabsContent>
-
-        {/* ======================================================== */}
-        {/* TAB 2: IA & SINAIS */}
-        {/* ======================================================== */}
-        <TabsContent value="ai" className="space-y-4 m-0 focus-visible:outline-none">
-          {isVisible("ai-entries") && (
-            <WidgetBoundary name="Entradas Sugeridas pela IA"><AIEntries /></WidgetBoundary>
-          )}
-
-          {isVisible("ai-top-picks") && (
-            <div className="w-full">
-              <WidgetBoundary name="Destaques da IA"><AITopPicks /></WidgetBoundary>
-            </div>
-          )}
-
-          {isVisible("ai-signals") && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="lg:col-span-2">
-                <WidgetBoundary name="Sinais Neurais"><AISignals /></WidgetBoundary>
-              </div>
-              <div>
-                <WidgetBoundary name="Negociações Recentes"><RecentTrades /></WidgetBoundary>
-              </div>
-            </div>
-          )}
-
-          {isVisible("insights-panel") && (
-            <div className="w-full">
-              <WidgetBoundary name="Diagnósticos & Insights"><InsightsPanel /></WidgetBoundary>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {isVisible("strategy-comparison") && <WidgetBoundary name="Comparador de Estratégias"><StrategyComparison /></WidgetBoundary>}
-            {isVisible("ml-pipeline") && <WidgetBoundary name="Pipeline Machine Learning"><MLPipeline /></WidgetBoundary>}
-          </div>
-        </TabsContent>
-
-        {/* ======================================================== */}
-        {/* TAB 3: PORTFÓLIO & GESTÃO */}
-        {/* ======================================================== */}
-        <TabsContent value="portfolio" className="space-y-4 m-0 focus-visible:outline-none">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {isVisible("portfolio-pro") && <WidgetBoundary name="Portfólio Pro"><PortfolioPro /></WidgetBoundary>}
-            {isVisible("pnl-tracker") && <WidgetBoundary name="Rastreador de P&L"><PnlTracker /></WidgetBoundary>}
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {isVisible("open-orders") && <WidgetBoundary name="Ordens Abertas"><OpenOrders /></WidgetBoundary>}
-            {isVisible("risk-module") && <WidgetBoundary name="Módulo de Risco"><RiskModule /></WidgetBoundary>}
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {isVisible("portfolio-rebalancing") && <WidgetBoundary name="Rebalanceamento"><PortfolioRebalancing /></WidgetBoundary>}
-            {isVisible("financial-hub") && <WidgetBoundary name="Hub Financeiro"><FinancialHub /></WidgetBoundary>}
-          </div>
-        </TabsContent>
-
-        {/* ======================================================== */}
-        {/* TAB 4: ANÁLISE AVANÇADA */}
-        {/* ======================================================== */}
-        <TabsContent value="analytics" className="space-y-4 m-0 focus-visible:outline-none">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {isVisible("whale-tracker") && <WidgetBoundary name="Rastreador de Baleias"><WhaleTracker /></WidgetBoundary>}
-            {isVisible("liquidation-heatmap") && <WidgetBoundary name="Mapa de Liquidação"><LiquidationHeatmap /></WidgetBoundary>}
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {isVisible("correlation-heatmap") && <WidgetBoundary name="Mapa de Correlação"><CorrelationHeatmap /></WidgetBoundary>}
-            {isVisible("multi-timeframe") && <WidgetBoundary name="Análise Multi-Timeframe"><MultiTimeframeAnalysis /></WidgetBoundary>}
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {isVisible("funding-rates") && <WidgetBoundary name="Taxas de Financiamento"><FundingRates /></WidgetBoundary>}
-            {isVisible("social-onchain") && (
-              <div className="space-y-4">
-                <WidgetBoundary name="Sentimento Social & On-Chain"><SocialSentiment /></WidgetBoundary>
-                <WidgetBoundary name="Sentimento Social & On-Chain"><OnChainAnalytics /></WidgetBoundary>
-              </div>
-            )}
-          </div>
-
-          {isVisible("calculators") && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <WidgetBoundary name="Calculadoras de Trading"><SLTPCalculator /></WidgetBoundary>
-              <WidgetBoundary name="Calculadoras de Trading"><TradingCalculator /></WidgetBoundary>
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
-      ) : preset === "trader" ? (
-        <div id="dashboard-preset-panel" role="tabpanel" className="space-y-4">
-          {/* Pro Trading Terminal 3-Column Grid for Desktop */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
-            {/* Left Column: Market Highlights & Watchlist (4 cols) */}
-            <div className="lg:col-span-4 space-y-3.5">
-              {isVisible("market-highlights") && (
-                <WidgetBoundary name="Destaques do Mercado">
-                  <MarketHighlights />
-                </WidgetBoundary>
-              )}
-              {isVisible("watchlist-alerts") && (
-                <WidgetBoundary name="Favoritos e Alertas">
-                  <Watchlist />
-                </WidgetBoundary>
-              )}
-              {isVisible("multi-timeframe") && (
-                <WidgetBoundary name="Análise Multi-Timeframe">
-                  <MultiTimeframeAnalysis />
-                </WidgetBoundary>
-              )}
-            </div>
-
-            {/* Center Column: AI Entries & Neural Signals (5 cols) */}
-            <div className="lg:col-span-5 space-y-3.5">
-              {isVisible("ai-entries") && (
-                <WidgetBoundary name="Entradas Sugeridas pela IA">
-                  <AIEntries />
-                </WidgetBoundary>
-              )}
-              {isVisible("ai-signals") && (
-                <WidgetBoundary name="Sinais Neurais em Tempo Real">
-                  <AISignals />
-                </WidgetBoundary>
-              )}
-            </div>
-
-            {/* Right Column: Open Orders & Portfolio Tracking (3 cols) */}
-            <div className="lg:col-span-3 space-y-3.5">
-              {isVisible("open-orders") && (
-                <WidgetBoundary name="Ordens em Aberto">
-                  <OpenOrders />
-                </WidgetBoundary>
-              )}
-              {isVisible("pnl-tracker") && (
-                <WidgetBoundary name="Rastreador de P&L">
-                  <PnlTracker />
-                </WidgetBoundary>
-              )}
-              {isVisible("recent-trades") && (
-                <WidgetBoundary name="Negociações Recentes">
-                  <RecentTrades />
-                </WidgetBoundary>
-              )}
-            </div>
-          </div>
-
-          {/* Bottom Section: Full Market Table with 503 Binance Coins */}
-          {isVisible("market-table") && (
-            <div className="w-full">
-              <WidgetBoundary name="Tabela de Moedas (500+)">
-                <MarketTable />
+              <WidgetBoundary name="Destaques do Mercado">
+                <MarketHighlights />
               </WidgetBoundary>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div id="dashboard-preset-panel" role="tabpanel" className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {preset === "ia" && (
-              <>
-                <p className="flex-1 min-w-[200px] text-xs text-muted-foreground">
-                  {aiPresetLoading ? "A IA está montando o painel…" : aiPreset?.reason ?? "Gere um painel com a IA para o momento atual."}
-                  {aiPreset?.source === "regras" && !aiPresetLoading && " (por regras)"}
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={generateAiPreset}
-                  disabled={aiPresetLoading}
-                  className="h-9 gap-1.5 text-xs cursor-pointer"
-                >
-                  <RefreshCw className={cn("w-3.5 h-3.5", aiPresetLoading && "animate-spin")} />
-                  {aiPreset ? "Gerar de novo" : "Gerar painel"}
-                </Button>
-              </>
             )}
-            <div className="ml-auto">{customizer}</div>
+            {isVisible("watchlist-alerts") && (
+              <WidgetBoundary name="Favoritos e Alertas">
+                <Watchlist />
+              </WidgetBoundary>
+            )}
+            {isVisible("multi-timeframe") && (
+              <WidgetBoundary name="Análise Multi-Timeframe">
+                <MultiTimeframeAnalysis />
+              </WidgetBoundary>
+            )}
           </div>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            {presetWidgetIds
-              .filter((id) => isVisible(id))
-              .map((id) => (
-                <div key={id} className={WIDE_WIDGETS.has(id) ? "xl:col-span-2" : undefined}>
-                  <WidgetBoundary name={PRESET_TITLES[id] ?? WIDGET_TITLES[id] ?? id}>
-                    {renderPresetWidget(id)}
-                  </WidgetBoundary>
-                </div>
-              ))}
+
+          {/* Coluna Central: Sugestões da IA & Sinais Neurais (5 cols) */}
+          <div className="lg:col-span-5 space-y-3.5">
+            {isVisible("ai-entries") && (
+              <WidgetBoundary name="Entradas Sugeridas pela IA">
+                <AIEntries />
+              </WidgetBoundary>
+            )}
+            {isVisible("ai-signals") && (
+              <WidgetBoundary name="Sinais Neurais em Tempo Real">
+                <AISignals />
+              </WidgetBoundary>
+            )}
+          </div>
+
+          {/* Coluna Direita: Ordens em Aberto & Rastreamento de P&L (3 cols) */}
+          <div className="lg:col-span-3 space-y-3.5">
+            {isVisible("open-orders") && (
+              <WidgetBoundary name="Ordens em Aberto">
+                <OpenOrders />
+              </WidgetBoundary>
+            )}
+            {isVisible("pnl-tracker") && (
+              <WidgetBoundary name="Rastreador de P&L">
+                <PnlTracker />
+              </WidgetBoundary>
+            )}
+            {isVisible("recent-trades") && (
+              <WidgetBoundary name="Negociações Recentes">
+                <RecentTrades />
+              </WidgetBoundary>
+            )}
           </div>
         </div>
-      )}
+
+        {/* Seção Inferior: Tabela Completa de Moedas da Binance */}
+        {isVisible("market-table") && (
+          <div className="w-full">
+            <WidgetBoundary name="Tabela de Moedas (500+)">
+              <MarketTable />
+            </WidgetBoundary>
+          </div>
+        )}
+      </div>
 
       {/* Modal de Operação Direta com IA */}
       <DirectAiTradeModal

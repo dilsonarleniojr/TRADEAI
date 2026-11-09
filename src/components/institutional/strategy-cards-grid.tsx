@@ -126,7 +126,7 @@ export function StrategyCardsGrid() {
                   <div className="pt-1 border-t border-white/[0.04]">
                     <span className="text-[10px] text-slate-400 block">Payoff Ratio</span>
                     <span className="font-semibold text-cyan-300">
-                      {strat.payoffRatio > 0 ? `${strat.payoffRatio.toFixed(2)}x` : "1.85x"}
+                      {strat.payoffRatio > 0 ? `${strat.payoffRatio.toFixed(2)}x` : "—"}
                     </span>
                   </div>
                   <div className="pt-1 border-t border-white/[0.04]">
