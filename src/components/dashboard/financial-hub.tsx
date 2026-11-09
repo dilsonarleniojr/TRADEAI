@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useCryptoStore } from "@/lib/store";
-import { formatPrice, formatPercent } from "@/lib/format";
+import { formatPrice, formatPercent, formatCurrency, formatPercentWithSign } from "@/lib/format";
+import { selectPortfolioMetrics } from "@/lib/selectors/portfolioMetrics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { DataSourceBadge, SyncModeBadge } from "@/components/ui/data-source-badge";
@@ -125,23 +126,24 @@ export function FinancialHub() {
     }
   };
 
-  // P&L calculations (authoritative backend source of truth)
-  const realizedPnl = portfolio.realizedPnl ?? 0;
-  const unrealizedPnl = portfolio.unrealizedPnl ?? 0;
+  // Authoritative metrics from single source of truth
+  const metrics = useMemo(() => {
+    return selectPortfolioMetrics(
+      {
+        totalBalance: portfolio.totalValue,
+        cashBalance: portfolio.cashBalance,
+        positions: portfolio.positions,
+        initialBalance: 10000,
+      },
+      trades,
+      { mode: tradingMode }
+    );
+  }, [portfolio, trades, tradingMode]);
 
   // Recent trades (last 5)
   const recentTrades = useMemo(() => trades.slice(0, 5), [trades]);
 
-  // Best performer
-  const tickerValues = Object.values(tickers);
-  const bestPerformer = tickerValues.length > 0
-    ? tickerValues.reduce((best, t) =>
-        t.priceChangePercent > best.priceChangePercent ? t : best
-      )
-    : null;
-
-  const todayTrades = trades.length;
-  const isPositive = portfolio.pnl >= 0;
+  const isPositive = metrics.netPnl >= 0;
 
   return (
     <motion.div
@@ -156,7 +158,7 @@ export function FinancialHub() {
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-crypto-cyan/20 to-crypto-green/10 flex items-center justify-center">
                 <DollarSign className="w-4 h-4 text-crypto-cyan" />
               </div>
-              Financial Hub
+              Centro Financeiro
             </CardTitle>
             <div className="flex items-center gap-2">
               <Button
@@ -190,14 +192,14 @@ export function FinancialHub() {
                 </span>
               </div>
               <p className="text-xl font-bold tracking-tight leading-none mb-1">
-                <AnimatedValue value={portfolio.totalValue} prefix="$" decimals={2} />
+                <AnimatedValue value={metrics.totalBalance} prefix="US$ " decimals={2} />
               </p>
               <div className="flex items-center gap-2 text-xs">
                 <span className="text-muted-foreground">
-                  Cash: ${formatPrice(portfolio.cashBalance)}
+                  Caixa: {formatCurrency(metrics.cashBalance)}
                 </span>
                 <span className="text-muted-foreground">
-                  Ativos: ${formatPrice(portfolio.assetBalance)}
+                  Ativos: {formatCurrency(metrics.allocatedBalance)}
                 </span>
               </div>
             </div>
@@ -223,13 +225,13 @@ export function FinancialHub() {
                 "text-xl font-bold tracking-tight leading-none mb-1",
                 isPositive ? "gradient-text-green" : "text-crypto-red"
               )}>
-                {isPositive ? "+" : ""}${formatPrice(Math.abs(portfolio.pnl))}
+                {metrics.netPnlFormatted}
               </p>
               <span className={cn(
                 "text-xs font-semibold",
                 isPositive ? "text-crypto-green" : "text-crypto-red"
               )}>
-                {formatPercent(portfolio.pnlPercent)}
+                {metrics.pnlPercentFormatted}
               </span>
             </div>
 
@@ -240,7 +242,7 @@ export function FinancialHub() {
                   <PieChart className="w-3.5 h-3.5 text-crypto-gold" />
                 </div>
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                  P&L Breakdown
+                  Detalhamento de P&L
                 </span>
               </div>
               <div className="space-y-1.5">
@@ -248,18 +250,18 @@ export function FinancialHub() {
                   <span className="text-[10px] text-muted-foreground">Realizado</span>
                   <span className={cn(
                     "text-xs font-bold",
-                    realizedPnl >= 0 ? "text-crypto-green" : "text-crypto-red"
+                    metrics.realizedPnl >= 0 ? "text-crypto-green" : "text-crypto-red"
                   )}>
-                    {realizedPnl >= 0 ? "+" : ""}${formatPrice(Math.abs(realizedPnl))}
+                    {formatCurrency(metrics.realizedPnl, { showSign: true })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-muted-foreground">Não Realizado</span>
                   <span className={cn(
                     "text-xs font-bold",
-                    unrealizedPnl >= 0 ? "text-crypto-green" : "text-crypto-red"
+                    metrics.unrealizedPnl >= 0 ? "text-crypto-green" : "text-crypto-red"
                   )}>
-                    {unrealizedPnl >= 0 ? "+" : ""}${formatPrice(Math.abs(unrealizedPnl))}
+                    {formatCurrency(metrics.unrealizedPnl, { showSign: true })}
                   </span>
                 </div>
               </div>
@@ -279,20 +281,20 @@ export function FinancialHub() {
                 </span>
               </div>
               <p className="text-xl font-bold tracking-tight leading-none mb-1">
-                {todayTrades}
-                <span className="text-xs text-muted-foreground font-normal ml-1">trades</span>
+                {metrics.totalOrders}
+                <span className="text-xs text-muted-foreground font-normal ml-1">ordens</span>
               </p>
               <div className="flex items-center gap-2">
                 {botActive ? (
                   <span className="inline-flex items-center gap-1 text-[10px] text-crypto-green">
                     <span className="w-1.5 h-1.5 rounded-full bg-crypto-green animate-pulse" />
-                    Bot Ativo
+                    Robô Ativo
                   </span>
                 ) : (
-                  <span className="text-[10px] text-muted-foreground">Bot Inativo</span>
+                  <span className="text-[10px] text-muted-foreground">Robô Inativo</span>
                 )}
                 <span className="text-[10px] text-muted-foreground">
-                  {trades.filter((t) => t.pnl > 0).length}W / {trades.filter((t) => t.pnl < 0).length}L
+                  {metrics.winningTradesCount}V / {metrics.losingTradesCount}D
                 </span>
               </div>
             </div>
@@ -345,9 +347,9 @@ export function FinancialHub() {
                         trade.strategy === "RSI" || trade.strategy === "MACD" ? "bg-crypto-cyan/10 text-crypto-cyan" :
                         "bg-secondary text-muted-foreground"
                       )}>
-                        {trade.strategy === "AI" ? "🤖 IA" :
-                         trade.strategy === "Manual" ? "👤" :
-                         `⚙️ ${trade.strategy}`}
+                        {trade.strategy === "AI" ? "IA" :
+                         trade.strategy === "Manual" ? "Manual" :
+                         trade.strategy}
                       </span>
                     </div>
                   </div>

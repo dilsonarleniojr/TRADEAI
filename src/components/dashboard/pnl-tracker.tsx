@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 import { useCryptoStore } from "@/lib/store";
-import { formatPrice, formatPercent } from "@/lib/format";
+import { formatCurrency, formatPercent, formatPrice } from "@/lib/format";
+import { selectPortfolioMetrics } from "@/lib/selectors/portfolioMetrics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
@@ -170,18 +171,36 @@ function PnLTooltip({
 }
 
 export function PnlTracker() {
-  const { portfolio, trades, tickers } = useCryptoStore(
-  useShallow((s) => ({ portfolio: s.portfolio, trades: s.trades, tickers: s.tickers }))
-);
+  const { portfolio, trades, tickers, tradingMode } = useCryptoStore(
+    useShallow((s) => ({
+      portfolio: s.portfolio,
+      trades: s.trades,
+      tickers: s.tickers,
+      tradingMode: s.tradingMode,
+    }))
+  );
+
+  const metrics = useMemo(() => {
+    return selectPortfolioMetrics(
+      {
+        totalBalance: portfolio.totalValue,
+        cashBalance: portfolio.cashBalance,
+        positions: portfolio.positions,
+        initialBalance: 10000,
+      },
+      trades,
+      { mode: tradingMode }
+    );
+  }, [portfolio, trades, tradingMode]);
 
   const pnlTimeline = useMemo(
-    () => generatePnLTimeline(portfolio.pnl, portfolio.pnlPercent, trades),
-    [portfolio.pnl, portfolio.pnlPercent, trades]
+    () => generatePnLTimeline(metrics.netPnl, portfolio.pnlPercent, trades),
+    [metrics.netPnl, portfolio.pnlPercent, trades]
   );
 
   const breakdown = useMemo(
-    () => calculateActualBreakdown(portfolio.pnl, portfolio.unrealizedPnl ?? 0, trades),
-    [portfolio.pnl, portfolio.unrealizedPnl, trades]
+    () => calculateActualBreakdown(metrics.netPnl, metrics.unrealizedPnl, trades),
+    [metrics.netPnl, metrics.unrealizedPnl, trades]
   );
 
   const assetPerformance = useMemo(
@@ -189,13 +208,12 @@ export function PnlTracker() {
     [tickers]
   );
 
-  // Calculate win/loss ratio from trades
-  const winningTrades = trades.filter((t) => t.pnl > 0).length;
-  const losingTrades = trades.filter((t) => t.pnl < 0).length;
-  const totalPnlTrades = winningTrades + losingTrades;
-  const winRate = totalPnlTrades > 0 ? (winningTrades / totalPnlTrades) * 100 : 0;
+  const winningTrades = metrics.winningTradesCount;
+  const losingTrades = metrics.losingTradesCount;
+  const totalPnlTrades = metrics.closedTradesCount;
+  const winRate = metrics.winRate;
 
-  const isOverallPositive = portfolio.pnl >= 0;
+  const isOverallPositive = metrics.netPnl >= 0;
 
   return (
     <motion.div

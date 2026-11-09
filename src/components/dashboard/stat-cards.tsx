@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 import { useCryptoStore } from "@/lib/store";
-import { formatPrice, formatPercent } from "@/lib/format";
+import { formatCurrency, formatPercent } from "@/lib/format";
+import { selectPortfolioMetrics } from "@/lib/selectors/portfolioMetrics";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
@@ -45,7 +46,7 @@ function AnimatedValue({ value, prefix = "", suffix = "", decimals = 2 }: {
 }
 
 export function StatCards() {
-  const { portfolio, trades, botActive, activeBotsCount, tickers, connectionStatus, setSelectedSymbol } = useCryptoStore(
+  const { portfolio, trades, botActive, activeBotsCount, tickers, connectionStatus, setSelectedSymbol, tradingMode } = useCryptoStore(
     useShallow((s) => ({
       portfolio: s.portfolio,
       trades: s.trades,
@@ -54,8 +55,22 @@ export function StatCards() {
       tickers: s.tickers,
       connectionStatus: s.connectionStatus,
       setSelectedSymbol: s.setSelectedSymbol,
+      tradingMode: s.tradingMode,
     }))
   );
+
+  const metrics = useMemo(() => {
+    return selectPortfolioMetrics(
+      {
+        totalBalance: portfolio.totalValue,
+        cashBalance: portfolio.cashBalance,
+        positions: portfolio.positions,
+        initialBalance: 10000,
+      },
+      trades,
+      { mode: tradingMode }
+    );
+  }, [portfolio, trades, tradingMode]);
 
   // Connection status indicator config
   const statusConfig: Record<string, { color: string; label: string }> = {
@@ -82,20 +97,16 @@ export function StatCards() {
     return { bestPerformer: best, totalVolume: vol };
   }, [tickers]);
 
-  const todayTrades = trades.length;
-  const profitableTrades = useMemo(() => trades.filter((t) => t.pnl > 0).length, [trades]);
-  const winRate = todayTrades > 0 ? (profitableTrades / todayTrades) * 100 : 0;
   const effectiveActiveBots = activeBotsCount > 0 ? activeBotsCount : (botActive ? 1 : 0);
-  const currentPnl = portfolio.realizedPnl ?? portfolio.pnl ?? 0;
 
   const stats = [
     {
       id: "balance",
       title: "Patrimônio Total",
       tooltip: "Valor consolidado da carteira (Saldo USDT + Criptoativos)",
-      value: portfolio.totalValue,
-      displayValue: `$${formatPrice(portfolio.totalValue)}`,
-      subValue: `${portfolio.pnlPercent >= 0 ? "+" : ""}${formatPercent(portfolio.pnlPercent)} (24h)`,
+      value: metrics.totalBalance,
+      displayValue: formatCurrency(metrics.totalBalance),
+      subValue: `${formatPercent(portfolio.pnlPercent)} (24h)`,
       subPositive: portfolio.pnlPercent >= 0,
       icon: Wallet,
       iconColor: "text-crypto-cyan",
@@ -109,27 +120,29 @@ export function StatCards() {
     },
     {
       id: "pnl",
-      title: "P&L & Win Rate",
-      tooltip: "Lucro/Prejuízo acumulado e taxa de acerto das operações",
-      value: currentPnl,
-      displayValue: `${currentPnl >= 0 ? "+" : ""}$${formatPrice(Math.abs(currentPnl))}`,
-      subValue: `${winRate.toFixed(1)}% Taxa de Acerto (${profitableTrades}/${todayTrades})`,
-      subPositive: currentPnl >= 0,
-      icon: TrendingUp,
-      iconColor: currentPnl >= 0 ? "text-crypto-green" : "text-crypto-red",
-      iconBg: currentPnl >= 0 ? "bg-crypto-green/15" : "bg-crypto-red/15",
-      accentBorder: currentPnl >= 0 ? "border-l-2 border-l-crypto-green" : "border-l-2 border-l-crypto-red",
-      hoverGlow: currentPnl >= 0 ? "hover:border-crypto-green/40" : "hover:border-crypto-red/40",
+      title: "L/P Realizado & Acerto",
+      tooltip: "Lucro ou prejuízo apurado em ordens fechadas e taxa de acerto real",
+      value: metrics.netPnl,
+      displayValue: formatCurrency(metrics.netPnl, { showSign: true }),
+      subValue: metrics.closedTradesCount > 0
+        ? `${metrics.winRate.toFixed(1)}% Taxa de Acerto (${metrics.winningTradesCount}V / ${metrics.losingTradesCount}D)`
+        : "Aguardando ordens fechadas",
+      subPositive: metrics.netPnl >= 0,
+      icon: metrics.netPnl >= 0 ? TrendingUp : TrendingDown,
+      iconColor: metrics.netPnl >= 0 ? "text-crypto-green" : "text-crypto-red",
+      iconBg: metrics.netPnl >= 0 ? "bg-crypto-green/15" : "bg-crypto-red/15",
+      accentBorder: metrics.netPnl >= 0 ? "border-l-2 border-l-crypto-green" : "border-l-2 border-l-crypto-red",
+      hoverGlow: metrics.netPnl >= 0 ? "hover:border-crypto-green/40" : "hover:border-crypto-red/40",
       animate: false,
-      trendDir: currentPnl >= 0 ? "up" : "down" as const,
+      trendDir: metrics.netPnl >= 0 ? "up" : "down" as const,
     },
     {
       id: "volume",
       title: "Volume Rastreado (24h)",
-      tooltip: "Volume global somado das 503 moedas monitoradas na Binance Spot",
+      tooltip: "Volume somado das moedas monitoradas e ordens executadas",
       value: totalVolume,
-      displayValue: `$${(totalVolume / 1_000_000_000).toFixed(2)}B`,
-      subValue: `${todayTrades} Ordens Executadas`,
+      displayValue: totalVolume > 0 ? formatCurrency(totalVolume, { compact: true }) : "US$ 0,00",
+      subValue: `${metrics.totalOrders} ${metrics.totalOrders === 1 ? "Ordem Executada" : "Ordens Executadas"}`,
       subPositive: true,
       icon: ArrowUpDown,
       iconColor: "text-crypto-gold",
@@ -141,11 +154,11 @@ export function StatCards() {
     },
     {
       id: "bots",
-      title: "Robôs & Automações",
+      title: "Robôs em Operação",
       tooltip: "Status operacional dos robôs quantitativos simultâneos",
       value: effectiveActiveBots,
       displayValue: `${effectiveActiveBots} ${effectiveActiveBots === 1 ? "Ativo" : "Ativos"}`,
-      subValue: effectiveActiveBots > 0 ? "Grid + Scalp + IA rodando" : "Nenhum robô ligado",
+      subValue: effectiveActiveBots > 0 ? "Estratégias rodando" : "Nenhum robô ligado",
       subPositive: effectiveActiveBots > 0,
       icon: Bot,
       iconColor: effectiveActiveBots > 0 ? "text-crypto-green" : "text-muted-foreground",
@@ -197,7 +210,7 @@ export function StatCards() {
             <div className={cn(
               "absolute top-0 left-3 right-3 h-[2px] rounded-full transition-opacity opacity-40 group-hover:opacity-100",
               stat.id === "balance" && "bg-cyan-500",
-              stat.id === "pnl" && (currentPnl >= 0 ? "bg-emerald-500" : "bg-rose-500"),
+              stat.id === "pnl" && (metrics.netPnl >= 0 ? "bg-emerald-500" : "bg-rose-500"),
               stat.id === "volume" && "bg-amber-500",
               stat.id === "bots" && (activeBotsCount > 0 ? "bg-emerald-500" : "bg-slate-500"),
               stat.id === "best" && "bg-emerald-500"
