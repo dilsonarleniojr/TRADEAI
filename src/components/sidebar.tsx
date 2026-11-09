@@ -41,15 +41,13 @@ const desktopNavItems = [
   { id: "education" as const, icon: BookOpen, label: "Academia Cripto", desc: "Guias e tutoriais", shortcut: "7" },
 ];
 
-// Mobile: 7 core items
+// Mobile: 5 core grouped areas according to spec
 const mobileNavItems = [
-  { id: "dashboard" as const, icon: LayoutDashboard, label: "Painel" },
-  { id: "journal" as const, icon: LineChart, label: "Diário" },
-  { id: "chart" as const, icon: BarChart3, label: "Gráfico" },
-  { id: "trade-hub" as const, icon: Sparkles, label: "Estúdio" },
+  { id: "dashboard" as const, icon: LayoutDashboard, label: "Início" },
+  { id: "chart" as const, icon: BarChart3, label: "Mercado" },
   { id: "bot" as const, icon: Bot, label: "Robôs" },
+  { id: "history" as const, icon: History, label: "Carteira" },
   { id: "ai" as const, icon: Brain, label: "IA" },
-  { id: "history" as const, icon: History, label: "Histórico" },
 ];
 
 export function Sidebar() {

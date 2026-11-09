@@ -67,6 +67,11 @@ export interface UISlice {
   setOpenQuantCopilotModal: (open: boolean) => void;
   quantCopilotAutoAuditCount: number;
   triggerQuantCopilotInstantAudit: () => void;
+
+  // Modo Profissional (revela telemetria avançada, L2 stream, SQLite/WAL, OFI)
+  proMode: boolean;
+  setProMode: (enabled: boolean) => void;
+  toggleProMode: () => void;
 }
 
 // Default widget order
@@ -278,4 +283,24 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set, get) 
       openQuantCopilotModal: true,
       quantCopilotAutoAuditCount: state.quantCopilotAutoAuditCount + 1,
     })),
+
+  // Modo Profissional
+  proMode: typeof window !== "undefined" ? localStorage.getItem("tradeai-pro-mode") === "true" : false,
+  setProMode: (enabled) => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("tradeai-pro-mode", String(enabled));
+      } catch {}
+    }
+    set({ proMode: enabled });
+  },
+  toggleProMode: () => {
+    const next = !get().proMode;
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("tradeai-pro-mode", String(next));
+      } catch {}
+    }
+    set({ proMode: next });
+  },
 });

@@ -13,6 +13,7 @@ import { GlobalCommandSearch } from "./header/global-command-search";
 import { GlobalStatusBar } from "./header/global-status-bar";
 import { ApiSettingsDialog } from "./header/api-settings-dialog";
 import { AiSettingsDialog } from "./header/ai-settings-dialog";
+import { SystemStatusPopover } from "./header/system-status-popover";
 import { DirectAiTradeModal } from "@/components/bot/direct-ai-trade-modal";
 import { RiskProfileSelector } from "@/components/bot/risk-profile-selector";
 import { useDesktopHotkeys } from "@/hooks/use-desktop-hotkeys";
@@ -63,6 +64,8 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
     setOpenApiSettingsModal,
     openAiSettingsModal,
     setOpenAiSettingsModal,
+    proMode,
+    toggleProMode,
   } = useCryptoStore(
   useShallow((s) => ({
     bots: s.bots,
@@ -82,6 +85,8 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
     setOpenApiSettingsModal: s.setOpenApiSettingsModal,
     openAiSettingsModal: s.openAiSettingsModal,
     setOpenAiSettingsModal: s.setOpenAiSettingsModal,
+    proMode: s.proMode,
+    toggleProMode: s.toggleProMode,
   }))
 );
 
@@ -584,6 +589,21 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
                   <span>Motor de IA</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
+                  onClick={toggleProMode}
+                  className="text-xs flex items-center justify-between py-1.5 px-2 cursor-pointer font-medium hover:bg-secondary/60"
+                >
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-3.5 h-3.5 text-crypto-cyan" />
+                    <span>Modo Profissional</span>
+                  </div>
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.2 rounded font-mono font-bold",
+                    proMode ? "bg-crypto-cyan/20 text-crypto-cyan" : "bg-secondary text-muted-foreground"
+                  )}>
+                    {proMode ? "ATIVO" : "OFF"}
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   onClick={async () => {
                     await clearSimulatedData();
                     toast({
@@ -685,6 +705,9 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
             );
           })()}
 
+          {/* Popover Status do Sistema & Telemetria */}
+          {mounted && <SystemStatusPopover />}
+
           {/* Connection status com Ping Real Institucional */}
           <Button
             variant="ghost"
@@ -754,8 +777,8 @@ export function Header({ onOpenMobileDrawer }: HeaderProps) {
         </div>
       </div>
 
-      {/* Global HFT Telemetry and Status Bar */}
-      {mounted && <GlobalStatusBar />}
+      {/* Global HFT Telemetry and Status Bar (apenas no Modo Profissional) */}
+      {mounted && proMode && <GlobalStatusBar />}
 
       {isRealMoney && (
         <div
