@@ -229,10 +229,10 @@ export function useInstitutionalRealtime() {
           else if (spread > 0.20 || item.bidVolumeUsd < 5000) predState = "COLAPSO_LIQUIDEZ";
 
           // Sintetizar profundidade baseada nas ofertas reais coletadas
-          const bestBid = item.bestBid || 68000;
-          const bestAsk = item.bestAsk || 68010;
-          const bidVol = item.bidVolumeUsd || 45000;
-          const askVol = item.askVolumeUsd || 40000;
+          const bestBid = item.bestBid || 0;
+          const bestAsk = item.bestAsk || 0;
+          const bidVol = item.bidVolumeUsd || 0;
+          const askVol = item.askVolumeUsd || 0;
 
           const depthBids = [
             { price: bestBid, amount: bidVol * 0.35, total: bidVol * 0.35 },

@@ -28,23 +28,24 @@ export function useBinanceData() {
         "tickers-all",
         async () => {
           const response = await fetch(`${BINANCE_API}/ticker`);
-          if (!response.ok) throw new Error("Ticker fetch failed");
+          if (!response.ok) return {};
 
           const result = await response.json();
-          const data = result.data;
-          if (!Array.isArray(data)) throw new Error("Invalid ticker data");
+          const data = result?.data;
+          if (!Array.isArray(data)) return {};
 
           const map: Record<string, TickerData> = {};
           for (const item of data) {
+            if (!item || !item.symbol) continue;
             map[item.symbol] = {
               symbol: item.symbol,
-              price: parseFloat(item.lastPrice),
-              priceChange: parseFloat(item.priceChange),
-              priceChangePercent: parseFloat(item.priceChangePercent),
-              high: parseFloat(item.highPrice),
-              low: parseFloat(item.lowPrice),
-              volume: parseFloat(item.volume),
-              quoteVolume: parseFloat(item.quoteVolume),
+              price: parseFloat(item.lastPrice || "0"),
+              priceChange: parseFloat(item.priceChange || "0"),
+              priceChangePercent: parseFloat(item.priceChangePercent || "0"),
+              high: parseFloat(item.highPrice || "0"),
+              low: parseFloat(item.lowPrice || "0"),
+              volume: parseFloat(item.volume || "0"),
+              quoteVolume: parseFloat(item.quoteVolume || "0"),
             };
           }
           return map;

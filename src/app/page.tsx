@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { DataProvider, useDataProvider } from "@/lib/data-provider";
 import { useBinanceData } from "@/hooks/use-binance-data";
@@ -19,10 +19,55 @@ import { HistoryBootstrap } from "@/components/bot/history-bootstrap";
 import { BotReadinessWatcher } from "@/components/bot/bot-readiness";
 
 function TabLoadingSkeleton() {
+  const [timedOut, setTimedOut] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setTimedOut(true);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[40vh] gap-3">
-      <Loader2 className="w-6 h-6 text-crypto-cyan animate-spin" />
-      <span className="text-xs text-muted-foreground animate-pulse">Carregando módulo...</span>
+    <div className="w-full space-y-4 p-4 md:p-6 animate-pulse">
+      <div className="flex items-center justify-between pb-2 border-b border-border/40">
+        <div className="h-6 w-48 bg-muted rounded-md" />
+        <div className="flex gap-2">
+          <div className="h-8 w-24 bg-muted rounded-md" />
+          <div className="h-8 w-28 bg-muted rounded-md" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="h-28 bg-card border border-border/60 rounded-xl p-4 space-y-3">
+          <div className="h-4 w-28 bg-muted rounded" />
+          <div className="h-7 w-36 bg-muted rounded" />
+        </div>
+        <div className="h-28 bg-card border border-border/60 rounded-xl p-4 space-y-3">
+          <div className="h-4 w-28 bg-muted rounded" />
+          <div className="h-7 w-36 bg-muted rounded" />
+        </div>
+        <div className="h-28 bg-card border border-border/60 rounded-xl p-4 space-y-3">
+          <div className="h-4 w-28 bg-muted rounded" />
+          <div className="h-7 w-36 bg-muted rounded" />
+        </div>
+      </div>
+
+      <div className="h-64 bg-card border border-border/60 rounded-xl p-4 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+        <span className="text-xs text-muted-foreground">Carregando módulo e dados analíticos...</span>
+        {timedOut && (
+          <div className="mt-2 flex flex-col items-center gap-2">
+            <span className="text-xs text-amber-500 font-medium">O carregamento está demorando mais do que o esperado.</span>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

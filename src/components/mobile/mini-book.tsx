@@ -63,7 +63,9 @@ export function MiniBook() {
   const currentPrice = tickers[selectedSymbol]?.price ?? 0;
 
   const updateData = useCallback(async () => {
-    if (!selectedSymbol) return;
+    if (!selectedSymbol || typeof window === "undefined") return;
+    // Evita polling em telas desktop ou quando minimizado
+    if (window.innerWidth >= 768) return;
     try {
       const data = await getOrFetch(
         `mini-depth-${selectedSymbol}`,
@@ -71,8 +73,8 @@ export function MiniBook() {
         CACHE_TTL.ORDER_BOOK
       );
       setBookData(data);
-    } catch (err) {
-      console.error("[MiniBook] Error fetching data:", err);
+    } catch {
+      // Silencioso com retry inteligente
     }
   }, [selectedSymbol]);
 

@@ -455,13 +455,13 @@ export function evaluatePredictiveAlerts(input: PredictiveEngineInput): Predicti
   // =========================================================================
 
   for (const [sym, data] of Object.entries(input.l2Microstructure)) {
-    // 2.1 Alerta de Slippage Iminente
-    // IA detecta: colapso de liquidez L2, spread aumentando, agressões de venda crescendo, volatilidade explosiva
-    const lowDepth = (data.askVolume || 0) < 20000;
+    // 2.1 Alerta de Slippage Iminente: só disparar quando houver amostra real de profundidade (> 0)
+    const hasSufficientL2 = (data.askVolume || 0) > 0 && (data.bidVolume || 0) > 0;
+    const lowDepth = hasSufficientL2 && (data.askVolume || 0) < 20000;
     const wideSpread = (data.spreadPercent || 0) > 0.10;
     const sellerDominance = (data.orderFlowImbalance || 0) < -0.25;
 
-    if (wideSpread || (lowDepth && sellerDominance) || (volatility.isExplosive && lowDepth)) {
+    if (hasSufficientL2 && (wideSpread || (lowDepth && sellerDominance) || (volatility.isExplosive && lowDepth))) {
       alerts.push({
         id: `pred-high-slip-${sym}`,
         category: "slippage",
