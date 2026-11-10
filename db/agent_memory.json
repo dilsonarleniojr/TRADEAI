@@ -12,6 +12,70 @@
     "details": {
       "minRr": 2.2
     },
+    "id": "mem-1794295693567-25p9l",
+    "timestamp": "2026-11-10T07:28:13.567Z"
+  },
+  {
+    "category": "QUANT_STRATEGY",
+    "title": "Calibragem Trailing Stop ATR e Order Flow L2",
+    "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
+    "tags": [
+      "mfe",
+      "trailing-stop",
+      "order-flow",
+      "atr"
+    ],
+    "details": {
+      "minRr": 2.2
+    },
+    "id": "mem-1794295417295-h96mt",
+    "timestamp": "2026-11-10T07:23:37.295Z"
+  },
+  {
+    "category": "QUANT_STRATEGY",
+    "title": "Calibragem Trailing Stop ATR e Order Flow L2",
+    "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
+    "tags": [
+      "mfe",
+      "trailing-stop",
+      "order-flow",
+      "atr"
+    ],
+    "details": {
+      "minRr": 2.2
+    },
+    "id": "mem-1794293623021-pelf5",
+    "timestamp": "2026-11-10T06:53:43.021Z"
+  },
+  {
+    "category": "QUANT_STRATEGY",
+    "title": "Calibragem Trailing Stop ATR e Order Flow L2",
+    "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
+    "tags": [
+      "mfe",
+      "trailing-stop",
+      "order-flow",
+      "atr"
+    ],
+    "details": {
+      "minRr": 2.2
+    },
+    "id": "mem-1794293440703-iy3p9",
+    "timestamp": "2026-11-10T06:50:40.703Z"
+  },
+  {
+    "category": "QUANT_STRATEGY",
+    "title": "Calibragem Trailing Stop ATR e Order Flow L2",
+    "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
+    "tags": [
+      "mfe",
+      "trailing-stop",
+      "order-flow",
+      "atr"
+    ],
+    "details": {
+      "minRr": 2.2
+    },
     "id": "mem-1794269834283-t97o9",
     "timestamp": "2026-11-10T00:17:14.283Z"
   },
@@ -2572,5 +2636,18 @@
     },
     "id": "mem-1792688000000-low-latency-soa-atomics-optimization",
     "timestamp": "2026-10-23T07:45:00.000Z"
+  },
+  {
+    "category": "USER_PREFERENCE",
+    "title": "Feedback Periódico de Execução a Cada Minuto",
+    "summary": "Diretriz mandatória do usuário: o agente deve reportar o andamento da execução a cada minuto (60s) durante tarefas extensas ou de longa duração.",
+    "tags": [
+      "feedback",
+      "user-preference",
+      "periodic-status",
+      "operational-cadence"
+    ],
+    "timestamp": "2026-11-10T04:18:08.000Z",
+    "id": "mem-1794295088081-feedback-periodico-minuto"
   }
 ]

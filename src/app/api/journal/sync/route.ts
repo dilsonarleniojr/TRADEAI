@@ -67,7 +67,7 @@ export const MAX_SYNC_PAYLOAD_BYTES = 2 * 1024 * 1024; // 2 MB
  * Sanitiza strings removendo caracteres de controle ASCII (prevenção de Log Injection CWE-117 e XSS/Null-byte)
  * e truncando no tamanho máximo permitido.
  */
-export function sanitizeSafeString(val: unknown, fallback: string, maxLength = 128): string {
+function sanitizeSafeString(val: unknown, fallback: string, maxLength = 128): string {
   if (typeof val !== "string" && typeof val !== "number") return fallback;
   const cleaned = String(val)
     .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
