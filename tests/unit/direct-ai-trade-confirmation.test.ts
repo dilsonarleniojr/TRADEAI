@@ -39,3 +39,4 @@ describe("DirectAiTrade Confirmation & Security Guardrails (UI-002)", () => {
     expect(valid.error).toBeUndefined();
   });
 });
+

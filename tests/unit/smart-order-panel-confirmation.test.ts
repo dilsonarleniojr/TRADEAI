@@ -43,3 +43,4 @@ describe("SmartOrderPanel Confirmation Logic & Validations (UI-001)", () => {
     expect(showConfirmModal).toBe(false);
   });
 });
+

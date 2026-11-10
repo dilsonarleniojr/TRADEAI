@@ -69,3 +69,4 @@ export function validateDirectAiTradeAmount(amount: number): {
   }
   return { isValid: true };
 }
+
