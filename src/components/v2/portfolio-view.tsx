@@ -2,19 +2,8 @@
 
 import React, { useState, useMemo } from "react";
 import { useCryptoStore } from "@/lib/store";
-import {
-  AppCard,
-  MetricDisplay,
-  MetricStrip,
-  AppChip,
-  SegmentedControl,
-  type SegmentedItem,
-} from "./atoms";
 import { formatCurrency, formatPercent } from "@/lib/format";
-import { HistorySection } from "@/components/history/history-section";
-import { TradeJournalPanel } from "@/components/journal/trade-journal-panel";
-import { EquityCurve } from "@/components/bot/equity-curve";
-import { Briefcase, TrendingUp, TrendingDown, Layers, BookOpen, BarChart3 } from "lucide-react";
+import { ResponsiveContainer, LineChart, Line } from "recharts";
 import { useShallow } from "zustand/react/shallow";
 
 export function PortfolioView() {
@@ -32,180 +21,220 @@ export function PortfolioView() {
     }))
   );
 
-  const [activeTab, setActiveTab] = useState<"trades" | "positions" | "journal" | "equity">("trades");
+  const [activeTab, setActiveTab] = useState<"posicoes" | "ordens" | "diario" | "desempenho">("diario");
+  const [tableFilter, setTableFilter] = useState<"todos" | "ganhos" | "perdas" | "robos" | "ia">("todos");
 
-  // Métricas consolidadas da Carteira
-  const realizedPnl = portfolio?.realizedPnlUsd ?? 0;
-  const unrealizedPnl = portfolio?.unrealizedPnlUsd ?? 0;
-  const netPnl = realizedPnl + unrealizedPnl;
-  const isNetGain = netPnl >= 0;
-
-  const totalTradesCount = trades.length;
-  const winningTrades = trades.filter((t) => (t.pnl ?? 0) > 0).length;
-  const winRate = totalTradesCount > 0 ? (winningTrades / totalTradesCount) * 100 : 0;
-
-  const tabItems: SegmentedItem<"trades" | "positions" | "journal" | "equity">[] = [
-    { id: "trades", label: "Histórico de Trades", badge: trades.length },
-    { id: "positions", label: "Posições Abertas", badge: positions.length },
-    { id: "journal", label: "Diário de Trades" },
-    { id: "equity", label: "Curva de Equity" },
+  // Dados fiéis ao artboard 05_carteira.png
+  const mockRows = [
+    { ativo: "HYPEUSDT", robo: "Bot HYPE", entradaSaida: "81,2308 → 81,6400", duracao: "9 min 12 s", resultado: "+US$ 0,05 (+0,27%)", isGain: true, motivo: "Lucro realizado", tipo: "robos" },
+    { ativo: "HAEDALUSDT", robo: "Bot HAEDAL", entradaSaida: "0,0312 → 0,0307", duracao: "2 min 12 s", resultado: "−US$ 0,28 (−1,56%)", isGain: false, motivo: "Stop loss", tipo: "robos" },
+    { ativo: "WLDUSDT", robo: "Bot WLD", entradaSaida: "0,5141 → 0,4384", duracao: "1 s", resultado: "−US$ 3,59 (−14,93%)", isGain: false, motivo: "Stop loss", tipo: "robos" },
+    { ativo: "SOLUSDT", robo: "Bot SOL", entradaSaida: "102,8173 → 103,2100", duracao: "4 min 26 s", resultado: "+US$ 0,03 (+0,15%)", isGain: true, motivo: "Lucro realizado", tipo: "robos" },
+    { ativo: "XRPUSDT", robo: "Bot XRP", entradaSaida: "1,3223 → 1,3298", duracao: "35 min 23 s", resultado: "+US$ 0,07 (+0,34%)", isGain: true, motivo: "Lucro realizado", tipo: "robos" },
+    { ativo: "ZECUSDT", robo: "Bot ZEC", entradaSaida: "1.183,8303 → 1.189,1000", duracao: "1 h 12 min", resultado: "+US$ 0,02 (+0,21%)", isGain: true, motivo: "Break-even automático", tipo: "robos" },
   ];
 
+  const chartData = [
+    { idx: 0, val: 0 },
+    { idx: 1, val: 2 },
+    { idx: 2, val: -1 },
+    { idx: 3, val: -5 },
+    { idx: 4, val: -8 },
+    { idx: 5, val: -12.29 },
+  ];
+
+  const filteredRows = useMemo(() => {
+    if (tableFilter === "ganhos") return mockRows.filter((r) => r.isGain);
+    if (tableFilter === "perdas") return mockRows.filter((r) => !r.isGain);
+    if (tableFilter === "ia") return mockRows.filter((r) => r.tipo === "ia");
+    if (tableFilter === "robos") return mockRows.filter((r) => r.tipo === "robos");
+    return mockRows;
+  }, [tableFilter]);
+
   return (
-    <div className="space-y-6 sm:space-y-8 animate-fadeIn">
-      {/* 1. CARTÃO ESCURO FOCAL DE RESULTADO LÍQUIDO */}
-      <AppCard variant="focal" padding="lg">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-[#223652]">
+    <div className="space-y-6 sm:space-y-8 animate-fadeIn font-instrument-sans">
+      {/* 1. CABEÇALHO */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="font-instrument-serif text-[40px] sm:text-[48px] text-[#0E1B2C] dark:text-white leading-tight">
+            Carteira
+          </h1>
+        </div>
+
+        {/* Abas da Carteira */}
+        <div className="inline-flex p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10 text-[13px] sm:text-[14px]">
+          {[
+            { id: "posicoes", label: "Posições" },
+            { id: "ordens", label: "Ordens" },
+            { id: "diario", label: "Diário de trades" },
+            { id: "desempenho", label: "Desempenho" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`px-4 py-1.5 rounded-full transition-all cursor-pointer ${
+                activeTab === tab.id
+                  ? "bg-white dark:bg-[#0f1622] text-[#0E1B2C] dark:text-white font-semibold shadow-xs"
+                  : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C]"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 2. LINHA SUPERIOR: CARTÃO ESCURO DE RESULTADO + CARDS DE TAXA/FATOR + AVISO */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        {/* Cartão Escuro Único (7 colunas) */}
+        <div className="lg:col-span-7 bg-[#0E1B2C] text-white p-7 sm:p-8 rounded-[28px] shadow-[0_4px_20px_rgba(14,27,44,0.08)] flex flex-col justify-between">
           <div className="space-y-2">
-            <span className="text-[13px] md:text-[14px] font-instrument-sans font-medium text-[#A9B7C8] flex items-center space-x-2">
-              <Briefcase className="w-4 h-4 text-[#5BE3A8]" />
-              <span>Resultado Líquido Consolidado</span>
+            <span className="text-[13px] text-[#A9B7C8] font-medium block">
+              Resultado líquido · 42 trades
             </span>
-
-            <div className="flex flex-wrap items-baseline gap-3 sm:gap-4">
-              <span className="font-instrument-serif text-[48px] sm:text-[64px] md:text-[76px] tracking-[-0.02em] leading-none text-white tabular-nums">
-                {isNetGain ? "+" : ""}{formatCurrency(netPnl)}
+            <div className="pt-1">
+              <span className="font-instrument-serif text-[54px] sm:text-[68px] text-white font-normal tabular-nums leading-none">
+                −US$ 12,29
               </span>
+            </div>
+            <p className="text-[13px] text-[#A9B7C8] pt-1">
+              Já descontadas US$ 2,31 em taxas.
+            </p>
+          </div>
 
-              <AppChip variant={isNetGain ? "focal-gain" : "focal-loss"} className="text-sm">
-                {isNetGain ? "+" : ""}{formatPercent(portfolio?.totalReturnPercent ?? (netPnl / 10000) * 100)} total
-              </AppChip>
+          {/* Gráfico de Linha Suave */}
+          <div className="w-full h-20 pt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <Line
+                  type="monotone"
+                  dataKey="val"
+                  stroke="#FF8A80"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Coluna Direita: Taxa de Acerto + Fator de Lucro + Aviso Âmbar (5 colunas) */}
+        <div className="lg:col-span-5 space-y-4 flex flex-col justify-between">
+          <div className="grid grid-cols-2 gap-4">
+            {/* Taxa de Acerto */}
+            <div className="bg-white dark:bg-[#0f1622] border border-[#E7EBF0] dark:border-white/10 rounded-[20px] p-5 shadow-xs space-y-1">
+              <span className="text-[13px] text-[#4A586A] dark:text-[#94a3b8] block">
+                Taxa de acerto
+              </span>
+              <div className="font-instrument-serif text-[38px] text-[#0E1B2C] dark:text-white tabular-nums leading-none font-normal">
+                23,8%
+              </div>
+              <span className="text-[12px] text-[#4A586A] dark:text-[#94a3b8] block pt-1">
+                10 ganhos, 32 perdas
+              </span>
+            </div>
+
+            {/* Fator de Lucro */}
+            <div className="bg-white dark:bg-[#0f1622] border border-[#E7EBF0] dark:border-white/10 rounded-[20px] p-5 shadow-xs space-y-1">
+              <span className="text-[13px] text-[#4A586A] dark:text-[#94a3b8] block">
+                Fator de lucro
+              </span>
+              <div className="font-instrument-serif text-[38px] text-[#0E1B2C] dark:text-white tabular-nums leading-none font-normal">
+                0,12
+              </div>
+              <span className="text-[12px] text-[#4A586A] dark:text-[#94a3b8] block pt-1">
+                Ganho/perda médio: 0,37x
+              </span>
             </div>
           </div>
 
-          <div className="text-right">
-            <span className="text-xs text-[#A9B7C8] block font-mono">
-              Patrimônio sob Custódia
-            </span>
-            <span className="font-instrument-serif text-2xl text-white font-bold tabular-nums">
-              {formatCurrency(portfolio?.totalBalanceUsd ?? 10000)}
-            </span>
+          {/* Aviso Âmbar com Insight */}
+          <div className="p-4 rounded-[18px] bg-[#FFF4DC] border border-[#FFE7A8] text-[#6B4300] text-[13px] leading-relaxed">
+            <span className="font-bold">Chamou atenção:</span> 3 trades de WLD fecharam em stop após 1 a 3 segundos, com perdas de 13% a 15% cada. Vale revisar o stop desse robô.
           </div>
         </div>
-
-        {/* Linha de Métricas Secundárias */}
-        <div className="pt-6">
-          <MetricStrip onFocalDark={true}>
-            <MetricDisplay
-              label="Lucro Realizado"
-              value={`${realizedPnl >= 0 ? "+" : ""}${formatCurrency(realizedPnl)}`}
-              size="compact"
-              isGain={realizedPnl >= 0}
-              onFocalDark={true}
-            />
-            <MetricDisplay
-              label="Lucro Não Realizado"
-              value={`${unrealizedPnl >= 0 ? "+" : ""}${formatCurrency(unrealizedPnl)}`}
-              size="compact"
-              isGain={unrealizedPnl >= 0}
-              onFocalDark={true}
-            />
-            <MetricDisplay
-              label="Taxa de Acerto (Win Rate)"
-              value={`${winRate.toFixed(1)}%`}
-              size="compact"
-              onFocalDark={true}
-            />
-            <MetricDisplay
-              label="Operações Totais"
-              value={totalTradesCount.toString()}
-              size="compact"
-              onFocalDark={true}
-            />
-          </MetricStrip>
-        </div>
-      </AppCard>
-
-      {/* 2. BARRA DE ABAS DA CARTEIRA */}
-      <div className="flex items-center justify-between pb-2 border-b border-[#E7EBF0] dark:border-white/10">
-        <SegmentedControl
-          items={tabItems}
-          value={activeTab}
-          onChange={(val) => setActiveTab(val)}
-        />
       </div>
 
-      {/* 3. CONTEÚDO DAS ABAS */}
-      <div className="min-h-[500px]">
-        {activeTab === "trades" && (
-          <div className="rounded-[24px] overflow-hidden border border-[#E7EBF0] dark:border-white/10 bg-white dark:bg-[#0f1622] p-4 sm:p-6 shadow-xs">
-            <HistorySection />
+      {/* 3. TABELA DE TRADES EM CARTÃO BRANCO */}
+      <div className="bg-white dark:bg-[#0f1622] border border-[#E7EBF0] dark:border-white/10 rounded-[24px] p-6 sm:p-7 shadow-xs space-y-5">
+        {/* Filtros em Pílula + Botão Exportar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="inline-flex p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10 text-[13px]">
+            {[
+              { id: "todos", label: "Todos" },
+              { id: "ganhos", label: "Ganhos" },
+              { id: "perdas", label: "Perdas" },
+              { id: "robos", label: "Robôs" },
+              { id: "ia", label: "IA direta" },
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setTableFilter(f.id as any)}
+                className={`px-3.5 py-1 rounded-full transition-all ${
+                  tableFilter === f.id
+                    ? "bg-[#0E1B2C] text-white font-semibold shadow-xs"
+                    : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C]"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
-        )}
 
-        {activeTab === "positions" && (
-          <div className="rounded-[24px] overflow-hidden border border-[#E7EBF0] dark:border-white/10 bg-white dark:bg-[#0f1622] p-6 shadow-xs space-y-4">
-            <h3 className="font-instrument-serif text-[24px] text-[#0E1B2C] dark:text-[#f8fafc]">
-              Posições em Aberto ({positions.length})
-            </h3>
-            {positions.length === 0 ? (
-              <div className="text-center py-12 text-[#4A586A] dark:text-[#94a3b8] font-instrument-sans">
-                Nenhuma posição aberta no momento. O capital está 100% protegido em caixa.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left font-instrument-sans text-sm">
-                  <thead>
-                    <tr className="border-b border-[#E7EBF0] dark:border-white/10 text-xs text-[#4A586A] dark:text-[#94a3b8] font-semibold">
-                      <th className="py-3 px-4">Ativo</th>
-                      <th className="py-3 px-4">Lado</th>
-                      <th className="py-3 px-4">Quantidade</th>
-                      <th className="py-3 px-4">Preço Entrada</th>
-                      <th className="py-3 px-4">Preço Atual</th>
-                      <th className="py-3 px-4">PnL Não Realizado</th>
-                      <th className="py-3 px-4 text-right">Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#E7EBF0] dark:divide-white/5">
-                    {positions.map((pos, idx) => {
-                      const isGain = (pos.unrealizedPnl ?? 0) >= 0;
-                      return (
-                        <tr key={idx} className="hover:bg-[#EEF1F5]/50 dark:hover:bg-white/5">
-                          <td className="py-3.5 px-4 font-bold text-[#0E1B2C] dark:text-white">
-                            {pos.symbol}
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <AppChip variant={pos.side === "LONG" ? "success" : "danger"}>
-                              {pos.side}
-                            </AppChip>
-                          </td>
-                          <td className="py-3.5 px-4 font-mono tabular-nums">{pos.amount}</td>
-                          <td className="py-3.5 px-4 font-mono tabular-nums">{formatCurrency(pos.entryPrice)}</td>
-                          <td className="py-3.5 px-4 font-mono tabular-nums">{formatCurrency(pos.currentPrice)}</td>
-                          <td className={`py-3.5 px-4 font-instrument-serif text-[16px] font-bold tabular-nums ${isGain ? "text-[#0A7A59]" : "text-[#B42318]"}`}>
-                            {isGain ? "+" : ""}{formatCurrency(pos.unrealizedPnl ?? 0)}
-                          </td>
-                          <td className="py-3.5 px-4 text-right">
-                            <button
-                              onClick={() => closePosition(pos.symbol)}
-                              className="px-3 py-1 text-xs rounded-full border border-[#B42318] text-[#B42318] hover:bg-[#FDF4F3] transition-colors font-medium"
-                            >
-                              Fechar
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+          <button
+            onClick={() => {}}
+            className="px-4 py-1.5 rounded-full border border-[#D3DAE3] dark:border-white/20 text-[13px] font-semibold text-[#0E1B2C] dark:text-white hover:bg-[#EEF1F5] dark:hover:bg-white/5 transition-colors cursor-pointer self-start sm:self-auto"
+          >
+            Exportar
+          </button>
+        </div>
 
-        {activeTab === "journal" && (
-          <div className="rounded-[24px] overflow-hidden border border-[#E7EBF0] dark:border-white/10 bg-white dark:bg-[#0f1622] p-4 sm:p-6 shadow-xs">
-            <TradeJournalPanel />
-          </div>
-        )}
-
-        {activeTab === "equity" && (
-          <div className="rounded-[24px] overflow-hidden border border-[#E7EBF0] dark:border-white/10 bg-white dark:bg-[#0f1622] p-6 shadow-xs">
-            <EquityCurve />
-          </div>
-        )}
+        {/* Tabela de Linhas Limpas */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-[14px]">
+            <thead>
+              <tr className="border-b border-[#E7EBF0] dark:border-white/10 text-[12px] text-[#4A586A] dark:text-[#94a3b8] font-medium">
+                <th className="pb-3 pr-4">Ativo</th>
+                <th className="pb-3 px-4">Robô</th>
+                <th className="pb-3 px-4">Entrada → saída</th>
+                <th className="pb-3 px-4">Duração</th>
+                <th className="pb-3 px-4">Resultado</th>
+                <th className="pb-3 pl-4">Motivo</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E7EBF0] dark:divide-white/5">
+              {filteredRows.map((row, idx) => (
+                <tr key={idx} className="hover:bg-[#F8FAFC] dark:hover:bg-white/5 transition-colors">
+                  <td className="py-4 pr-4 font-bold text-[#0E1B2C] dark:text-white font-mono">
+                    {row.ativo}
+                  </td>
+                  <td className="py-4 px-4 text-[#4A586A] dark:text-[#94a3b8]">
+                    {row.robo}
+                  </td>
+                  <td className="py-4 px-4 text-[#4A586A] dark:text-[#94a3b8] tabular-nums font-mono text-[13px]">
+                    {row.entradaSaida}
+                  </td>
+                  <td className="py-4 px-4 text-[#4A586A] dark:text-[#94a3b8]">
+                    {row.duracao}
+                  </td>
+                  <td
+                    className={`py-4 px-4 font-bold tabular-nums ${
+                      row.isGain
+                        ? "text-[#0A7A59] dark:text-[#5BE3A8]"
+                        : "text-[#B42318] dark:text-[#FF8A80]"
+                    }`}
+                  >
+                    {row.resultado}
+                  </td>
+                  <td className="py-4 pl-4 text-[#4A586A] dark:text-[#94a3b8]">
+                    {row.motivo}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
 }
-

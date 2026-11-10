@@ -2,13 +2,6 @@
 
 import React from "react";
 import { useCryptoStore } from "@/lib/store";
-import {
-  Home,
-  TrendingUp,
-  Bot,
-  Briefcase,
-  GraduationCap,
-} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useShallow } from "zustand/react/shallow";
 import type { V2NavigationArea } from "./top-nav";
@@ -46,34 +39,33 @@ export function MobileNavBar() {
   const currentArea = getActiveArea();
 
   const navItems = [
-    { id: "inicio" as V2NavigationArea, label: "Início", icon: Home, section: "dashboard" as const },
-    { id: "mercado" as V2NavigationArea, label: "Mercado", icon: TrendingUp, section: "chart" as const },
-    { id: "robos" as V2NavigationArea, label: "Robôs", icon: Bot, section: "bot" as const },
-    { id: "carteira" as V2NavigationArea, label: "Carteira", icon: Briefcase, section: "history" as const },
-    { id: "aprender" as V2NavigationArea, label: "Aprender", icon: GraduationCap, section: "education" as const },
+    { id: "inicio" as V2NavigationArea, label: "Início", section: "dashboard" as const },
+    { id: "mercado" as V2NavigationArea, label: "Mercado", section: "chart" as const },
+    { id: "robos" as V2NavigationArea, label: "Robôs", section: "bot" as const },
+    { id: "carteira" as V2NavigationArea, label: "Carteira", section: "history" as const },
+    { id: "aprender" as V2NavigationArea, label: "Mais", section: "education" as const },
   ];
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#FFFFFF]/95 dark:bg-[#0f1622]/95 backdrop-blur-md border-t border-[#E7EBF0] dark:border-white/10 px-2 py-1 safe-area-bottom">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#FFFFFF] dark:bg-[#0f1622] border-t border-[#E7EBF0] dark:border-white/10 safe-area-bottom">
       <div className="flex items-center justify-around h-14 max-w-[420px] mx-auto">
         {navItems.map((item) => {
           const isActive = currentArea === item.id;
-          const Icon = item.icon;
           return (
             <button
               key={item.id}
               onClick={() => setActiveSection(item.section)}
               className={cn(
-                "flex flex-col items-center justify-center flex-1 py-1 min-h-[44px] transition-colors rounded-xl select-none",
+                "relative flex items-center justify-center flex-1 h-full font-instrument-sans text-[13px] transition-colors select-none",
                 isActive
-                  ? "text-[#0E1B2C] dark:text-[#5BE3A8] font-semibold"
-                  : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C]"
+                  ? "text-[#0E1B2C] dark:text-white font-bold"
+                  : "text-[#4A586A] dark:text-[#94a3b8]"
               )}
             >
-              <Icon className={cn("w-5 h-5", isActive ? "stroke-[2.2px]" : "stroke-[1.8px]")} />
-              <span className="text-[11px] font-instrument-sans tracking-tight mt-0.5">
-                {item.label}
-              </span>
+              {isActive && (
+                <span className="absolute top-0 left-6 right-6 h-[3px] bg-[#0E1B2C] dark:bg-white rounded-full" />
+              )}
+              <span>{item.label}</span>
             </button>
           );
         })}
@@ -81,4 +73,3 @@ export function MobileNavBar() {
     </nav>
   );
 }
-

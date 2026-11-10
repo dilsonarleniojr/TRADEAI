@@ -11,6 +11,7 @@ import { MarketView } from "@/components/v2/market-view";
 import { BotView } from "@/components/v2/bot-view";
 import { PortfolioView } from "@/components/v2/portfolio-view";
 import { LearnView } from "@/components/v2/learn-view";
+import { CockpitView } from "@/components/v2/cockpit-view";
 import { ShortcutsHint } from "@/components/dashboard/shortcuts-hint";
 import { Loader2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
@@ -55,8 +56,9 @@ function HomePageContent() {
       case "ai":
         return <MarketView />;
       case "bot":
-      case "institutional":
         return <BotView />;
+      case "institutional":
+        return <CockpitView />;
       case "history":
       case "journal":
         return <PortfolioView />;
