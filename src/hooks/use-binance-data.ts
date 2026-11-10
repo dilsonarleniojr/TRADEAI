@@ -31,8 +31,8 @@ export function useBinanceData() {
           if (!response.ok) return {};
 
           const result = await response.json();
-          const data = result?.data;
-          if (!Array.isArray(data)) return {};
+          const data = Array.isArray(result) ? result : Array.isArray(result?.data) ? result.data : [];
+          if (!Array.isArray(data) || data.length === 0) return {};
 
           const map: Record<string, TickerData> = {};
           for (const item of data) {

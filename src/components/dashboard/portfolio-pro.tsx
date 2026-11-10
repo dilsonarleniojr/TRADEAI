@@ -285,7 +285,7 @@ export function PortfolioPro() {
                             hasProfit ? "text-crypto-green" : "text-crypto-red"
                           )}>
                             {hasProfit ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                            {hasProfit ? "+" : ""}{formatPercent(pos.pnlPercent)}
+                            {formatPercent(pos.pnlPercent)}
                           </span>
                         </div>
                       </div>

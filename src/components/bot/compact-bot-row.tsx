@@ -91,7 +91,7 @@ export const CompactBotRow = memo(function CompactBotRow({
   const realizedPnl = bot.stats?.realizedPnl || 0;
   const totalTrades = bot.stats?.totalTrades || 0;
   const winTrades = bot.stats?.winTrades || 0;
-  const winRate = totalTrades > 0 ? (winTrades / totalTrades) * 100 : 100;
+  const winRate = totalTrades > 0 ? (winTrades / totalTrades) * 100 : null;
 
   const handleTakeProfitNow = async () => {
     setIsClosing(true);
@@ -269,7 +269,7 @@ export const CompactBotRow = memo(function CompactBotRow({
               {realizedPnl >= 0 ? "+" : ""}${formatPrice(Math.abs(realizedPnl))} USDT
             </span>
             <span className="text-[10px] text-muted-foreground font-mono">
-              ({winRate.toFixed(0)}% · {totalTrades}T)
+              ({winRate !== null ? `${winRate.toFixed(0)}%` : "—"} · {totalTrades}T)
             </span>
           </div>
         </div>

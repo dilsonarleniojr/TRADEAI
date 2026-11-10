@@ -61,13 +61,13 @@ function formatTimestamp(timestamp?: string, timeAgo?: string): string {
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    if (diffMins < 1) return 'Agora mesmo';
+    if (diffMins < 60) return `${diffMins} min atrás`;
+    if (diffHours < 24) return `${diffHours} h atrás`;
+    if (diffDays < 7) return `${diffDays} d atrás`;
+    return date.toLocaleDateString('pt-BR', { month: 'short', day: 'numeric' });
   } catch {
-    return 'Recently';
+    return 'Recentemente';
   }
 }
 
@@ -95,9 +95,7 @@ export function CryptoNews() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isLiveData, setIsLiveData] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<string>(
-    new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
-  );
+  const [lastUpdated, setLastUpdated] = useState<string>("");
 
   const fetchNews = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
@@ -128,7 +126,7 @@ export function CryptoNews() {
         setNewsItems(mappedData);
         setIsLiveData(true);
         setLastUpdated(
-          new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
+          new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
         );
       } else {
         setNewsItems([]);
@@ -183,7 +181,7 @@ export function CryptoNews() {
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                {lastUpdated}
+                {lastUpdated || "Sincronizando..."}
               </span>
               <Button
                 variant="ghost"

@@ -23,33 +23,39 @@ interface MiniBookData {
   askPct: number;
 }
 
-async function fetchMiniBookData(symbol: string): Promise<MiniBookData> {
-  const response = await fetch(`/api/market/depth?symbol=${symbol}&limit=5`);
-  if (!response.ok) throw new Error("Failed to fetch mini book");
+async function fetchMiniBookData(symbol: string): Promise<MiniBookData | null> {
+  try {
+    const response = await fetch(`/api/market/depth?symbol=${symbol}&limit=5`);
+    if (!response.ok) return null;
 
-  const data = await response.json();
-  const bids: OrderBookLevel[] = data.bids || [];
-  const asks: OrderBookLevel[] = data.asks || [];
+    const data = await response.json();
+    const bids: OrderBookLevel[] = Array.isArray(data?.bids) ? data.bids : [];
+    const asks: OrderBookLevel[] = Array.isArray(data?.asks) ? data.asks : [];
 
-  const bestBid = bids[0]?.price ?? 0;
-  const bestAsk = asks[0]?.price ?? 0;
-  const spread = bestAsk - bestBid;
-  const midPrice = (bestAsk + bestBid) / 2;
-  const spreadPercent = midPrice > 0 ? (spread / midPrice) * 100 : 0;
+    if (bids.length === 0 && asks.length === 0) return null;
 
-  const totalBidVolume = bids.reduce((acc, curr) => acc + curr.volume, 0);
-  const totalAskVolume = asks.reduce((acc, curr) => acc + curr.volume, 0);
-  const totalVolume = totalBidVolume + totalAskVolume;
+    const bestBid = bids[0]?.price ?? 0;
+    const bestAsk = asks[0]?.price ?? 0;
+    const spread = bestAsk - bestBid;
+    const midPrice = (bestAsk + bestBid) / 2;
+    const spreadPercent = midPrice > 0 ? (spread / midPrice) * 100 : 0;
 
-  const bidPct = totalVolume > 0 ? (totalBidVolume / totalVolume) * 100 : 50;
-  const askPct = totalVolume > 0 ? (totalAskVolume / totalVolume) * 100 : 50;
+    const totalBidVolume = bids.reduce((acc, curr) => acc + curr.volume, 0);
+    const totalAskVolume = asks.reduce((acc, curr) => acc + curr.volume, 0);
+    const totalVolume = totalBidVolume + totalAskVolume;
 
-  return {
-    spread,
-    spreadPercent,
-    bidPct,
-    askPct,
-  };
+    const bidPct = totalVolume > 0 ? (totalBidVolume / totalVolume) * 100 : 50;
+    const askPct = totalVolume > 0 ? (totalAskVolume / totalVolume) * 100 : 50;
+
+    return {
+      spread,
+      spreadPercent,
+      bidPct,
+      askPct,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function MiniBook() {

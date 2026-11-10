@@ -24,7 +24,7 @@ function TabLoadingSkeleton() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setTimedOut(true);
-    }, 8000);
+    }, 10000);
     return () => clearTimeout(timer);
   }, []);
 

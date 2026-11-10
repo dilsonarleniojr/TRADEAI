@@ -50,8 +50,11 @@ async function fetchInitialTickers(): Promise<Record<string, TickerData>> {
   if (!response.ok) throw new Error("Failed to fetch tickers");
 
   const result = await response.json();
-  const data = result.data;
-  if (!Array.isArray(data)) throw new Error("Invalid ticker data");
+  const data = Array.isArray(result) ? result : Array.isArray(result?.data) ? result.data : null;
+  if (!data || data.length === 0) {
+    console.warn("[DataProvider] Formato de ticker vazio ou inesperado, mantendo dados anteriores.");
+    return {};
+  }
 
   const tickersMap: Record<string, TickerData> = {};
   for (const item of data) {

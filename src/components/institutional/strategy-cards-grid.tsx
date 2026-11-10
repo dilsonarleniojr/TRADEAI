@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useStrategyStore, type StrategyCardItem } from "@/lib/store/institutional-stores";
 import { useAlertStore } from "@/lib/store/institutional-stores";
+import { formatCurrency, formatPercent } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -114,25 +115,25 @@ export function StrategyCardsGrid() {
                   <div>
                     <span className="text-[10px] text-slate-400 block">PnL Líquido</span>
                     <span className={`text-base font-bold ${isProfit ? "text-emerald-400" : "text-rose-400"}`}>
-                      {isProfit ? "+" : ""}${strat.netPnl.toFixed(2)}
+                      {formatCurrency(strat.netPnl, { showSign: true })}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 block">Win Rate</span>
+                    <span className="text-[10px] text-slate-400 block">Taxa de Acerto</span>
                     <span className="text-base font-bold text-white">
-                      {strat.winRateNet.toFixed(1)}%
+                      {strat.totalTrades > 0 ? formatPercent(strat.winRateNet) : "—"}
                     </span>
                   </div>
                   <div className="pt-1 border-t border-white/[0.04]">
-                    <span className="text-[10px] text-slate-400 block">Payoff Ratio</span>
+                    <span className="text-[10px] text-slate-400 block">Relação Ganho/Perda</span>
                     <span className="font-semibold text-cyan-300">
-                      {strat.payoffRatio > 0 ? `${strat.payoffRatio.toFixed(2)}x` : "—"}
+                      {strat.payoffRatio > 0 ? `${strat.payoffRatio.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x` : "—"}
                     </span>
                   </div>
                   <div className="pt-1 border-t border-white/[0.04]">
-                    <span className="text-[10px] text-slate-400 block">Max Drawdown</span>
+                    <span className="text-[10px] text-slate-400 block">Queda Máxima</span>
                     <span className="font-semibold text-rose-300">
-                      -{Math.abs(strat.maxDrawdownPercent).toFixed(2)}%
+                      {strat.totalTrades > 0 ? formatPercent(-Math.abs(strat.maxDrawdownPercent)) : "—"}
                     </span>
                   </div>
                 </div>

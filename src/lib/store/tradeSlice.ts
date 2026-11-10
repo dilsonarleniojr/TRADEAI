@@ -134,67 +134,15 @@ export const createTradeSlice: StateCreator<any, [], [], TradeSlice> = (set, get
   setBotActive: (active) => set({ botActive: active }),
 
   // Multi-bot status
-  activeBots: [
-    {
-      id: "bot_1",
-      name: "ScalpingBTC",
-      symbol: "BTCUSDT",
-      strategy: "AI" as BotStrategy,
-      pnl: 125.40,
-      status: "RUNNING" as const,
-      parameters: { gridLevels: "10", useKelly: "true" },
-      allocatedMargin: 250.0,
-      shadowMode: false,
-      regime: "TREND" as MarketRegime,
-      heartbeatAt: Date.now(),
-      varContribution: 12.5,
-      executionProgress: undefined
-    },
-    {
-      id: "bot_2",
-      name: "GridETH",
-      symbol: "ETHUSDT",
-      strategy: "Grid" as BotStrategy,
-      pnl: -45.20,
-      status: "PAUSED" as const,
-      parameters: { gridLevels: "20", upperBound: "3200", lowerBound: "2800" },
-      allocatedMargin: 250.0,
-      shadowMode: true,
-      regime: "RANGE" as MarketRegime,
-      heartbeatAt: Date.now(),
-      varContribution: 8.2,
-      executionProgress: undefined
-    },
-    {
-      id: "bot_3",
-      name: "TWAP_SOL",
-      symbol: "SOLUSDT",
-      strategy: "TWAP" as BotStrategy,
-      pnl: 18.60,
-      status: "RUNNING" as const,
-      parameters: { totalVolume: "10", intervalMinutes: "12", totalSlices: "10" },
-      allocatedMargin: 250.0,
-      shadowMode: false,
-      regime: "UNKNOWN" as MarketRegime,
-      heartbeatAt: Date.now(),
-      varContribution: 5.0,
-      executionProgress: {
-        slicesDone: 3,
-        totalSlices: 10,
-        executedVolume: 3,
-        remainingVolume: 7,
-        estimatedMinutesLeft: 84
-      }
-    }
-  ] as BotInstance[],
+  activeBots: [] as BotInstance[],
   marginLedger: {
-    totalAccount: 1000.0,
-    allocatedMargin: 750.0,
-    freeMargin: 250.0,
-    drawdownLimit: 900.0,
-    currentDrawdown: 45.20,
-    peakEquity: 1125.40,
-    totalVaR: 25.7
+    totalAccount: 10000.0,
+    allocatedMargin: 0.0,
+    freeMargin: 10000.0,
+    drawdownLimit: 300.0,
+    currentDrawdown: 0.0,
+    peakEquity: 10000.0,
+    totalVaR: 0.0
   },
 
   addBotInstance: (bot) =>
@@ -309,36 +257,7 @@ export const createTradeSlice: StateCreator<any, [], [], TradeSlice> = (set, get
     }),
 
   // AI Suggestions (Decision Gate)
-  aiSuggestions: [
-    {
-      id: "sug_1",
-      symbol: "ETHUSDT",
-      strategy: "OBI" as BotStrategy,
-      title: "Assimetria detectada — ETH/USDT",
-      reasoning: "Order Book mostra desequilíbrio 3:1 no lado comprador. ATR em expansão (+18%). Janela de 4h favorável.",
-      currentRiskPct: 2.0,
-      proposedRiskPct: 3.5,
-      parameters: { threshold: "0.65", atrMultiplier: "1.5" },
-      sharpeExpected: 1.42,
-      drawdownExpected: 0.08,
-      status: "PENDING",
-      createdAt: Date.now() - 120000
-    },
-    {
-      id: "sug_2",
-      symbol: "BTCUSDT",
-      strategy: "Grid" as BotStrategy,
-      title: "Range identificado — BTC/USDT",
-      reasoning: "ADX=14 (Range). BB Width contraindo. Grid de 20 níveis entre $59k–$62k com R/R 2.1:1.",
-      currentRiskPct: 1.5,
-      proposedRiskPct: 2.0,
-      parameters: { gridLevels: "20", upperBound: "62000", lowerBound: "59000" },
-      sharpeExpected: 0.98,
-      drawdownExpected: 0.05,
-      status: "PENDING",
-      createdAt: Date.now() - 300000
-    }
-  ] as AISuggestion[],
+  aiSuggestions: [] as AISuggestion[],
   addAiSuggestion: (s) =>
     set((state) => ({
       aiSuggestions: [

@@ -77,7 +77,7 @@ export function Footer() {
               : "text-crypto-red bg-crypto-red/10 border border-crypto-red/20"
           )}
         >
-          {formatCurrency(metrics.netPnl, { showSign: true })} ({formatPercent(portfolio.pnlPercent)})
+          {formatCurrency(metrics.netPnl, { showSign: true })} ({formatPercent(metrics.netPnlPercent)})
         </div>
       </div>
     </motion.footer>

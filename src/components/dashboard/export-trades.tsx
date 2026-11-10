@@ -21,7 +21,7 @@ export function ExportTrades() {
   const [copied, setCopied] = useState(false);
 
   function formatDate(timestamp: string): string {
-    return new Date(timestamp).toLocaleDateString("en-US", {
+    return new Date(timestamp).toLocaleDateString("pt-BR", {
       year: "numeric",
       month: "short",
       day: "numeric",

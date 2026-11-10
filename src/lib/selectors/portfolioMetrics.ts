@@ -63,7 +63,8 @@ export interface PortfolioMetrics {
   breakEvenTradesCount: number;
 
   // Win Rate
-  winRate: number; // 0 to 100
+  winRate: number | null; // 0 to 100 or null if no closed trades
+  winRateFormatted: string; // "23,8%" or "—"
 
   // PnL
   grossProfit: number;
@@ -95,10 +96,12 @@ export interface PortfolioMetrics {
   todayWinningTradesCount: number;
   todayLosingTradesCount: number;
   todayNetPnl: number;
-  todayWinRate: number;
+  todayWinRate: number | null;
 
   // Data sufficiency flags
   hasSufficientData: boolean;
+  isSmallSample?: boolean;
+  sampleSizeNotice?: string;
 }
 
 export interface MetricFilterOptions {
@@ -240,9 +243,10 @@ export function selectPortfolioMetrics(
 
   const closedTradesCount = winningTradesCount + losingTradesCount + breakEvenTradesCount;
   const winLossCount = winningTradesCount + losingTradesCount;
-  const winRate = winLossCount > 0 ? (winningTradesCount / winLossCount) * 100 : 0;
+  const winRate: number | null = winLossCount > 0 ? (winningTradesCount / winLossCount) * 100 : null;
+  const winRateFormatted = winRate !== null ? formatPercent(winRate) : "—";
   const todayWinLoss = todayWinningTradesCount + todayLosingTradesCount;
-  const todayWinRate = todayWinLoss > 0 ? (todayWinningTradesCount / todayWinLoss) * 100 : 0;
+  const todayWinRate: number | null = todayWinLoss > 0 ? (todayWinningTradesCount / todayWinLoss) * 100 : null;
 
   const averageWin = winningTradesCount > 0 ? grossProfit / winningTradesCount : 0;
   const averageLoss = losingTradesCount > 0 ? grossLoss / losingTradesCount : 0;
@@ -318,6 +322,7 @@ export function selectPortfolioMetrics(
     breakEvenTradesCount,
 
     winRate,
+    winRateFormatted,
 
     grossProfit,
     grossLoss,
@@ -347,6 +352,13 @@ export function selectPortfolioMetrics(
     todayNetPnl,
     todayWinRate,
 
-    hasSufficientData: closedTradesCount >= 3,
+    hasSufficientData: closedTradesCount >= 30,
+    isSmallSample: closedTradesCount < 30,
+    sampleSizeNotice:
+      closedTradesCount === 0
+        ? "Sem operações encerradas"
+        : closedTradesCount < 30
+        ? `Amostra pequena (${closedTradesCount} trades)`
+        : `Amostra robusta (${closedTradesCount} trades)`,
   };
 }

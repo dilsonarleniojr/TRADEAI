@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useCryptoStore } from "@/lib/store";
-import { formatPrice, formatPercent } from "@/lib/format";
+import { formatPrice, formatPercent, formatCurrency } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
 import { PortfolioPro } from "@/components/dashboard/portfolio-pro";
@@ -39,7 +39,7 @@ export function MiniPortfolio() {
               <div>
                 <p className="text-[10px] text-muted-foreground">Patrimônio Líquido</p>
                 <h3 className="text-xl font-bold font-mono tracking-tight leading-none text-foreground mt-1">
-                  ${formatPrice(portfolio.totalValue)}
+                  {formatCurrency(portfolio.totalValue)}
                 </h3>
               </div>
               <div className="text-right">
@@ -47,15 +47,15 @@ export function MiniPortfolio() {
                 <span className={`text-xs font-bold font-mono px-1.5 py-0.5 rounded mt-1 inline-block ${
                   isPositive ? "bg-crypto-green/10 text-crypto-green" : "bg-crypto-red/10 text-crypto-red"
                 }`}>
-                  {isPositive ? "+" : ""}{formatPercent(portfolio.pnlPercent)}
+                  {formatPercent(portfolio.pnlPercent)}
                 </span>
               </div>
             </div>
 
             {/* Bottom row / Exposição status */}
             <div className="text-[9px] text-muted-foreground mt-2 border-t border-border/30 pt-1.5 flex justify-between">
-              <span>Cash: ${formatPrice(portfolio.cashBalance)}</span>
-              <span>Ativos: ${formatPrice(portfolio.assetBalance)}</span>
+              <span>Caixa: {formatCurrency(portfolio.cashBalance)}</span>
+              <span>Ativos: {formatCurrency(portfolio.assetBalance)}</span>
             </div>
           </Card>
         </motion.div>

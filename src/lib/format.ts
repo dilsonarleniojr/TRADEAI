@@ -63,8 +63,9 @@ export function formatCurrency(
       return `${prefix}${formatted} mi`;
     }
     if (absVal >= 1_000) {
+      const remainder = (absVal / 1_000) % 1;
       const formatted = (absVal / 1_000).toLocaleString(PT_BR, {
-        minimumFractionDigits: 1,
+        minimumFractionDigits: remainder === 0 ? 0 : 1,
         maximumFractionDigits: 1,
       });
       const prefix = isNegative ? "−US$ " : options?.showSign && isPositive ? "+US$ " : "US$ ";
@@ -115,6 +116,10 @@ export function formatPrice(price: number | string | null | undefined): string {
   } else if (absPrice >= 0.0001 && absPrice < 1) {
     minDec = 4;
     maxDec = 6;
+  } else if (absPrice >= 1 && absPrice < 100) {
+    // Para altcoins de baixo valor unitário (XRP, ADA, SUI), permitir até 4 casas se houver decimais
+    minDec = 2;
+    maxDec = 4;
   }
 
   return num.toLocaleString(PT_BR, {
@@ -125,8 +130,11 @@ export function formatPrice(price: number | string | null | undefined): string {
 
 /**
  * Formata volume financeiro em USD com abreviações pt-BR (mil, mi, bi)
+ * Retorna "—" quando volume for zero ou nulo.
  */
 export function formatVolume(volume: number | string | null | undefined): string {
+  const num = toNumeric(volume);
+  if (num === null || num <= 0) return "—";
   return formatCurrency(volume, { compact: true });
 }
 

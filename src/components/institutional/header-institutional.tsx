@@ -217,7 +217,7 @@ export function InstitutionalHeader() {
             }`}
           >
             <Wallet className="w-3.5 h-3.5" />
-            {tradingMode === "live" ? "MODO REAL (SPOT)" : "MODO PAPER"}
+            {tradingMode === "live" ? "Modo Real (Spot)" : "Modo Simulado"}
           </Button>
         </div>
       </div>

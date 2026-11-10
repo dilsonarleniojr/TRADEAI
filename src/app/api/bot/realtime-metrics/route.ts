@@ -52,14 +52,10 @@ async function buildRealtimeMetrics(mode: string, qActive?: string | null, qTota
     }
 
     const marketDiscoveryPool = [
-      "BTCUSDT", "SOLUSDT", "ETHUSDT", "RENDERUSDT", "NEARUSDT",
-      "AVAXUSDT", "LINKUSDT", "SUIUSDT", "DOGEUSDT", "PEPEUSDT",
-      "TAOUSDT", "UNIUSDT", "INJUSDT", "AAVEUSDT", "APTUSDT"
+      "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "RENDERUSDT", "NEARUSDT"
     ];
 
-    // Embaralhamento rotativo para diversificar alertas preditivos a cada ciclo
-    const shuffledPool = [...marketDiscoveryPool].sort(() => Math.random() - 0.5);
-    const combinedSymbols = Array.from(new Set([...botSymbols, ...shuffledPool]));
+    const combinedSymbols = Array.from(new Set([...botSymbols, ...marketDiscoveryPool]));
     const trackedSymbols = combinedSymbols.slice(0, 6);
     const l2Microstructure: Record<string, any> = {};
 

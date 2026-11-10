@@ -135,6 +135,7 @@ export function OrderBook({
   onImbalanceUpdateRef.current = onImbalanceUpdate;
   const onSpoofingAlertRef = useRef(onSpoofingAlert);
   onSpoofingAlertRef.current = onSpoofingAlert;
+  const lastOrderBookWarnTimeRef = useRef<number>(0);
 
   // Expande a profundidade para 22 níveis no modo analítico exclusivo L2
   const levels = isCompact ? 8 : (mode === "book" ? 22 : 14);
@@ -216,11 +217,15 @@ export function OrderBook({
         onImbalanceUpdateRef.current(imb);
       }
     } catch (err: unknown) {
-      console.error("[OrderBook] Fetch error:", err);
+      const now = Date.now();
+      if (!lastOrderBookWarnTimeRef.current || now - lastOrderBookWarnTimeRef.current > 30000) {
+        console.warn("[OrderBook] Falha transitória ao obter livro de ofertas:", (err as any)?.message || err);
+        lastOrderBookWarnTimeRef.current = now;
+      }
       if (err instanceof OrderBookFetchError) {
-        setError(err.isRateLimit ? "Limite de requisições atingido (HTTP 429)" : err.message);
+        setError(err.isRateLimit ? "Limite de requisições atingido (HTTP 429)" : "Livro de ofertas indisponível no momento");
       } else {
-        setError("Dados indisponíveis");
+        setError("Livro de ofertas indisponível");
       }
     } finally {
       setTimeout(() => setIsRefreshing(false), 300);

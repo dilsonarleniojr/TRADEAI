@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useCryptoStore, type TradeData, type KlineData, type BotInstance } from "@/lib/store";
 import { DEFAULT_BOTS } from "@/lib/store/botSlice";
-import { formatPrice } from "@/lib/format";
+import { formatPrice, formatCurrency, formatPercent } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -208,7 +208,7 @@ export function BotSection() {
     const totalPnl = safeBots.reduce((sum, b) => sum + (b?.stats?.realizedPnl || 0), 0);
     const totalTrades = safeBots.reduce((sum, b) => sum + (b?.stats?.totalTrades || 0), 0);
     const totalWins = safeBots.reduce((sum, b) => sum + (b?.stats?.winTrades || 0), 0);
-    const winRate = totalTrades > 0 ? (totalWins / totalTrades) * 100 : 0;
+    const winRate = totalTrades > 0 ? (totalWins / totalTrades) * 100 : null;
     return {
       totalPnl,
       totalTrades,
@@ -712,7 +712,9 @@ export function BotSection() {
               <TrendingUp className="w-3.5 h-3.5 text-crypto-cyan" />
             </div>
             <div className="text-xl font-extrabold text-crypto-cyan">
-              {(fleetStats?.winRate ?? 100).toFixed(1)}%
+              {fleetStats?.winRate !== null && fleetStats?.winRate !== undefined
+                ? `${fleetStats.winRate.toFixed(1)}%`
+                : "—"}
               <span className="text-[10px] text-muted-foreground font-normal ml-1">
                 ({fleetStats.totalWins}V / {fleetStats.totalTrades - fleetStats.totalWins}D)
               </span>
@@ -756,12 +758,12 @@ export function BotSection() {
               <span className="text-[9px] text-muted-foreground/80">Alpha sem queda</span>
             </div>
 
-            {/* Profit Factor */}
+            {/* Fator de Lucro */}
             <div className="bg-secondary/20 rounded-lg p-2.5 border border-border/20">
-              <span className="text-[9px] text-muted-foreground uppercase block font-semibold">Profit Factor</span>
+              <span className="text-[9px] text-muted-foreground uppercase block font-semibold">Fator de Lucro</span>
               <div className="text-sm font-extrabold text-foreground">
                 <span className={riskMetrics.profitFactor >= 1.75 ? "text-emerald-400" : "text-foreground"}>
-                  {riskMetrics.closedTradesCount >= 1 ? `${riskMetrics.profitFactor.toFixed(2)}x` : "1.00x"}
+                  {riskMetrics.closedTradesCount >= 1 ? `${riskMetrics.profitFactor.toFixed(2)}x` : "—"}
                 </span>
               </div>
               <span className="text-[9px] text-muted-foreground/80">Ganhos / Perdas</span>
@@ -769,20 +771,20 @@ export function BotSection() {
 
             {/* Expectancy */}
             <div className="bg-secondary/20 rounded-lg p-2.5 border border-border/20">
-              <span className="text-[9px] text-muted-foreground uppercase block font-semibold">Expectativa ($E)</span>
+              <span className="text-[9px] text-muted-foreground uppercase block font-semibold">Expectativa</span>
               <div className="text-sm font-extrabold text-foreground">
                 <span className={riskMetrics.expectancy >= 0 ? "text-emerald-400" : "text-red-400"}>
-                  {riskMetrics.expectancy >= 0 ? "+" : ""}${riskMetrics.expectancy.toFixed(2)}
+                  {riskMetrics.closedTradesCount >= 1 ? formatCurrency(riskMetrics.expectancy, { showSign: true }) : "—"}
                 </span>
               </div>
               <span className="text-[9px] text-muted-foreground/80">Lucro esperado / trade</span>
             </div>
 
-            {/* Max Drawdown */}
+            {/* Queda Máxima */}
             <div className="bg-secondary/20 rounded-lg p-2.5 border border-border/20 col-span-2 sm:col-span-1">
-              <span className="text-[9px] text-muted-foreground uppercase block font-semibold">Max Drawdown</span>
+              <span className="text-[9px] text-muted-foreground uppercase block font-semibold">Queda Máxima</span>
               <div className="text-sm font-extrabold text-amber-400">
-                {riskMetrics.maxDrawdownPercent.toFixed(1)}%
+                {riskMetrics.closedTradesCount >= 1 ? formatPercent(-Math.abs(riskMetrics.maxDrawdownPercent)) : "—"}
               </div>
               <span className="text-[9px] text-muted-foreground/80">Pico a vale</span>
             </div>

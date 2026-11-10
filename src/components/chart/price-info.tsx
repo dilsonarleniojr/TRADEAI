@@ -193,7 +193,7 @@ export function PriceInfo({ symbol, interval, rsiValue }: PriceInfoProps) {
           transition={{ duration: 0.6 }}
           className="text-xl md:text-2xl font-bold font-mono tabular-nums"
         >
-          {formatPrice(tickerData.price)}
+          {tickerData.price > 0 ? `US$ ${formatPrice(tickerData.price)}` : "US$ —"}
         </motion.span>
       </div>
 
@@ -214,7 +214,7 @@ export function PriceInfo({ symbol, interval, rsiValue }: PriceInfoProps) {
             isPositive ? 'text-crypto-green' : 'text-crypto-red'
           }`}
         >
-          {isPositive ? '+' : ''}
+          {isPositive ? '+US$ ' : '−US$ '}
           {formatPrice(Math.abs(tickerData.priceChange))}
         </span>
       </div>

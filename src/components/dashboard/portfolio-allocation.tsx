@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useCryptoStore } from "@/lib/store";
-import { formatPrice, formatPercent } from "@/lib/format";
+import { formatPrice, formatPercent, formatCurrency } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { motion } from "framer-motion";
@@ -166,7 +166,7 @@ export function PortfolioAllocation() {
                   portfolio.pnl >= 0 ? "text-crypto-green" : "text-crypto-red"
                 }`}
               >
-                {portfolio.pnl >= 0 ? "+" : ""}${formatPrice(Math.abs(portfolio.pnl))} ({formatPercent(portfolio.pnlPercent)})
+                {formatCurrency(portfolio.pnl, { showSign: true })} ({formatPercent(portfolio.pnlPercent)})
               </span>
             </div>
           </div>

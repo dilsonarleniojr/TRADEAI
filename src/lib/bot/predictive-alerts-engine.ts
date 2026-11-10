@@ -388,11 +388,12 @@ export function evaluatePredictiveAlerts(input: PredictiveEngineInput): Predicti
   // =========================================================================
 
   // 1.1 Alerta de Queda Futura de PnL
-  // Dispara quando: tendência negativa nas últimas 20 execuções, payoff caindo, ATR subindo ou liquidez L2 diminuindo
+  // Dispara apenas quando há histórico suficiente (>= 5 trades) e tendência negativa comprovada
   if (
-    temporalTrend.pnlSlope < -0.01 ||
-    temporalTrend.decayingPayoffCycles >= 2 ||
-    (volatility.isExplosive && temporalTrend.projectedPayoff < 1.0)
+    sellTrades.length >= 5 &&
+    (temporalTrend.pnlSlope < -0.01 ||
+      temporalTrend.decayingPayoffCycles >= 2 ||
+      (volatility.isExplosive && temporalTrend.projectedPayoff < 1.0))
   ) {
     alerts.push({
       id: "pred-pnl-drop",
@@ -455,8 +456,12 @@ export function evaluatePredictiveAlerts(input: PredictiveEngineInput): Predicti
   // =========================================================================
 
   for (const [sym, data] of Object.entries(input.l2Microstructure)) {
-    // 2.1 Alerta de Slippage Iminente: só disparar quando houver amostra real de profundidade (> 0)
-    const hasSufficientL2 = (data.askVolume || 0) > 0 && (data.bidVolume || 0) > 0;
+    // 2.1 Alerta de Slippage Iminente: só disparar quando houver dados reais e íntegros do livro L2
+    const hasSufficientL2 =
+      data &&
+      data.ok !== false &&
+      (data.askVolume || 0) >= 5000 &&
+      (data.bidVolume || 0) >= 5000;
     const lowDepth = hasSufficientL2 && (data.askVolume || 0) < 20000;
     const wideSpread = (data.spreadPercent || 0) > 0.10;
     const sellerDominance = (data.orderFlowImbalance || 0) < -0.25;

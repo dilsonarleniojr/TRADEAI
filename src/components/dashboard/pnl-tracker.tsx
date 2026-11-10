@@ -35,7 +35,7 @@ function generatePnLTimeline(portfolioPnl: number, pnlPercent: number, trades: i
     const hourBuckets: Record<string, number> = {};
     for (let i = 23; i >= 0; i--) {
       const time = new Date(now.getTime() - i * 3600000);
-      const hourKey = time.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+      const hourKey = time.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false });
       hourBuckets[hourKey] = 0;
     }
 
@@ -44,7 +44,7 @@ function generatePnLTimeline(portfolioPnl: number, pnlPercent: number, trades: i
       const tradeTime = new Date(trade.timestamp);
       const hoursSinceNow = (now.getTime() - tradeTime.getTime()) / 3600000;
       if (hoursSinceNow >= 0 && hoursSinceNow < 24) {
-        const hourLabel = tradeTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+        const hourLabel = tradeTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false });
         if (hourBuckets[hourLabel] !== undefined) {
           // For BUY trades, the P&L impact is the negative cost (invested)
           // For SELL trades with pnl, use the pnl value
@@ -77,7 +77,7 @@ function generatePnLTimeline(portfolioPnl: number, pnlPercent: number, trades: i
   // Real timeline when no trades exist yet: reflects current actual portfolio value without synthetic noise
   for (let i = 23; i >= 0; i--) {
     const time = new Date(now.getTime() - i * 3600000);
-    const hourLabel = time.toLocaleTimeString("en-US", {
+    const hourLabel = time.toLocaleTimeString("pt-BR", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
@@ -420,15 +420,15 @@ export function PnlTracker() {
               <div className="h-2 bg-crypto-red/20 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-crypto-green to-crypto-green/80 rounded-full transition-all duration-700"
-                  style={{ width: `${winRate}%` }}
+                  style={{ width: `${winRate !== null ? winRate : 0}%` }}
                 />
               </div>
               <div className="flex items-center justify-between mt-1">
                 <span className="text-[10px] text-crypto-green">
-                  {winRate.toFixed(0)}% vitórias
+                  {winRate !== null ? `${winRate.toFixed(0)}% vitórias` : "— vitórias"}
                 </span>
                 <span className="text-[10px] text-crypto-red">
-                  {(100 - winRate).toFixed(0)}% derrotas
+                  {winRate !== null ? `${(100 - winRate).toFixed(0)}% derrotas` : "— derrotas"}
                 </span>
               </div>
             </div>

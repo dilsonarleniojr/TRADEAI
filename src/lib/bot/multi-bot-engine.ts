@@ -445,8 +445,9 @@ export function checkCircuitBreaker(): boolean {
 
   circuitBreakerState.accumulatedDailyLossUsd = dailyLoss;
   const maxPercentLossUsd = (totalValue * circuitBreakerState.dailyLossLimitPercent) / 100;
-  // Piso de segurança de $2.50 ou 3% do NAV da banca
-  const effectiveLimitUsd = Math.max(2.50, Math.min(circuitBreakerState.dailyLossLimitUsd, maxPercentLossUsd));
+  // Limite estrito de 3.0% sobre o equity/NAV da banca (mínimo de segurança $2.50)
+  const effectiveLimitUsd = Math.max(2.50, maxPercentLossUsd);
+  circuitBreakerState.dailyLossLimitUsd = parseFloat(effectiveLimitUsd.toFixed(2));
 
   const shouldTrip = rmStatus.blocked || dailyLoss >= effectiveLimitUsd;
 

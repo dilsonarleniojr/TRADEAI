@@ -112,14 +112,8 @@ export function QuickTrade() {
   );
 
   const availableHoldingQty = useMemo(
-    () =>
-      Math.max(
-        currentPosition?.quantity ?? 0,
-        selectedSymbol === "BTCUSDT" || (portfolio.positions?.length ?? 0) === 0
-          ? (portfolio.assetQuantity ?? 0)
-          : 0
-      ),
-    [currentPosition?.quantity, selectedSymbol, portfolio.positions?.length, portfolio.assetQuantity]
+    () => currentPosition?.quantity ?? 0,
+    [currentPosition?.quantity]
   );
 
   const availableHoldingValueUsd = availableHoldingQty * currentPrice;

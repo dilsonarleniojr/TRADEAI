@@ -125,8 +125,8 @@ export function StatCards() {
       value: metrics.netPnl,
       displayValue: formatCurrency(metrics.netPnl, { showSign: true }),
       subValue: metrics.closedTradesCount > 0
-        ? `${metrics.winRate.toFixed(1)}% Taxa de Acerto (${metrics.winningTradesCount}V / ${metrics.losingTradesCount}D)`
-        : "Aguardando ordens fechadas",
+        ? `${metrics.winRateFormatted} Taxa de Acerto (${metrics.winningTradesCount}V / ${metrics.losingTradesCount}D)${metrics.isSmallSample ? " • amostra pequena" : ""}`
+        : "Sem operações encerradas",
       subPositive: metrics.netPnl >= 0,
       icon: metrics.netPnl >= 0 ? TrendingUp : TrendingDown,
       iconColor: metrics.netPnl >= 0 ? "text-crypto-green" : "text-crypto-red",
@@ -174,7 +174,7 @@ export function StatCards() {
       tooltip: "Criptomoeda com a maior valorização percentual hoje. Clique para abrir no gráfico.",
       value: bestPerformer?.priceChangePercent ?? 0,
       displayValue: bestPerformer ? bestPerformer.symbol.replace("USDT", "") : "—",
-      subValue: bestPerformer ? `${bestPerformer.priceChangePercent >= 0 ? "+" : ""}${formatPercent(bestPerformer.priceChangePercent)}` : "Sem dados",
+      subValue: bestPerformer ? formatPercent(bestPerformer.priceChangePercent) : "Sem dados",
       subPositive: bestPerformer ? bestPerformer.priceChangePercent >= 0 : true,
       icon: TrendingUp,
       iconColor: "text-crypto-green",

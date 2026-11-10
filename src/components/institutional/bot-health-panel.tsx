@@ -163,10 +163,10 @@ export function BotHealthPanel() {
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <div>
               <span className="font-bold text-white text-xs block">
-                Garantia de Governança Contábil (Zero Divergências)
+                Garantia de Governança Contábil
               </span>
               <span className="text-[11px] text-slate-400">
-                100% das métricas do painel derivam de trades gravados de forma atômica no banco SQLite WAL.
+                Métricas operacionais auditadas e reconciliadas com a base local.
               </span>
             </div>
           </div>
@@ -175,7 +175,9 @@ export function BotHealthPanel() {
             <span className="text-slate-400">
               Circuit Breaker:{" "}
               <strong className={circuitBreakerTripped ? "text-rose-400" : "text-emerald-400"}>
-                {circuitBreakerTripped ? "DISPARADO 🚨" : `ARMADO ($${circuitBreakerLossUsd.toFixed(1)} / $${circuitBreakerLimitUsd.toFixed(1)})`}
+                {circuitBreakerTripped
+                  ? "DISPARADO 🚨"
+                  : `ARMADO (Trava 3,0%: US$ ${circuitBreakerLossUsd.toFixed(2)} de US$ ${circuitBreakerLimitUsd.toFixed(2)})`}
               </strong>
             </span>
           </div>

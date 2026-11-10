@@ -27,33 +27,52 @@ export function MicrostructurePanel() {
 
   const availableSymbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "RENDERUSDT"];
 
-  const currentData = pairs[activeSymbol] || {
-    symbol: activeSymbol,
-    bestBid: 68150.2,
-    bestAsk: 68152.0,
-    spreadPercent: 0.0026,
-    orderFlowImbalance: 0.22,
-    bidVolumeUsd: 145000,
-    askVolumeUsd: 110000,
-    aggressiveBuyVolumeUsd: 82000,
-    aggressiveSellVolumeUsd: 55000,
-    estimatedSlippagePercent: 0.045,
-    depthBids: [
-      { price: 68150, amount: 45000, total: 45000 },
-      { price: 68140, amount: 35000, total: 80000 },
-      { price: 68130, amount: 35000, total: 115000 },
-      { price: 68120, amount: 30000, total: 145000 },
-    ],
-    depthAsks: [
-      { price: 68152, amount: 40000, total: 40000 },
-      { price: 68160, amount: 30000, total: 70000 },
-      { price: 68170, amount: 25000, total: 95000 },
-      { price: 68180, amount: 15000, total: 110000 },
-    ],
-    predictiveAlert: "ROMPIMENTO" as const,
-    predictiveConfidence: 84,
-    lastUpdate: Date.now(),
-  };
+  const currentData = pairs[activeSymbol] || null;
+  const isDepthAvailable =
+    currentData &&
+    currentData.depthBids &&
+    currentData.depthBids.length > 0 &&
+    currentData.bestBid > 0 &&
+    currentData.bestAsk > 0;
+
+  if (!isDepthAvailable) {
+    return (
+      <Card className="bg-[#080d17] border border-cyan-500/20 shadow-xl overflow-hidden font-mono p-6 text-center">
+        <div className="flex flex-col items-center justify-center space-y-3 py-8">
+          <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
+            <Layers className="w-5 h-5 text-cyan-400 animate-pulse" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-white">Microestrutura L2 — {activeSymbol.replace("USDT", "/USDT")}</h3>
+            <p className="text-xs text-amber-400 mt-1">Livro indisponível no momento. Aguardando sincronização de rede.</p>
+          </div>
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              onClick={() => setActiveSymbol(activeSymbol)}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/30 transition-colors cursor-pointer"
+            >
+              Tentar novamente
+            </button>
+          </div>
+          <div className="flex items-center gap-1 bg-[#0d1424] p-1 rounded-xl border border-white/[0.08] mt-2">
+            {availableSymbols.map((sym) => (
+              <button
+                key={sym}
+                onClick={() => setActiveSymbol(sym)}
+                className={`text-[11px] px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                  activeSymbol === sym
+                    ? "bg-teal-500 text-black shadow-[0_0_12px_rgba(20,184,166,0.4)]"
+                    : "text-slate-400 hover:text-white hover:bg-white/[0.06]"
+                }`}
+              >
+                {sym.replace("USDT", "")}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   const ofi = currentData.orderFlowImbalance;
   const spread = currentData.spreadPercent;

@@ -159,10 +159,20 @@ export function useInstitutionalRealtime() {
       if (data.predictiveAlerts && Array.isArray(data.predictiveAlerts)) {
         const institutionalAlerts: InstitutionalAlert[] = data.predictiveAlerts.map((a: any) => {
           let sev: InstitutionalAlert["severity"] = "info";
-          if (a.type === "risco" && a.confidencePercent >= 80) sev = "critico";
-          else if (a.type === "risco") sev = "risco";
-          else if (a.type === "aviso") sev = "atencao";
-          else sev = "info";
+          const isCriticalIncident =
+            a.id?.includes("cb") ||
+            a.title?.toLowerCase().includes("circuit breaker") ||
+            a.title?.toLowerCase().includes("kill switch");
+
+          if (isCriticalIncident) {
+            sev = "critico";
+          } else if (a.type === "risco") {
+            sev = a.confidencePercent >= 90 ? "risco" : "atencao";
+          } else if (a.type === "aviso") {
+            sev = "atencao";
+          } else {
+            sev = "info";
+          }
 
           let cat: InstitutionalAlert["category"] = "PnL";
           if (a.category === "microestrutura") cat = "OFI";

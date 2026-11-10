@@ -19,13 +19,18 @@ export function DataFreshnessBanner() {
   const lastMarketUpdate = useCryptoStore((s) => s.lastMarketUpdate);
   const connectionStatus = useCryptoStore((s) => s.connectionStatus);
   const { syncBinanceCoins } = useDataProvider();
-  const [now, setNow] = useState(() => Date.now());
+  const [mounted, setMounted] = useState(false);
+  const [now, setNow] = useState<number>(0);
   const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(id);
   }, []);
+
+  if (!mounted || now === 0) return null;
 
   const age = lastMarketUpdate > 0 ? now - lastMarketUpdate : 0;
   const offline = connectionStatus === "disconnected";

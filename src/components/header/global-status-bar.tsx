@@ -272,7 +272,7 @@ export function GlobalStatusBar() {
               : "bg-cyan-500/15 text-cyan-300 border-cyan-500/35"
           }`}
         >
-          {tradingMode === "live" ? "REAL MONEY" : "PAPER TRADING"}
+          {tradingMode === "live" ? "Real" : "Simulado"}
         </span>
 
         {/* Compact Kill-Switch shortcut */}

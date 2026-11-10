@@ -55,3 +55,14 @@ Antes de iniciar a execução de qualquer tarefa, avalie os requisitos e o escop
   - Salvar esses registros na base de memória de longo prazo do sistema (`db/agent_memory.json` / base vetorial).
   - No próximo planejamento, consultar obrigatoriamente a memória para resgatar aprendizados prévios antes de recriar soluções do zero.
 - **Racional Técnico**: Previne retrabalho e evita repetição de contexto, transformando a inteligência do agente em um ativo cumulativo e personalizado.
+
+---
+
+## 5. Feedback Contínuo de Execução (Heartbeat / Andamento Minuto a Minuto)
+
+- **Regra**: Em tarefas de longa duração, pipelines assíncronos ou execuções que demandem mais de 1 minuto, o agente deve obrigatoriamente reportar atualizações periódicas de andamento a cada minuto (60 segundos).
+- **Diretrizes de Reporte**:
+  - Estado atual da execução (etapa do DAG/plano em andamento).
+  - Métricas parciais ou logs de telemetria coletados.
+  - Bloqueios, esperas ou próximos passos imediatos.
+- **Racional Técnico**: Garante total transparência operacional, previsibilidade e feedback contínuo para o usuário durante execuções extensas.
