@@ -1,5 +1,21 @@
 [
   {
+    "category": "QUANT_STRATEGY",
+    "title": "Calibragem Trailing Stop ATR e Order Flow L2",
+    "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
+    "tags": [
+      "mfe",
+      "trailing-stop",
+      "order-flow",
+      "atr"
+    ],
+    "details": {
+      "minRr": 2.2
+    },
+    "id": "mem-1794297954899-8zf6n",
+    "timestamp": "2026-11-10T08:05:54.899Z"
+  },
+  {
     "category": "ARCHITECTURE_DESIGN",
     "title": "Redesign V2 Plataforma TradeAI - Instrumento Calmo",
     "summary": "Refatoração completa do layout e apresentação para a identidade visual 'Instrumento Calmo' com fundo claro #F2F4F7, cartão focal único #0E1B2C, tipografia Instrument Serif para números e KPIs heróicos, TopNav com 5 áreas e MobileNavBar de 390px.",
