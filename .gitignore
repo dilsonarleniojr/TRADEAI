@@ -59,5 +59,11 @@ __pycache__/
 # chave de sessão local (dev)
 .data/
 db/*.db
+db/*.db-*
 db/*.db.backup*
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
 audit_reports/
