@@ -55,6 +55,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useShallow } from "zustand/react/shallow";
+import { getDirectAiTradeModeConfig } from "./direct-ai-trade-confirmation";
 
 export interface DirectAiTradeModalProps {
   open: boolean;
@@ -128,6 +129,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
   const [operationMode, setOperationMode] = useState<"live" | "paper">(
     tradingMode === "live" && !binanceTestnet ? "live" : "paper"
   );
+  const [showLiveConfirmModal, setShowLiveConfirmModal] = useState<boolean>(false);
   const [isThoughtStreamOpen, setIsThoughtStreamOpen] = useState<boolean>(false);
   const [isOrderFlowOpen, setIsOrderFlowOpen] = useState<boolean>(false);
 
@@ -1095,6 +1097,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[580px] w-[calc(100vw-1.5rem)] max-h-[92vh] flex flex-col bg-[#090d14]/95 backdrop-blur-2xl border border-white/[0.1] cyan-border-glow text-foreground p-0 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] rounded-2xl">
         {/* Header Decorativo com Gradiente */}
@@ -1472,15 +1475,53 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
                   </div>
                 )}
 
+                {/* Indicador Inequívoco de Modo (REAL vs SIMULADO) */}
+                {(() => {
+                  const modeConfig = getDirectAiTradeModeConfig(operationMode, amount);
+                  return (
+                    <div className={cn("p-3 rounded-xl border flex items-center justify-between gap-2.5 transition-all text-xs font-medium", modeConfig.colorClass)}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        {modeConfig.isReal ? (
+                          <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+                        ) : (
+                          <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+                        )}
+                        <span className="truncate">{modeConfig.warningText}</span>
+                      </div>
+                      <Badge variant="outline" className={cn("text-[10px] font-mono shrink-0 uppercase px-2 py-0.5", modeConfig.badgeClass)}>
+                        {modeConfig.badgeLabel}
+                      </Badge>
+                    </div>
+                  );
+                })()}
+
                 {/* Botão de Disparo */}
-                <Button
-                  onClick={() => handleStartOperation()}
-                  disabled={amount < 11}
-                  className="w-full h-11 bg-gradient-to-r from-cyan-500 via-teal-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-black font-bold text-sm tracking-wide shadow-[0_0_20px_rgba(6,182,212,0.4)] rounded-xl transition-all cursor-pointer"
-                >
-                  <Zap className="w-4 h-4 mr-2 fill-current" />
-                  Iniciar Operação Direta com IA (${amount.toFixed(2)})
-                </Button>
+                {(() => {
+                  const modeConfig = getDirectAiTradeModeConfig(operationMode, amount);
+                  return (
+                    <Button
+                      onClick={() => {
+                        if (modeConfig.requiresConfirmation) {
+                          setShowLiveConfirmModal(true);
+                        } else {
+                          handleStartOperation();
+                        }
+                      }}
+                      disabled={amount < 11}
+                      className={cn(
+                        "w-full h-11 text-sm tracking-wide rounded-xl transition-all cursor-pointer font-extrabold flex items-center justify-center",
+                        modeConfig.buttonClass
+                      )}
+                    >
+                      {modeConfig.isReal ? (
+                        <ShieldAlert className="w-4 h-4 mr-2 fill-current text-white shrink-0" />
+                      ) : (
+                        <Zap className="w-4 h-4 mr-2 fill-current shrink-0" />
+                      )}
+                      {modeConfig.buttonText}
+                    </Button>
+                  );
+                })()}
               </motion.div>
             )}
 
@@ -2460,5 +2501,79 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
         )}
       </DialogContent>
     </Dialog>
+
+    {/* Modal de Confirmação Dupla de Risco em Modo REAL Spot (UI-002) */}
+    <Dialog open={showLiveConfirmModal} onOpenChange={setShowLiveConfirmModal}>
+      <DialogContent className="max-w-md border border-rose-500/40 bg-slate-950 text-white shadow-[0_0_35px_rgba(244,63,94,0.3)] rounded-2xl p-6">
+        <DialogHeader className="space-y-2">
+          <DialogTitle className="text-base sm:text-lg font-bold text-rose-400 flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0" />
+            Confirmação de Operação REAL na Binance
+          </DialogTitle>
+          <DialogDescription className="text-xs text-slate-300">
+            Você está prestes a autorizar a IA a executar uma ordem de compra no mercado <strong>Binance Spot (LIVE)</strong>.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="my-4 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 space-y-2.5 text-xs">
+          <div className="flex items-center justify-between text-slate-300">
+            <span>Ambiente Operacional:</span>
+            <Badge variant="outline" className="bg-rose-500/20 text-rose-300 border-rose-500/50 text-[10px] font-mono uppercase">
+              LIVE SPOT REAL
+            </Badge>
+          </div>
+          <div className="flex items-center justify-between text-slate-300">
+            <span>Valor da Alocação:</span>
+            <strong className="text-white font-mono tabular-nums text-sm">${amount.toFixed(2)} USDT</strong>
+          </div>
+          <div className="flex items-center justify-between text-slate-300">
+            <span>Estratégia Escolhida:</span>
+            <span className="text-slate-200 font-medium">
+              {STRATEGIES.find((s) => s.id === strategy)?.name || strategy}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-slate-300">
+            <span>Duração Estimada:</span>
+            <span className="text-slate-200 font-mono font-medium">{durationMinutes} min</span>
+          </div>
+          <div className="flex items-center justify-between text-slate-300 pt-2 border-t border-rose-500/20">
+            <span>Ativo Alvo:</span>
+            <span className="text-cyan-300 font-mono font-bold">
+              {selectedSymbol ? selectedSymbol.replace("USDT", "") : "IA Decide Autonomamente"}
+            </span>
+          </div>
+        </div>
+
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2 text-[11px] text-amber-200 leading-relaxed">
+          <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+          <p>
+            <strong>Atenção ao Saldo Real:</strong> Esta operação consumirá saldo em USDT real na sua conta Binance Spot. A confirmação é irreversível pós-disparo.
+          </p>
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowLiveConfirmModal(false)}
+            className="h-10 text-xs border-white/10 hover:bg-white/10 text-slate-300 cursor-pointer rounded-xl"
+          >
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              setShowLiveConfirmModal(false);
+              handleStartOperation();
+            }}
+            className="h-10 text-xs bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-bold cursor-pointer rounded-xl shadow-[0_0_15px_rgba(244,63,94,0.4)] flex items-center gap-1.5"
+          >
+            <Zap className="w-4 h-4 fill-current text-white shrink-0" />
+            Confirmar e Executar Ordem Real
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

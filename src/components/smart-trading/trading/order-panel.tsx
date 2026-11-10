@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { SmartButton } from "../ui/button";
 import { SmartInput } from "../ui/input";
 import { SmartBadge } from "../ui/badge";
+import { SmartModal } from "../ui/modal";
 
 export function SmartOrderPanel({
   symbol = "BTC/USDT",
@@ -32,6 +33,7 @@ export function SmartOrderPanel({
   const [priceInput, setPriceInput] = React.useState<string>(String(propPrice || 80900.0));
   const [amountUsd, setAmountUsd] = React.useState<number>(10);
   const [leverage, setLeverage] = React.useState<number>(1);
+  const [showConfirmModal, setShowConfirmModal] = React.useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
   const [successToast, setSuccessToast] = React.useState<string | null>(null);
   const [errorToast, setErrorToast] = React.useState<string | null>(null);
@@ -123,33 +125,8 @@ export function SmartOrderPanel({
     }
   };
 
-  const handleSubmit = async () => {
-    setErrorToast(null);
-    setSuccessToast(null);
-
-    // Validações locais pré-trade
-    if (amountUsd < 5.0) {
-      setErrorToast("O valor mínimo exigido pela Binance para negociação Spot é de $5.00 USDT (minNotional).");
-      return;
-    }
-
-    if (side === "BUY" && amountUsd > cashBalance) {
-      setErrorToast(
-        `Saldo livre insuficiente. Sua carteira possui $${cashBalance.toFixed(2)} USDT livres, mas a ordem requer $${amountUsd.toFixed(2)} USDT.`
-      );
-      return;
-    }
-
-    if (side === "SELL" && assetHoldings > 0 && effectivePrice > 0) {
-      const maxSellUsd = assetHoldings * effectivePrice * 1.02;
-      if (amountUsd > maxSellUsd) {
-        setErrorToast(
-          `Você possui ${assetHoldings.toFixed(6)} ${assetBase} em custódia (~$${(assetHoldings * effectivePrice).toFixed(2)} USD). O valor da ordem excede o saldo da moeda.`
-        );
-        return;
-      }
-    }
-
+  const executeOrder = async () => {
+    setShowConfirmModal(false);
     setIsSubmitting(true);
 
     try {
@@ -183,8 +160,7 @@ export function SmartOrderPanel({
 
         const modeLabel = tradingMode === "live" ? "🟢 DINHEIRO REAL (Binance)" : "🧪 SIMULADO (Paper)";
         setSuccessToast(
-          `[${modeLabel}] Ordem ${side} de ${execQty.toFixed(6)} ${assetBase} executada a $${execPrice.toFixed(2)}! ${
-            orderId ? `(ID: ${orderId})` : ""
+          `[${modeLabel}] Ordem ${side} de ${execQty.toFixed(6)} ${assetBase} executada a $${execPrice.toFixed(2)}! ${orderId ? `(ID: ${orderId})` : ""
           }`
         );
 
@@ -204,6 +180,42 @@ export function SmartOrderPanel({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async () => {
+    setErrorToast(null);
+    setSuccessToast(null);
+
+    // Validações locais pré-trade
+    if (amountUsd < 5.0) {
+      setErrorToast("O valor mínimo exigido pela Binance para negociação Spot é de $5.00 USDT (minNotional).");
+      return;
+    }
+
+    if (side === "BUY" && amountUsd > cashBalance) {
+      setErrorToast(
+        `Saldo livre insuficiente. Sua carteira possui $${cashBalance.toFixed(2)} USDT livres, mas a ordem requer $${amountUsd.toFixed(2)} USDT.`
+      );
+      return;
+    }
+
+    if (side === "SELL" && assetHoldings > 0 && effectivePrice > 0) {
+      const maxSellUsd = assetHoldings * effectivePrice * 1.02;
+      if (amountUsd > maxSellUsd) {
+        setErrorToast(
+          `Você possui ${assetHoldings.toFixed(6)} ${assetBase} em custódia (~$${(assetHoldings * effectivePrice).toFixed(2)} USD). O valor da ordem excede o saldo da moeda.`
+        );
+        return;
+      }
+    }
+
+    // Se estiver em modo REAL e a confirmação ainda não foi aceita, abre o modal de aviso de risco
+    if (tradingMode === "live") {
+      setShowConfirmModal(true);
+      return;
+    }
+
+    await executeOrder();
   };
 
   return (
@@ -379,10 +391,93 @@ export function SmartOrderPanel({
               ? `Comprar ${assetBase} (Dinheiro Real)`
               : `Vender ${assetBase} (Dinheiro Real)`
             : side === "BUY"
-            ? `Comprar ${assetBase} (Simulado)`
-            : `Vender ${assetBase} (Simulado)`}
+              ? `Comprar ${assetBase} (Simulado)`
+              : `Vender ${assetBase} (Simulado)`}
         </SmartButton>
       </div>
+
+      {/* Modal de Confirmação para Modo REAL (Live Spot) */}
+      <SmartModal
+        isOpen={showConfirmModal}
+        onClose={() => setShowConfirmModal(false)}
+        title="⚠️ Confirmar Ordem em Modo REAL"
+        subtitle="Atenção: Esta ordem será enviada à Binance com DINHEIRO REAL."
+        maxWidth="md"
+        footer={
+          <div className="flex items-center justify-end gap-2 w-full">
+            <SmartButton
+              variant="outline"
+              size="md"
+              onClick={() => setShowConfirmModal(false)}
+              disabled={isSubmitting}
+            >
+              Cancelar
+            </SmartButton>
+            <SmartButton
+              variant={side === "BUY" ? "success" : "danger"}
+              size="md"
+              className="font-bold"
+              isLoading={isSubmitting}
+              onClick={executeOrder}
+              leftIcon={<ShieldCheck className="w-4 h-4" />}
+            >
+              Confirmar Execução Real (${amountUsd.toFixed(2)} USDT)
+            </SmartButton>
+          </div>
+        }
+      >
+        <div className="space-y-4 py-2 text-sm">
+          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 font-medium flex items-start gap-2.5">
+            <span className="text-lg">🔴</span>
+            <div className="text-xs space-y-1">
+              <span className="font-bold block">AVISO DE RISCO DE EXECUÇÃO REAL</span>
+              <p className="leading-relaxed">
+                Você está prestes a realizar uma operação na sua conta <strong>Binance Spot</strong> utilizando fundos reais. Verifique os dados abaixo antes de prosseguir.
+              </p>
+            </div>
+          </div>
+
+          <div className="p-4 bg-[var(--st-bg-elevated)] border border-[var(--st-border)] rounded-xl space-y-2.5 font-mono text-xs">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--st-border)]">
+              <span className="text-[var(--st-text-secondary)]">Operação:</span>
+              <span className={cn("font-bold px-2 py-0.5 rounded text-white text-[11px]", side === "BUY" ? "bg-emerald-600" : "bg-red-600")}>
+                {side === "BUY" ? "COMPRA SPOT (LONG)" : "VENDA SPOT (SHORT)"}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--st-text-secondary)]">Par de Negociação:</span>
+              <span className="font-bold text-[var(--st-text-primary)]">{cleanSymbol}</span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--st-text-secondary)]">Tipo de Ordem:</span>
+              <span className="font-bold text-[var(--st-text-primary)]">{orderType === "MARKET" ? "A MERCADO" : orderType}</span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--st-text-secondary)]">Preço de Cotação:</span>
+              <span className="font-bold tabular-nums text-[var(--st-text-primary)]">
+                ${effectivePrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--st-text-secondary)]">Quantidade Estimada:</span>
+              <span className="font-bold tabular-nums text-[var(--st-text-primary)]">
+                {cryptoAmount.toFixed(6)} {assetBase}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-[var(--st-border)]">
+              <span className="text-[var(--st-text-primary)] font-bold">Valor Total a Debitar:</span>
+              <span className="font-bold text-base tabular-nums text-emerald-400">
+                ${amountUsd.toFixed(2)} USDT
+              </span>
+            </div>
+          </div>
+        </div>
+      </SmartModal>
     </div>
   );
 }

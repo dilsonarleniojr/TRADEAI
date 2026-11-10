@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { formatPrice } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,17 +19,19 @@ import {
   Wallet, 
   DollarSign,
   Shield,
-  ShieldAlert,
   ShieldCheck,
   Lock,
-  Unlock,
   Timer,
   Scale,
   AlertTriangle,
-  Sparkles,
-  Activity,
-  Layers
+  Layers,
+  Loader2
 } from "lucide-react";
+import {
+  validateQuickTradeExecution,
+  stripQuoteAsset,
+  formatQuantityByPrice,
+} from "./quick-trade-guard";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
@@ -40,11 +42,9 @@ import { useShallow } from "zustand/react/shallow";
 export function QuickTrade() {
   const { 
     selectedSymbol, 
-    tickers, 
+    ticker, 
     tradingMode, 
     portfolio, 
-    botConfig, 
-    binanceTestnet,
     scheduledOrders,
     addScheduledOrder,
     removeScheduledOrder,
@@ -52,29 +52,37 @@ export function QuickTrade() {
     tradePrefill,
     clearTradePrefill,
   } = useCryptoStore(
-  useShallow((s) => ({
-    selectedSymbol: s.selectedSymbol || "BTCUSDT",
-    tickers: s.tickers,
-    tradingMode: s.tradingMode,
-    portfolio: s.portfolio,
-    botConfig: s.botConfig,
-    binanceTestnet: s.binanceTestnet,
-    scheduledOrders: s.scheduledOrders,
-    addScheduledOrder: s.addScheduledOrder,
-    removeScheduledOrder: s.removeScheduledOrder,
-    triggerScheduledOrder: s.triggerScheduledOrder,
-    tradePrefill: s.tradePrefill,
-    clearTradePrefill: s.clearTradePrefill,
-  }))
-);
+    useShallow((s) => {
+      const sym = s.selectedSymbol || "BTCUSDT";
+      return {
+        selectedSymbol: sym,
+        ticker: s.tickers[sym],
+        tradingMode: s.tradingMode,
+        portfolio: s.portfolio,
+        scheduledOrders: s.scheduledOrders,
+        addScheduledOrder: s.addScheduledOrder,
+        removeScheduledOrder: s.removeScheduledOrder,
+        triggerScheduledOrder: s.triggerScheduledOrder,
+        tradePrefill: s.tradePrefill,
+        clearTradePrefill: s.clearTradePrefill,
+      };
+    })
+  );
   const [tradeSide, setTradeSide] = useState<"BUY" | "SELL">("BUY");
   const [quantity, setQuantity] = useState("");
   const [usdtAmount, setUsdtAmount] = useState("");
   const [isMaxSell, setIsMaxSell] = useState(false);
   const [lastTrade, setLastTrade] = useState<{ side: "BUY" | "SELL"; qty: number; price: number } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [sltpData, setSltpData] = useState<{ stopLoss: number; takeProfit: number; riskRewardRatio: number; recommendation: string } | null>(null);
   const [sltpLoading, setSltpLoading] = useState(false);
   const { toast } = useToast();
+
+  // Locks síncronos em O(1) para impedir race conditions antes do re-render do React
+  const submittingRef = useRef(false);
+  const triggeredIdsRef = useRef<Set<string>>(new Set());
+  const lastTradeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sltpAbortRef = useRef<AbortController | null>(null);
 
   // Gerenciador de Margem e Alavancagem Proporcional ao Horizonte
   const [marginMode, setMarginMode] = useState<"SPOT" | "ISOLATED" | "CROSS">("SPOT");
@@ -89,27 +97,51 @@ export function QuickTrade() {
   const [scheduledUsdt, setScheduledUsdt] = useState("");
   const [scheduledIsMaxSell, setScheduledIsMaxSell] = useState(false);
 
-  const ticker = tickers[selectedSymbol];
   const currentPrice = ticker?.price ?? 0;
   const isPositive = (ticker?.priceChangePercent ?? 0) >= 0;
 
-  const cleanSym = (selectedSymbol || "BTCUSDT").replace(/USDT$|BUSD$|USDC$/, "");
+  const cleanSym = useMemo(() => stripQuoteAsset(selectedSymbol), [selectedSymbol]);
 
-  // Find position in portfolio
-  const currentPosition = portfolio.positions?.find(
-    (p) => p.symbol === selectedSymbol || p.symbol === cleanSym || p.symbol === `${cleanSym}USDT`
+  // Memoiza a busca da posição na carteira para evitar .find() em cada render
+  const currentPosition = useMemo(
+    () =>
+      portfolio.positions?.find(
+        (p) => p.symbol === selectedSymbol || p.symbol === cleanSym || p.symbol === `${cleanSym}USDT`
+      ),
+    [portfolio.positions, selectedSymbol, cleanSym]
   );
 
-  const availableHoldingQty = Math.max(
-    currentPosition?.quantity ?? 0,
-    (selectedSymbol === "BTCUSDT" || (portfolio.positions?.length ?? 0) === 0) ? (portfolio.assetQuantity ?? 0) : 0
+  const availableHoldingQty = useMemo(
+    () =>
+      Math.max(
+        currentPosition?.quantity ?? 0,
+        selectedSymbol === "BTCUSDT" || (portfolio.positions?.length ?? 0) === 0
+          ? (portfolio.assetQuantity ?? 0)
+          : 0
+      ),
+    [currentPosition?.quantity, selectedSymbol, portfolio.positions?.length, portfolio.assetQuantity]
   );
+
   const availableHoldingValueUsd = availableHoldingQty * currentPrice;
   const availableCashUsdt = portfolio.cashBalance ?? 0;
 
+  // Filtra agendamentos ativos uma única vez por mudança de lista/símbolo
+  const activeScheduledOrders = useMemo(
+    () => scheduledOrders.filter((o) => !o.isTriggered && o.symbol === selectedSymbol),
+    [scheduledOrders, selectedSymbol]
+  );
+
+  // Cleanup de timers e AbortController ao desmontar
+  useEffect(() => {
+    return () => {
+      if (lastTradeTimerRef.current) clearTimeout(lastTradeTimerRef.current);
+      if (sltpAbortRef.current) sltpAbortRef.current.abort();
+    };
+  }, []);
+
   // Reset inputs when symbol changes (exceto se houver tradePrefill para este símbolo)
   useEffect(() => {
-    if (tradePrefill && (tradePrefill.symbol === selectedSymbol || tradePrefill.symbol.replace(/USDT$|BUSD$|USDC$/, "") === cleanSym)) {
+    if (tradePrefill && (tradePrefill.symbol === selectedSymbol || stripQuoteAsset(tradePrefill.symbol) === cleanSym)) {
       return;
     }
     setQuantity("");
@@ -128,7 +160,7 @@ export function QuickTrade() {
       appliedPrefillRef.current = null;
       return;
     }
-    const matches = tradePrefill.symbol === selectedSymbol || tradePrefill.symbol.replace(/USDT$|BUSD$|USDC$/, "") === cleanSym;
+    const matches = tradePrefill.symbol === selectedSymbol || stripQuoteAsset(tradePrefill.symbol) === cleanSym;
     if (!matches) return;
 
     if (appliedPrefillRef.current === tradePrefill) {
@@ -136,10 +168,8 @@ export function QuickTrade() {
     }
     appliedPrefillRef.current = tradePrefill;
 
-    // Set side
     setTradeSide(tradePrefill.side);
 
-    // Carregar Gerenciador de Margem e Alavancagem Proporcional ao Horizonte Operacional
     const isFast = tradePrefill.horizon === "RAPIDO";
     if (isFast) {
       setMarginMode(tradePrefill.marginMode || "ISOLATED");
@@ -147,14 +177,12 @@ export function QuickTrade() {
       setTimeStopHours(tradePrefill.timeStopHours || 4);
       setTimeStopActive(tradePrefill.timeStopEnabled ?? true);
     } else {
-      // Médio/Longo Prazo: Forçar estritamente SPOT 1x para evitar risco de liquidação por wicking
       setMarginMode("SPOT");
       setLeverage(1);
       setTimeStopHours(0);
       setTimeStopActive(false);
     }
 
-    // Set SL/TP recommendation
     if (tradePrefill.stopLoss || tradePrefill.takeProfit || tradePrefill.tp1) {
       setSltpData({
         stopLoss: tradePrefill.stopLoss || 0,
@@ -164,15 +192,12 @@ export function QuickTrade() {
       });
     }
 
-    // Pre-fill values com dimensionamento de posição proporcional ao risco
     const effPrice = currentPrice > 0 ? currentPrice : (tradePrefill.entryPrice || 0);
     if (effPrice > 0) {
-      const decimals = effPrice > 1000 ? 6 : effPrice > 1 ? 4 : (effPrice < 0.01 ? 2 : 4);
       if (tradePrefill.side === "BUY") {
         let cash = 25;
         if (availableCashUsdt > 10) {
           if (tradePrefill.riskAllocationPercent) {
-            // Alocação dinâmica calculada com base no risco do horizonte
             const alloc = (availableCashUsdt * tradePrefill.riskAllocationPercent) / 100;
             cash = Math.max(10, Math.min(alloc, 500));
           } else {
@@ -180,40 +205,36 @@ export function QuickTrade() {
           }
         }
         setUsdtAmount(cash.toFixed(2));
-        setQuantity(Number((cash / effPrice).toFixed(decimals)).toString());
+        setQuantity(formatQuantityByPrice(cash / effPrice, effPrice));
       } else {
-        // SELL
         if (availableHoldingQty > 0) {
           setQuantity(availableHoldingQty.toString());
           setUsdtAmount((availableHoldingQty * effPrice).toFixed(2));
         } else {
           const defaultUsd = 25;
           setUsdtAmount(defaultUsd.toFixed(2));
-          setQuantity(Number((defaultUsd / effPrice).toFixed(decimals)).toString());
+          setQuantity(formatQuantityByPrice(defaultUsd / effPrice, effPrice));
         }
       }
     }
 
-    // Pre-fill trigger price in scheduled mode if available
     if (tradePrefill.entryPrice) {
       setTriggerPrice(tradePrefill.entryPrice.toString());
     }
   }, [tradePrefill, selectedSymbol, currentPrice, availableCashUsdt, availableHoldingQty, cleanSym]);
 
-  const handleUsdtChange = (val: string) => {
+  const handleUsdtChange = useCallback((val: string) => {
     setUsdtAmount(val);
     setIsMaxSell(false);
     const parsed = parseFloat(val);
     if (Number.isFinite(parsed) && parsed > 0 && currentPrice > 0) {
-      const rawQty = parsed / currentPrice;
-      const decimals = currentPrice > 1000 ? 6 : currentPrice > 1 ? 4 : (currentPrice < 0.01 ? 2 : 4);
-      setQuantity(Number(rawQty.toFixed(decimals)).toString());
+      setQuantity(formatQuantityByPrice(parsed / currentPrice, currentPrice));
     } else if (!val) {
       setQuantity("");
     }
-  };
+  }, [currentPrice]);
 
-  const handleQuantityChange = (val: string) => {
+  const handleQuantityChange = useCallback((val: string) => {
     setQuantity(val);
     setIsMaxSell(false);
     const parsed = parseFloat(val);
@@ -222,10 +243,9 @@ export function QuickTrade() {
     } else if (!val) {
       setUsdtAmount("");
     }
-  };
+  }, [currentPrice]);
 
-  // Preset buttons for BUY
-  const applyBuyCashPct = (pct: number) => {
+  const applyBuyCashPct = useCallback((pct: number) => {
     if (availableCashUsdt <= 0 || currentPrice <= 0) {
       toast({
         title: "Sem saldo em caixa",
@@ -236,23 +256,18 @@ export function QuickTrade() {
     }
     const targetUsdt = availableCashUsdt * pct;
     setUsdtAmount(targetUsdt.toFixed(2));
-    const rawQty = targetUsdt / currentPrice;
-    const decimals = currentPrice > 1000 ? 6 : currentPrice > 1 ? 4 : (currentPrice < 0.01 ? 2 : 4);
-    setQuantity(Number(rawQty.toFixed(decimals)).toString());
+    setQuantity(formatQuantityByPrice(targetUsdt / currentPrice, currentPrice));
     setIsMaxSell(false);
-  };
+  }, [availableCashUsdt, currentPrice, toast]);
 
-  const applyBuyUsdtFixed = (amount: number) => {
+  const applyBuyUsdtFixed = useCallback((amount: number) => {
     if (currentPrice <= 0) return;
     setUsdtAmount(amount.toString());
-    const rawQty = amount / currentPrice;
-    const decimals = currentPrice > 1000 ? 6 : currentPrice > 1 ? 4 : (currentPrice < 0.01 ? 2 : 4);
-    setQuantity(Number(rawQty.toFixed(decimals)).toString());
+    setQuantity(formatQuantityByPrice(amount / currentPrice, currentPrice));
     setIsMaxSell(false);
-  };
+  }, [currentPrice]);
 
-  // Preset buttons for SELL (including MAX PORTFOLIO)
-  const applySellHoldingPct = (pct: number) => {
+  const applySellHoldingPct = useCallback((pct: number) => {
     if (availableHoldingQty <= 0) {
       toast({
         title: "Sem saldo em carteira",
@@ -268,28 +283,24 @@ export function QuickTrade() {
       setUsdtAmount((availableHoldingQty * currentPrice).toFixed(2));
     } else {
       const targetQty = availableHoldingQty * pct;
-      const decimals = currentPrice > 1000 ? 6 : currentPrice > 1 ? 4 : (currentPrice < 0.01 ? 2 : 4);
-      setQuantity(Number(targetQty.toFixed(decimals)).toString());
+      setQuantity(formatQuantityByPrice(targetQty, currentPrice));
       setUsdtAmount((targetQty * currentPrice).toFixed(2));
     }
-  };
+  }, [availableHoldingQty, cleanSym, currentPrice, toast]);
 
-  // Scheduled order input synchronizers
-  const handleScheduledUsdtChange = (val: string) => {
+  const handleScheduledUsdtChange = useCallback((val: string) => {
     setScheduledUsdt(val);
     setScheduledIsMaxSell(false);
     const parsed = parseFloat(val);
     const refPrice = parseFloat(triggerPrice) || currentPrice;
     if (Number.isFinite(parsed) && parsed > 0 && refPrice > 0) {
-      const rawQty = parsed / refPrice;
-      const decimals = refPrice > 1000 ? 6 : refPrice > 1 ? 4 : 2;
-      setScheduledQty(Number(rawQty.toFixed(decimals)).toString());
+      setScheduledQty(formatQuantityByPrice(parsed / refPrice, refPrice));
     } else if (!val) {
       setScheduledQty("");
     }
-  };
+  }, [triggerPrice, currentPrice]);
 
-  const handleScheduledQtyChange = (val: string) => {
+  const handleScheduledQtyChange = useCallback((val: string) => {
     setScheduledQty(val);
     setScheduledIsMaxSell(false);
     const parsed = parseFloat(val);
@@ -299,20 +310,18 @@ export function QuickTrade() {
     } else if (!val) {
       setScheduledUsdt("");
     }
-  };
+  }, [triggerPrice, currentPrice]);
 
-  const applyScheduledBuyPct = (pct: number) => {
+  const applyScheduledBuyPct = useCallback((pct: number) => {
     const refPrice = parseFloat(triggerPrice) || currentPrice;
     if (availableCashUsdt <= 0 || refPrice <= 0) return;
     const targetUsdt = availableCashUsdt * pct;
     setScheduledUsdt(targetUsdt.toFixed(2));
-    const rawQty = targetUsdt / refPrice;
-    const decimals = refPrice > 1000 ? 6 : refPrice > 1 ? 4 : 2;
-    setScheduledQty(Number(rawQty.toFixed(decimals)).toString());
+    setScheduledQty(formatQuantityByPrice(targetUsdt / refPrice, refPrice));
     setScheduledIsMaxSell(false);
-  };
+  }, [triggerPrice, currentPrice, availableCashUsdt]);
 
-  const applyScheduledSellPct = (pct: number) => {
+  const applyScheduledSellPct = useCallback((pct: number) => {
     const refPrice = parseFloat(triggerPrice) || currentPrice;
     if (availableHoldingQty <= 0) {
       toast({
@@ -329,36 +338,35 @@ export function QuickTrade() {
       setScheduledUsdt((availableHoldingQty * refPrice).toFixed(2));
     } else {
       const targetQty = availableHoldingQty * pct;
-      const decimals = refPrice > 1000 ? 6 : refPrice > 1 ? 4 : 2;
-      setScheduledQty(Number(targetQty.toFixed(decimals)).toString());
+      setScheduledQty(formatQuantityByPrice(targetQty, refPrice));
       setScheduledUsdt((targetQty * refPrice).toFixed(2));
     }
-  };
+  }, [triggerPrice, currentPrice, availableHoldingQty, cleanSym, toast]);
 
-  // Scheduled trigger validation hook
+  // Scheduled trigger validation hook com guarda em Set O(1) contra disparos duplicados
   useEffect(() => {
-    const activeOrders = scheduledOrders.filter((o) => !o.isTriggered && o.symbol === selectedSymbol);
-    if (activeOrders.length === 0 || !ticker || currentPrice <= 0) return;
+    if (activeScheduledOrders.length === 0 || currentPrice <= 0) return;
 
-    activeOrders.forEach(async (order) => {
-      let triggered = false;
-      if (order.direction === "above" && currentPrice >= order.triggerPrice) {
-        triggered = true;
-      } else if (order.direction === "below" && currentPrice <= order.triggerPrice) {
-        triggered = true;
-      }
+    for (const order of activeScheduledOrders) {
+      if (triggeredIdsRef.current.has(order.id)) continue;
 
-      if (triggered) {
-        // Mark immediately to avoid duplicate dispatch
-        triggerScheduledOrder(order.id);
+      const isTriggered =
+        (order.direction === "above" && currentPrice >= order.triggerPrice) ||
+        (order.direction === "below" && currentPrice <= order.triggerPrice);
 
+      if (!isTriggered) continue;
+
+      triggeredIdsRef.current.add(order.id);
+      triggerScheduledOrder(order.id);
+
+      const total = order.quantity * currentPrice;
+      const orderCleanSym = stripQuoteAsset(order.symbol || selectedSymbol);
+
+      void (async () => {
         try {
-          const total = order.quantity * currentPrice;
           const res = await fetch("/api/trades", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               symbol: order.symbol,
               side: order.side,
@@ -392,13 +400,12 @@ export function QuickTrade() {
             }
 
             toast({
-              title: `⏰ Compra/Venda Programada Executada`,
-              description: `${order.side === "BUY" ? "🟢 Compra" : "🔴 Venda"} programada de ${order.quantity} ${(order.symbol || selectedSymbol || "BTCUSDT").replace("USDT", "")} disparada @ $${formatPrice(currentPrice)}`,
+              title: "⏰ Compra/Venda Programada Executada",
+              description: `${order.side === "BUY" ? "🟢 Compra" : "🔴 Venda"} programada de ${order.quantity} ${orderCleanSym} disparada @ $${formatPrice(currentPrice)}`,
             });
-            
-            // Emit telemetry
+
             try {
-              const { telemetry } = await import('@/lib/telemetry');
+              const { telemetry } = await import("@/lib/telemetry");
               telemetry.emit("trade", {
                 tradeId: result.data.id,
                 symbol: order.symbol,
@@ -420,11 +427,12 @@ export function QuickTrade() {
         } catch (err: any) {
           console.error("[ScheduledOrder] Trigger failed:", err.message);
         }
-      }
-    });
-  }, [tickers, selectedSymbol, scheduledOrders, triggerScheduledOrder, tradingMode, toast, ticker, currentPrice]);
+      })();
+    }
+  }, [activeScheduledOrders, currentPrice, selectedSymbol, triggerScheduledOrder, tradingMode, toast]);
 
   const handleScheduleOrder = useCallback((side: "BUY" | "SELL") => {
+    if (submittingRef.current || isSubmitting) return;
     const trigger = parseFloat(triggerPrice);
     const qty = parseFloat(scheduledQty);
     if (!trigger || trigger <= 0 || !qty || qty <= 0 || currentPrice <= 0) return;
@@ -432,50 +440,67 @@ export function QuickTrade() {
     const direction = trigger > currentPrice ? "above" : "below";
     const horizon = tradePrefill?.horizon || (marginMode === "SPOT" ? "MEDIO_LONGO" : "RAPIDO");
 
-    addScheduledOrder({
-      id: `sched_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
-      symbol: selectedSymbol,
-      side,
-      triggerPrice: trigger,
-      quantity: qty,
-      direction,
-      isTriggered: false,
-      createdAt: new Date().toISOString(),
-      marginMode,
-      leverage,
-      timeStopHours: timeStopActive ? timeStopHours : 0,
-      horizon,
-    });
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    try {
+      addScheduledOrder({
+        id: `sched_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+        symbol: selectedSymbol,
+        side,
+        triggerPrice: trigger,
+        quantity: qty,
+        direction,
+        isTriggered: false,
+        createdAt: new Date().toISOString(),
+        marginMode,
+        leverage,
+        timeStopHours: timeStopActive ? timeStopHours : 0,
+        horizon,
+      });
 
-    setTriggerPrice("");
-    setScheduledQty("");
-    setScheduledUsdt("");
-    setScheduledIsMaxSell(false);
+      setTriggerPrice("");
+      setScheduledQty("");
+      setScheduledUsdt("");
+      setScheduledIsMaxSell(false);
 
-    toast({
-      title: "Ordem Programada Salva",
-      description: `${side === "BUY" ? "Compra" : "Venda"} programada de ${qty} ${(selectedSymbol || "BTCUSDT").replace("USDT", "")} salva @ gatilho $${formatPrice(trigger)} [${marginMode} ${leverage}x${timeStopActive ? ` | Time-Stop: ${timeStopHours}h` : ''}]`,
-    });
-  }, [triggerPrice, scheduledQty, currentPrice, selectedSymbol, addScheduledOrder, toast, marginMode, leverage, timeStopActive, timeStopHours, tradePrefill]);
+      toast({
+        title: "Ordem Programada Salva",
+        description: `${side === "BUY" ? "Compra" : "Venda"} programada de ${qty} ${cleanSym} salva @ gatilho $${formatPrice(trigger)} [${marginMode} ${leverage}x${timeStopActive ? ` | Time-Stop: ${timeStopHours}h` : ""}]`,
+      });
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    }
+  }, [isSubmitting, triggerPrice, scheduledQty, currentPrice, selectedSymbol, cleanSym, addScheduledOrder, toast, marginMode, leverage, timeStopActive, timeStopHours, tradePrefill]);
 
   const handleTrade = useCallback(async (side: "BUY" | "SELL") => {
+    if (submittingRef.current || isSubmitting) return;
+
     const qty = parseFloat(quantity);
-    if (!qty || qty <= 0 || currentPrice <= 0) return;
+    const guard = validateQuickTradeExecution({
+      isSubmitting: false,
+      quantity: qty,
+      currentPrice,
+      tradingMode,
+    });
 
-    const total = qty * currentPrice;
-
-    if (tradingMode === "live" && total < 5.0) {
-      toast({
-        title: "Valor Mínimo da Ordem",
-        description: `A Binance exige um valor mínimo de $5.00 USDT por ordem no mercado Spot. O valor atual é $${total.toFixed(2)} USDT.`,
-        variant: "destructive",
-      });
+    if (!guard.canExecute) {
+      if (guard.reason) {
+        toast({
+          title: "Não foi possível enviar a ordem",
+          description: guard.reason,
+          variant: "destructive",
+        });
+      }
       return;
     }
 
+    const total = guard.totalUsdt;
     const isSellAll = side === "SELL" && (isMaxSell || qty >= (availableHoldingQty > 0 ? availableHoldingQty * 0.99 : 0));
     const horizon = tradePrefill?.horizon || (marginMode === "SPOT" ? "MEDIO_LONGO" : "RAPIDO");
 
+    submittingRef.current = true;
+    setIsSubmitting(true);
     try {
       const res = await fetch("/api/trades", {
         method: "POST",
@@ -503,7 +528,6 @@ export function QuickTrade() {
       if (result.success) {
         const store = useCryptoStore.getState();
 
-        // Add server-generated trade to store
         store.addTrade({
           id: result.data.id,
           symbol: result.data.symbol,
@@ -517,7 +541,6 @@ export function QuickTrade() {
           timestamp: result.data.timestamp || new Date().toISOString(),
         });
 
-        // Update account from backend payload
         if (result.account) {
           store.setAccount(result.account);
         }
@@ -527,16 +550,14 @@ export function QuickTrade() {
         setUsdtAmount("");
         setIsMaxSell(false);
 
-        // Show toast notification
-        const horizonTag = (marginMode === "SPOT") ? "Spot 1x (Anti-Wicking)" : `Margem Isolada ${leverage}x`;
+        const horizonTag = marginMode === "SPOT" ? "Spot 1x (Anti-Wicking)" : `Margem Isolada ${leverage}x`;
         toast({
           title: `${side === "BUY" ? "🟢 Compra" : "🔴 Venda"} Executada [${horizonTag}]`,
-          description: `${qty} ${(selectedSymbol || "BTCUSDT").replace("USDT", "")} @ $${formatPrice(currentPrice)} — Total: $${formatPrice(total)}${timeStopActive ? ` | Time-Stop: ${timeStopHours}h` : ''}`,
+          description: `${qty} ${cleanSym} @ $${formatPrice(currentPrice)} — Total: $${formatPrice(total)}${timeStopActive ? ` | Time-Stop: ${timeStopHours}h` : ""}`,
         });
 
-        // Emit telemetry event
         try {
-          const { telemetry } = await import('@/lib/telemetry');
+          const { telemetry } = await import("@/lib/telemetry");
           telemetry.emit("trade", {
             tradeId: result.data.id,
             symbol: selectedSymbol,
@@ -549,8 +570,8 @@ export function QuickTrade() {
           });
         } catch {}
 
-        // Clear the last trade notification after 3 seconds
-        setTimeout(() => setLastTrade(null), 3000);
+        if (lastTradeTimerRef.current) clearTimeout(lastTradeTimerRef.current);
+        lastTradeTimerRef.current = setTimeout(() => setLastTrade(null), 3000);
       } else {
         toast({
           title: "Erro na execução",
@@ -565,18 +586,29 @@ export function QuickTrade() {
         description: "Falha ao comunicar com o servidor. Tente novamente.",
         variant: "destructive",
       });
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
     }
-  }, [quantity, currentPrice, selectedSymbol, tradingMode, toast, isMaxSell, availableHoldingQty, marginMode, leverage, timeStopActive, timeStopHours, tradePrefill]);
+  }, [isSubmitting, quantity, currentPrice, selectedSymbol, cleanSym, tradingMode, toast, isMaxSell, availableHoldingQty, marginMode, leverage, timeStopActive, timeStopHours, tradePrefill]);
 
-  // Fetch AI SL/TP suggestions
+  // Fetch AI SL/TP suggestions com AbortController contra race conditions
   const fetchSLTP = useCallback(async () => {
     const currentTicker = useCryptoStore.getState().tickers[selectedSymbol];
     if (!currentTicker || currentTicker.price <= 0) return;
+
+    if (sltpAbortRef.current) {
+      sltpAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    sltpAbortRef.current = controller;
+
     setSltpLoading(true);
     try {
       const res = await fetch("/api/ai/sltp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           symbol: selectedSymbol,
           price: currentTicker.price,
@@ -586,16 +618,20 @@ export function QuickTrade() {
           priceChange24h: currentTicker.priceChangePercent,
         }),
       });
-      if (res.ok) {
+      if (res.ok && !controller.signal.aborted) {
         const result = await res.json();
         if (result.success && result.data) {
           setSltpData(result.data);
         }
       }
-    } catch {
-      // Silently fail
+    } catch (err: any) {
+      if (err?.name !== "AbortError") {
+        // Silently ignore network errors on background AI suggestion
+      }
     } finally {
-      setSltpLoading(false);
+      if (!controller.signal.aborted) {
+        setSltpLoading(false);
+      }
     }
   }, [selectedSymbol]);
 
@@ -603,10 +639,8 @@ export function QuickTrade() {
     fetchSLTP();
   }, [fetchSLTP]);
 
-  const totalCost = quantity ? parseFloat(quantity) * currentPrice : 0;
-
   return (
-    <Card className="bg-card/60 backdrop-blur-md gradient-border">
+    <Card className="bg-card border border-border/50 shadow-sm">
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
           <ShoppingCart className="w-4 h-4 text-crypto-cyan" />
@@ -627,7 +661,7 @@ export function QuickTrade() {
               ) : (
                 <TrendingDown className="w-3 h-3 text-crypto-red" />
               )}
-              <span className="text-lg font-bold font-mono number-animate">
+              <span className="text-lg font-bold font-mono tabular-nums number-animate">
                 ${formatPrice(currentPrice)}
               </span>
             </div>
@@ -635,7 +669,7 @@ export function QuickTrade() {
           <div className="flex items-center justify-between mt-1">
             <span className="text-[10px] text-muted-foreground">{selectedSymbol}</span>
             <span className={cn(
-              "text-xs font-mono font-medium",
+              "text-xs font-mono tabular-nums font-medium",
               isPositive ? "text-crypto-green" : "text-crypto-red"
             )}>
               {ticker ? `${isPositive ? "+" : ""}${ticker.priceChangePercent.toFixed(2)}%` : ""}
@@ -644,7 +678,7 @@ export function QuickTrade() {
         </div>
 
         {/* Banner de Setup Pré-Carregado do Estúdio Quant */}
-        {tradePrefill && (tradePrefill.symbol === selectedSymbol || tradePrefill.symbol.replace(/USDT$|BUSD$|USDC$/, "") === cleanSym) && (() => {
+        {tradePrefill && (tradePrefill.symbol === selectedSymbol || stripQuoteAsset(tradePrefill.symbol) === cleanSym) && (() => {
           const isPrefillFast = tradePrefill.horizon === "RAPIDO";
           const slDistancePct = tradePrefill.entryPrice && tradePrefill.stopLoss
             ? Math.abs(((tradePrefill.stopLoss - tradePrefill.entryPrice) / tradePrefill.entryPrice) * 100).toFixed(1)
@@ -1048,11 +1082,20 @@ export function QuickTrade() {
                 {/* Buy Button */}
                 <Button
                   onClick={() => handleTrade("BUY")}
-                  disabled={!quantity || parseFloat(quantity) <= 0}
-                  className="w-full bg-crypto-green hover:bg-crypto-green/90 text-white font-bold h-10 gap-1.5 btn-gradient-green touch-target shadow-md shadow-crypto-green/20"
+                  disabled={isSubmitting || !quantity || parseFloat(quantity) <= 0}
+                  className="w-full bg-crypto-green hover:bg-crypto-green/90 text-white font-bold h-10 gap-1.5 touch-target shadow-sm"
                 >
-                  <TrendingUp className="w-4 h-4" />
-                  Comprar {cleanSym} {usdtAmount && parseFloat(usdtAmount) > 0 ? `(~$${parseFloat(usdtAmount).toFixed(2)})` : ""}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                      <span>Processando Ordem...</span>
+                    </>
+                  ) : (
+                    <>
+                      <TrendingUp className="w-4 h-4" />
+                      <span>Comprar {cleanSym} {usdtAmount && parseFloat(usdtAmount) > 0 ? `(~$${parseFloat(usdtAmount).toFixed(2)})` : ""}</span>
+                    </>
+                  )}
                 </Button>
               </div>
             ) : (
@@ -1174,13 +1217,24 @@ export function QuickTrade() {
                 {/* Sell Button */}
                 <Button
                   onClick={() => handleTrade("SELL")}
-                  disabled={!quantity || parseFloat(quantity) <= 0}
-                  className="w-full bg-crypto-red hover:bg-crypto-red/90 text-white font-bold h-10 gap-1.5 btn-gradient-red touch-target shadow-md shadow-crypto-red/20"
+                  disabled={isSubmitting || !quantity || parseFloat(quantity) <= 0}
+                  className="w-full bg-crypto-red hover:bg-crypto-red/90 text-white font-bold h-10 gap-1.5 touch-target shadow-sm"
                 >
-                  <TrendingDown className="w-4 h-4" />
-                  {isMaxSell
-                    ? `Vender Tudo (${quantity} ${cleanSym})`
-                    : `Vender ${cleanSym} ${usdtAmount && parseFloat(usdtAmount) > 0 ? `(~$${parseFloat(usdtAmount).toFixed(2)})` : ""}`}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                      <span>Processando Ordem...</span>
+                    </>
+                  ) : (
+                    <>
+                      <TrendingDown className="w-4 h-4" />
+                      <span>
+                        {isMaxSell
+                          ? `Vender Tudo (${quantity} ${cleanSym})`
+                          : `Vender ${cleanSym} ${usdtAmount && parseFloat(usdtAmount) > 0 ? `(~$${parseFloat(usdtAmount).toFixed(2)})` : ""}`}
+                      </span>
+                    </>
+                  )}
                 </Button>
               </div>
             )}
@@ -1308,11 +1362,15 @@ export function QuickTrade() {
 
                 <Button
                   onClick={() => handleScheduleOrder("BUY")}
-                  disabled={!triggerPrice || !scheduledQty || parseFloat(scheduledQty) <= 0 || parseFloat(triggerPrice) <= 0}
+                  disabled={isSubmitting || !triggerPrice || !scheduledQty || parseFloat(scheduledQty) <= 0 || parseFloat(triggerPrice) <= 0}
                   size="sm"
-                  className="w-full bg-crypto-green hover:bg-crypto-green/90 text-white font-semibold text-xs h-9 btn-gradient-green"
+                  className="w-full bg-crypto-green hover:bg-crypto-green/90 text-white font-semibold text-xs h-9 shadow-sm"
                 >
-                  Programar Compra
+                  {isSubmitting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    "Programar Compra"
+                  )}
                 </Button>
               </div>
             ) : (
@@ -1379,11 +1437,15 @@ export function QuickTrade() {
 
                 <Button
                   onClick={() => handleScheduleOrder("SELL")}
-                  disabled={!triggerPrice || !scheduledQty || parseFloat(scheduledQty) <= 0 || parseFloat(triggerPrice) <= 0}
+                  disabled={isSubmitting || !triggerPrice || !scheduledQty || parseFloat(scheduledQty) <= 0 || parseFloat(triggerPrice) <= 0}
                   size="sm"
-                  className="w-full bg-crypto-red hover:bg-crypto-red/90 text-white font-semibold text-xs h-9 btn-gradient-red"
+                  className="w-full bg-crypto-red hover:bg-crypto-red/90 text-white font-semibold text-xs h-9 shadow-sm"
                 >
-                  Programar Venda {scheduledIsMaxSell ? "(Tudo)" : ""}
+                  {isSubmitting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    `Programar Venda ${scheduledIsMaxSell ? "(Tudo)" : ""}`
+                  )}
                 </Button>
               </div>
             )}
@@ -1393,7 +1455,7 @@ export function QuickTrade() {
               <span className="text-[10px] font-semibold text-muted-foreground block">Agendamentos Ativos</span>
               <ScrollArea className="h-[120px] w-full border border-border/30 rounded-lg p-2 bg-secondary/10">
                 <div className="space-y-1.5">
-                  {scheduledOrders.filter(o => !o.isTriggered && o.symbol === selectedSymbol).map(order => (
+                  {activeScheduledOrders.map((order) => (
                     <div key={order.id} className="flex items-center justify-between bg-card/40 border border-border/20 rounded px-2 py-1.5 text-[10px]">
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-1">
@@ -1403,16 +1465,17 @@ export function QuickTrade() {
                           )}>
                             {order.side === "BUY" ? "COMPRA" : "VENDA"}
                           </Badge>
-                          <span className="font-mono text-muted-foreground text-[9px]">{(order.symbol || "BTCUSDT").replace("USDT", "")}</span>
+                          <span className="font-mono tabular-nums text-muted-foreground text-[9px]">{stripQuoteAsset(order.symbol)}</span>
                         </div>
-                        <span className="text-muted-foreground block">
+                        <span className="text-muted-foreground block font-mono tabular-nums">
                           Gatilho: {order.direction === "above" ? "≥" : "≤"} ${formatPrice(order.triggerPrice)}
                         </span>
-                        <span className="text-muted-foreground block font-mono text-[9px]">Qtd: {order.quantity}</span>
+                        <span className="text-muted-foreground block font-mono tabular-nums text-[9px]">Qtd: {order.quantity}</span>
                       </div>
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label={`Excluir ordem programada de ${stripQuoteAsset(order.symbol)}`}
                         className="h-5 w-5 text-muted-foreground hover:text-crypto-red hover:bg-crypto-red/10"
                         onClick={() => removeScheduledOrder(order.id)}
                       >
@@ -1420,7 +1483,7 @@ export function QuickTrade() {
                       </Button>
                     </div>
                   ))}
-                  {scheduledOrders.filter(o => !o.isTriggered && o.symbol === selectedSymbol).length === 0 && (
+                  {activeScheduledOrders.length === 0 && (
                     <span className="text-[10px] text-muted-foreground text-center block py-4">Nenhuma ordem programada ativa.</span>
                   )}
                 </div>
@@ -1447,8 +1510,8 @@ export function QuickTrade() {
                 "w-3.5 h-3.5",
                 lastTrade.side === "BUY" ? "text-crypto-green" : "text-crypto-red"
               )} />
-              <span className="text-xs font-medium">
-                {lastTrade.side} {lastTrade.qty} {(selectedSymbol || "BTCUSDT").replace("USDT", "")} @ ${formatPrice(lastTrade.price)}
+              <span className="text-xs font-medium font-mono tabular-nums">
+                {lastTrade.side} {lastTrade.qty} {cleanSym} @ ${formatPrice(lastTrade.price)}
               </span>
             </motion.div>
           )}
@@ -1464,6 +1527,7 @@ export function QuickTrade() {
             <Button
               variant="ghost"
               size="sm"
+              aria-label="Atualizar SL e TP sugeridos pela IA"
               className="h-5 w-5 p-0 text-muted-foreground hover:text-crypto-cyan"
               onClick={fetchSLTP}
               disabled={sltpLoading}
