@@ -28,8 +28,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Instrument+Serif:ital@0;1&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body
-        className="antialiased bg-background text-foreground"
+        className="antialiased bg-background text-foreground font-sans selection:bg-slate-200 selection:text-slate-900"
       >
         <ThemeProvider
           attribute="class"

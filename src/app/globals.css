@@ -6,8 +6,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -37,8 +38,8 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 8px);
+  --radius-md: calc(var(--radius) - 4px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --color-crypto-green: var(--crypto-green);
@@ -48,50 +49,76 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: #F6F7F9;
-  --foreground: #0F172A;
+  --radius: 1.25rem;
+  --background: #F2F4F7;
+  --foreground: #0E1B2C;
   --card: #FFFFFF;
-  --card-foreground: #0F172A;
+  --card-foreground: #0E1B2C;
   --popover: #FFFFFF;
-  --popover-foreground: #0F172A;
-  --primary: #0E7C6B;
+  --popover-foreground: #0E1B2C;
+  --primary: #0E1B2C;
   --primary-foreground: #FFFFFF;
-  --secondary: #F1F3F6;
-  --secondary-foreground: #3B4456;
-  --muted: #F1F3F6;
-  --muted-foreground: #5B6475;
-  --accent: #E6F4F1;
-  --accent-foreground: #0E7C6B;
+  --secondary: #EEF1F5;
+  --secondary-foreground: #4A586A;
+  --muted: #EEF1F5;
+  --muted-foreground: #4A586A;
+  --accent: #E7EEFC;
+  --accent-foreground: #1F4FB0;
   --destructive: #B42318;
-  --border: #E8EAEE;
-  --input: #E8EAEE;
-  --ring: #0E7C6B;
-  --chart-1: #0E7C6B;
+  --border: #E7EBF0;
+  --input: #D3DAE3;
+  --ring: #1F5FD6;
+  --chart-1: #0A7A59;
   --chart-2: #B42318;
-  --chart-3: #2563EB;
+  --chart-3: #1F5FD6;
   --chart-4: #D97706;
   --chart-5: #7C3AED;
   --sidebar: #FFFFFF;
-  --sidebar-foreground: #0F172A;
-  --sidebar-primary: #0E7C6B;
+  --sidebar-foreground: #0E1B2C;
+  --sidebar-primary: #0E1B2C;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #E6F4F1;
-  --sidebar-accent-foreground: #0E7C6B;
-  --sidebar-border: #E8EAEE;
-  --sidebar-ring: #0E7C6B;
-  --crypto-green: #0E7C6B;
+  --sidebar-accent: #EEF1F5;
+  --sidebar-accent-foreground: #0E1B2C;
+  --sidebar-border: #E7EBF0;
+  --sidebar-ring: #1F5FD6;
+  --crypto-green: #0A7A59;
   --crypto-red: #B42318;
-  --crypto-cyan: #0E7C6B;
+  --crypto-cyan: #1F5FD6;
   --crypto-gold: #D97706;
   --glass-bg: rgba(255, 255, 255, 0.95);
-  --glass-border: #E8EAEE;
+  --glass-border: #E7EBF0;
   --glass-hover-bg: #FFFFFF;
-  --glass-hover-border: #0E7C6B;
-  --glow-opacity: 4%;
-  --grid-line: rgba(15, 23, 42, 0.05);
-  --scrollbar-thumb: #CBD5E1;
-  --scrollbar-thumb-hover: #94A3B8;
+  --glass-hover-border: #0E1B2C;
+  --glow-opacity: 0%;
+  --grid-line: rgba(14, 27, 44, 0.04);
+  --scrollbar-thumb: #D3DAE3;
+  --scrollbar-thumb-hover: #A9B7C8;
+
+  /* Instrumento Calmo - tokens semânticos dedicados */
+  --calm-bg: #F2F4F7;
+  --calm-card: #FFFFFF;
+  --calm-card-sec: #EEF1F5;
+  --calm-rail: #E4E8ED;
+  --calm-divider: #E7EBF0;
+  --calm-border: #D3DAE3;
+  --calm-text: #0E1B2C;
+  --calm-text-sec: #4A586A;
+  --calm-dark-card: #0E1B2C;
+  --calm-dark-text: #FFFFFF;
+  --calm-dark-sec: #A9B7C8;
+  --calm-gain-dark: #5BE3A8;
+  --calm-gain-dark-pill: rgba(91, 227, 168, 0.16);
+  --calm-loss-dark: #FF8A80;
+  --calm-gain-light: #0A7A59;
+  --calm-loss-light: #B42318;
+  --calm-risk-bg: #FDF4F3;
+  --calm-risk-border: #F1C9C5;
+  --calm-connected: #0B8F6A;
+  --calm-notice-bg: #FFF4DC;
+  --calm-notice-text: #6B4300;
+  --calm-focus: #1F5FD6;
+  --calm-focus-sec: #1F4FB0;
+  --calm-focus-bg: #E7EEFC;
 }
 
 .dark {
@@ -101,7 +128,7 @@
   --card-foreground: #f8fafc;
   --popover: #111927;
   --popover-foreground: #f8fafc;
-  --primary: #06b6d4;
+  --primary: #5BE3A8;
   --primary-foreground: #090d14;
   --secondary: #162032;
   --secondary-foreground: #e2e8f0;
@@ -109,35 +136,74 @@
   --muted-foreground: #94a3b8;
   --accent: #192438;
   --accent-foreground: #38bdf8;
-  --destructive: #f43f5e;
-  --border: rgba(255, 255, 255, 0.07);
-  --input: rgba(255, 255, 255, 0.1);
-  --ring: #06b6d4;
-  --chart-1: #10b981;
-  --chart-2: #f43f5e;
-  --chart-3: #06b6d4;
+  --destructive: #FF8A80;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #38bdf8;
+  --chart-1: #5BE3A8;
+  --chart-2: #FF8A80;
+  --chart-3: #38bdf8;
   --chart-4: #f59e0b;
   --chart-5: #a855f7;
   --sidebar: #0b1019;
   --sidebar-foreground: #f8fafc;
-  --sidebar-primary: #06b6d4;
+  --sidebar-primary: #5BE3A8;
   --sidebar-primary-foreground: #090d14;
   --sidebar-accent: #141d2b;
   --sidebar-accent-foreground: #38bdf8;
-  --sidebar-border: rgba(255, 255, 255, 0.07);
-  --sidebar-ring: #06b6d4;
-  --crypto-green: #10b981;
-  --crypto-red: #f43f5e;
-  --crypto-cyan: #06b6d4;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #38bdf8;
+  --crypto-green: #5BE3A8;
+  --crypto-red: #FF8A80;
+  --crypto-cyan: #38bdf8;
   --crypto-gold: #f59e0b;
   --glass-bg: rgba(15, 22, 34, 0.72);
-  --glass-border: rgba(255, 255, 255, 0.07);
+  --glass-border: rgba(255, 255, 255, 0.08);
   --glass-hover-bg: rgba(22, 32, 50, 0.85);
-  --glass-hover-border: rgba(6, 182, 212, 0.3);
-  --glow-opacity: 8%;
-  --grid-line: rgba(255, 255, 255, 0.025);
+  --glass-hover-border: rgba(91, 227, 168, 0.3);
+  --glow-opacity: 0%;
+  --grid-line: rgba(255, 255, 255, 0.02);
   --scrollbar-thumb: #1e293b;
   --scrollbar-thumb-hover: #334155;
+
+  --calm-bg: #090d14;
+  --calm-card: #0f1622;
+  --calm-card-sec: #162032;
+  --calm-rail: #141c2b;
+  --calm-divider: rgba(255, 255, 255, 0.08);
+  --calm-border: rgba(255, 255, 255, 0.12);
+  --calm-text: #f8fafc;
+  --calm-text-sec: #94a3b8;
+  --calm-dark-card: #0E1B2C;
+  --calm-dark-text: #FFFFFF;
+  --calm-dark-sec: #A9B7C8;
+  --calm-gain-dark: #5BE3A8;
+  --calm-gain-dark-pill: rgba(91, 227, 168, 0.16);
+  --calm-loss-dark: #FF8A80;
+  --calm-gain-light: #5BE3A8;
+  --calm-loss-light: #FF8A80;
+  --calm-risk-bg: rgba(255, 138, 128, 0.08);
+  --calm-risk-border: rgba(255, 138, 128, 0.25);
+  --calm-connected: #5BE3A8;
+  --calm-notice-bg: rgba(245, 158, 11, 0.1);
+  --calm-notice-text: #f59e0b;
+  --calm-focus: #38bdf8;
+  --calm-focus-sec: #38bdf8;
+  --calm-focus-bg: rgba(56, 189, 248, 0.1);
+}
+
+/* Tipografia e classes utilitárias de "Instrumento Calmo" */
+.font-instrument-serif {
+  font-family: 'Instrument Serif', Georgia, serif;
+  letter-spacing: -0.02em;
+}
+
+.font-instrument-sans {
+  font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ========================
