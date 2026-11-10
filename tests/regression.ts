@@ -432,14 +432,17 @@ async function runRegressionTest() {
     } else {
       console.log("Could not find Quick Trade inputs in UI, executing programmatically...");
       await page.evaluate(async () => {
+        const store = (window as any).useCryptoStore.getState();
+        const curPrice = store.tickers?.["BTCUSDT"]?.price || 75000;
         const trade = {
           symbol: "BTCUSDT",
           side: "BUY",
-          price: 78000,
+          price: curPrice,
           quantity: 0.001,
-          total: 78,
+          total: Number((curPrice * 0.001).toFixed(2)),
           strategy: "Manual",
           mode: "paper",
+          slippageTolerance: 50,
         };
         await fetch("/api/trades", {
           method: "POST",

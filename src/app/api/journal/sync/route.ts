@@ -8,7 +8,7 @@ let journalTableReady: Promise<void> | null = null;
  * Garante a existência da tabela "TradeJournalRecord" e seus índices compostos no SQLite (WAL Mode)
  * sem exigir migração manual bloqueante.
  */
-export function ensureJournalTable(): Promise<void> {
+function ensureJournalTable(): Promise<void> {
   journalTableReady ??= (async () => {
     await db.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "TradeJournalRecord" (

@@ -81,7 +81,7 @@ services:
       - FUNDING_RATES_MCP_URL=http://tradeai-funding-rates-mcp:8002/sse
       - CRYPTO_PORTFOLIO_MCP_URL=http://tradeai-crypto-portfolio-mcp:8003/sse
     volumes:
-      - ./db:/app/db
+      - /media/DCORREA/TradeAi/TRADEAI/db:/app/db
     depends_on:
       - tradeai-quant-ai
       - tradeai-funding-rates-mcp

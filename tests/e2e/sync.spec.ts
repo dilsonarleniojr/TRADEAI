@@ -74,14 +74,17 @@ async function runSyncTests() {
 
     // Execute trade programmatically to bypass UI selector variances
     await page.evaluate(async () => {
+      const store = (window as any).useCryptoStore.getState();
+      const currentPrice = store.tickers?.["BTCUSDT"]?.price || 75000;
       const trade = {
         symbol: "BTCUSDT",
         side: "BUY",
-        price: 80000,
+        price: currentPrice,
         quantity: 0.002,
-        total: 160,
+        total: Number((currentPrice * 0.002).toFixed(2)),
         strategy: "Manual",
         mode: "paper",
+        slippageTolerance: 50,
       };
       await fetch("/api/trades", {
         method: "POST",

@@ -128,7 +128,7 @@ export interface TradeSlice {
   clearChat: () => void;
 }
 
-export const createTradeSlice: StateCreator<TradeSlice, [], [], TradeSlice> = (set) => ({
+export const createTradeSlice: StateCreator<any, [], [], TradeSlice> = (set, get) => ({
   // Bot status
   botActive: false,
   setBotActive: (active) => set({ botActive: active }),
@@ -436,10 +436,54 @@ export const createTradeSlice: StateCreator<TradeSlice, [], [], TradeSlice> = (s
   // AI Signals
   aiSignals: [],
   setAiSignals: (signals) => set({ aiSignals: signals }),
-  addAiSignal: (signal) =>
-    set((state) => ({
-      aiSignals: [signal, ...state.aiSignals],
-    })),
+  addAiSignal: (signal) => {
+    const state = (get as any)();
+    if (
+      state.botActive &&
+      state.botConfig?.autoTradeSignals &&
+      signal.action &&
+      signal.action !== "HOLD" &&
+      signal.confidence >= (state.botConfig.signalConfidenceThreshold / 100)
+    ) {
+      const cleanSym = signal.symbol.endsWith("USDT") ? signal.symbol : `${signal.symbol}USDT`;
+      const curPrice =
+        state.tickers?.[cleanSym]?.price ||
+        state.tickers?.[signal.symbol]?.price ||
+        signal.priceAtSignal ||
+        100;
+      const total = 100;
+      const quantity = parseFloat((total / curPrice).toFixed(6));
+
+      if (typeof window !== "undefined" && typeof fetch === "function") {
+        fetch("/api/trades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            symbol: cleanSym,
+            side: signal.action === "SELL" ? "SELL" : "BUY",
+            price: curPrice,
+            quantity,
+            total,
+            strategy: "AI-Signal",
+            mode: state.tradingMode || "paper",
+            slippageTolerance: 50,
+            pnl: 0,
+          }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success && data.data && typeof state.addTrade === "function") {
+              state.addTrade(data.data);
+            }
+          })
+          .catch(() => {});
+      }
+    }
+
+    set((s) => ({
+      aiSignals: [signal, ...s.aiSignals],
+    }));
+  },
 
   // Chat messages
   chatMessages: [],

@@ -493,15 +493,16 @@ export async function POST(request: NextRequest) {
     const strategyClean = (strategy || "Manual").replace(/[<>]/g, "");
     const modeClean = mode === "live" ? "live" : "paper";
 
-    // Verificação de Slippage Universal (Tanto Paper quanto Live com dados reais da Binance)
+    // Verificação de Slippage: No modo LIVE é estrita (0.75% padrão); no modo PAPER é flexível (25% padrão) ou configurada
     const refPrice = await fetchReferencePrice(symbolClean, false);
     if (refPrice !== null) {
       const calculatedSlippage = Math.abs(priceVal - refPrice) / refPrice;
+      const defaultTolerance = modeClean === 'live' ? 0.0075 : 0.25;
       const maxSlippageTolerance = typeof body.slippageTolerance === 'number'
         ? body.slippageTolerance / 100
         : typeof body.riskParams?.slippageTolerancePercent === 'number'
         ? body.riskParams.slippageTolerancePercent / 100
-        : 0.0075; // 0.75% de tolerância máxima padrão
+        : defaultTolerance;
 
       if (calculatedSlippage > maxSlippageTolerance) {
         return NextResponse.json(

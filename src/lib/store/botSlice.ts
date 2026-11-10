@@ -786,7 +786,7 @@ export const createBotSlice: StateCreator<
       active: botData.active ?? false,
       status: (botData.active ? (botData.position ? "in_position" : "scanning") : "stopped") as BotInstance["status"],
       takeProfit: botData.takeProfit ?? 3.8,
-      stopLoss: Math.min(2.0, botData.stopLoss ?? 1.8),
+      stopLoss: botData.stopLoss !== undefined ? botData.stopLoss : 1.8,
       trailingStop: botData.trailingStop ?? true,
       trailingStopDistance: botData.trailingStopDistance ?? 0.60,
       allocationAmount: botData.allocationAmount ?? 25,

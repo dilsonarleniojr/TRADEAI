@@ -13,7 +13,7 @@ let rollupTableReady: Promise<void> | null = null;
 /**
  * Garante a existência da tabela "TradeJournalDailyRollup" e seu índice por data UTC no SQLite WAL.
  */
-export function ensureRollupTable(): Promise<void> {
+function ensureRollupTable(): Promise<void> {
   rollupTableReady ??= (async () => {
     await db.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "TradeJournalDailyRollup" (
