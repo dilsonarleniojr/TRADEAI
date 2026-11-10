@@ -1,5 +1,37 @@
 [
   {
+    "category": "ARCHITECTURE_DESIGN",
+    "title": "Redesign V2 Plataforma TradeAI - Instrumento Calmo",
+    "summary": "Refatoração completa do layout e apresentação para a identidade visual 'Instrumento Calmo' com fundo claro #F2F4F7, cartão focal único #0E1B2C, tipografia Instrument Serif para números e KPIs heróicos, TopNav com 5 áreas e MobileNavBar de 390px.",
+    "tags": [
+      "ui-redesign",
+      "instrumento-calmo",
+      "v2-architecture",
+      "nextjs-react19",
+      "tailwind-v4"
+    ],
+    "details": {
+      "focalCard": "#0E1B2C",
+      "gainLight": "#0A7A59",
+      "gainDark": "#5BE3A8",
+      "lossLight": "#B42318",
+      "lossDark": "#FF8A80",
+      "fontSerif": "Instrument Serif",
+      "fontSans": "Instrument Sans",
+      "navAreas": [
+        "inicio",
+        "mercado",
+        "robos",
+        "carteira",
+        "aprender"
+      ],
+      "shortcutsPreserved": "1-9 e Ctrl+K",
+      "buildStatus": "Compiled successfully in 30.7s"
+    },
+    "id": "mem-design-v2-complete",
+    "timestamp": "2026-11-10T07:47:00.000Z"
+  },
+  {
     "category": "QUANT_STRATEGY",
     "title": "Calibragem Trailing Stop ATR e Order Flow L2",
     "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
