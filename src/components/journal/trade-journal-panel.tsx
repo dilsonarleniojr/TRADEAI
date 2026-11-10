@@ -701,14 +701,14 @@ export function TradeJournalPanel() {
     if (isCompacting) return;
     setIsCompacting(true);
     try {
-      const report = tradeJournalEngine.runColdTierCompaction(records, 1000, {
+      const report = tradeJournalEngine.runColdTierCompaction(records, 10000, {
         includeColumnarArchive: true,
       });
       setCompactionReport(report);
       await fetch("/api/journal/rollup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ initialCapital: 1000 }),
+        body: JSON.stringify({ initialCapital: 10000 }),
       });
     } catch {
       // Ignora falha de rede se offline

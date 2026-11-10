@@ -122,9 +122,9 @@ export function computeUnderwaterDrawdownSeries(
  */
 export function computeInstitutionalRiskTelemetry(
   records: TradeJournalRecord[],
-  initialCapital = 1000
+  initialCapital = 10000
 ): InstitutionalRiskGuardrailStatus {
-  const safeNav = initialCapital > 0 ? initialCapital : 1000;
+  const safeNav = initialCapital > 0 ? initialCapital : 10000;
   const now = new Date();
   const startOfUtcDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
 

@@ -1,5 +1,21 @@
 [
   {
+    "category": "QUANT_STRATEGY",
+    "title": "Calibragem Trailing Stop ATR e Order Flow L2",
+    "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
+    "tags": [
+      "mfe",
+      "trailing-stop",
+      "order-flow",
+      "atr"
+    ],
+    "details": {
+      "minRr": 2.2
+    },
+    "id": "mem-1794269834283-t97o9",
+    "timestamp": "2026-11-10T00:17:14.283Z"
+  },
+  {
     "category": "ARCHITECTURE_DECISION",
     "title": "Sincronização Estrita de Elegibilidade e Metadados com a Binance Spot (src/lib/binance-spot-sync.ts)",
     "summary": "1) Módulo Centralizado de Elegibilidade Spot (src/lib/binance-spot-sync.ts): Implementação de getVerifiedBinanceSpotRegistry (cache de 10 min do /api/v3/exchangeInfo com verificação de status === 'TRADING', isSpotTradingAllowed === true, quoteAsset === 'USDT' e bloqueio de permissionSets TRD_GRP_261), isTokenizedStockSymbol (bloqueio das 100 ações/ETFs tokenizados *BUSDT como SOXLBUSDT, SNDKBUSDT, SKHYBUSDT, CRCLBUSDT, NVDABUSDT, TSLABUSDT, etc., preservando criptos legítimos BNBUSDT, ARBUSDT, SHIBUSDT, TRBUSDT, CKBUSDT, BBUSDT), isTradableBinanceSpotSymbol (bloqueio de stablecoins/fiat/ouro como UUSDT, XUSDUSDT, RLUSDUSDT, RWUSDUSDT, BFUSDUSDT, USD1USDT, XAUTUSDT, PAXGUSDT, tickers não-ASCII e pares em BREAK/deslistados como TONUSDT, HNTUSDT, STORJUSDT, KASUSDT, EOSUSDT) e quantizeToBinanceTick; 2) Unificação de Proxies, Scanners e Rotas de IA (/api/market/ticker, /api/market/symbols, /api/market/sync, /api/bot/binance-profitable-scanner, /api/ai/bot-recommendations, /api/ai/top-picks, /api/ai/entries, /api/ai/trade-hub): Filtragem estrita contra o registro oficial da Binance Spot e quantização de preços por tickSize; 3) Calibração do Radar de Operação Direta e PilotTradeValidator (src/lib/bot/pilot/market-opportunity-selector.ts & direct-operation-manager.ts): Stop-Loss limitado a <= 1.75% e validação prévia no preset mínimo de $15 USD para garantir que 100% das opções sugeridas passem no PilotTradeValidator em todos os presets ($15, $25, $50, $70).",

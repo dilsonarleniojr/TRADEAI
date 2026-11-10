@@ -97,7 +97,29 @@ async function buildRealtimeMetrics(mode: string, qActive?: string | null, qTota
       })
     );
 
-    // 3. Strategy classification
+    // 3. Totais Globais Unificados (100% dos trades fechados da conta)
+    let globalGrossPnl = 0;
+    let globalFees = 0;
+    let globalSlippage = 0;
+    let globalNetPnl = 0;
+
+    for (const t of sellTrades) {
+      const notional = t.total || t.price * t.quantity || 30.0;
+      const fees = notional * 0.002; // 0.10% buy + 0.10% sell
+      const book = l2Microstructure[t.symbol] || { estimatedSlippagePercent: 0.05 };
+      const slippagePct = (book.estimatedSlippagePercent || 0.05) / 100;
+      const slippage = notional * slippagePct;
+
+      const netPnl = t.pnl; // Stored net PnL from SQLite
+      const grossPnl = netPnl + fees;
+
+      globalGrossPnl += grossPnl;
+      globalFees += fees;
+      globalSlippage += slippage;
+      globalNetPnl += netPnl;
+    }
+
+    // 4. Strategy classification e cards
     const strategyKeys = [
       { name: "Breakout Fleet", prefix: "BREAKOUT" },
       { name: "RSI Reversal", prefix: "RSI" },
@@ -108,16 +130,8 @@ async function buildRealtimeMetrics(mode: string, qActive?: string | null, qTota
     ];
 
     const strategyCards: StrategyCard[] = [];
-    let globalGrossPnl = 0;
-    let globalFees = 0;
-    let globalSlippage = 0;
-    let globalNetPnl = 0;
 
-    for (const stratDef of strategyKeys) {
-      const tradesForStrat = sellTrades.filter((t) =>
-        (t.strategy || "").toUpperCase().startsWith(stratDef.prefix)
-      );
-
+    const buildStrategyCard = (name: string, key: string, tradesForStrat: typeof sellTrades): StrategyCard => {
       let stratGross = 0;
       let stratFees = 0;
       let stratSlippage = 0;
@@ -132,12 +146,12 @@ async function buildRealtimeMetrics(mode: string, qActive?: string | null, qTota
 
       for (const t of tradesForStrat) {
         const notional = t.total || t.price * t.quantity || 30.0;
-        const fees = notional * 0.002; // 0.10% buy + 0.10% sell
+        const fees = notional * 0.002;
         const book = l2Microstructure[t.symbol] || { estimatedSlippagePercent: 0.05 };
         const slippagePct = (book.estimatedSlippagePercent || 0.05) / 100;
         const slippage = notional * slippagePct;
 
-        const netPnl = t.pnl; // Stored net PnL from SQLite
+        const netPnl = t.pnl;
         const grossPnl = netPnl + fees;
 
         stratGross += grossPnl;
@@ -154,11 +168,6 @@ async function buildRealtimeMetrics(mode: string, qActive?: string | null, qTota
         const dd = ((peak - equity) / peak) * 100;
         if (dd > maxDd) maxDd = dd;
       }
-
-      globalGrossPnl += stratGross;
-      globalFees += stratFees;
-      globalSlippage += stratSlippage;
-      globalNetPnl += stratNet;
 
       const totalClosed = netWins.length + netLosses.length + draws;
       const winRate = totalClosed > 0 ? (netWins.length / totalClosed) * 100 : 0;
@@ -177,9 +186,9 @@ async function buildRealtimeMetrics(mode: string, qActive?: string | null, qTota
         statusEmoji = "🔴";
       }
 
-      strategyCards.push({
-        name: stratDef.name,
-        key: stratDef.prefix,
+      return {
+        name,
+        key,
         totalTrades: totalClosed,
         winTrades: netWins.length,
         lossTrades: netLosses.length,
@@ -193,7 +202,23 @@ async function buildRealtimeMetrics(mode: string, qActive?: string | null, qTota
         maxDrawdownPercent: parseFloat(maxDd.toFixed(2)),
         status,
         statusEmoji,
-      });
+      };
+    };
+
+    for (const stratDef of strategyKeys) {
+      const tradesForStrat = sellTrades.filter((t) =>
+        (t.strategy || "").toUpperCase().startsWith(stratDef.prefix)
+      );
+      strategyCards.push(buildStrategyCard(stratDef.name, stratDef.prefix, tradesForStrat));
+    }
+
+    // Inclui trades avulsos/outras estratégias caso existam
+    const otherTrades = sellTrades.filter((t) => {
+      const s = (t.strategy || "").toUpperCase();
+      return !strategyKeys.some((k) => s.startsWith(k.prefix));
+    });
+    if (otherTrades.length > 0) {
+      strategyCards.push(buildStrategyCard("Outras / Manual", "OUTROS", otherTrades));
     }
 
     // 4. Live Trade Feed (last 15 SELL trades paired with preceding BUYs)

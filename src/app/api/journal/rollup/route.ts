@@ -224,7 +224,7 @@ export async function loadDailyRollupsFromSqlite(options?: {
  * Executa a rotina de Compactação Colunar e Agregação Diária sobre os registros em SQLite
  */
 export async function runSqliteColdTierCompaction(
-  initialCapital = 1000
+  initialCapital = 10000
 ): Promise<ColdTierCompactionReport> {
   const records = await loadJournalRecordsFromSqlite(20000);
   const report = ColdTierCompactionEngine.buildDailyRollups(records, initialCapital, {
@@ -246,7 +246,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const horizon = (searchParams.get("horizon") || "ALL") as LongHorizonWindow;
     const mode = (searchParams.get("mode") || "all") as "all" | "live" | "paper";
-    const initialCapital = Number(searchParams.get("initialCapital") || 1000);
+    const initialCapital = Number(searchParams.get("initialCapital") || 10000);
     const includePayload = searchParams.get("includePayload") === "true";
 
     const startMs = performance.now();
@@ -282,7 +282,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const initialCapital = Number(body?.initialCapital || 1000);
+    const initialCapital = Number(body?.initialCapital || 10000);
 
     const report = await runSqliteColdTierCompaction(initialCapital);
     return NextResponse.json({

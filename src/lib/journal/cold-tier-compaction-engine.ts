@@ -461,7 +461,7 @@ export class ColdTierCompactionEngine {
    */
   public static buildDailyRollups(
     records: TradeJournalRecord[],
-    initialCapital = 1000,
+    initialCapital = 10000,
     options?: { includeColumnarArchive?: boolean; referenceNowMs?: number }
   ): ColdTierCompactionReport {
     const startMs = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -688,7 +688,7 @@ export class ColdTierCompactionEngine {
       referenceNowMs?: number;
     }
   ): PerformanceMetrics {
-    const initialCapital = options?.initialCapital ?? 1000;
+    const initialCapital = options?.initialCapital ?? 10000;
     const modeFilter = options?.mode ?? "all";
     const horizon = options?.horizon ?? "ALL";
     const nowMs = options?.referenceNowMs ?? Date.now();

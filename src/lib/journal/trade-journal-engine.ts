@@ -70,6 +70,7 @@ export interface BotExecutionEventPayload {
 export const TRADE_EXECUTION_CHANNEL_NAME = "tradeai_execution_channel_v1";
 export const TRADE_EXECUTION_CUSTOM_EVENT = "tradeai:bot-execution";
 export const JOURNAL_UPDATED_CUSTOM_EVENT = "tradeai:journal-updated";
+export const DEFAULT_INITIAL_CAPITAL = 10000;
 
 export interface TradeJournalRecord {
   id: string;
@@ -520,7 +521,7 @@ export class TradeJournalEngine {
    */
   public runColdTierCompaction(
     recordsToCompact: TradeJournalRecord[] = this.records,
-    initialCapital = 1000,
+    initialCapital = DEFAULT_INITIAL_CAPITAL,
     options?: { includeColumnarArchive?: boolean; referenceNowMs?: number }
   ): ColdTierCompactionReport {
     const report = ColdTierCompactionEngine.buildDailyRollups(
@@ -541,7 +542,7 @@ export class TradeJournalEngine {
    */
   public getDailyRollups(): DailyRollupSnapshot[] {
     if (this.dailyRollupsMap.size === 0 && this.records.length > 0) {
-      this.runColdTierCompaction(this.records, 1000, { includeColumnarArchive: true });
+      this.runColdTierCompaction(this.records, DEFAULT_INITIAL_CAPITAL, { includeColumnarArchive: true });
     }
     return Array.from(this.dailyRollupsMap.values()).sort((a, b) =>
       a.dateUtc.localeCompare(b.dateUtc)
@@ -562,7 +563,7 @@ export class TradeJournalEngine {
   public getLongHorizonMetricsO1(
     horizon: LongHorizonWindow = "ALL",
     mode: "all" | "live" | "paper" = "all",
-    initialCapital = 1000
+    initialCapital = DEFAULT_INITIAL_CAPITAL
   ): PerformanceMetrics {
     if (horizon === "LIVE") {
       const filtered = this.getFilteredRecords({ mode });
@@ -864,7 +865,7 @@ export class TradeJournalEngine {
   /**
    * Calcula as métricas agregadas de performance para os registros (ou conjunto filtrado).
    */
-  public calculateMetrics(recordsToAnalyze: TradeJournalRecord[] = this.records, initialEquity: number = 1000): PerformanceMetrics {
+  public calculateMetrics(recordsToAnalyze: TradeJournalRecord[] = this.records, initialEquity: number = DEFAULT_INITIAL_CAPITAL): PerformanceMetrics {
     const list = recordsToAnalyze;
     if (list.length === 0) {
       return {
