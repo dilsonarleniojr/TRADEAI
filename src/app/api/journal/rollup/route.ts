@@ -60,7 +60,7 @@ function ensureRollupTable(): Promise<void> {
  * Persiste snapshots de agregação diária (Daily Rollup) no SQLite WAL em transação atômica.
  * Respeita a imutabilidade de sessões UTC já fechadas a menos que forceRebuild seja true.
  */
-async function persistDailyRollupsToSqlite(
+export async function persistDailyRollupsToSqlite(
   rollups: DailyRollupSnapshot[],
   options?: { forceRebuild?: boolean }
 ): Promise<{ upsertedCount: number }> {
