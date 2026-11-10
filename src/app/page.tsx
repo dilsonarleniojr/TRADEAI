@@ -1,348 +1,78 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { DataProvider, useDataProvider } from "@/lib/data-provider";
 import { useBinanceData } from "@/hooks/use-binance-data";
 import { useBinanceStream } from "@/hooks/use-binance-stream";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { Sidebar } from "@/components/sidebar";
-import { Header } from "@/components/header";
-import { NavigationBreadcrumb } from "@/components/header/navigation-breadcrumb";
-import { Footer } from "@/components/footer";
-import { TickerTape } from "@/components/header/ticker-tape";
-import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
-import dynamic from "next/dynamic";
-import { BotSection } from "@/components/bot/bot-section";
-import { BotBackgroundRunner } from "@/components/bot/bot-background-runner";
-import { HistoryBootstrap } from "@/components/bot/history-bootstrap";
-import { BotReadinessWatcher } from "@/components/bot/bot-readiness";
-
-function TabLoadingSkeleton() {
-  const [timedOut, setTimedOut] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setTimedOut(true);
-    }, 10000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  return (
-    <div className="w-full space-y-4 p-4 md:p-6 animate-pulse">
-      <div className="flex items-center justify-between pb-2 border-b border-border/40">
-        <div className="h-6 w-48 bg-muted rounded-md" />
-        <div className="flex gap-2">
-          <div className="h-8 w-24 bg-muted rounded-md" />
-          <div className="h-8 w-28 bg-muted rounded-md" />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="h-28 bg-card border border-border/60 rounded-xl p-4 space-y-3">
-          <div className="h-4 w-28 bg-muted rounded" />
-          <div className="h-7 w-36 bg-muted rounded" />
-        </div>
-        <div className="h-28 bg-card border border-border/60 rounded-xl p-4 space-y-3">
-          <div className="h-4 w-28 bg-muted rounded" />
-          <div className="h-7 w-36 bg-muted rounded" />
-        </div>
-        <div className="h-28 bg-card border border-border/60 rounded-xl p-4 space-y-3">
-          <div className="h-4 w-28 bg-muted rounded" />
-          <div className="h-7 w-36 bg-muted rounded" />
-        </div>
-      </div>
-
-      <div className="h-64 bg-card border border-border/60 rounded-xl p-4 flex flex-col items-center justify-center gap-3">
-        <Loader2 className="w-6 h-6 text-primary animate-spin" />
-        <span className="text-xs text-muted-foreground">Carregando módulo e dados analíticos...</span>
-        {timedOut && (
-          <div className="mt-2 flex flex-col items-center gap-2">
-            <span className="text-xs text-amber-500 font-medium">O carregamento está demorando mais do que o esperado.</span>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
-            >
-              Tentar novamente
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-const ChartSection = dynamic(
-  () => import("@/components/chart/chart-section").then((m) => m.ChartSection),
-  { ssr: false, loading: () => <TabLoadingSkeleton /> }
-);
-
-const ChatSection = dynamic(
-  () => import("@/components/ai/chat-section").then((m) => m.ChatSection),
-  { ssr: false, loading: () => <TabLoadingSkeleton /> }
-);
-const HistorySection = dynamic(
-  () => import("@/components/history/history-section").then((m) => m.HistorySection),
-  { ssr: false, loading: () => <TabLoadingSkeleton /> }
-);
-const InstitutionalCockpit = dynamic(
-  () => import("@/components/institutional/institutional-cockpit").then((m) => m.InstitutionalCockpit),
-  { ssr: false, loading: () => <TabLoadingSkeleton /> }
-);
-const BacktestSection = dynamic(
-  () => import("@/components/backtest/backtest-section").then((m) => m.BacktestSection),
-  { ssr: false, loading: () => <TabLoadingSkeleton /> }
-);
-const EducationSection = dynamic(
-  () => import("@/components/education/education-section").then((m) => m.EducationSection),
-  { ssr: false, loading: () => <TabLoadingSkeleton /> }
-);
-const TradeHubSection = dynamic(
-  () => import("@/components/trade-hub").then((m) => m.TradeHubSection),
-  { ssr: false, loading: () => <TabLoadingSkeleton /> }
-);
-const TradeJournalPanel = dynamic(
-  () => import("@/components/journal/trade-journal-panel").then((m) => m.TradeJournalPanel),
-  { ssr: false, loading: () => <TabLoadingSkeleton /> }
-);
-import { MobilePortfolioBar } from "@/components/mobile/mobile-portfolio-bar";
-import { MobileDrawer } from "@/components/mobile/mobile-drawer";
-import { AlertNotification } from "@/components/dashboard/alert-notification";
+import { AppShell } from "@/components/v2/app-shell";
+import { HomeView } from "@/components/v2/home-view";
+import { MarketView } from "@/components/v2/market-view";
+import { BotView } from "@/components/v2/bot-view";
+import { PortfolioView } from "@/components/v2/portfolio-view";
+import { LearnView } from "@/components/v2/learn-view";
 import { ShortcutsHint } from "@/components/dashboard/shortcuts-hint";
-import { BotExecutionReportDialog } from "@/components/bot/bot-execution-report-dialog";
-import { QuantCopilotInstantModal } from "@/components/journal/quant-copilot-instant-modal";
-import { SectionErrorBoundary } from "@/components/common/section-error-boundary";
-import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 
-// Stagger animation container for dashboard cards
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.06,
-    },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 12 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.3, ease: [0.25, 0.1, 0.25, 1] as const },
-  },
-};
-
-// Loading skeleton shown while real data loads
+// Loading skeleton limpo e elegante no estilo Instrumento Calmo
 function DashboardSkeleton() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="flex flex-col items-center gap-3"
-      >
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-crypto-cyan to-crypto-green flex items-center justify-center shadow-[0_0_24px_oklch(0.75_0.15_195/30%)]">
-          <Loader2 className="w-8 h-8 text-white animate-spin" />
-        </div>
-        <p className="text-sm text-muted-foreground animate-pulse">
-          Conectando à Binance...
-        </p>
-        <div className="flex gap-2 mt-2">
-          <div className="w-2 h-2 rounded-full bg-crypto-cyan animate-bounce" style={{ animationDelay: "0ms" }} />
-          <div className="w-2 h-2 rounded-full bg-crypto-cyan animate-bounce" style={{ animationDelay: "150ms" }} />
-          <div className="w-2 h-2 rounded-full bg-crypto-cyan animate-bounce" style={{ animationDelay: "300ms" }} />
-        </div>
-      </motion.div>
+      <div className="w-14 h-14 rounded-2xl bg-[#0E1B2C] text-white flex items-center justify-center shadow-lg">
+        <Loader2 className="w-7 h-7 text-[#5BE3A8] animate-spin" />
+      </div>
+      <p className="text-sm font-instrument-sans font-medium text-[#4A586A] animate-pulse">
+        Sincronizando com a Binance...
+      </p>
     </div>
   );
 }
 
 function HomePageContent() {
-  const { activeSection, activeExecutionReport, setActiveExecutionReport } = useCryptoStore(
+  const { activeSection } = useCryptoStore(
     useShallow((s) => ({
       activeSection: s.activeSection,
-      activeExecutionReport: s.activeExecutionReport,
-      setActiveExecutionReport: s.setActiveExecutionReport,
     }))
   );
   const { dataReady } = useDataProvider();
-  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
-  // Connect to real Binance data
+  // Conexões e atalhos em tempo real
   useBinanceData();
   useBinanceStream();
   useKeyboardShortcuts();
 
   const renderContent = () => {
-    // Show skeleton only on dashboard while data loads
     if (!dataReady && activeSection === "dashboard") {
       return <DashboardSkeleton />;
     }
 
     switch (activeSection) {
       case "dashboard":
-        return (
-          <motion.div
-            key="dashboard"
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-            className="space-y-4"
-          >
-            <DashboardGrid />
-          </motion.div>
-        );
-      case "institutional":
-        return (
-          <motion.div
-            key="institutional"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25 }}
-            className="space-y-4"
-          >
-            <InstitutionalCockpit />
-          </motion.div>
-        );
+        return <HomeView />;
       case "chart":
-        return (
-          <motion.div
-            key="chart"
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <SectionErrorBoundary sectionName="Terminal Gráfico e Livro de Ofertas">
-              <ChartSection />
-            </SectionErrorBoundary>
-          </motion.div>
-        );
-      case "ai":
-        return (
-          <motion.div
-            key="ai"
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <ChatSection />
-          </motion.div>
-        );
-      case "bot":
-        return (
-          <motion.div
-            key="bot"
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <SectionErrorBoundary sectionName="Central de Robôs de Lucro">
-              <BotSection />
-            </SectionErrorBoundary>
-          </motion.div>
-        );
-      case "backtest":
-        return (
-          <motion.div
-            key="backtest"
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <BacktestSection />
-          </motion.div>
-        );
-      case "history":
-        return (
-          <motion.div
-            key="history"
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <HistorySection />
-          </motion.div>
-        );
-      case "education":
-        return (
-          <motion.div
-            key="education"
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <EducationSection />
-          </motion.div>
-        );
       case "trade-hub":
-        return (
-          <motion.div
-            key="trade-hub"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25 }}
-            className="space-y-4"
-          >
-            <TradeHubSection />
-          </motion.div>
-        );
+      case "ai":
+        return <MarketView />;
+      case "bot":
+      case "institutional":
+        return <BotView />;
+      case "history":
       case "journal":
-        return (
-          <motion.div
-            key="journal"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25 }}
-            className="space-y-4"
-          >
-            <SectionErrorBoundary sectionName="Diário de Trades & Analytics">
-              <TradeJournalPanel />
-            </SectionErrorBoundary>
-          </motion.div>
-        );
+        return <PortfolioView />;
+      case "education":
+      case "backtest":
+        return <LearnView />;
       default:
-        return null;
+        return <HomeView />;
     }
   };
 
   return (
-    <div className="min-h-screen md:h-screen md:overflow-hidden flex flex-col bg-background crypto-dot-grid">
-      <AlertNotification />
-      <BotBackgroundRunner />
-      <HistoryBootstrap />
-      <BotReadinessWatcher />
-      <BotExecutionReportDialog
-        report={activeExecutionReport}
-        open={!!activeExecutionReport}
-        onOpenChange={(open) => {
-          if (!open) setActiveExecutionReport(null);
-        }}
-      />
-      <QuantCopilotInstantModal />
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        <Sidebar />
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          <Header onOpenMobileDrawer={() => setMobileDrawerOpen(true)} />
-          <TickerTape />
-          <main className="flex-1 p-2.5 sm:p-3 md:p-4 overflow-y-auto pb-24 md:pb-4 pro-scrollbar scroll-smooth">
-            <div className="max-w-[1920px] mx-auto w-full">
-              <NavigationBreadcrumb />
-              <AnimatePresence mode="wait">
-                {renderContent()}
-              </AnimatePresence>
-            </div>
-          </main>
-          <Footer />
-        </div>
-      </div>
+    <AppShell>
+      {renderContent()}
       <ShortcutsHint />
-      <MobilePortfolioBar />
-      <MobileDrawer open={mobileDrawerOpen} onOpenChange={setMobileDrawerOpen} />
-    </div>
+    </AppShell>
   );
 }
 
