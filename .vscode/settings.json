@@ -6,5 +6,6 @@
     "python.testing.pytestEnabled": true,
     "python.defaultInterpreterPath": "",
     "claudeCode.useTerminal": true,
-    "npm.packageManager": "npm"
+    "npm.packageManager": "npm",
+    "css.lint.unknownAtRules": "ignore"
 }

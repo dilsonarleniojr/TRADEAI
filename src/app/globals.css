@@ -863,7 +863,6 @@
   outline: none;
 }
 .focus-ring:focus-visible {
-  ring: 2px;
   box-shadow: 0 0 0 2px oklch(0.75 0.15 195 / 50%), 0 0 0 4px oklch(0.17 0.015 260);
   border-radius: inherit;
 }
