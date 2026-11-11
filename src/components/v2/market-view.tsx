@@ -4,13 +4,38 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { useDataProvider } from "@/lib/data-provider";
 import { AppSwitch } from "./atoms";
-import { formatCurrency, formatPercent } from "@/lib/format";
+import { formatCurrency, formatPercent, formatPrice } from "@/lib/format";
+import { validateQuickTradeExecution, stripQuoteAsset } from "@/components/chart/quick-trade-guard";
 import { ChartSection } from "@/components/chart/chart-section";
 import { OrderBook } from "@/components/chart/order-book";
 import { ChatSection } from "@/components/ai/chat-section";
 import { TradeHubSection } from "@/components/trade-hub";
-import { Loader2, RefreshCw } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2, RefreshCw, Bot } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
+
+function parseAmountInput(raw: string): number {
+  const cleaned = (raw || "").trim().replace(/\s+/g, "");
+  if (!cleaned) return 0;
+  // Se contém "." e ",", trata "." como separador de milhar e "," como decimal (pt-BR)
+  if (cleaned.includes(".") && cleaned.includes(",")) {
+    return parseFloat(cleaned.replace(/\./g, "").replace(",", ".")) || 0;
+  }
+  if (cleaned.includes(",")) {
+    return parseFloat(cleaned.replace(",", ".")) || 0;
+  }
+  return parseFloat(cleaned) || 0;
+}
 
 interface MarketIdea {
   symbol: string;
@@ -62,6 +87,7 @@ const TEMA_CATEGORY_MAP: Record<string, string> = {
 
 export function MarketView() {
   const { syncBinanceCoins } = useDataProvider();
+  const { toast } = useToast();
   const {
     selectedSymbol,
     tickers,
@@ -69,11 +95,16 @@ export function MarketView() {
     bots,
     tradingMode,
     activeSection,
+    tradePrefill,
     setSelectedSymbol,
     setActiveSection,
     setTradePrefill,
     setOpenAiSettingsModal,
     setAiSignals,
+    addTrade,
+    setAccount,
+    addScheduledOrder,
+    addBot,
   } = useCryptoStore(
     useShallow((s) => ({
       selectedSymbol: s.selectedSymbol,
@@ -82,11 +113,16 @@ export function MarketView() {
       bots: s.bots,
       tradingMode: s.tradingMode,
       activeSection: s.activeSection,
+      tradePrefill: s.tradePrefill,
       setSelectedSymbol: s.setSelectedSymbol,
       setActiveSection: s.setActiveSection,
       setTradePrefill: s.setTradePrefill,
       setOpenAiSettingsModal: s.setOpenAiSettingsModal,
       setAiSignals: s.setAiSignals,
+      addTrade: s.addTrade,
+      setAccount: s.setAccount,
+      addScheduledOrder: s.addScheduledOrder,
+      addBot: s.addBot,
     }))
   );
 
@@ -96,6 +132,18 @@ export function MarketView() {
   const [tradeSide, setTradeSide] = useState<"buy" | "sell">("buy");
   const [tradeAmount, setTradeAmount] = useState<string>("0,00");
   const [tradeType, setTradeType] = useState<"agora" | "programada">("agora");
+  const [triggerPriceInput, setTriggerPriceInput] = useState<string>("");
+  const [isSellMax, setIsSellMax] = useState<boolean>(false);
+  const [isSubmittingTrade, setIsSubmittingTrade] = useState<boolean>(false);
+  const [tradeError, setTradeError] = useState<string | null>(null);
+  const [pendingLiveConfirm, setPendingLiveConfirm] = useState<{
+    symbol: string;
+    side: "BUY" | "SELL";
+    quantity: number;
+    price: number;
+    total: number;
+    sellAll: boolean;
+  } | null>(null);
   const [selectedInterval, setSelectedInterval] = useState<string>("1h");
   const [activeIndicators, setActiveIndicators] = useState<string[]>(["media20", "media50"]);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
@@ -127,11 +175,45 @@ export function MarketView() {
     }
   }, [activeSection]);
 
-  const targetSymbol = selectedSymbol || "BTCUSDT";
-  const ticker = tickers[targetSymbol] || tickers["BTCUSDT"];
-  const price = tickers[selectedSymbol]?.price;
+  const targetSymbol = (selectedSymbol || "BTCUSDT").toUpperCase();
+  const baseAsset = stripQuoteAsset(targetSymbol);
+  const ticker = tickers[targetSymbol];
+  const price = ticker?.price;
   const availableBalance = portfolio?.cashBalance ?? 0;
+  const heldPosition = useMemo(
+    () =>
+      (portfolio?.positions || []).find(
+        (p) => p.symbol?.toUpperCase() === targetSymbol || stripQuoteAsset(p.symbol) === baseAsset
+      ),
+    [portfolio?.positions, targetSymbol, baseAsset]
+  );
+  const heldQty = heldPosition?.quantity ?? 0;
   const monitoredCoinsCount = useMemo(() => Object.keys(tickers).length, [tickers]);
+
+  // Limpa níveis de IA e feedback de ordem ao trocar de par (evita mostrar Stop/Alvo do BTC em outro ativo)
+  useEffect(() => {
+    setAiSignal(null);
+    setSignalError(null);
+    setTradeError(null);
+    setTriggerPriceInput("");
+    setIsSellMax(false);
+  }, [targetSymbol]);
+
+  // Sincroniza lado e níveis quando um setup é carregado de "Ideias da IA"
+  useEffect(() => {
+    if (tradePrefill && tradePrefill.symbol?.toUpperCase() === targetSymbol) {
+      setTradeSide(tradePrefill.side === "SELL" ? "sell" : "buy");
+      if (tradePrefill.stopLoss && tradePrefill.takeProfit) {
+        setAiSignal({
+          signal: tradePrefill.side === "SELL" ? "SELL" : "BUY",
+          confidence_score: 80,
+          key_driver: tradePrefill.reason || "Setup carregado de Ideias da IA",
+          stop_loss: tradePrefill.stopLoss,
+          take_profit: tradePrefill.takeProfit,
+        });
+      }
+    }
+  }, [tradePrefill, targetSymbol]);
 
   const activeBotSymbols = useMemo(
     () =>
@@ -207,11 +289,10 @@ export function MarketView() {
   };
 
   const fetchQuickSignal = async () => {
-    const t = tickers[targetSymbol] || tickers["BTCUSDT"];
-    const sym = tickers[targetSymbol] ? targetSymbol : "BTCUSDT";
+    const t = tickers[targetSymbol];
     if (!t || !(t.price > 0)) {
       await syncBinanceCoins();
-      setSignalError(`Ainda sem cotação ao vivo para ${sym}.`);
+      setSignalError(`Ainda sem cotação ao vivo para ${targetSymbol}.`);
       return;
     }
 
@@ -222,7 +303,7 @@ export function MarketView() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          symbol: sym,
+          symbol: targetSymbol,
           price: t.price,
           priceChange24h: t.priceChangePercent,
           volume: t.volume,
@@ -289,6 +370,23 @@ export function MarketView() {
   };
 
   const handleShortcutAmount = (pctOrVal: number | "all") => {
+    setTradeError(null);
+    const maxSellUsdt = heldQty * (price || 0);
+    if (tradeSide === "sell") {
+      if (pctOrVal === "all") {
+        setIsSellMax(true);
+        setTradeAmount(maxSellUsdt.toFixed(2).replace(".", ","));
+      } else if (pctOrVal === 0.5) {
+        setIsSellMax(false);
+        setTradeAmount((maxSellUsdt * 0.5).toFixed(2).replace(".", ","));
+      } else {
+        setIsSellMax(false);
+        setTradeAmount(pctOrVal.toFixed(2).replace(".", ","));
+      }
+      return;
+    }
+
+    setIsSellMax(false);
     if (pctOrVal === "all") {
       setTradeAmount(availableBalance.toFixed(2).replace(".", ","));
     } else if (pctOrVal === 0.5) {
@@ -296,6 +394,172 @@ export function MarketView() {
     } else {
       setTradeAmount(pctOrVal.toFixed(2).replace(".", ","));
     }
+  };
+
+  const executeTradeRequest = async (order: {
+    symbol: string;
+    side: "BUY" | "SELL";
+    quantity: number;
+    price: number;
+    total: number;
+    sellAll: boolean;
+  }) => {
+    setIsSubmittingTrade(true);
+    setTradeError(null);
+    try {
+      const res = await fetch("/api/trades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: order.symbol,
+          side: order.side,
+          price: order.price,
+          quantity: order.quantity,
+          total: order.total,
+          strategy: tradePrefill?.source || "Manual V2",
+          mode: tradingMode,
+          pnl: 0,
+          sellAll: order.sellAll,
+          marginMode: "SPOT",
+          leverage: 1,
+          horizon: "MEDIO_LONGO",
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.details || result.error || "Não foi possível executar a ordem.");
+      }
+
+      addTrade({
+        id: result.data.id,
+        symbol: result.data.symbol,
+        side: result.data.side,
+        price: result.data.price,
+        quantity: result.data.quantity,
+        total: result.data.total,
+        strategy: result.data.strategy || "Manual V2",
+        mode: result.data.mode || tradingMode,
+        pnl: result.data.pnl || 0,
+        timestamp: result.data.timestamp || new Date().toISOString(),
+      });
+      if (result.account) {
+        setAccount(result.account);
+      }
+
+      setTradeAmount("0,00");
+      setIsSellMax(false);
+      toast({
+        title: `${order.side === "BUY" ? "Compra" : "Venda"} executada (${tradingMode === "live" ? "Real" : "Simulado"})`,
+        description: `${order.quantity.toFixed(6).replace(/\.?0+$/, "")} ${stripQuoteAsset(order.symbol)} @ US$ ${formatPrice(order.price)} — Total: ${formatCurrency(order.total)}`,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao enviar ordem.";
+      setTradeError(msg);
+      toast({
+        title: "Falha ao executar ordem",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingTrade(false);
+    }
+  };
+
+  const handleSubmitOrder = () => {
+    if (isSubmittingTrade) return;
+    setTradeError(null);
+
+    const currentPrice = price || 0;
+    if (!(currentPrice > 0)) {
+      const msg = `Aguardando cotação em tempo real de ${targetSymbol}.`;
+      setTradeError(msg);
+      toast({ title: "Preço indisponível", description: msg, variant: "destructive" });
+      return;
+    }
+
+    const amountUsdt = parseAmountInput(tradeAmount);
+    const side: "BUY" | "SELL" = tradeSide === "buy" ? "BUY" : "SELL";
+    const qty =
+      side === "SELL" && isSellMax && heldQty > 0
+        ? heldQty
+        : amountUsdt > 0
+          ? amountUsdt / currentPrice
+          : 0;
+
+    const guard = validateQuickTradeExecution({
+      isSubmitting: isSubmittingTrade,
+      quantity: qty,
+      currentPrice,
+      tradingMode,
+    });
+
+    if (!guard.canExecute) {
+      const reason = guard.reason || "Parâmetros inválidos para a ordem.";
+      setTradeError(reason);
+      toast({ title: "Ordem não enviada", description: reason, variant: "destructive" });
+      return;
+    }
+
+    if (side === "BUY" && guard.totalUsdt > availableBalance && tradingMode === "paper") {
+      const reason = "Saldo USDT insuficiente no modo simulado.";
+      setTradeError(reason);
+      toast({ title: "Saldo insuficiente", description: reason, variant: "destructive" });
+      return;
+    }
+
+    if (side === "SELL" && tradingMode === "paper" && heldQty <= 0) {
+      const reason = `Você não possui posição simulada de ${baseAsset} para vender.`;
+      setTradeError(reason);
+      toast({ title: "Sem posição para vender", description: reason, variant: "destructive" });
+      return;
+    }
+
+    if (tradeType === "programada") {
+      const triggerPrice = parseAmountInput(triggerPriceInput) || currentPrice;
+      if (!(triggerPrice > 0)) {
+        const reason = "Informe um preço gatilho válido para a ordem programada.";
+        setTradeError(reason);
+        return;
+      }
+      addScheduledOrder({
+        id: `sched-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        symbol: targetSymbol,
+        side,
+        triggerPrice,
+        quantity: qty,
+        direction: side === "BUY" ? (triggerPrice <= currentPrice ? "below" : "above") : (triggerPrice >= currentPrice ? "above" : "below"),
+        isTriggered: false,
+        createdAt: new Date().toISOString(),
+        marginMode: "SPOT",
+        leverage: 1,
+        horizon: "MEDIO_LONGO",
+      });
+      setTradeAmount("0,00");
+      setTriggerPriceInput("");
+      setIsSellMax(false);
+      toast({
+        title: "Ordem programada registrada",
+        description: `${side === "BUY" ? "Compra" : "Venda"} de ${baseAsset} @ gatilho US$ ${formatPrice(triggerPrice)} (${formatCurrency(guard.totalUsdt)}).`,
+      });
+      return;
+    }
+
+    const sellAll = side === "SELL" && (isSellMax || (heldQty > 0 && qty >= heldQty * 0.99));
+    const orderPayload = {
+      symbol: targetSymbol,
+      side,
+      quantity: qty,
+      price: currentPrice,
+      total: guard.totalUsdt,
+      sellAll,
+    };
+
+    if (tradingMode === "live") {
+      setPendingLiveConfirm(orderPayload);
+      return;
+    }
+
+    void executeTradeRequest(orderPayload);
   };
 
   return (
@@ -396,11 +660,11 @@ export function MarketView() {
             </div>
           </div>
 
-          {/* Coluna Direita: Painel Negociar BTC */}
+          {/* Coluna Direita: Painel Negociar Ativo */}
           <div className="lg:col-span-4 bg-white dark:bg-[#0f1622] border border-[#E7EBF0] dark:border-white/10 rounded-[24px] p-6 sm:p-7 shadow-xs space-y-5">
             <div className="flex items-center justify-between pb-1">
               <h3 className="font-bold text-[18px] text-[#0E1B2C] dark:text-white">
-                Negociar {selectedSymbol?.replace("USDT", "") || "BTC"}
+                Negociar {baseAsset}
               </h3>
               <span className="px-2.5 py-0.5 rounded-full bg-[#EEF1F5] dark:bg-white/10 text-[12px] text-[#4A586A] dark:text-[#94a3b8] font-medium">
                 {tradingMode === "paper" ? "Simulado" : "Real"}
@@ -410,8 +674,12 @@ export function MarketView() {
             {/* Segmentado Comprar / Vender */}
             <div className="p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full grid grid-cols-2">
               <button
-                onClick={() => setTradeSide("buy")}
-                className={`py-2 rounded-full text-[14px] font-semibold transition-all ${
+                onClick={() => {
+                  setTradeSide("buy");
+                  setTradeError(null);
+                  setIsSellMax(false);
+                }}
+                className={`py-2 rounded-full text-[14px] font-semibold transition-all cursor-pointer ${
                   tradeSide === "buy"
                     ? "bg-[#0B8F6A] text-white shadow-xs"
                     : "text-[#4A586A] dark:text-[#94a3b8]"
@@ -420,8 +688,12 @@ export function MarketView() {
                 Comprar
               </button>
               <button
-                onClick={() => setTradeSide("sell")}
-                className={`py-2 rounded-full text-[14px] font-semibold transition-all ${
+                onClick={() => {
+                  setTradeSide("sell");
+                  setTradeError(null);
+                  setIsSellMax(false);
+                }}
+                className={`py-2 rounded-full text-[14px] font-semibold transition-all cursor-pointer ${
                   tradeSide === "sell"
                     ? "bg-[#B42318] text-white shadow-xs"
                     : "text-[#4A586A] dark:text-[#94a3b8]"
@@ -435,26 +707,38 @@ export function MarketView() {
             <div className="flex justify-between text-[13px]">
               <span className="text-[#4A586A] dark:text-[#94a3b8]">Disponível</span>
               <span className="font-bold text-[#0E1B2C] dark:text-white tabular-nums">
-                {formatCurrency(availableBalance)}
+                {tradeSide === "buy"
+                  ? `${formatCurrency(availableBalance)} USDT`
+                  : `${heldQty > 0 ? heldQty.toFixed(6).replace(/\.?0+$/, "") : "0"} ${baseAsset}`}
               </span>
             </div>
 
             {/* Campo de Valor com USDT */}
             <div className="space-y-1.5">
               <label className="text-[12px] text-[#4A586A] dark:text-[#94a3b8]">
-                Valor da compra
+                {tradeSide === "buy" ? "Valor da compra" : "Valor da venda"}
               </label>
               <div className="relative">
                 <input
                   type="text"
                   value={tradeAmount}
-                  onChange={(e) => setTradeAmount(e.target.value)}
+                  onChange={(e) => {
+                    setIsSellMax(false);
+                    setTradeError(null);
+                    setTradeAmount(e.target.value);
+                  }}
                   className="w-full h-12 px-4 pr-14 rounded-[14px] border border-[#D3DAE3] dark:border-white/20 bg-transparent text-[16px] font-bold font-instrument-sans text-[#0E1B2C] dark:text-white focus:outline-none focus:border-[#1F5FD6]"
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[13px] text-[#4A586A] font-semibold">
                   USDT
                 </span>
               </div>
+              {price && parseAmountInput(tradeAmount) > 0 && (
+                <p className="text-[11px] text-[#4A586A] dark:text-[#94a3b8] tabular-nums">
+                  ≈ {(parseAmountInput(tradeAmount) / price).toFixed(6).replace(/\.?0+$/, "")} {baseAsset} a{" "}
+                  {formatCurrency(price)}
+                </p>
+              )}
             </div>
 
             {/* Pílulas de Atalho */}
@@ -468,7 +752,7 @@ export function MarketView() {
                 <button
                   key={idx}
                   onClick={btn.action}
-                  className="py-1.5 rounded-full bg-[#EEF1F5] dark:bg-white/10 hover:bg-[#E4E8ED] text-[12px] font-semibold text-[#0E1B2C] dark:text-white transition-colors"
+                  className="py-1.5 rounded-full bg-[#EEF1F5] dark:bg-white/10 hover:bg-[#E4E8ED] text-[12px] font-semibold text-[#0E1B2C] dark:text-white transition-colors cursor-pointer"
                 >
                   {btn.label}
                 </button>
@@ -478,8 +762,11 @@ export function MarketView() {
             {/* Segmentado Agora / Programada */}
             <div className="p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full grid grid-cols-2 text-[13px]">
               <button
-                onClick={() => setTradeType("agora")}
-                className={`py-1.5 rounded-full font-medium transition-all ${
+                onClick={() => {
+                  setTradeType("agora");
+                  setTradeError(null);
+                }}
+                className={`py-1.5 rounded-full font-medium transition-all cursor-pointer ${
                   tradeType === "agora"
                     ? "bg-white dark:bg-[#0f1622] text-[#0E1B2C] dark:text-white font-semibold shadow-xs"
                     : "text-[#4A586A] dark:text-[#94a3b8]"
@@ -488,8 +775,14 @@ export function MarketView() {
                 Agora
               </button>
               <button
-                onClick={() => setTradeType("programada")}
-                className={`py-1.5 rounded-full font-medium transition-all ${
+                onClick={() => {
+                  setTradeType("programada");
+                  setTradeError(null);
+                  if (!triggerPriceInput && price) {
+                    setTriggerPriceInput(String(price).replace(".", ","));
+                  }
+                }}
+                className={`py-1.5 rounded-full font-medium transition-all cursor-pointer ${
                   tradeType === "programada"
                     ? "bg-white dark:bg-[#0f1622] text-[#0E1B2C] dark:text-white font-semibold shadow-xs"
                     : "text-[#4A586A] dark:text-[#94a3b8]"
@@ -499,8 +792,23 @@ export function MarketView() {
               </button>
             </div>
 
+            {tradeType === "programada" && (
+              <div className="space-y-1.5">
+                <label className="text-[12px] text-[#4A586A] dark:text-[#94a3b8]">
+                  Preço gatilho (USDT)
+                </label>
+                <input
+                  type="text"
+                  value={triggerPriceInput}
+                  onChange={(e) => setTriggerPriceInput(e.target.value)}
+                  placeholder={price ? String(price).replace(".", ",") : "0,00"}
+                  className="w-full h-11 px-4 rounded-[14px] border border-[#D3DAE3] dark:border-white/20 bg-transparent text-[15px] font-bold font-instrument-sans text-[#0E1B2C] dark:text-white focus:outline-none focus:border-[#1F5FD6]"
+                />
+              </div>
+            )}
+
             {/* Sugestão de Stop e Alvo da IA */}
-            <div className="pt-2 text-[13px] space-y-1">
+            <div className="pt-1 text-[13px] space-y-1">
               <span className="font-semibold text-[#0E1B2C] dark:text-white block">
                 Stop e alvo sugeridos pela IA
               </span>
@@ -516,21 +824,49 @@ export function MarketView() {
             </div>
 
             {/* Opções Avançadas */}
-            <div>
+            <div className="space-y-2">
               <button
                 onClick={() => setShowAdvanced(!showAdvanced)}
-                className="text-[13px] font-semibold text-[#1F5FD6] hover:underline"
+                className="text-[13px] font-semibold text-[#1F5FD6] hover:underline cursor-pointer"
               >
                 Opções avançadas: alavancagem, margem, tempo limite
               </button>
+              {showAdvanced && (
+                <div className="p-3 rounded-[14px] bg-[#EEF1F5] dark:bg-white/5 text-[12px] text-[#4A586A] dark:text-[#94a3b8] space-y-1">
+                  <div className="flex justify-between">
+                    <span>Execução</span>
+                    <span className="font-semibold text-[#0E1B2C] dark:text-white">Spot 1x (Anti-Liquidação)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Mínimo Binance Spot</span>
+                    <span className="font-semibold text-[#0E1B2C] dark:text-white">US$ 5,00</span>
+                  </div>
+                </div>
+              )}
             </div>
+
+            {tradeError && (
+              <div className="p-3 rounded-[12px] bg-[#FDF4F3] border border-[#F1C9C5] text-[#B42318] text-[12px] font-medium">
+                {tradeError}
+              </div>
+            )}
 
             {/* Botão de Ação Grande */}
             <button
-              onClick={() => {}}
-              className="w-full py-3 rounded-full bg-[#0B8F6A] text-white text-[15px] font-bold hover:bg-[#097758] transition-colors cursor-pointer shadow-xs"
+              onClick={handleSubmitOrder}
+              disabled={isSubmittingTrade}
+              className={`w-full py-3 rounded-full text-white text-[15px] font-bold transition-colors cursor-pointer shadow-xs disabled:opacity-60 flex items-center justify-center gap-2 ${
+                tradeSide === "buy"
+                  ? "bg-[#0B8F6A] hover:bg-[#097758]"
+                  : "bg-[#B42318] hover:bg-[#911a10]"
+              }`}
             >
-              Comprar {selectedSymbol?.replace("USDT", "") || "BTC"}
+              {isSubmittingTrade && <Loader2 className="w-4 h-4 animate-spin" />}
+              <span>
+                {tradeType === "programada"
+                  ? `Programar ${tradeSide === "buy" ? "compra" : "venda"} de ${baseAsset}`
+                  : `${tradeSide === "buy" ? "Comprar" : "Vender"} ${baseAsset}`}
+              </span>
             </button>
           </div>
         </div>
@@ -768,6 +1104,35 @@ export function MarketView() {
                         >
                           Carregar setup
                         </button>
+                        <button
+                          onClick={() => {
+                            const tpPct =
+                              idea.entryPrice > 0 && idea.tp1 > 0
+                                ? Math.max(1.2, Math.abs(((idea.tp1 - idea.entryPrice) / idea.entryPrice) * 100))
+                                : 3.5;
+                            const slPct =
+                              idea.entryPrice > 0 && idea.stopLoss > 0
+                                ? Math.min(2.0, Math.max(0.8, Math.abs(((idea.entryPrice - idea.stopLoss) / idea.entryPrice) * 100)))
+                                : 1.8;
+                            addBot({
+                              name: `IA ${stripQuoteAsset(idea.symbol)}`,
+                              symbol: idea.symbol,
+                              strategy: "AI",
+                              takeProfit: Number(tpPct.toFixed(2)),
+                              stopLoss: Number(slPct.toFixed(2)),
+                              allocationAmount: 25,
+                              active: false,
+                            });
+                            toast({
+                              title: `Robô criado para ${idea.symbol}`,
+                              description: `Adicionado à aba Robôs (pausado, TP +${tpPct.toFixed(1)}% / SL -${slPct.toFixed(1)}%).`,
+                            });
+                          }}
+                          className="px-4 py-1.5 rounded-full border border-[#D3DAE3] dark:border-white/20 text-[#0E1B2C] dark:text-white text-[12px] font-semibold hover:bg-[#EEF1F5] dark:hover:bg-white/10 transition-colors cursor-pointer flex items-center gap-1"
+                        >
+                          <Bot className="w-3.5 h-3.5 text-[#1F5FD6]" />
+                          <span>Criar robô</span>
+                        </button>
                       </div>
                     </div>
                   );
@@ -961,6 +1326,50 @@ export function MarketView() {
           <TradeHubSection />
         </div>
       )}
+
+      {/* Confirmação Explícita em Modo Real */}
+      <AlertDialog
+        open={!!pendingLiveConfirm}
+        onOpenChange={(open) => !open && setPendingLiveConfirm(null)}
+      >
+        <AlertDialogContent className="rounded-[24px] max-w-md p-6 bg-white dark:bg-[#0f1622] border border-[#F1C9C5] font-instrument-sans">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-instrument-serif text-2xl text-[#0E1B2C] dark:text-white">
+              Confirmar ordem na Binance (Real)
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-[#4A586A] pt-2">
+              {pendingLiveConfirm && (
+                <>
+                  Você está prestes a enviar uma ordem{" "}
+                  <strong>{pendingLiveConfirm.side === "BUY" ? "COMPRA" : "VENDA"}</strong> Spot de{" "}
+                  <strong>
+                    {pendingLiveConfirm.quantity.toFixed(6).replace(/\.?0+$/, "")}{" "}
+                    {stripQuoteAsset(pendingLiveConfirm.symbol)}
+                  </strong>{" "}
+                  ({pendingLiveConfirm.symbol}) no valor estimado de{" "}
+                  <strong>{formatCurrency(pendingLiveConfirm.total)}</strong> a mercado (≈ US${" "}
+                  {formatPrice(pendingLiveConfirm.price)}).
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="pt-4">
+            <AlertDialogCancel className="rounded-full">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingLiveConfirm) {
+                  const order = pendingLiveConfirm;
+                  setPendingLiveConfirm(null);
+                  void executeTradeRequest(order);
+                }
+              }}
+              className="rounded-full bg-[#0E1B2C] text-white font-semibold hover:opacity-90"
+            >
+              Confirmar e enviar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
