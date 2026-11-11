@@ -22,9 +22,9 @@ export function BotDrawer({ bot, open, onClose, onSave }: BotDrawerProps) {
 
   useEffect(() => {
     if (bot) {
-      setTakeProfit(bot.takeProfitPercent ?? 3.5);
-      setStopLoss(bot.stopLossPercent ?? 1.8);
-      setCapitalAllocation(bot.allocatedBalance ?? 500);
+      setTakeProfit(bot.takeProfit ?? 3.5);
+      setStopLoss(bot.stopLoss ?? 1.8);
+      setCapitalAllocation(bot.allocationAmount ?? 25);
       setTrailingStop(bot.trailingStop ?? true);
       setSavedFeedback(false);
     }
@@ -34,10 +34,10 @@ export function BotDrawer({ bot, open, onClose, onSave }: BotDrawerProps) {
 
   const handleSave = () => {
     onSave(bot.id, {
-      takeProfitPercent: takeProfit,
-      stopLossPercent: stopLoss,
-      allocatedBalance: capitalAllocation,
-      trailingStop: trailingStop,
+      takeProfit,
+      stopLoss,
+      allocationAmount: capitalAllocation,
+      trailingStop,
     });
     setSavedFeedback(true);
     setTimeout(() => {
@@ -60,7 +60,7 @@ export function BotDrawer({ bot, open, onClose, onSave }: BotDrawerProps) {
           <div className="p-6 border-b border-[#E7EBF0] dark:border-white/10 flex items-center justify-between">
             <div>
               <span className="text-[12px] font-mono uppercase tracking-wider text-[#1F5FD6] font-semibold">
-                {bot.pair} • {bot.strategy}
+                {bot.symbol === "AUTO" ? "Auto-Screener" : bot.symbol} • {bot.strategy}
               </span>
               <h3 className="font-instrument-serif text-[24px] text-[#0E1B2C] dark:text-[#f8fafc] leading-tight">
                 Ajustar {bot.name}
@@ -139,9 +139,9 @@ export function BotDrawer({ bot, open, onClose, onSave }: BotDrawerProps) {
               </div>
               <input
                 type="range"
-                min="50"
+                min="10"
                 max="5000"
-                step="50"
+                step="5"
                 value={capitalAllocation}
                 onChange={(e) => setCapitalAllocation(parseFloat(e.target.value))}
                 className="w-full accent-[#1F5FD6] cursor-pointer"
