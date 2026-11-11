@@ -26,6 +26,9 @@ export function LearnView() {
     proMode,
     toggleProMode,
     setActiveSection,
+    binanceConnected,
+    binanceTestnet,
+    connectionStatus,
   } = useCryptoStore(
     useShallow((s) => ({
       openApiSettingsModal: s.openApiSettingsModal,
@@ -35,6 +38,9 @@ export function LearnView() {
       proMode: s.proMode,
       toggleProMode: s.toggleProMode,
       setActiveSection: s.setActiveSection,
+      binanceConnected: s.binanceConnected,
+      binanceTestnet: s.binanceTestnet,
+      connectionStatus: s.connectionStatus,
     }))
   );
 
@@ -169,8 +175,22 @@ export function LearnView() {
                   <h4 className="font-semibold text-[#0E1B2C] dark:text-white">
                     Conexão com a Binance
                   </h4>
-                  <span className="text-[12px] text-[#0A7A59] font-medium block">
-                    Ativa
+                  <span
+                    className={`text-[12px] font-medium block ${
+                      binanceConnected
+                        ? "text-[#0A7A59]"
+                        : connectionStatus === "disconnected"
+                          ? "text-[#B42318]"
+                          : "text-[#4A586A] dark:text-[#94a3b8]"
+                    }`}
+                  >
+                    {binanceConnected
+                      ? binanceTestnet
+                        ? "Ativa · Testnet"
+                        : "Ativa · Spot Real"
+                      : connectionStatus === "connected" || connectionStatus === "rest-api"
+                        ? "Dados públicos · Sem chave API"
+                        : "Desconectada"}
                   </span>
                 </div>
                 <button
@@ -188,7 +208,7 @@ export function LearnView() {
                     Motor de IA
                   </h4>
                   <span className="text-[12px] text-[#4A586A] block">
-                    Gemini · chave configurada
+                    Provedores e chaves de análise
                   </span>
                 </div>
                 <button

@@ -49,6 +49,8 @@ export function TopNav() {
     tradingMode,
     setTradingMode,
     connectionStatus,
+    binanceConnected,
+    binanceTestnet,
     setIsCommandSearchOpen,
     openApiSettingsModal,
     setOpenApiSettingsModal,
@@ -63,6 +65,8 @@ export function TopNav() {
       tradingMode: s.tradingMode,
       setTradingMode: s.setTradingMode,
       connectionStatus: s.connectionStatus,
+      binanceConnected: s.binanceConnected,
+      binanceTestnet: s.binanceTestnet,
       setIsCommandSearchOpen: s.setIsCommandSearchOpen,
       openApiSettingsModal: s.openApiSettingsModal,
       setOpenApiSettingsModal: s.setOpenApiSettingsModal,
@@ -168,18 +172,39 @@ export function TopNav() {
 
           {/* Direita: Status, Simulado/Real, Botão Nova Ordem */}
           <div className="flex items-center space-x-3 sm:space-x-4">
-            {/* Status da Binance */}
-            <div className="hidden lg:flex items-center space-x-2 text-[13px] font-instrument-sans text-[#4A586A] dark:text-[#94a3b8]">
+            {/* Status da Binance (clicável para configurar chaves API) */}
+            <button
+              type="button"
+              onClick={() => setOpenApiSettingsModal(true)}
+              title="Clique para configurar ou verificar a conexão com a Binance"
+              className="hidden lg:flex items-center space-x-2 text-[13px] font-instrument-sans text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C] dark:hover:text-white transition-colors cursor-pointer"
+            >
               <span
                 className={cn(
                   "w-2 h-2 rounded-full shrink-0",
-                  connectionStatus === "connected" ? "bg-[#0B8F6A]" : "bg-amber-500"
+                  connectionStatus === "disconnected" || (tradingMode === "live" && !binanceConnected)
+                    ? "bg-[#B42318]"
+                    : connectionStatus === "connecting"
+                      ? "bg-amber-500"
+                      : "bg-[#0B8F6A]"
                 )}
               />
               <span>
-                {connectionStatus === "connected" ? "Binance conectada" : "Conectando"}
+                {tradingMode === "live" && !binanceConnected
+                  ? "Sem chave Binance"
+                  : connectionStatus === "disconnected"
+                    ? "Sem conexão"
+                    : connectionStatus === "connecting"
+                      ? "Conectando"
+                      : binanceConnected
+                        ? binanceTestnet
+                          ? "Binance Testnet"
+                          : "Binance conectada"
+                        : connectionStatus === "connected"
+                          ? "Mercado conectado"
+                          : "Binance (REST)"}
               </span>
-            </div>
+            </button>
 
             {/* Alternador Simulado / Real */}
             <div className="inline-flex p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10">
@@ -196,13 +221,13 @@ export function TopNav() {
               </button>
               <button
                 onClick={() => {
-                  if (tradingMode === "paper") {
+                  if (tradingMode !== "live") {
                     setConfirmRealModalOpen(true);
                   }
                 }}
                 className={cn(
                   "px-3.5 py-1 text-[13px] font-instrument-sans rounded-full transition-all select-none",
-                  tradingMode === "real"
+                  tradingMode === "live"
                     ? "bg-[#0E1B2C] text-white shadow-sm font-semibold"
                     : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C]"
                 )}
@@ -242,7 +267,7 @@ export function TopNav() {
           <AlertDialogFooter className="pt-4">
             <AlertDialogCancel className="rounded-full">Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => setTradingMode("real")}
+              onClick={() => setTradingMode("live")}
               className="rounded-full bg-[#0E1B2C] text-white font-semibold"
             >
               Entendido, ativar Real

@@ -1,73 +1,121 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useCryptoStore } from "@/lib/store";
-import {
-  AppCard,
-  MetricDisplay,
-  MetricStrip,
-  AppChip,
-  AppSwitch,
-} from "./atoms";
+import { useDataProvider } from "@/lib/data-provider";
+import { AppSwitch } from "./atoms";
 import { formatCurrency, formatPercent } from "@/lib/format";
-import { ResponsiveContainer, AreaChart, Area, XAxis, Tooltip } from "recharts";
+import { ResponsiveContainer, AreaChart, Area, XAxis } from "recharts";
 import { useShallow } from "zustand/react/shallow";
 
 export function HomeView() {
+  const { syncBinanceCoins } = useDataProvider();
   const {
     portfolio,
     bots,
-    toggleBot,
-    fearGreedIndex,
+    toggleBotActive,
     setActiveSection,
     trades,
+    tickers,
+    connectionStatus,
+    lastSyncAt,
   } = useCryptoStore(
     useShallow((s) => ({
       portfolio: s.portfolio,
       bots: s.bots,
-      toggleBot: s.toggleBot,
-      fearGreedIndex: s.fearGreedIndex,
+      toggleBotActive: s.toggleBotActive,
       setActiveSection: s.setActiveSection,
       trades: s.trades,
+      tickers: s.tickers,
+      connectionStatus: s.connectionStatus,
+      lastSyncAt: s.lastSyncAt,
     }))
   );
 
   const [period, setPeriod] = useState<"24h" | "7d" | "30d">("24h");
   const [aiFilter, setAiFilter] = useState<"todas" | "altas" | "quedas" | "favoritas">("todas");
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [nowMs, setNowMs] = useState<number>(0);
 
-  // Métricas de patrimônio
-  const totalBalance = portfolio?.totalBalanceUsd ?? 10011.30;
-  const inCash = portfolio?.availableBalanceUsd ?? 9986.30;
-  const invested = portfolio?.inTradeBalanceUsd ?? 25.00;
-  const executedTrades = trades.length || 3;
-
-  const dailyGainPct = 0.11;
-  const dailyGainUsd = 11.30;
-
-  // Curva de patrimônio fiel ao artboard
-  const chartData = useMemo(() => {
-    return [
-      { time: "23:12", value: 9998 },
-      { time: "02:00", value: 10002 },
-      { time: "05:12", value: 10005 },
-      { time: "08:00", value: 10007 },
-      { time: "11:12", value: 10009 },
-      { time: "14:00", value: 10010 },
-      { time: "17:12", value: 10011.30 },
-    ];
+  useEffect(() => {
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
   }, []);
+
+  // Métricas reais de patrimônio do store
+  const totalBalance = portfolio?.totalValue ?? 0;
+  const inCash = portfolio?.cashBalance ?? 0;
+  const invested = portfolio?.assetBalance ?? 0;
+  const executedTrades = trades.length;
+
+  const dailyGainPct = portfolio?.pnlPercent ?? 0;
+  const dailyGainUsd = portfolio?.pnl ?? 0;
+  const isGain = dailyGainUsd >= 0;
+  const cashPct = totalBalance > 0 ? Math.min(100, Math.max(0, (inCash / totalBalance) * 100)) : 100;
+
+  // Curva de patrimônio derivada dos trades reais + patrimônio atual
+  const chartData = useMemo(() => {
+    if (trades.length === 0) {
+      return [
+        { time: "Início", value: totalBalance },
+        { time: "Agora", value: totalBalance },
+      ];
+    }
+    const baseEquity = Math.max(0, totalBalance - dailyGainUsd);
+    let running = baseEquity;
+    const points = [{ time: "Início", value: Number(running.toFixed(2)) }];
+    for (const t of trades.slice(-20)) {
+      running += Number(t.netPnl ?? t.pnl ?? 0);
+      const label = t.timestamp
+        ? new Date(t.timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+        : "";
+      points.push({ time: label || "•", value: Number(running.toFixed(2)) });
+    }
+    points.push({ time: "Agora", value: Number(totalBalance.toFixed(2)) });
+    return points;
+  }, [trades, totalBalance, dailyGainUsd]);
+
+  // Amplitude real do mercado a partir dos tickers recebidos da Binance
+  const marketMood = useMemo(() => {
+    const list = Object.values(tickers);
+    if (list.length === 0) {
+      return { score: 50, label: "Carregando", monitored: 0, movers: 0 };
+    }
+    let gainers = 0;
+    let movers = 0;
+    for (const t of list) {
+      if (t.priceChangePercent > 0) gainers++;
+      if (Math.abs(t.priceChangePercent) >= 3) movers++;
+    }
+    const score = Math.round((gainers / list.length) * 100);
+    const label =
+      score >= 65 ? "Ganância" : score >= 55 ? "Otimista" : score >= 45 ? "Neutro" : score >= 30 ? "Cautela" : "Medo";
+    return { score, label, monitored: list.length, movers };
+  }, [tickers]);
+
+  const isStaleData =
+    connectionStatus === "disconnected" ||
+    (lastSyncAt > 0 && nowMs > 0 && nowMs - lastSyncAt > 180_000);
+  const showFreshnessBanner = !bannerDismissed && isStaleData;
 
   const activeBotsCount = bots.filter((b) => b.active).length;
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-fadeIn font-instrument-sans">
-      {/* 1. AVISO CONDICIONAL DE DADOS ATRASADOS */}
-      {!bannerDismissed && (
+      {/* 1. AVISO CONDICIONAL DE DADOS ATRASADOS / SEM CONEXÃO */}
+      {showFreshnessBanner && (
         <div className="flex items-center justify-between px-5 py-3 rounded-[16px] bg-[#FFF4DC] border border-[#FFE7A8] text-[#6B4300] text-[14px]">
-          <span>Os preços estão com 3 min de atraso. Espere normalizar para operar.</span>
+          <span>
+            {connectionStatus === "disconnected"
+              ? "Sem conexão com o feed em tempo real da Binance. Tentando reconectar."
+              : "As cotações estão sem atualização há mais de 3 minutos. Espere normalizar para operar."}
+          </span>
           <button
-            onClick={() => setBannerDismissed(true)}
+            onClick={() => {
+              syncBinanceCoins();
+              setBannerDismissed(true);
+            }}
             className="font-semibold underline hover:opacity-80 transition-opacity ml-4 cursor-pointer"
           >
             Atualizar
@@ -107,13 +155,21 @@ export function HomeView() {
               </span>
             </div>
 
-            {/* Pílula de Variação 24h */}
+            {/* Pílula de Variação */}
             <div className="flex items-center space-x-2 pt-2 pb-4">
-              <span className="px-2.5 py-0.5 rounded-full bg-[rgba(91,227,168,0.16)] text-[#5BE3A8] text-[13px] font-semibold tabular-nums border border-[rgba(91,227,168,0.3)]">
-                +{formatPercent(dailyGainPct)}
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-[13px] font-semibold tabular-nums border ${
+                  isGain
+                    ? "bg-[rgba(91,227,168,0.16)] text-[#5BE3A8] border-[rgba(91,227,168,0.3)]"
+                    : "bg-[rgba(255,138,128,0.16)] text-[#FF8A80] border-[rgba(255,138,128,0.3)]"
+                }`}
+              >
+                {isGain ? "+" : ""}
+                {formatPercent(dailyGainPct)}
               </span>
               <span className="text-[13px] text-[#A9B7C8]">
-                +{formatCurrency(dailyGainUsd)} nas últimas 24 horas
+                {isGain ? "+" : ""}
+                {formatCurrency(dailyGainUsd)} acumulado
               </span>
             </div>
 
@@ -178,7 +234,7 @@ export function HomeView() {
                 Seus robôs
               </h3>
               <span className="text-[13px] text-[#4A586A] dark:text-[#94a3b8]">
-                {activeBotsCount} de 5 ligados
+                {activeBotsCount} de {bots.length} ligados
               </span>
             </div>
 
@@ -191,12 +247,12 @@ export function HomeView() {
                       {bot.name}
                     </h4>
                     <p className="text-[12px] text-[#4A586A] dark:text-[#94a3b8]">
-                      {bot.pair} · {bot.strategy}
+                      {bot.symbol} · {bot.strategy}
                     </p>
                   </div>
                   <AppSwitch
                     checked={bot.active}
-                    onCheckedChange={() => toggleBot(bot.id)}
+                    onCheckedChange={() => toggleBotActive(bot.id)}
                   />
                 </div>
               ))}
@@ -222,10 +278,10 @@ export function HomeView() {
           </span>
           <div className="flex items-baseline space-x-2">
             <span className="font-instrument-serif text-[44px] leading-none text-[#0E1B2C] dark:text-white tabular-nums">
-              50
+              {marketMood.score}
             </span>
             <span className="text-[15px] font-medium text-[#0E1B2C] dark:text-white">
-              Neutro
+              {marketMood.label}
             </span>
           </div>
 
@@ -233,8 +289,8 @@ export function HomeView() {
           <div className="pt-2">
             <div className="relative w-full h-1.5 bg-[#E4E8ED] dark:bg-white/10 rounded-full">
               <div
-                className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-[#0E1B2C] dark:bg-white border-2 border-white shadow-xs"
-                style={{ left: "50%" }}
+                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-[#0E1B2C] dark:bg-white border-2 border-white shadow-xs"
+                style={{ left: `${marketMood.score}%` }}
               />
             </div>
             <div className="flex justify-between text-[11px] text-[#4A586A] dark:text-[#94a3b8] pt-1.5">
@@ -244,7 +300,9 @@ export function HomeView() {
           </div>
 
           <p className="text-[12px] text-[#4A586A] dark:text-[#94a3b8] pt-2">
-            Nenhuma das 503 moedas monitoradas está em alta ou em baixa agora.
+            {marketMood.monitored > 0
+              ? `${marketMood.movers} de ${marketMood.monitored} moedas monitoradas variaram ±3% ou mais em 24h.`
+              : "Aguardando sincronização das cotações da Binance."}
           </p>
         </div>
 
@@ -255,7 +313,7 @@ export function HomeView() {
           </span>
           <div className="flex items-baseline space-x-2">
             <span className="font-instrument-serif text-[44px] leading-none text-[#0E1B2C] dark:text-white tabular-nums">
-              99,8%
+              {cashPct.toFixed(1).replace(".", ",")}%
             </span>
             <span className="text-[15px] font-medium text-[#0E1B2C] dark:text-white">
               em caixa
@@ -265,7 +323,7 @@ export function HomeView() {
           {/* Barra de Progresso em Caixa */}
           <div className="pt-2">
             <div className="w-full h-2 bg-[#E4E8ED] dark:bg-white/10 rounded-full overflow-hidden">
-              <div className="h-full bg-[#7C99B6] rounded-full" style={{ width: "99.8%" }} />
+              <div className="h-full bg-[#7C99B6] rounded-full" style={{ width: `${cashPct.toFixed(1)}%` }} />
             </div>
           </div>
 
@@ -334,7 +392,7 @@ export function HomeView() {
               Escaneie o mercado para ver as melhores entradas e saídas
             </h4>
             <p className="text-[13px] text-[#4A586A] dark:text-[#94a3b8] max-w-xl">
-              A IA compara tendência, suporte e resistência de 503 moedas e lista só as que passam nos seus critérios.
+              A IA compara tendência, suporte e resistência de {marketMood.monitored > 0 ? marketMood.monitored : "centenas de"} moedas e lista só as que passam nos seus critérios.
             </p>
           </div>
 

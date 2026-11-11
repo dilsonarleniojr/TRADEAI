@@ -45,7 +45,7 @@ export function MarketView() {
 
   const ticker = tickers[selectedSymbol];
   const price = ticker?.price;
-  const availableBalance = portfolio?.availableBalanceUsd ?? 9986.30;
+  const availableBalance = portfolio?.cashBalance ?? 0;
 
   const toggleIndicator = (id: string) => {
     setActiveIndicators((prev) =>
