@@ -1,34 +1,98 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useCryptoStore } from "@/lib/store";
+import { useDataProvider } from "@/lib/data-provider";
 import { AppSwitch } from "./atoms";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { ChartSection } from "@/components/chart/chart-section";
 import { OrderBook } from "@/components/chart/order-book";
 import { ChatSection } from "@/components/ai/chat-section";
 import { TradeHubSection } from "@/components/trade-hub";
-import { ChevronDown, Sparkles, Send, RefreshCw, AlertCircle } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 
+interface MarketIdea {
+  symbol: string;
+  name: string;
+  type: "LONG" | "SHORT";
+  entryPrice: number;
+  tp1: number;
+  tp2: number;
+  stopLoss: number;
+  riskReward: number;
+  winProbability: number;
+  technicalReason: string;
+  fundamentalReason?: string;
+  timeframe: string;
+  horizonLabel?: string;
+  holdingPeriod?: string;
+  strategyType?: string;
+  sector?: string;
+}
+
+interface QuickSignal {
+  signal: "BUY" | "SELL" | "HOLD";
+  confidence_score: number;
+  key_driver: string;
+  risk_warning?: string;
+  stop_loss?: number;
+  take_profit?: number;
+  risk_reward_ratio?: number;
+  agent_error?: boolean;
+  error_reason?: string;
+}
+
+interface QuickChatMsg {
+  role: "user" | "assistant";
+  content: string;
+}
+
+const TEMA_CATEGORY_MAP: Record<string, string> = {
+  "Em alta": "gainers",
+  "Reversão": "reversal",
+  "DePIN": "depin",
+  "Ativos do mundo real": "rwa",
+  "IA e dados": "ai",
+  "DeFi": "defi",
+  "Layer 1": "layer1",
+  "Memes": "memes",
+  "Volatilidade": "volatility",
+};
+
 export function MarketView() {
+  const { syncBinanceCoins } = useDataProvider();
   const {
     selectedSymbol,
     tickers,
     portfolio,
+    bots,
+    tradingMode,
+    activeSection,
     setSelectedSymbol,
-    executeQuickTrade,
+    setActiveSection,
+    setTradePrefill,
+    setOpenAiSettingsModal,
+    setAiSignals,
   } = useCryptoStore(
     useShallow((s) => ({
       selectedSymbol: s.selectedSymbol,
       tickers: s.tickers,
       portfolio: s.portfolio,
+      bots: s.bots,
+      tradingMode: s.tradingMode,
+      activeSection: s.activeSection,
       setSelectedSymbol: s.setSelectedSymbol,
-      executeQuickTrade: s.executeQuickTrade,
+      setActiveSection: s.setActiveSection,
+      setTradePrefill: s.setTradePrefill,
+      setOpenAiSettingsModal: s.setOpenAiSettingsModal,
+      setAiSignals: s.setAiSignals,
     }))
   );
 
-  const [activeTab, setActiveTab] = useState<"grafico" | "livro" | "ideias" | "assistente" | "mais">("grafico");
+  const [activeTab, setActiveTab] = useState<"grafico" | "livro" | "ideias" | "assistente" | "mais">(
+    activeSection === "ai" ? "ideias" : activeSection === "trade-hub" ? "mais" : "grafico"
+  );
   const [tradeSide, setTradeSide] = useState<"buy" | "sell">("buy");
   const [tradeAmount, setTradeAmount] = useState<string>("0,00");
   const [tradeType, setTradeType] = useState<"agora" | "programada">("agora");
@@ -36,16 +100,187 @@ export function MarketView() {
   const [activeIndicators, setActiveIndicators] = useState<string[]>(["media20", "media50"]);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
 
-  // Ideias da IA - filtros
-  const [prazoFilter, setPrazoFilter] = useState<"todos" | "curto" | "medio">("todos");
+  // Ideias da IA - filtros e estado real
+  const [prazoFilter, setPrazoFilter] = useState<"all" | "fast" | "long">("all");
   const [temaFilter, setTemaFilter] = useState<string>("Em alta");
   const [hideActivePairs, setHideActivePairs] = useState<boolean>(false);
   const [avoidCorrelated, setAvoidCorrelated] = useState<boolean>(true);
-  const [chatMessage, setChatMessage] = useState<string>("");
+  const [ideas, setIdeas] = useState<MarketIdea[]>([]);
+  const [ideasLoading, setIdeasLoading] = useState<boolean>(false);
+  const [ideasError, setIdeasError] = useState<string | null>(null);
 
-  const ticker = tickers[selectedSymbol];
-  const price = ticker?.price;
+  // Sinal de IA & Assistente lateral reais
+  const [aiSignal, setAiSignal] = useState<QuickSignal | null>(null);
+  const [signalLoading, setSignalLoading] = useState<boolean>(false);
+  const [signalError, setSignalError] = useState<string | null>(null);
+  const [chatMessage, setChatMessage] = useState<string>("");
+  const [chatHistory, setChatHistory] = useState<QuickChatMsg[]>([]);
+  const [chatLoading, setChatLoading] = useState<boolean>(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const chatSessionIdRef = useRef(`v2-assist-${Date.now()}`);
+
+  useEffect(() => {
+    if (activeSection === "ai") {
+      setActiveTab("ideias");
+    } else if (activeSection === "trade-hub") {
+      setActiveTab("mais");
+    }
+  }, [activeSection]);
+
+  const targetSymbol = selectedSymbol || "BTCUSDT";
+  const ticker = tickers[targetSymbol] || tickers["BTCUSDT"];
+  const price = tickers[selectedSymbol]?.price;
   const availableBalance = portfolio?.cashBalance ?? 0;
+  const monitoredCoinsCount = useMemo(() => Object.keys(tickers).length, [tickers]);
+
+  const activeBotSymbols = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          bots
+            .filter((b) => b.active)
+            .map((b) => (b.symbol || "").toUpperCase().trim())
+            .filter(Boolean)
+        )
+      ),
+    [bots]
+  );
+
+  const runMarketAnalysis = async (opts?: {
+    prazo?: "all" | "fast" | "long";
+    tema?: string;
+    hideActive?: boolean;
+    decorrelate?: boolean;
+  }) => {
+    const prazo = opts?.prazo ?? prazoFilter;
+    const tema = opts?.tema ?? temaFilter;
+    const hideActive = opts?.hideActive ?? hideActivePairs;
+    const decorrelate = opts?.decorrelate ?? avoidCorrelated;
+
+    setIdeasLoading(true);
+    setIdeasError(null);
+    try {
+      const res = await fetch("/api/ai/trade-hub", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tool: "trade_ideas",
+          params: {
+            category: TEMA_CATEGORY_MAP[tema] || "all",
+            horizon: prazo,
+            excludeSymbols: hideActive ? activeBotSymbols : [],
+            decorrelateRisk: decorrelate,
+            nonce: Date.now(),
+          },
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Não foi possível gerar ideias de mercado agora.");
+      }
+      const received: MarketIdea[] = Array.isArray(json.data) ? json.data : [];
+      setIdeas(received);
+      if (received.length === 0) {
+        setIdeasError("Nenhuma oportunidade atendeu aos filtros escolhidos no momento.");
+      } else {
+        setAiSignals(
+          received.map((idea) => ({
+            id: `idea-${idea.symbol}-${Date.now()}`,
+            symbol: idea.symbol,
+            action: idea.type === "SHORT" ? "SELL" : "BUY",
+            confidence: Math.min(1, (idea.winProbability || 70) / 100),
+            priceAtSignal: idea.entryPrice,
+            targetPrice: idea.tp1,
+            takeProfit: idea.tp1,
+            stopLoss: idea.stopLoss,
+            reasoning: idea.technicalReason,
+            createdAt: new Date().toISOString(),
+          }))
+        );
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao analisar o mercado.";
+      setIdeasError(msg);
+    } finally {
+      setIdeasLoading(false);
+    }
+  };
+
+  const fetchQuickSignal = async () => {
+    const t = tickers[targetSymbol] || tickers["BTCUSDT"];
+    const sym = tickers[targetSymbol] ? targetSymbol : "BTCUSDT";
+    if (!t || !(t.price > 0)) {
+      await syncBinanceCoins();
+      setSignalError(`Ainda sem cotação ao vivo para ${sym}.`);
+      return;
+    }
+
+    setSignalLoading(true);
+    setSignalError(null);
+    try {
+      const res = await fetch("/api/ai/signal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: sym,
+          price: t.price,
+          priceChange24h: t.priceChangePercent,
+          volume: t.volume,
+          quoteVolume: t.quoteVolume,
+          high24h: t.high,
+          low24h: t.low,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success || !json.signal) {
+        throw new Error(json.error || "Falha ao consultar sinal de IA.");
+      }
+      setAiSignal(json.signal);
+    } catch (err: unknown) {
+      setSignalError(err instanceof Error ? err.message : "Erro ao gerar sinal de IA.");
+    } finally {
+      setSignalLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "ideias" && !aiSignal && !signalLoading && ticker && ticker.price > 0) {
+      fetchQuickSignal();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, targetSymbol, ticker?.price]);
+
+  const sendAssistantMessage = async (textOverride?: string) => {
+    const prompt = (textOverride ?? chatMessage).trim();
+    if (!prompt || chatLoading) return;
+
+    if (!textOverride) setChatMessage("");
+    setChatError(null);
+    setChatHistory((prev) => [...prev, { role: "user", content: prompt }]);
+    setChatLoading(true);
+    try {
+      const contextPrefix = ticker?.price
+        ? `[Contexto atual: ${targetSymbol} a ${formatCurrency(ticker.price)}, 24h ${formatPercent(ticker.priceChangePercent)}] `
+        : "";
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: chatSessionIdRef.current,
+          message: `${contextPrefix}${prompt}`,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.details || json.error || "Não foi possível responder agora.");
+      }
+      setChatHistory((prev) => [...prev, { role: "assistant", content: json.response }]);
+    } catch (err: unknown) {
+      setChatError(err instanceof Error ? err.message : "Erro ao consultar o assistente de IA.");
+    } finally {
+      setChatLoading(false);
+    }
+  };
 
   const toggleIndicator = (id: string) => {
     setActiveIndicators((prev) =>
@@ -168,7 +403,7 @@ export function MarketView() {
                 Negociar {selectedSymbol?.replace("USDT", "") || "BTC"}
               </h3>
               <span className="px-2.5 py-0.5 rounded-full bg-[#EEF1F5] dark:bg-white/10 text-[12px] text-[#4A586A] dark:text-[#94a3b8] font-medium">
-                Simulado
+                {tradingMode === "paper" ? "Simulado" : "Real"}
               </span>
             </div>
 
@@ -265,13 +500,19 @@ export function MarketView() {
             </div>
 
             {/* Sugestão de Stop e Alvo da IA */}
-            <div className="pt-2 text-[13px] space-y-0.5">
+            <div className="pt-2 text-[13px] space-y-1">
               <span className="font-semibold text-[#0E1B2C] dark:text-white block">
                 Stop e alvo sugeridos pela IA
               </span>
-              <p className="text-[12px] text-[#4A586A] dark:text-[#94a3b8]">
-                Aparecem quando houver preço
-              </p>
+              {aiSignal && aiSignal.stop_loss && aiSignal.take_profit ? (
+                <p className="text-[12px] text-[#4A586A] dark:text-[#94a3b8] tabular-nums">
+                  Stop {formatCurrency(aiSignal.stop_loss)} · Alvo {formatCurrency(aiSignal.take_profit)}
+                </p>
+              ) : (
+                <p className="text-[12px] text-[#4A586A] dark:text-[#94a3b8]">
+                  {price ? "Gere o sinal na aba Ideias da IA para preencher níveis" : "Aparecem quando houver preço"}
+                </p>
+              )}
             </div>
 
             {/* Opções Avançadas */}
@@ -312,7 +553,7 @@ export function MarketView() {
                 Ideias de trade
               </h2>
               <p className="text-[13px] text-[#4A586A] dark:text-[#94a3b8] pt-1">
-                A IA analisa 503 moedas com dados da Binance e sugere entradas e saídas. Escolha o prazo e o tema para estreitar a busca.
+                A IA analisa {monitoredCoinsCount > 0 ? monitoredCoinsCount : "centenas de"} moedas com dados da Binance e sugere entradas e saídas. Escolha o prazo e o tema para estreitar a busca.
               </p>
             </div>
 
@@ -323,14 +564,18 @@ export function MarketView() {
               </span>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { id: "todos", label: "Todos" },
-                  { id: "curto", label: "Curto prazo (day e scalp)" },
-                  { id: "medio", label: "Médio e longo prazo (swing)" },
+                  { id: "all", label: "Todos" },
+                  { id: "fast", label: "Curto prazo (day e scalp)" },
+                  { id: "long", label: "Médio e longo prazo (swing)" },
                 ].map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => setPrazoFilter(p.id as any)}
-                    className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all ${
+                    onClick={() => {
+                      const next = p.id as "all" | "fast" | "long";
+                      setPrazoFilter(next);
+                      if (ideas.length > 0) runMarketAnalysis({ prazo: next });
+                    }}
+                    className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all cursor-pointer ${
                       prazoFilter === p.id
                         ? "bg-[#0E1B2C] text-white font-semibold"
                         : "bg-[#EEF1F5] dark:bg-white/10 text-[#4A586A] hover:text-[#0E1B2C]"
@@ -354,8 +599,11 @@ export function MarketView() {
                 ].map((t) => (
                   <button
                     key={t}
-                    onClick={() => setTemaFilter(t)}
-                    className={`px-3.5 py-1.5 rounded-full text-[13px] font-medium transition-all ${
+                    onClick={() => {
+                      setTemaFilter(t);
+                      if (ideas.length > 0) runMarketAnalysis({ tema: t });
+                    }}
+                    className={`px-3.5 py-1.5 rounded-full text-[13px] font-medium transition-all cursor-pointer ${
                       temaFilter === t
                         ? "bg-[#0E1B2C] text-white font-semibold"
                         : "bg-[#EEF1F5] dark:bg-white/10 text-[#4A586A] hover:text-[#0E1B2C]"
@@ -375,7 +623,10 @@ export function MarketView() {
                 </span>
                 <AppSwitch
                   checked={hideActivePairs}
-                  onCheckedChange={setHideActivePairs}
+                  onCheckedChange={(checked) => {
+                    setHideActivePairs(checked);
+                    if (ideas.length > 0) runMarketAnalysis({ hideActive: checked });
+                  }}
                 />
               </div>
 
@@ -390,26 +641,155 @@ export function MarketView() {
                 </div>
                 <AppSwitch
                   checked={avoidCorrelated}
-                  onCheckedChange={setAvoidCorrelated}
+                  onCheckedChange={(checked) => {
+                    setAvoidCorrelated(checked);
+                    if (ideas.length > 0) runMarketAnalysis({ decorrelate: checked });
+                  }}
                 />
               </div>
             </div>
 
-            {/* Estado Vazio com Botão Analisar Mercado */}
-            <div className="bg-[#F8FAFC] dark:bg-white/5 border border-[#E7EBF0] dark:border-white/10 rounded-[18px] p-6 space-y-3">
-              <h4 className="font-bold text-[15px] text-[#0E1B2C] dark:text-white">
-                Nenhuma ideia ainda
-              </h4>
-              <p className="text-[13px] text-[#4A586A] dark:text-[#94a3b8]">
-                Rode a análise para ver as sugestões. O resultado aparece aqui em poucos segundos.
-              </p>
-              <button
-                onClick={() => {}}
-                className="px-5 py-2.5 rounded-full bg-[#0E1B2C] dark:bg-white text-white dark:text-[#0E1B2C] font-semibold text-[14px] hover:opacity-90 transition-opacity"
-              >
-                Analisar mercado
-              </button>
-            </div>
+            {/* Resultados ou Estado Vazio com Botão Analisar Mercado */}
+            {ideasLoading ? (
+              <div className="bg-[#F8FAFC] dark:bg-white/5 border border-[#E7EBF0] dark:border-white/10 rounded-[18px] p-6 flex items-center gap-3 text-[14px] text-[#4A586A] dark:text-[#94a3b8]">
+                <Loader2 className="w-5 h-5 animate-spin text-[#0E1B2C] dark:text-white shrink-0" />
+                <span>Analisando mercado em tempo real na Binance Spot...</span>
+              </div>
+            ) : ideas.length > 0 ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-[13px] font-semibold text-[#0E1B2C] dark:text-white">
+                    {ideas.length} oportunidades encontradas ({temaFilter})
+                  </span>
+                  <button
+                    onClick={() => runMarketAnalysis()}
+                    disabled={ideasLoading}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full border border-[#D3DAE3] dark:border-white/20 text-[13px] font-semibold text-[#0E1B2C] dark:text-white hover:bg-[#EEF1F5] dark:hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Analisar novamente
+                  </button>
+                </div>
+
+                {ideas.map((idea) => {
+                  const isLong = idea.type !== "SHORT";
+                  return (
+                    <div
+                      key={idea.symbol}
+                      className="bg-[#F8FAFC] dark:bg-white/5 border border-[#E7EBF0] dark:border-white/10 rounded-[18px] p-5 space-y-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <span className="font-bold text-[16px] text-[#0E1B2C] dark:text-white font-mono">
+                            {idea.symbol}
+                          </span>
+                          <span className="text-[13px] text-[#4A586A] dark:text-[#94a3b8]">
+                            {idea.name}
+                          </span>
+                          {idea.sector && (
+                            <span className="px-2.5 py-0.5 rounded-full bg-[#EEF1F5] dark:bg-white/10 text-[11px] font-medium text-[#4A586A] dark:text-[#94a3b8]">
+                              {idea.sector}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-[12px] font-semibold">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full ${
+                              isLong
+                                ? "bg-[#E6F7F1] text-[#0A7A59]"
+                                : "bg-[#FDF4F3] text-[#B42318]"
+                            }`}
+                          >
+                            {isLong ? "COMPRA" : "VENDA"}
+                          </span>
+                          <span className="text-[#4A586A] dark:text-[#94a3b8] tabular-nums">
+                            Prob. {idea.winProbability}% · R:R {idea.riskReward}:1
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 text-[13px]">
+                        <div>
+                          <span className="text-[11px] text-[#4A586A] dark:text-[#94a3b8] block">Entrada</span>
+                          <span className="font-semibold text-[#0E1B2C] dark:text-white tabular-nums">
+                            {formatCurrency(idea.entryPrice)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[11px] text-[#4A586A] dark:text-[#94a3b8] block">Stop Loss</span>
+                          <span className="font-semibold text-[#B42318] tabular-nums">
+                            {formatCurrency(idea.stopLoss)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[11px] text-[#4A586A] dark:text-[#94a3b8] block">Alvo 1</span>
+                          <span className="font-semibold text-[#0A7A59] tabular-nums">
+                            {formatCurrency(idea.tp1)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[11px] text-[#4A586A] dark:text-[#94a3b8] block">Alvo 2</span>
+                          <span className="font-semibold text-[#0A7A59] tabular-nums">
+                            {formatCurrency(idea.tp2)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="text-[13px] text-[#4A586A] dark:text-[#94a3b8] leading-relaxed">
+                        {idea.technicalReason}
+                      </p>
+
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <button
+                          onClick={() => {
+                            setSelectedSymbol(idea.symbol);
+                            setActiveTab("grafico");
+                            setActiveSection("chart");
+                          }}
+                          className="px-4 py-1.5 rounded-full bg-[#0E1B2C] dark:bg-white text-white dark:text-[#0E1B2C] text-[12px] font-semibold hover:opacity-90 transition-opacity cursor-pointer"
+                        >
+                          Ver no gráfico
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedSymbol(idea.symbol);
+                            setTradePrefill({
+                              symbol: idea.symbol,
+                              side: isLong ? "BUY" : "SELL",
+                              entryPrice: idea.entryPrice,
+                              stopLoss: idea.stopLoss,
+                              takeProfit: idea.tp1,
+                              reason: idea.technicalReason,
+                            });
+                            setActiveTab("grafico");
+                            setActiveSection("chart");
+                          }}
+                          className="px-4 py-1.5 rounded-full border border-[#D3DAE3] dark:border-white/20 text-[#0E1B2C] dark:text-white text-[12px] font-semibold hover:bg-[#EEF1F5] dark:hover:bg-white/10 transition-colors cursor-pointer"
+                        >
+                          Carregar setup
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="bg-[#F8FAFC] dark:bg-white/5 border border-[#E7EBF0] dark:border-white/10 rounded-[18px] p-6 space-y-3">
+                <h4 className="font-bold text-[15px] text-[#0E1B2C] dark:text-white">
+                  {ideasError ? "Não foi possível gerar ideias" : "Nenhuma ideia ainda"}
+                </h4>
+                <p className="text-[13px] text-[#4A586A] dark:text-[#94a3b8]">
+                  {ideasError ||
+                    "Rode a análise para ver as sugestões. O resultado aparece aqui em poucos segundos."}
+                </p>
+                <button
+                  onClick={() => runMarketAnalysis()}
+                  className="px-5 py-2.5 rounded-full bg-[#0E1B2C] dark:bg-white text-white dark:text-[#0E1B2C] font-semibold text-[14px] hover:opacity-90 transition-opacity cursor-pointer"
+                >
+                  Analisar mercado
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Coluna Direita: Assistente IA */}
@@ -419,27 +799,63 @@ export function MarketView() {
                 Assistente
               </h3>
               <p className="text-[12px] text-[#4A586A] dark:text-[#94a3b8]">
-                Pergunte sobre BTC/USDT e o mercado
+                Pergunte sobre {targetSymbol} e o mercado
               </p>
             </div>
 
-            {/* Mensagem de Boas-Vindas */}
-            <div className="p-4 rounded-[16px] bg-[#EEF1F5] dark:bg-white/5 text-[13px] text-[#4A586A] dark:text-[#94a3b8] leading-relaxed">
-              Olá! Eu explico indicadores, sugiro estratégias e analiso tendências. Respostas são informativas e não são recomendação financeira.
-            </div>
+            {/* Mensagem de Boas-Vindas ou Histórico do Chat */}
+            {chatHistory.length === 0 ? (
+              <div className="p-4 rounded-[16px] bg-[#EEF1F5] dark:bg-white/5 text-[13px] text-[#4A586A] dark:text-[#94a3b8] leading-relaxed">
+                Olá! Eu explico indicadores, sugiro estratégias e analiso tendências. Respostas são informativas e não são recomendação financeira.
+              </div>
+            ) : (
+              <div className="max-h-60 overflow-y-auto space-y-2.5 pr-1">
+                {chatHistory.map((m, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-3 rounded-[14px] text-[13px] leading-relaxed whitespace-pre-wrap ${
+                      m.role === "user"
+                        ? "bg-[#0E1B2C] text-white ml-4"
+                        : "bg-[#EEF1F5] dark:bg-white/5 text-[#0E1B2C] dark:text-[#e2e8f0] mr-2"
+                    }`}
+                  >
+                    {m.content}
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div className="p-3 rounded-[14px] bg-[#EEF1F5] dark:bg-white/5 text-[12px] text-[#4A586A] flex items-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Consultando IA...</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {chatError && (
+              <div className="p-3 rounded-[12px] bg-[#FDF4F3] border border-[#F1C9C5] text-[#B42318] text-[12px] space-y-1">
+                <span>{chatError}</span>
+                <button
+                  onClick={() => setOpenAiSettingsModal(true)}
+                  className="font-semibold underline block cursor-pointer"
+                >
+                  Configurar motor de IA
+                </button>
+              </div>
+            )}
 
             {/* 4 Perguntas Sugeridas */}
             <div className="space-y-2">
               {[
-                "Analisar a tendência do BTC",
+                `Analisar a tendência de ${targetSymbol}`,
                 "Qual a melhor estratégia para iniciantes?",
                 "Explique o que é stop loss",
                 "Como está o mercado hoje?",
               ].map((q, idx) => (
                 <button
                   key={idx}
-                  onClick={() => setChatMessage(q)}
-                  className="w-full text-left p-3 rounded-[12px] border border-[#D3DAE3] dark:border-white/10 hover:border-[#0E1B2C] text-[13px] text-[#0E1B2C] dark:text-white font-medium transition-colors"
+                  disabled={chatLoading}
+                  onClick={() => sendAssistantMessage(q)}
+                  className="w-full text-left p-3 rounded-[12px] border border-[#D3DAE3] dark:border-white/10 hover:border-[#0E1B2C] text-[13px] text-[#0E1B2C] dark:text-white font-medium transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {q}
                 </button>
@@ -453,23 +869,81 @@ export function MarketView() {
                 placeholder="Pergunte sobre o mercado"
                 value={chatMessage}
                 onChange={(e) => setChatMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    sendAssistantMessage();
+                  }
+                }}
                 className="w-full h-11 px-4 pr-20 rounded-full border border-[#D3DAE3] dark:border-white/10 text-[13px] focus:outline-none focus:border-[#0E1B2C]"
               />
               <button
-                onClick={() => {}}
-                className="absolute right-1 top-3 px-4 py-1.5 rounded-full bg-[#0E1B2C] text-white text-[12px] font-semibold hover:opacity-90 transition-opacity"
+                onClick={() => sendAssistantMessage()}
+                disabled={chatLoading || !chatMessage.trim()}
+                className="absolute right-1 top-3 px-4 py-1.5 rounded-full bg-[#0E1B2C] text-white text-[12px] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
               >
-                Enviar
+                {chatLoading ? "..." : "Enviar"}
               </button>
             </div>
 
-            {/* Aviso de Sinal de IA Indisponível */}
-            <div className="p-3.5 rounded-[14px] bg-[#FFF4DC] border border-[#FFE7A8] text-[#6B4300] text-[12px] space-y-1">
-              <span>Sinal de IA indisponível: ainda sem cotação do BTC.</span>
-              <button className="font-semibold underline block hover:opacity-80">
-                Tentar novamente
-              </button>
-            </div>
+            {/* Painel Real de Sinal de IA do Ativo */}
+            {signalLoading ? (
+              <div className="p-3.5 rounded-[14px] bg-[#EEF1F5] dark:bg-white/5 text-[#4A586A] dark:text-[#94a3b8] text-[12px] flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                <span>Analisando sinal de IA para {targetSymbol}...</span>
+              </div>
+            ) : aiSignal && !aiSignal.agent_error ? (
+              <div className="p-3.5 rounded-[14px] bg-[#F8FAFC] dark:bg-white/5 border border-[#E7EBF0] dark:border-white/10 text-[12px] space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-[#0E1B2C] dark:text-white">
+                    Sinal IA ({targetSymbol}):{" "}
+                    <span
+                      className={
+                        aiSignal.signal === "BUY"
+                          ? "text-[#0A7A59]"
+                          : aiSignal.signal === "SELL"
+                            ? "text-[#B42318]"
+                            : "text-[#4A586A]"
+                      }
+                    >
+                      {aiSignal.signal === "BUY"
+                        ? "COMPRA"
+                        : aiSignal.signal === "SELL"
+                          ? "VENDA"
+                          : "AGUARDAR"}
+                    </span>
+                  </span>
+                  <span className="text-[#4A586A] dark:text-[#94a3b8] tabular-nums">
+                    {aiSignal.confidence_score}%
+                  </span>
+                </div>
+                <p className="text-[#4A586A] dark:text-[#94a3b8] leading-snug">
+                  {aiSignal.key_driver}
+                </p>
+                <button
+                  onClick={fetchQuickSignal}
+                  className="font-semibold text-[#1F5FD6] underline block cursor-pointer"
+                >
+                  Atualizar sinal
+                </button>
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-[14px] bg-[#FFF4DC] border border-[#FFE7A8] text-[#6B4300] text-[12px] space-y-1">
+                <span>
+                  {signalError ||
+                    aiSignal?.error_reason ||
+                    (ticker?.price
+                      ? `Clique para consultar o sinal de IA para ${targetSymbol}.`
+                      : `Sinal de IA aguardando cotação de ${targetSymbol}.`)}
+                </span>
+                <button
+                  onClick={fetchQuickSignal}
+                  className="font-semibold underline block hover:opacity-80 cursor-pointer"
+                >
+                  Tentar novamente
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
