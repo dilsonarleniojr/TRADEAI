@@ -12,6 +12,7 @@ export interface FeedFreshness {
 export class FeedWatchdog {
   private lastTickMap = new Map<string, number>();
   private staleMap = new Map<string, boolean>();
+  private lastGlobalTickAt = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   readonly staleThresholdMs: number;
 
@@ -25,6 +26,9 @@ export class FeedWatchdog {
   recordTick(symbol: string, timestamp: number = Date.now()): void {
     const sym = symbol.toUpperCase();
     this.lastTickMap.set(sym, timestamp);
+    if (timestamp > this.lastGlobalTickAt) {
+      this.lastGlobalTickAt = timestamp;
+    }
 
     const wasStale = this.staleMap.get(sym);
     if (wasStale) {
@@ -86,22 +90,41 @@ export class FeedWatchdog {
     const selectedSymbol = store.selectedSymbol?.toUpperCase() || "BTCUSDT";
 
     // Avalia o par atualmente selecionado no gráfico e pares com posições abertas
+    const positionSymbols = new Set<string>();
     const activeSymbols = new Set<string>([selectedSymbol]);
     for (const bot of store.bots) {
       if (bot.active && bot.position && bot.position.quantity > 0) {
-        activeSymbols.add(bot.position.symbol.toUpperCase());
+        const posSym = bot.position.symbol.toUpperCase();
+        positionSymbols.add(posSym);
+        activeSymbols.add(posSym);
+      }
+    }
+
+    // Remove símbolos antigos que saíram do conjunto monitorado
+    for (const key of this.staleMap.keys()) {
+      if (!activeSymbols.has(key)) {
+        this.staleMap.delete(key);
       }
     }
 
     let anyStale = false;
     const now = Date.now();
+    // Se a conexão WebSocket está entregando ticks recentes (ex: BTCUSDT/ETHUSDT < 3s),
+    // uma altcoin com poucos negócios por segundo não representa queda de feed.
+    const isGlobalStreamAlive =
+      this.lastGlobalTickAt > 0 && now - this.lastGlobalTickAt <= this.staleThresholdMs;
 
     for (const sym of activeSymbols) {
       const lastTick = this.lastTickMap.get(sym) || 0;
       if (lastTick === 0) continue; // Ainda inicializando
 
       const elapsedMs = now - lastTick;
-      const isStale = elapsedMs > this.staleThresholdMs;
+      const effectiveThreshold = isGlobalStreamAlive
+        ? positionSymbols.has(sym)
+          ? Math.max(this.staleThresholdMs, 15000)
+          : Infinity
+        : this.staleThresholdMs;
+      const isStale = elapsedMs > effectiveThreshold;
       const previouslyStale = this.staleMap.get(sym) || false;
 
       if (isStale) {
@@ -136,6 +159,7 @@ export class FeedWatchdog {
   reset(): void {
     this.lastTickMap.clear();
     this.staleMap.clear();
+    this.lastGlobalTickAt = 0;
   }
 }
 
