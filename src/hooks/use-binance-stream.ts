@@ -291,7 +291,11 @@ export function useBinanceStream() {
       const isProxy =
         typeof window !== "undefined" &&
         (window.location.port === "81" || window.location.search.includes("XTransformPort"));
-      const socketUrl = isProxy ? "" : "http://localhost:3002";
+      const socketUrl = isProxy
+        ? ""
+        : typeof window !== "undefined"
+          ? `${window.location.protocol}//${window.location.hostname}:3002`
+          : "http://localhost:3002";
 
       console.log("[BinanceStream] Creating new global socket connection to", socketUrl);
       const socket = io(socketUrl, {

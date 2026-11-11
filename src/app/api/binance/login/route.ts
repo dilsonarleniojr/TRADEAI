@@ -24,7 +24,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: false, error: 'Origem não permitida.' }, { status: 403 });
   }
   const res = NextResponse.json({ success: true });
-  clearBinanceSession(res);
+  clearBinanceSession(res, request);
   return res;
 }
 
@@ -78,7 +78,11 @@ export async function POST(request: Request) {
         testnet: !!testnet,
       });
       // As chaves são guardadas apenas no servidor, em cookie httpOnly criptografado
-      setBinanceSession(res, { apiKey: String(apiKey), apiSecret: String(apiSecret), testnet: !!testnet });
+      setBinanceSession(
+        res,
+        { apiKey: String(apiKey), apiSecret: String(apiSecret), testnet: !!testnet },
+        request
+      );
       return res;
     } else {
       const errData = await response.json().catch(() => ({}));

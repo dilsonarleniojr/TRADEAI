@@ -31,18 +31,35 @@ function decrypt(token: string): BinanceCredentials | null {
   return null;
 }
 
-export function setBinanceSession(res: NextResponse, creds: BinanceCredentials) {
+function isHttpsRequest(request?: Request): boolean {
+  if (!request) return false;
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  if (forwardedProto) return forwardedProto === "https";
+  try {
+    return new URL(request.url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function setBinanceSession(res: NextResponse, creds: BinanceCredentials, request?: Request) {
   res.cookies.set(BINANCE_COOKIE, encrypt(creds), {
     httpOnly: true,
     sameSite: "strict",
-    secure: process.env.NODE_ENV === "production",
+    secure: isHttpsRequest(request),
     path: "/",
     maxAge: MAX_AGE_SECONDS,
   });
 }
 
-export function clearBinanceSession(res: NextResponse) {
-  res.cookies.set(BINANCE_COOKIE, "", { httpOnly: true, sameSite: "strict", path: "/", maxAge: 0 });
+export function clearBinanceSession(res: NextResponse, request?: Request) {
+  res.cookies.set(BINANCE_COOKIE, "", {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: isHttpsRequest(request),
+    path: "/",
+    maxAge: 0,
+  });
 }
 
 export function readBinanceSession(request: NextRequest | Request): BinanceCredentials | null {
