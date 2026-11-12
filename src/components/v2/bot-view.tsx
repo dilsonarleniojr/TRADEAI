@@ -7,8 +7,15 @@ import { BotDrawer } from "./bot-drawer";
 import { BotDialog } from "@/components/bot/bot-dialog";
 import { AIBotRecommendationsDialog } from "@/components/bot/ai-bot-recommendations-dialog";
 import { BinanceProfitableBotsDialog } from "@/components/bot/binance-profitable-bots-dialog";
+import { HistoryPanel } from "@/components/bot/history-panel";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -78,6 +85,7 @@ export function BotView() {
   const [drawerBot, setDrawerBot] = useState<BotInstance | null>(null);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [binanceBotsDialogOpen, setBinanceBotsDialogOpen] = useState(false);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
 
   const activeCount = bots.filter((b) => b.active).length;
   const pausedCount = bots.filter((b) => !b.active).length;
@@ -250,6 +258,12 @@ export function BotView() {
                 className="cursor-pointer text-sm font-medium rounded-[10px]"
               >
                 Scanner de pares Binance
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setHistoryDialogOpen(true)}
+                className="cursor-pointer text-sm font-medium rounded-[10px]"
+              >
+                Baixar candles (Histórico Binance)
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -634,6 +648,17 @@ export function BotView() {
         open={binanceBotsDialogOpen}
         onOpenChange={setBinanceBotsDialogOpen}
       />
+
+      <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
+        <DialogContent className="sm:max-w-2xl rounded-[24px] p-6 bg-white dark:bg-[#0f1622] border border-[#E7EBF0] dark:border-white/10 max-h-[88vh] overflow-y-auto font-instrument-sans">
+          <DialogHeader>
+            <DialogTitle className="font-instrument-serif text-2xl text-[#0E1B2C] dark:text-white">
+              Histórico de candles para os robôs
+            </DialogTitle>
+          </DialogHeader>
+          <HistoryPanel />
+        </DialogContent>
+      </Dialog>
 
       {/* Confirmação de Ações Críticas / Destrutivas */}
       <AlertDialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
