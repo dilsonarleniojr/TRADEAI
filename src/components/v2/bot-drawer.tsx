@@ -18,6 +18,10 @@ export function BotDrawer({ bot, open, onClose, onSave }: BotDrawerProps) {
   const [stopLoss, setStopLoss] = useState<number>(1.8);
   const [capitalAllocation, setCapitalAllocation] = useState<number>(500);
   const [trailingStop, setTrailingStop] = useState<boolean>(true);
+  const [useBtcGatekeeper, setUseBtcGatekeeper] = useState<boolean>(true);
+  const [useOrderBookFilter, setUseOrderBookFilter] = useState<boolean>(true);
+  const [usePartialTp, setUsePartialTp] = useState<boolean>(true);
+  const [disableConsecutiveLossBrake, setDisableConsecutiveLossBrake] = useState<boolean>(false);
   const [savedFeedback, setSavedFeedback] = useState<boolean>(false);
 
   useEffect(() => {
@@ -26,6 +30,10 @@ export function BotDrawer({ bot, open, onClose, onSave }: BotDrawerProps) {
       setStopLoss(bot.stopLoss ?? 1.8);
       setCapitalAllocation(bot.allocationAmount ?? 25);
       setTrailingStop(bot.trailingStop ?? true);
+      setUseBtcGatekeeper(bot.useBtcGatekeeper ?? true);
+      setUseOrderBookFilter(bot.useOrderBookFilter ?? true);
+      setUsePartialTp(bot.usePartialTp ?? true);
+      setDisableConsecutiveLossBrake(bot.disableConsecutiveLossBrake ?? false);
       setSavedFeedback(false);
     }
   }, [bot]);
@@ -38,6 +46,10 @@ export function BotDrawer({ bot, open, onClose, onSave }: BotDrawerProps) {
       stopLoss,
       allocationAmount: capitalAllocation,
       trailingStop,
+      useBtcGatekeeper,
+      useOrderBookFilter,
+      usePartialTp,
+      disableConsecutiveLossBrake,
     });
     setSavedFeedback(true);
     setTimeout(() => {
@@ -162,6 +174,64 @@ export function BotDrawer({ bot, open, onClose, onSave }: BotDrawerProps) {
                 </p>
               </div>
               <AppSwitch checked={trailingStop} onCheckedChange={setTrailingStop} />
+            </div>
+
+            {/* Guardrails de Risco do Robô */}
+            <div className="space-y-2.5 pt-2 border-t border-[#E7EBF0] dark:border-white/10">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#4A586A] dark:text-[#94a3b8] block">
+                Proteções & Filtros de Entrada
+              </span>
+
+              <div className="p-3.5 rounded-[14px] bg-[#F8FAFC] dark:bg-white/5 border border-[#E7EBF0] dark:border-white/10 flex items-center justify-between gap-3">
+                <div>
+                  <h5 className="font-semibold text-[13px] text-[#0E1B2C] dark:text-[#f8fafc]">
+                    Filtro Macro BTC (Gatekeeper)
+                  </h5>
+                  <p className="text-[11px] text-[#4A586A] dark:text-[#94a3b8]">
+                    Pausa compras quando o Bitcoin entra em queda forte.
+                  </p>
+                </div>
+                <AppSwitch checked={useBtcGatekeeper} onCheckedChange={setUseBtcGatekeeper} />
+              </div>
+
+              <div className="p-3.5 rounded-[14px] bg-[#F8FAFC] dark:bg-white/5 border border-[#E7EBF0] dark:border-white/10 flex items-center justify-between gap-3">
+                <div>
+                  <h5 className="font-semibold text-[13px] text-[#0E1B2C] dark:text-[#f8fafc]">
+                    Filtro de Livro L2 & Spread
+                  </h5>
+                  <p className="text-[11px] text-[#4A586A] dark:text-[#94a3b8]">
+                    Bloqueia entradas com spread aberto ou pressão vendedora.
+                  </p>
+                </div>
+                <AppSwitch checked={useOrderBookFilter} onCheckedChange={setUseOrderBookFilter} />
+              </div>
+
+              <div className="p-3.5 rounded-[14px] bg-[#F8FAFC] dark:bg-white/5 border border-[#E7EBF0] dark:border-white/10 flex items-center justify-between gap-3">
+                <div>
+                  <h5 className="font-semibold text-[13px] text-[#0E1B2C] dark:text-[#f8fafc]">
+                    Realização Parcial (TP Parcial)
+                  </h5>
+                  <p className="text-[11px] text-[#4A586A] dark:text-[#94a3b8]">
+                    Realiza parte do lucro em 1R e protege o restante no break-even.
+                  </p>
+                </div>
+                <AppSwitch checked={usePartialTp} onCheckedChange={setUsePartialTp} />
+              </div>
+
+              <div className="p-3.5 rounded-[14px] bg-[#FDF4F3] dark:bg-rose-500/10 border border-[#F1C9C5] dark:border-rose-500/30 flex items-center justify-between gap-3">
+                <div>
+                  <h5 className="font-semibold text-[13px] text-[#B42318] dark:text-rose-300">
+                    Liberar freio de 3 perdas consecutivas
+                  </h5>
+                  <p className="text-[11px] text-[#4A586A] dark:text-[#94a3b8]">
+                    Permite que este robô continue operando mesmo após 3 stops seguidos.
+                  </p>
+                </div>
+                <AppSwitch
+                  checked={disableConsecutiveLossBrake}
+                  onCheckedChange={setDisableConsecutiveLossBrake}
+                />
+              </div>
             </div>
           </div>
 

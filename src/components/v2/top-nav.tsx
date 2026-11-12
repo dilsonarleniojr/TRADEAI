@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useShallow } from "zustand/react/shallow";
 
-export type V2NavigationArea = "inicio" | "mercado" | "robos" | "carteira" | "aprender";
+export type V2NavigationArea = "inicio" | "mercado" | "robos" | "cockpit" | "carteira" | "aprender";
 
 export function TopNav() {
   const {
@@ -89,8 +89,9 @@ export function TopNav() {
       case "ai":
         return "mercado";
       case "bot":
-      case "institutional":
         return "robos";
+      case "institutional":
+        return "cockpit";
       case "history":
       case "journal":
         return "carteira";
@@ -115,6 +116,9 @@ export function TopNav() {
       case "robos":
         setActiveSection("bot");
         break;
+      case "cockpit":
+        setActiveSection("institutional");
+        break;
       case "carteira":
         setActiveSection("history");
         break;
@@ -128,6 +132,7 @@ export function TopNav() {
     { id: "inicio", label: "Início" },
     { id: "mercado", label: "Mercado" },
     { id: "robos", label: "Robôs" },
+    ...(proMode ? [{ id: "cockpit" as const, label: "Cockpit" }] : []),
     { id: "carteira", label: "Carteira" },
     { id: "aprender", label: "Aprender" },
   ];
