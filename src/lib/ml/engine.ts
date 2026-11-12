@@ -235,9 +235,13 @@ export function extractFeatures(klines: KlinePoint[]): FeatureRow[] {
 // Standardization (Z-Score) — better for gradient descent
 // ========================
 
-export function normalizeFeatures(features: FeatureRow[]): FeatureRow[] {
-  if (features.length === 0) return [];
+interface FeatureScalerStats {
+  keys: (keyof Omit<FeatureRow, "target">)[];
+  means: Record<string, number>;
+  stds: Record<string, number>;
+}
 
+function fitFeatureScaler(features: FeatureRow[]): FeatureScalerStats {
   const keys = Object.keys(features[0]).filter((k) => k !== "target") as (keyof Omit<FeatureRow, "target">)[];
   const means: Record<string, number> = {};
   const stds: Record<string, number> = {};
@@ -247,18 +251,25 @@ export function normalizeFeatures(features: FeatureRow[]): FeatureRow[] {
     const mean = vals.reduce((sum, v) => sum + v, 0) / vals.length;
     const variance = vals.reduce((sum, v) => sum + (v - mean) ** 2, 0) / vals.length;
     means[key] = mean;
-    stds[key] = Math.sqrt(variance) || 1; // Avoid division by zero
+    stds[key] = Math.sqrt(variance) || 1;
   }
+  return { keys, means, stds };
+}
 
+function applyFeatureScaler(features: FeatureRow[], stats: FeatureScalerStats): FeatureRow[] {
   return features.map((f) => {
     const normalized = { ...f };
-    for (const key of keys) {
-      normalized[key] = (f[key] - means[key]) / stds[key];
-      // Clip extreme values to [-5, 5] for stability
+    for (const key of stats.keys) {
+      normalized[key] = (f[key] - stats.means[key]) / stats.stds[key];
       normalized[key] = Math.max(-5, Math.min(5, normalized[key]));
     }
     return normalized;
   });
+}
+
+export function normalizeFeatures(features: FeatureRow[]): FeatureRow[] {
+  if (features.length === 0) return [];
+  return applyFeatureScaler(features, fitFeatureScaler(features));
 }
 
 // ========================
@@ -714,13 +725,15 @@ export function runMLPipeline(
     throw new Error("Dados insuficientes para treinar o modelo. Mínimo 50 amostras após engenharia de features.");
   }
 
-  // Step 2: Normalize features
-  const normalizedFeatures = normalizeFeatures(features);
+  // Step 2: Split train/test com embargo antes da normalização (elimina data leakage do futuro)
+  const splitIdx = Math.floor(features.length * config.trainRatio);
+  const embargo = Math.min(5, Math.max(0, Math.floor((features.length - splitIdx) / 4)));
+  const rawTrainData = features.slice(0, splitIdx);
+  const rawTestData = features.slice(splitIdx + embargo);
 
-  // Step 3: Split train/test
-  const splitIdx = Math.floor(normalizedFeatures.length * config.trainRatio);
-  const trainData = normalizedFeatures.slice(0, splitIdx);
-  const testData = normalizedFeatures.slice(splitIdx);
+  const scalerStats = fitFeatureScaler(rawTrainData);
+  const trainData = applyFeatureScaler(rawTrainData, scalerStats);
+  const testData = applyFeatureScaler(rawTestData, scalerStats);
 
   const featureNames = config.features;
 

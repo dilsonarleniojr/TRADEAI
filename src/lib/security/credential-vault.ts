@@ -20,8 +20,19 @@ export class CredentialVault {
    * Obtém a chave mestra de criptografia a partir de variável de ambiente ou chave passada.
    * Se a chave fornecida não tiver 32 bytes (256 bits), deriva deterministicamente via SHA-256.
    */
+  private static ephemeralFallbackKey: string | null = null;
+
   private static getDerivedKey(masterKey?: string): Buffer {
-    const key = masterKey || process.env.CREDENTIAL_VAULT_KEY || "tradeai-institutional-default-vault-key-32b!";
+    let key = masterKey || process.env.CREDENTIAL_VAULT_KEY;
+    if (!key) {
+      if (process.env.NODE_ENV === "production" && process.env.REQUIRE_VAULT_KEY === "true") {
+        throw new Error("CREDENTIAL_VAULT_KEY obrigatória não configurada.");
+      }
+      if (!this.ephemeralFallbackKey) {
+        this.ephemeralFallbackKey = crypto.randomBytes(32).toString("hex");
+      }
+      key = this.ephemeralFallbackKey;
+    }
     if (Buffer.byteLength(key, "utf8") === 32) {
       return Buffer.from(key, "utf8");
     }

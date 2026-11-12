@@ -759,9 +759,9 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
         ? await DirectOperationManager.forceEntry(created.id)
         : created;
 
-      // Simula expansão para alvo (MFE) e recuo controlado (MAE) sem violar SL
-      await DirectOperationManager.processPriceTick(session.id, session.entryPrice * 1.012); // Pico MFE +1.2%
+      // Simula recuo inicial (MAE) e expansão para alvo (MFE) sem violar SL
       await DirectOperationManager.processPriceTick(session.id, session.entryPrice * 0.998); // Recuo MAE -0.2%
+      await DirectOperationManager.processPriceTick(session.id, session.entryPrice * 1.012); // Pico MFE +1.2%
 
       const closed = await DirectOperationManager.closeOperation(
         session.id,

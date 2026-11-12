@@ -714,17 +714,17 @@ export async function runSignalAgent(
 
   if (!(price > 0)) return failSafe("Preço atual inválido ou ausente");
 
-  const { key } = resolveApiKey(provider);
-  if (!key) return failSafe(`Sem chave de API para o motor "${provider}"`);
-
-  const model = getModel(provider);
-  const user = `Analise ${symbol} ao preço atual de ${price}.\n${marketBrief}\nUse as ferramentas antes de decidir e responda só com o JSON final.`;
-
-  let loop: LoopResult | null = null;
-  let activeModelUsed = model;
   const candidateProviders = Array.from(new Set([provider, "gemini", "openai", "claude", "qwen"] as const)).filter(
     (p) => resolveApiKey(p).key
   );
+  if (candidateProviders.length === 0) {
+    return failSafe(`Sem chave de API configurada para "${provider}" nem para motores de failover`);
+  }
+
+  const user = `Analise ${symbol} ao preço atual de ${price}.\n${marketBrief}\nUse as ferramentas antes de decidir e responda só com o JSON final.`;
+
+  let loop: LoopResult | null = null;
+  let activeModelUsed = getModel(candidateProviders[0]);
 
   let lastErrorMsg = "";
   for (const p of candidateProviders) {

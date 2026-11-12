@@ -71,11 +71,48 @@ export function runBacktestSimulation(
     throw new Error("Série temporal insuficiente para backtesting (mínimo de 30 velas)");
   }
 
+function computeEmaSeries(closes: number[], period: number): number[] {
+  const result = new Array<number>(closes.length).fill(0);
+  if (closes.length === 0) return result;
+  const k = 2 / (period + 1);
+  let ema = closes[0];
+  result[0] = ema;
+  for (let i = 1; i < closes.length; i++) {
+    ema = closes[i] * k + ema * (1 - k);
+    result[i] = ema;
+  }
+  return result;
+}
+
+function computeRsiSeries(closes: number[], period: number = 14): number[] {
+  const result = new Array<number>(closes.length).fill(50);
+  if (closes.length <= period) return result;
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) avgGain += diff;
+    else avgLoss -= diff;
+  }
+  avgGain /= period;
+  avgLoss /= period;
+  result[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? -diff : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    result[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return result;
+}
+
   const closes = klines.map((k) => k.close);
-  const rsiValues = calculateRSI(closes, 14);
-  const ema9 = calculateEMA(closes, 9);
-  const ema21 = calculateEMA(closes, 21);
-  const ema50 = calculateEMA(closes, 50);
+  const rsiValues = computeRsiSeries(closes, 14);
+  const ema9 = computeEmaSeries(closes, 9);
+  const ema21 = computeEmaSeries(closes, 21);
+  const ema50 = computeEmaSeries(closes, 50);
 
   let currentCapital = initialCapital;
   let peakCapital = initialCapital;
@@ -148,10 +185,8 @@ export function runBacktestSimulation(
         currentCapital -= entryFee;
       }
     } else {
-      // 2. AVALIAÇÃO DE GATILHOS DE SAÍDA (POSIÇÃO ABERTA)
-      if (candle.high > highestPriceSinceEntry) {
-        highestPriceSinceEntry = candle.high;
-      }
+      // 2. AVALIAÇÃO DE GATILHOS DE SAÍDA (POSIÇÃO ABERTA - ordem conservadora: SL antes de TP)
+      const prevHighest = highestPriceSinceEntry;
 
       let shouldExit = false;
       let exitReason: SimulatedTrade["exitReason"] = "END_OF_SERIES";
@@ -160,30 +195,32 @@ export function runBacktestSimulation(
       const targetProfitPrice = entryPrice * (1 + params.takeProfit / 100);
       const hardStopLossPrice = entryPrice * (1 - params.stopLoss / 100);
 
-      // A) Take Profit atingido na máxima da vela
-      if (candle.high >= targetProfitPrice) {
-        shouldExit = true;
-        exitReason = "TAKE_PROFIT";
-        proposedExitPrice = targetProfitPrice;
-      }
-      // B) Hard Stop Loss violado na mínima da vela
-      else if (candle.low <= hardStopLossPrice) {
+      // A) Hard Stop Loss violado na mínima da vela (testado primeiro para evitar viés otimista intrabar)
+      if (candle.low <= hardStopLossPrice) {
         shouldExit = true;
         exitReason = "STOP_LOSS";
         proposedExitPrice = hardStopLossPrice;
       }
-      // C) Chandelier Trailing Stop ativado
+      // B) Chandelier Trailing Stop avaliado contra máxima anterior (sem look-ahead na mesma vela)
       else if (params.trailingStop) {
         const trailingDist = (params.trailingStopDistance || 0.6) / 100;
-        const trailingStopPrice = highestPriceSinceEntry * (1 - trailingDist);
-
-        // Apenas aciona se o preço já andou a favor pelo menos metade da distância do TP
-        const movedInProfit = highestPriceSinceEntry > entryPrice * 1.004;
+        const trailingStopPrice = prevHighest * (1 - trailingDist);
+        const movedInProfit = prevHighest > entryPrice * 1.004;
         if (movedInProfit && candle.low <= trailingStopPrice) {
           shouldExit = true;
           exitReason = "TRAILING_STOP";
           proposedExitPrice = trailingStopPrice;
         }
+      }
+      // C) Take Profit atingido na máxima da vela
+      if (!shouldExit && candle.high >= targetProfitPrice) {
+        shouldExit = true;
+        exitReason = "TAKE_PROFIT";
+        proposedExitPrice = targetProfitPrice;
+      }
+
+      if (candle.high > highestPriceSinceEntry) {
+        highestPriceSinceEntry = candle.high;
       }
 
       // Se for a última vela da série, fecha a mercado
@@ -201,10 +238,12 @@ export function runBacktestSimulation(
         const netTotal = grossTotal - exitFee;
 
         const cost = positionQty * entryPrice;
-        const netPnl = netTotal - cost;
+        const entryFeePaid = cost * takerFee;
+        const netPnl = netTotal - cost - entryFeePaid;
         const pnlPercent = cost > 0 ? (netPnl / cost) * 100 : 0;
 
-        currentCapital += netPnl;
+        // entryFeePaid já foi deduzido de currentCapital na entrada; soma apenas netTotal - cost
+        currentCapital += netTotal - cost;
         if (currentCapital > peakCapital) {
           peakCapital = currentCapital;
         }

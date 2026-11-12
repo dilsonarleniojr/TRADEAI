@@ -113,7 +113,8 @@ export class ExchangeMetadataService {
    */
   public quantizeQuantity(quantity: number, filters: SymbolFilters): number {
     const truncated = PreciseMath.quantizeLotDown(quantity, filters.stepSize);
-    return Math.max(filters.minQty, Math.min(filters.maxQty, truncated));
+    if (truncated < filters.minQty) return 0;
+    return Math.min(filters.maxQty, truncated);
   }
 
   /**

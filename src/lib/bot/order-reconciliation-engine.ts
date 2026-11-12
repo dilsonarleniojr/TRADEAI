@@ -3,6 +3,8 @@
  * Fulfills Pillar 1 (I/O Resiliency), Pillar 2 (Safety Nets) & Pillar 4 (Structured Logging)
  */
 
+import { PreciseMath } from "./pilot/precise-math";
+
 export interface SymbolExchangeFilter {
   symbol: string;
   tickSize: number;
@@ -40,17 +42,24 @@ export function sanitizeOrderToExchangeFilters(
     };
   }
 
-  // Ajuste de Precisão Decimal com base no tickSize e stepSize
-  const priceDecimals = Math.max(0, Math.round(-Math.log10(filter.tickSize)));
-  const qtyDecimals = Math.max(0, Math.round(-Math.log10(filter.stepSize)));
+  if (filter.tickSize <= 0 || filter.stepSize <= 0 || !Number.isFinite(quantity) || !Number.isFinite(price)) {
+    return {
+      symbol: symbol.toUpperCase(),
+      sanitizedQuantity: 0,
+      sanitizedPrice: 0,
+      notionalUsdt: 0,
+      isValid: false,
+      rejectionReason: "Filtros da exchange inválidos (tickSize/stepSize <= 0).",
+    };
+  }
 
-  const stepCount = Math.floor(quantity / filter.stepSize);
-  const rawQty = stepCount * filter.stepSize;
-  const sanitizedQuantity = Number(rawQty.toFixed(qtyDecimals));
-
-  const tickCount = Math.round(price / filter.tickSize);
-  const rawPrice = tickCount * filter.tickSize;
-  const sanitizedPrice = Number(rawPrice.toFixed(priceDecimals));
+  // Ajuste de Precisão Decimal exato com PreciseMath (evita erros de float em 0.3 / 0.1 ou tickSize 0.05)
+  const sanitizedQuantity = PreciseMath.quantizeLotDown(quantity, filter.stepSize);
+  const priceDecimals = PreciseMath.countDecimals(filter.tickSize);
+  const tickScale = Math.pow(10, priceDecimals);
+  const priceInt = Math.round(price * tickScale);
+  const tickInt = Math.max(1, Math.round(filter.tickSize * tickScale));
+  const sanitizedPrice = Number((Math.round(priceInt / tickInt) * tickInt / tickScale).toFixed(priceDecimals));
 
   const notionalUsdt = Number((sanitizedPrice * sanitizedQuantity).toFixed(4));
 

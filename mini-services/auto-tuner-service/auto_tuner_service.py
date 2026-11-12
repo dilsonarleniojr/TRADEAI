@@ -535,8 +535,8 @@ class IntradayStrategyEvaluator:
                             "time_in_force": "IOC"
                         }, t, book)
                         continue
-                    # Golden Cross (BUY)
-                    if prev_ema_fast <= prev_ema_slow and ema_fast > ema_slow and engine.position == 0:
+                # Golden Cross (BUY)
+                if prev_ema_fast <= prev_ema_slow and ema_fast > ema_slow and engine.position == 0:
                         target_capital = engine.portfolio_value * position_size_pct
                         qty = target_capital / ask
                         
@@ -559,7 +559,7 @@ class IntradayStrategyEvaluator:
                             }, t, book)
                             
                     # Death Cross (SELL)
-                    elif prev_ema_fast >= prev_ema_slow and ema_fast < ema_slow and engine.position > 0:
+                elif prev_ema_fast >= prev_ema_slow and ema_fast < ema_slow and engine.position > 0:
                         qty = engine.position
                         if order_slices > 1:
                             slicing_jobs.append({
@@ -728,8 +728,7 @@ class HyperparameterOptimizer:
                 "current_sharpe": current_metrics["sharpe"],
                 "best_sharpe": best_metric
             }
-            sys.stderr.write(json.dumps(prog) + "
-")
+            sys.stderr.write(json.dumps(prog) + "\n")
             sys.stderr.flush()
 
         if self.method == "Grid":
@@ -1011,8 +1010,12 @@ class OptimizationRequest(BaseModel):
 
 @app.post("/optimize")
 async def optimize(request: OptimizationRequest):
-    output_json = f"public/optimization_results_{request.symbol}_{request.strategy}.json"
-    output_csv = f"public/optimized_trades_{request.symbol}_{request.strategy}.csv"
+    import asyncio
+    import re
+    safe_symbol = re.sub(r"[^A-Z0-9]", "", request.symbol.upper()) or "BTCUSDT"
+    safe_strategy = re.sub(r"[^A-Za-z0-9_-]", "", request.strategy) or "Momentum"
+    output_json = f"public/optimization_results_{safe_symbol}_{safe_strategy}.json"
+    output_csv = f"public/optimized_trades_{safe_symbol}_{safe_strategy}.csv"
 
     os.makedirs(os.path.dirname(output_json) or '.', exist_ok=True)
     os.makedirs(os.path.dirname(output_csv) or '.', exist_ok=True)
@@ -1023,9 +1026,9 @@ async def optimize(request: OptimizationRequest):
     elif request.scenario == "low_liquidity":
         days = 14
 
-    df_tick = fetch_binance_data(request.symbol, days)
+    df_tick = await asyncio.to_thread(fetch_binance_data, safe_symbol, days)
 
-    evaluator = IntradayStrategyEvaluator(df_tick, request.strategy, initial_balance=1000000.0)
+    evaluator = IntradayStrategyEvaluator(df_tick, safe_strategy, initial_balance=1000000.0)
     optimizer = HyperparameterOptimizer(evaluator, request.method, num_iterations=request.iterations)
 
     if request.scenario == "variable_latency":
@@ -1034,10 +1037,10 @@ async def optimize(request: OptimizationRequest):
         optimizer.engine_config["slippage_model"] = "dynamic"
 
     start_time = time.perf_counter()
-    opt_results = optimizer.run()
+    opt_results = await asyncio.to_thread(optimizer.run)
     elapsed = time.perf_counter() - start_time
 
-    wf_results = run_walk_forward_validation(df_tick, request.strategy, opt_results["best_config"], optimizer.engine_config)
+    wf_results = await asyncio.to_thread(run_walk_forward_validation, df_tick, safe_strategy, opt_results["best_config"], optimizer.engine_config)
     sensitivity = calculate_sensitivity_matrix(opt_results["all_runs"])
 
     best_trades = opt_results["best_metrics"]["trades"]

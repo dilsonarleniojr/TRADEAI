@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth/auth-service';
+import { guardApiRequest } from '@/lib/auth/request-guard';
 
 export async function POST(req: NextRequest) {
+  const blocked = guardApiRequest(req, { rateLimit: { limit: 5, windowMs: 60_000, scope: 'auth-register' } });
+  if (blocked) return blocked;
+
   try {
     const body = await req.json();
     const { name, email, password, enableTwoFactor } = body;
@@ -25,14 +29,13 @@ export async function POST(req: NextRequest) {
       user: result.user,
       twoFactorSecret: result.twoFactorSecret,
       otpauthUri: result.otpauthUri,
-      sessionToken: result.sessionToken,
     });
 
     // Set HttpOnly cookie for session token
     response.cookies.set('tradeai_session', result.sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'strict',
       path: '/',
       maxAge: 86400, // 24 hours
     });

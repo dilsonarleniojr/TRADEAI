@@ -20,13 +20,24 @@ function playChime(type: SoundType) {
     if (isMuted) return;
   } catch {}
 
-  try {
-    const AudioContextClass =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
+let sharedAudioCtx: AudioContext | null = null;
 
-    const ctx = new AudioContextClass();
+function getSharedAudioContext(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  if (sharedAudioCtx && sharedAudioCtx.state !== "closed") {
+    return sharedAudioCtx;
+  }
+  const AudioContextClass =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextClass) return null;
+  sharedAudioCtx = new AudioContextClass();
+  return sharedAudioCtx;
+}
+
+  try {
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
     if (ctx.state === "suspended") {
       ctx.resume().catch(() => {});
     }

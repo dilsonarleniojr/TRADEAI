@@ -11,7 +11,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { PasswordHasher } from './password-hasher';
 import { TwoFactorAuth } from '@/lib/security/two-factor-auth';
 
@@ -42,13 +42,16 @@ export interface SessionTokenPayload {
 }
 
 const DB_PATH = path.join(process.cwd(), 'db', 'users.json');
+const EPHEMERAL_SESSION_SECRET = randomBytes(32).toString('hex');
 const SESSION_SECRET =
   process.env.AUTH_SECRET ||
   process.env.NEXTAUTH_SECRET ||
-  'tradeai-institutional-auth-session-key-32b!';
+  EPHEMERAL_SESSION_SECRET;
+const DUMMY_PASSWORD_HASH = PasswordHasher.hashPassword('dummy-timing-constant-password');
 
 export class AuthService {
   private static usersCache: Map<string, UserRecord> = new Map();
+  private static revokedTokens: Map<string, number> = new Map();
   private static isLoaded = false;
 
   private static loadUsers(): void {
@@ -75,7 +78,9 @@ export class AuthService {
         fs.mkdirSync(dir, { recursive: true });
       }
       const list = Array.from(this.usersCache.values());
-      fs.writeFileSync(DB_PATH, JSON.stringify(list, null, 2), 'utf-8');
+      const tmpPath = `${DB_PATH}.${process.pid}.tmp`;
+      fs.writeFileSync(tmpPath, JSON.stringify(list, null, 2), 'utf-8');
+      fs.renameSync(tmpPath, DB_PATH);
     } catch (err) {
       console.error('Failed to save users to db/users.json', err);
     }
@@ -151,6 +156,8 @@ export class AuthService {
     const user = this.usersCache.get(emailKey);
 
     if (!user) {
+      // Executa verificação dummy para manter tempo constante e evitar enumeração de contas
+      PasswordHasher.verifyPassword(params.password, DUMMY_PASSWORD_HASH);
       throw new Error('Credenciais inválidas.');
     }
 
@@ -228,8 +235,26 @@ export class AuthService {
     return `${b64Payload}.${signature}`;
   }
 
+  static revokeSession(token: string): void {
+    if (!token) return;
+    const payload = this.verifySessionToken(token);
+    const expiresAt = payload?.expiresAt ?? Date.now() + 86_400_000;
+    this.revokedTokens.set(token, expiresAt);
+    if (this.revokedTokens.size > 2000) {
+      const now = Date.now();
+      for (const [k, exp] of this.revokedTokens.entries()) {
+        if (now > exp) this.revokedTokens.delete(k);
+      }
+    }
+  }
+
   static verifySessionToken(token: string): SessionTokenPayload | null {
     try {
+      const revokedExp = this.revokedTokens.get(token);
+      if (revokedExp !== undefined) {
+        if (Date.now() <= revokedExp) return null;
+        this.revokedTokens.delete(token);
+      }
       const [b64Payload, signature] = token.split('.');
       if (!b64Payload || !signature) return null;
 

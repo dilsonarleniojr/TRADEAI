@@ -341,7 +341,52 @@ export async function checkRestingMakerOrdersTimeout() {
                 botName: order.botName,
               });
               continue;
+            } else if (binanceStatus === "PARTIALLY_FILLED") {
+              // Reconcilia a quantidade parcial já executada
+              const executedQty = parseFloat(statusJson.data.executedQty) || 0;
+              if (executedQty > 0) {
+                const botTarget = store.bots.find((b) => b.id === order.botId);
+                if (botTarget && (!botTarget.position || botTarget.position.quantity < executedQty)) {
+                  store.updateBot(order.botId, {
+                    position: {
+                      symbol: order.symbol,
+                      entryPrice: order.price,
+                      quantity: executedQty,
+                      entryTime: new Date(order.createdAt).toISOString(),
+                      type: "LONG",
+                    },
+                  });
+                  store.addBotLog({
+                    message: `⚡ [${order.botName}] Ordem LIMIT_MAKER PARCIALMENTE PREENCHIDA em ${order.symbol}: ${executedQty}/${order.quantity}. Posição ajustada para a quantidade real executada.`,
+                    type: "info",
+                    botId: order.botId,
+                    botName: order.botName,
+                  });
+                }
+              }
             } else if (binanceStatus === "CANCELED" || binanceStatus === "REJECTED" || binanceStatus === "EXPIRED") {
+              // Se foi cancelada mas teve execução parcial antes do cancelamento, atualiza a posição do bot
+              const executedQty = parseFloat(statusJson.data.executedQty) || 0;
+              if (executedQty > 0) {
+                const botTarget = store.bots.find((b) => b.id === order.botId);
+                if (botTarget && (!botTarget.position || botTarget.position.quantity < executedQty)) {
+                  store.updateBot(order.botId, {
+                    position: {
+                      symbol: order.symbol,
+                      entryPrice: order.price,
+                      quantity: executedQty,
+                      entryTime: new Date(order.createdAt).toISOString(),
+                      type: "LONG",
+                    },
+                  });
+                  store.addBotLog({
+                    message: `ℹ️ [${order.botName}] Ordem encerrada com preenchimento parcial em ${order.symbol}: ${executedQty}/${order.quantity}. Posição retida com sucesso.`,
+                    type: "warning",
+                    botId: order.botId,
+                    botName: order.botName,
+                  });
+                }
+              }
               restingMakerOrders.delete(key);
               riskManager.recordMakerCancel(order.symbol);
               continue;
@@ -1049,10 +1094,22 @@ export async function reconcileOrphanPositions(callbacks?: MultiBotEngineCallbac
   }
 }
 
+let isFleetTickRunning = false;
+
 /**
  * Evaluates all active bots simultaneously and executes buys/sells aiming strictly for profit.
  */
 export async function tickMultiBotFleet(callbacks?: MultiBotEngineCallbacks) {
+  if (isFleetTickRunning) return;
+  isFleetTickRunning = true;
+  try {
+    await tickMultiBotFleetLocked(callbacks);
+  } finally {
+    isFleetTickRunning = false;
+  }
+}
+
+async function tickMultiBotFleetLocked(callbacks?: MultiBotEngineCallbacks) {
   const store = useCryptoStore.getState();
   const { bots, tradingMode } = store;
 
@@ -2138,10 +2195,10 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         }
 
         const maxSafeCash = Math.max(0, cash * 0.95);
-        // Calibrado para a banca real (~$150 USD total, ~$108 livre):
-        // Garante ordens entre $18 e $25 USDT (gerando lucros reais de +$0.70 a +$1.50 por trade)
-        const calibratedCap = Math.max(18.0, Math.min(25.0, bot.allocationAmount || 22.0));
-        const maxCap = Math.min(maxSafeCash, calibratedCap);
+        // Guardrail institucional: teto rígido de 5% do saldo da banca (NAV) por ativo individual
+        const navFivePctCap = Math.max(0, cash * 0.05);
+        const requestedCap = bot.allocationAmount || navFivePctCap;
+        const maxCap = Math.min(maxSafeCash, navFivePctCap, requestedCap);
 
         // Stop Loss projetado para dimensionamento fracionário de risco (≤ 1.0% do saldo)
         const slPct = (decision.suggestedSl || bot.stopLoss || 1.3) / 100;

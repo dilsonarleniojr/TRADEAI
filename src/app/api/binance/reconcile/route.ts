@@ -86,6 +86,10 @@ export async function GET(request: Request) {
  * Cancela ordens específicas ou todas as ordens abertas de um par na Binance.
  */
 export async function DELETE(request: Request) {
+  const { guardApiRequest } = await import("@/lib/auth/request-guard");
+  const blocked = guardApiRequest(request, { rateLimit: { limit: 30, windowMs: 60_000, scope: "binance-reconcile" } });
+  if (blocked) return blocked;
+
   try {
     const { apiKey, apiSecret, testnet } = getBinanceCredentials(request);
     if (!apiKey || !apiSecret) {
@@ -93,15 +97,17 @@ export async function DELETE(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const symbol = searchParams.get("symbol");
-    const orderId = searchParams.get("orderId");
+    const rawSymbol = (searchParams.get("symbol") || "").trim().toUpperCase();
+    const rawOrderId = (searchParams.get("orderId") || "").trim();
+    const symbol = /^[A-Z0-9]{4,20}$/.test(rawSymbol) ? rawSymbol : "";
+    const orderId = /^\d+$/.test(rawOrderId) ? rawOrderId : "";
     const cancelAllForSymbol = searchParams.get("cancelAll") === "true";
 
     const baseUrl = testnet ? "https://testnet.binance.vision" : "https://api.binance.com";
 
     if (cancelAllForSymbol && symbol) {
       const timestamp = await getSynchronizedTimestamp(baseUrl);
-      const query = `symbol=${symbol}&timestamp=${timestamp}&recvWindow=60000`;
+      const query = new URLSearchParams({ symbol, timestamp: String(timestamp), recvWindow: "60000" }).toString();
       const signature = crypto.createHmac("sha256", apiSecret).update(query).digest("hex");
 
       const cancelRes = await fetch(`${baseUrl}/api/v3/openOrders?${query}&signature=${signature}`, {
@@ -118,7 +124,7 @@ export async function DELETE(request: Request) {
 
     if (symbol && orderId) {
       const timestamp = await getSynchronizedTimestamp(baseUrl);
-      const query = `symbol=${symbol}&orderId=${orderId}&timestamp=${timestamp}&recvWindow=60000`;
+      const query = new URLSearchParams({ symbol, orderId, timestamp: String(timestamp), recvWindow: "60000" }).toString();
       const signature = crypto.createHmac("sha256", apiSecret).update(query).digest("hex");
 
       const cancelRes = await fetch(`${baseUrl}/api/v3/order?${query}&signature=${signature}`, {

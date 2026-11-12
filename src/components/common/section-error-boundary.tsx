@@ -5,7 +5,6 @@ import { AlertTriangle, RotateCcw, LayoutDashboard, ShieldAlert } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCryptoStore } from "@/lib/store";
-import { DEFAULT_BOTS } from "@/lib/store/botSlice";
 
 interface Props {
   children: ReactNode;
@@ -42,7 +41,7 @@ export class SectionErrorBoundary extends Component<Props, State> {
         localStorage.removeItem("tradeai_bots_v1");
         localStorage.removeItem("tradeai_fleet_bots");
       }
-      useCryptoStore.getState().setBots(DEFAULT_BOTS);
+      useCryptoStore.getState().setBots([]);
       useCryptoStore.getState().setActiveSection("bot");
       this.setState({ hasError: false, error: null });
     } catch (err) {

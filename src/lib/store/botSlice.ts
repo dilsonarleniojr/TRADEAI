@@ -372,11 +372,14 @@ export function deduplicateBots(bots: BotInstance[]): BotInstance[] {
 }
 
 function loadBotsFromStorage(): BotInstance[] {
-  if (typeof window === "undefined") return DEFAULT_BOTS;
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(BOTS_STORAGE_KEY);
-    if (!raw) return DEFAULT_BOTS;
+    if (!raw) return [];
     const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length === 0) {
+      return [];
+    }
     if (Array.isArray(parsed) && parsed.length > 0) {
       // Purgar robôs de teste hardcoded legados (BAT e AMP mockados)
       const sanitized = parsed.filter(
@@ -444,7 +447,111 @@ function loadBotsFromStorage(): BotInstance[] {
   } catch (e) {
     console.warn("[botSlice] Falha ao carregar frota de robôs do localStorage:", e);
   }
-  return DEFAULT_BOTS;
+  return [];
+}
+
+/**
+ * Ao criar um bot, baixa as velas da Binance (1m, 5m, 15m, 1h) e realiza
+ * ajustes automáticos de Stop Loss, Take Profit, Break-Even e Sizing para operação.
+ */
+async function prepareBotForOperation(botId: string, getState: () => any): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    const state = getState();
+    const bot: BotInstance | undefined = state?.bots?.find((b: BotInstance) => b.id === botId);
+    if (!bot) return;
+
+    const targetSym =
+      bot.overrideSymbol && bot.overrideSymbol !== "AUTO"
+        ? bot.overrideSymbol.trim().toUpperCase()
+        : bot.symbol.trim().toUpperCase();
+
+    const symbolsToSync =
+      !targetSym || targetSym === "AUTO" ? ["BTCUSDT", "ETHUSDT", "SOLUSDT"] : [targetSym];
+    const intervals = ["1m", "5m", "15m", "1h"];
+
+    // 1. Baixa velas da Binance em paralelo para todos os timeframes necessários
+    let referenceKlines: Array<{ high: number; low: number; close: number }> = [];
+    await Promise.allSettled(
+      symbolsToSync.flatMap((sym) =>
+        intervals.map(async (interval) => {
+          const res = await fetch(
+            `/api/market/klines?symbol=${encodeURIComponent(sym)}&interval=${interval}&limit=100`,
+            { signal: AbortSignal.timeout(8000) }
+          );
+          if (!res.ok) return;
+          const json = await res.json();
+          if (sym === symbolsToSync[0] && interval === "15m" && Array.isArray(json?.data) && json.data.length > 0) {
+            referenceKlines = json.data.map((k: any) => ({
+              high: parseFloat(k.high),
+              low: parseFloat(k.low),
+              close: parseFloat(k.close),
+            }));
+          }
+        })
+      )
+    );
+
+    // Atualiza o gráfico/klines na store caso seja um par específico
+    if (targetSym && targetSym !== "AUTO" && typeof state?.loadKlinesForSymbol === "function") {
+      void state.loadKlinesForSymbol(targetSym, "15m");
+    }
+
+    // 2. Calcula ATR% (14 períodos) das velas baixadas para calibrar SL/TP/Break-Even
+    let atrPercent = 0;
+    if (referenceKlines.length >= 15) {
+      let trSum = 0;
+      const start = referenceKlines.length - 14;
+      for (let i = start; i < referenceKlines.length; i++) {
+        const cur = referenceKlines[i];
+        const prevClose = referenceKlines[i - 1].close;
+        const tr = Math.max(
+          cur.high - cur.low,
+          Math.abs(cur.high - prevClose),
+          Math.abs(cur.low - prevClose)
+        );
+        trSum += tr;
+      }
+      const lastClose = referenceKlines[referenceKlines.length - 1].close;
+      if (lastClose > 0) {
+        atrPercent = ((trSum / 14) / lastClose) * 100;
+      }
+    }
+
+    // 3. Ajusta parâmetros operacionais dentro dos guardrails institucionais
+    const latestState = getState();
+    const latestBot: BotInstance | undefined = latestState?.bots?.find((b: BotInstance) => b.id === botId);
+    if (!latestBot) return;
+
+    const adjustedSl =
+      atrPercent > 0
+        ? Number(Math.max(1.1, Math.min(2.0, atrPercent * 1.35)).toFixed(2))
+        : Math.max(1.1, Math.min(2.0, latestBot.stopLoss || 1.5));
+    const adjustedTp = Number(Math.max(3.2, Math.min(6.5, adjustedSl * 2.2)).toFixed(2));
+    const adjustedBreakEven = Number(Math.max(1.2, Math.min(adjustedTp * 0.65, adjustedSl * 1.1)).toFixed(2));
+
+    const cashBalance = Number(latestState?.account?.cashBalance || 0);
+    const navFivePct = cashBalance > 0 ? Number((cashBalance * 0.05).toFixed(2)) : 0;
+    const adjustedAllocation =
+      navFivePct >= 5
+        ? Math.min(latestBot.allocationAmount || navFivePct, navFivePct)
+        : latestBot.allocationAmount;
+
+    latestState.updateBot(botId, {
+      stopLoss: adjustedSl,
+      takeProfit: adjustedTp,
+      breakEvenTrigger: adjustedBreakEven,
+      slippageTolerance: latestBot.slippageTolerance ?? 0.35,
+      allocationAmount: adjustedAllocation,
+      stats: {
+        ...latestBot.stats,
+        lastAction: `✅ Velas Binance sincronizadas e ajustes aplicados (SL ${adjustedSl}% / TP ${adjustedTp}%)`,
+        lastActionTime: new Date().toISOString(),
+      },
+    });
+  } catch (err) {
+    console.warn("[botSlice] Falha ao preparar bot após criação:", err);
+  }
 }
 
 let persistBotsTimer: ReturnType<typeof setTimeout> | null = null;
@@ -846,6 +953,8 @@ export const createBotSlice: StateCreator<
       return { bots: updated, selectedBotId: id };
     });
 
+    void prepareBotForOperation(id, get);
+
     return id;
   },
 
@@ -989,6 +1098,7 @@ export const createBotSlice: StateCreator<
         const currentPrice = ticker.price;
         const entryPrice = b.position.entryPrice;
         if (entryPrice <= 0) return b;
+        if (b.position.currentPrice === currentPrice) return b;
 
         const gainPercent = ((currentPrice - entryPrice) / entryPrice) * 100;
         const unrealizedPnlUsdt = parseFloat(((currentPrice - entryPrice) * b.position.quantity).toFixed(2));

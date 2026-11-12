@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getBinanceCredentials } from '@/lib/binance-session';
+import { guardApiRequest } from '@/lib/auth/request-guard';
 import crypto from 'crypto';
 
 import { fetchFromBinanceService } from '@/lib/binance-service';
@@ -202,7 +203,7 @@ async function buildLiveAccount(apiKey: string, apiSecret: string, testnet: bool
     console.error('[Account API] Failed to fetch real Binance account balance:', err.message);
     let msg = err.message;
     if (err.message?.includes('-2015')) {
-      msg = "Chave API inválida, IP não autorizado ou sem permissão de Leitura na Binance. Verifique se o IP 168.121.98.202 está cadastrado no Gerenciamento de API da Binance ou se a chave expirou.";
+      msg = "Chave API inválida, IP não autorizado ou sem permissão de Leitura na Binance. Verifique a lista de IPs confiáveis no Gerenciamento de API da Binance ou se a chave expirou.";
     }
     throw new Error(`Conexão Binance falhou: ${msg}`);
   }
@@ -376,6 +377,9 @@ async function buildPaperAccount() {
 }
 
 export async function POST(request: NextRequest) {
+  const blocked = guardApiRequest(request, { rateLimit: { limit: 30, windowMs: 60_000, scope: 'account-post' } });
+  if (blocked) return blocked;
+
   try {
     const body = await request.json();
     const { cashBalance, assetQuantity, symbol } = body;
@@ -413,7 +417,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
+  const blocked = guardApiRequest(request, { rateLimit: { limit: 10, windowMs: 60_000, scope: 'account-delete' } });
+  if (blocked) return blocked;
+
   try {
     const account = await db.$transaction(async (tx) => {
       return await tx.account.upsert({

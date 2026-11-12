@@ -713,21 +713,24 @@ export class DirectOperationManager {
       }
     }
 
+    // 9. Usa estritamente o dimensionamento validado pelo PilotTradeValidator
+    const validatedQty = validation.order.quantity;
+    const validatedNotional = validation.order.notionalUsd;
     const isImmediate = opportunity.triggerCondition.type === 'IMMEDIATE';
     let finalEntryPrice = entryPrice;
-    let finalQty = quantizedQty;
-    let finalNotional = notionalUsd;
+    let finalQty = validatedQty;
+    let finalNotional = validatedNotional;
     let binanceOrderId: string | undefined;
     let binanceClientOrderId: string | undefined;
     let executedQty: number | undefined;
 
-    // 9. Se for modo REAL (live) e o gatilho for IMEDIATO, executa a compra a mercado agora na Binance Spot
+    // 10. Se for modo REAL (live) e o gatilho for IMEDIATO, executa a compra a mercado agora na Binance Spot
     if (mode === 'live' && isImmediate) {
       const orderExecutor = PilotOrderExecutor.getInstance();
       const liveBuyResult = await orderExecutor.executeLiveBuy({
         symbol: opportunity.symbol,
-        notionalUsd,
-        suggestedQty: quantizedQty,
+        notionalUsd: validatedNotional,
+        suggestedQty: validatedQty,
         filters,
         credentials: binanceCredentials!,
       });
@@ -735,7 +738,7 @@ export class DirectOperationManager {
       binanceOrderId = String(liveBuyResult.orderId);
       binanceClientOrderId = liveBuyResult.clientOrderId;
       executedQty = liveBuyResult.executedQty;
-      finalQty = liveBuyResult.executedQty > 0 ? liveBuyResult.executedQty : quantizedQty;
+      finalQty = liveBuyResult.executedQty > 0 ? liveBuyResult.executedQty : validatedQty;
       if (liveBuyResult.avgPrice > 0) {
         finalEntryPrice = liveBuyResult.avgPrice;
         finalNotional = PreciseMath.roundDown(finalQty * finalEntryPrice, 2);
@@ -1076,6 +1079,8 @@ export class DirectOperationManager {
     return await this.processPriceTick(sessionId, latestPrice);
   }
 
+  private static activeTickLocks = new Set<string>();
+
   /**
    * Processa um tick de preço recebido (via WebSocket nativo ou Polling)
    * Executa a escada de parciais 50/50, break-even blindado (+0.35%) e trailing stop adaptativo
@@ -1085,6 +1090,22 @@ export class DirectOperationManager {
     if (!session || session.status === 'CLOSED' || session.status === 'CANCELLED') {
       return session!;
     }
+    if (this.activeTickLocks.has(sessionId)) {
+      return session;
+    }
+    this.activeTickLocks.add(sessionId);
+    try {
+      return await this.processPriceTickLocked(sessionId, session, latestPrice);
+    } finally {
+      this.activeTickLocks.delete(sessionId);
+    }
+  }
+
+  private static async processPriceTickLocked(
+    sessionId: string,
+    session: DirectOperationSession,
+    latestPrice: number
+  ): Promise<DirectOperationSession> {
 
     session.currentPrice = latestPrice;
 
@@ -1197,13 +1218,15 @@ export class DirectOperationManager {
                 credentials: session.credentials,
               });
             } catch (err: any) {
-              console.error(`[DirectOperationManager] Falha ao despachar venda TP1 na Binance:`, err.message);
+              console.error(`[DirectOperationManager] Falha ao despachar venda TP1 na Binance (estado preservado):`, err.message);
+              return session;
             }
           }
 
           const partialGross = (latestPrice - session.entryPrice) * tp1Qty;
-          const partialFee = (tp1Qty * latestPrice) * 0.001;
-          const partialNetPnl = PreciseMath.roundDown(partialGross - partialFee, 2);
+          const partialEntryFee = (tp1Qty * session.entryPrice) * 0.001;
+          const partialExitFee = (tp1Qty * latestPrice) * 0.001;
+          const partialNetPnl = PreciseMath.roundDown(partialGross - partialEntryFee - partialExitFee, 2);
 
           const tp1ExecTimestamp = Date.now();
           session.isTp1Taken = true;
@@ -1326,13 +1349,15 @@ export class DirectOperationManager {
                 credentials: session.credentials,
               });
             } catch (err: any) {
-              console.error(`[DirectOperationManager] Falha ao despachar venda TP2 na Binance:`, err.message);
+              console.error(`[DirectOperationManager] Falha ao despachar venda TP2 na Binance (estado preservado):`, err.message);
+              return session;
             }
           }
 
           const grossPnl = (latestPrice - session.entryPrice) * tp2Qty;
-          const fee = (tp2Qty * latestPrice) * 0.001;
-          const tp2NetPnl = PreciseMath.roundDown(grossPnl - fee, 2);
+          const entryFeePart = (tp2Qty * session.entryPrice) * 0.001;
+          const exitFeePart = (tp2Qty * latestPrice) * 0.001;
+          const tp2NetPnl = PreciseMath.roundDown(grossPnl - entryFeePart - exitFeePart, 2);
 
           const tp2ExecTimestamp = Date.now();
           session.isTp2Taken = true;
@@ -1547,12 +1572,12 @@ export class DirectOperationManager {
     const grossPnl = priceDiff * effectiveQty;
 
     // Dedução realista de taxas Maker (entrada) + Taker (saída a mercado de encerramento)
-    const entryFee = session.notionalUsd * 0.001;
+    const entryFee = (effectiveQty * session.entryPrice) * 0.001;
     const exitNotional = effectiveQty * exitPrice;
     const exitFee = exitNotional * 0.001;
     const totalFees = entryFee + exitFee;
 
-    const netRunnerPnl = grossPnl - exitFee;
+    const netRunnerPnl = grossPnl - entryFee - exitFee;
     const totalRealizedPnl = (session.partialRealizedPnlUsd || 0) + netRunnerPnl;
     const netPercent = (totalRealizedPnl / session.investedAmountUsd) * 100;
 

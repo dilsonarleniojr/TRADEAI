@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPublicSettings, updateSettings, type SettingsUpdate } from "@/lib/ai/settings";
 import { isProviderId } from "@/lib/ai/providers";
+import { guardApiRequest } from "@/lib/auth/request-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,9 @@ export async function GET() {
 
 /** Body: { provider?, target?, model?, apiKey?, clearKey? } */
 export async function PUT(request: NextRequest) {
+  const blocked = guardApiRequest(request, { rateLimit: { limit: 20, windowMs: 60_000, scope: "ai-settings" } });
+  if (blocked) return blocked;
+
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "Corpo inválido" }, { status: 400 });

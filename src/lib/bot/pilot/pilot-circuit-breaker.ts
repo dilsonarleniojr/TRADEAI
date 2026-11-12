@@ -119,21 +119,31 @@ export class PilotRiskCircuitBreaker {
     const now = Date.now();
 
     // Verifica hibernação de 24h
-    if (this.hibernationUntil && now < this.hibernationUntil) {
-      const remainingMinutes = Math.ceil((this.hibernationUntil - now) / 60000);
-      return {
-        allowed: false,
-        reason: `HIBERNATION_ACTIVE: Circuit Breaker diário disparado. Hibernação restante: ${remainingMinutes} minutos.`,
-      };
+    if (this.hibernationUntil) {
+      if (now < this.hibernationUntil) {
+        const remainingMinutes = Math.ceil((this.hibernationUntil - now) / 60000);
+        return {
+          allowed: false,
+          reason: `HIBERNATION_ACTIVE: Circuit Breaker diário disparado. Hibernação restante: ${remainingMinutes} minutos.`,
+        };
+      }
+      // Hibernação expirada: reseta contadores para não re-disparar no próximo trade
+      this.hibernationUntil = null;
+      this.accumulatedDailyLossUsd = 0;
+      this.consecutiveLossCount = 0;
     }
 
     // Verifica cooldown de perdas consecutivas (60 min)
-    if (this.consecutiveLossCooldownUntil && now < this.consecutiveLossCooldownUntil) {
-      const remainingMinutes = Math.ceil((this.consecutiveLossCooldownUntil - now) / 60000);
-      return {
-        allowed: false,
-        reason: `CONSECUTIVE_LOSS_COOLDOWN_ACTIVE: Freio de perdas consecutivas ativo. Restante: ${remainingMinutes} minutos.`,
-      };
+    if (this.consecutiveLossCooldownUntil) {
+      if (now < this.consecutiveLossCooldownUntil) {
+        const remainingMinutes = Math.ceil((this.consecutiveLossCooldownUntil - now) / 60000);
+        return {
+          allowed: false,
+          reason: `CONSECUTIVE_LOSS_COOLDOWN_ACTIVE: Freio de perdas consecutivas ativo. Restante: ${remainingMinutes} minutos.`,
+        };
+      }
+      this.consecutiveLossCooldownUntil = null;
+      this.consecutiveLossCount = 0;
     }
 
     return { allowed: true };

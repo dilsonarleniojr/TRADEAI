@@ -10,7 +10,16 @@ interface CacheEntry<T> {
   timestamp: number;
 }
 
+const MAX_SWR_ENTRIES = 500;
 const cacheStore = new Map<string, CacheEntry<any>>();
+
+function setBoundedSWR(key: string, entry: CacheEntry<any>) {
+  if (cacheStore.size >= MAX_SWR_ENTRIES && !cacheStore.has(key)) {
+    const oldestKey = cacheStore.keys().next().value;
+    if (oldestKey !== undefined) cacheStore.delete(oldestKey);
+  }
+  cacheStore.set(key, entry);
+}
 
 export async function fetchWithSWR<T>(
   key: string,
@@ -30,7 +39,7 @@ export async function fetchWithSWR<T>(
     fetcher()
       .then((fresh) => {
         if (fresh !== undefined && fresh !== null) {
-          cacheStore.set(key, { data: fresh, timestamp: Date.now() });
+          setBoundedSWR(key, { data: fresh, timestamp: Date.now() });
         }
       })
       .catch((err) => {
@@ -42,7 +51,7 @@ export async function fetchWithSWR<T>(
 
   // Initial fetch (cold cache)
   const fresh = await fetcher();
-  cacheStore.set(key, { data: fresh, timestamp: now });
+  setBoundedSWR(key, { data: fresh, timestamp: now });
   return { data: fresh, cached: false };
 }
 

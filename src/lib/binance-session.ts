@@ -80,14 +80,32 @@ export function getBinanceCredentials(request: NextRequest | Request): BinanceCr
   };
 }
 
-// Defesa contra CSRF em rotas que alteram a sessão: exige mesma origem quando o header existe.
+// Defesa contra CSRF em rotas que alteram estado: valida Origin/Referer/Sec-Fetch-Site.
 export function isSameOrigin(request: Request): boolean {
-  const origin = request.headers.get("origin");
-  if (!origin) return true;
-  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
-  try {
-    return new URL(origin).host === host;
-  } catch {
+  const secFetchSite = request.headers.get("sec-fetch-site")?.trim().toLowerCase();
+  if (secFetchSite === "cross-site") {
     return false;
   }
+
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try {
+      return new URL(origin).host === host;
+    } catch {
+      return false;
+    }
+  }
+
+  const referer = request.headers.get("referer");
+  if (referer) {
+    try {
+      return new URL(referer).host === host;
+    } catch {
+      return false;
+    }
+  }
+
+  // Sem Origin e sem Referer: aceita apenas se não veio de contexto cross-site
+  return secFetchSite !== "cross-site";
 }

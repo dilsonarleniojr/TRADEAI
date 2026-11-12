@@ -12,6 +12,7 @@ interface CacheEntry<T> {
 }
 
 class MemoryCache {
+  private static readonly MAX_ENTRIES = 500;
   private cache = new Map<string, CacheEntry<any>>();
   private inflight = new Map<string, Promise<any>>();
 
@@ -34,6 +35,10 @@ class MemoryCache {
    * Armazena um item no cache com TTL em milissegundos.
    */
   set<T>(key: string, data: T, ttlMs: number): void {
+    if (this.cache.size >= MemoryCache.MAX_ENTRIES && !this.cache.has(key)) {
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey !== undefined) this.cache.delete(oldestKey);
+    }
     this.cache.set(key, {
       data,
       expiresAt: Date.now() + ttlMs,

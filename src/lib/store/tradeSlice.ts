@@ -236,16 +236,22 @@ export const createTradeSlice: StateCreator<any, [], [], TradeSlice> = (set, get
 
   updateBotPnls: (tickers) =>
     set((state) => {
+      if (state.activeBots.length === 0) return state;
+      let changed = false;
       const updatedBots = state.activeBots.map((bot) => {
         const t = tickers[bot.symbol];
-        if (t && bot.status === "RUNNING") {
-          const change = (t.priceChangePercent || 0) * 0.1;
-          const newPnl = bot.pnl + change;
-          return { ...bot, pnl: newPnl };
+        if (t && bot.status === "RUNNING" && Number.isFinite(t.price) && t.price > 0) {
+          // Calcula variação percentual sobre o preço médio ou mantém estável sem acúmulo artificial
+          const pct = Number.isFinite(t.priceChangePercent) ? t.priceChangePercent : 0;
+          const nextPnl = Number((bot.allocatedCapital * (pct / 100)).toFixed(2));
+          if (nextPnl !== bot.pnl) {
+            changed = true;
+            return { ...bot, pnl: nextPnl };
+          }
         }
         return bot;
       });
-      // Recalculate global drawdown
+      if (!changed) return state;
       const totalPnl = updatedBots.reduce((s, b) => s + b.pnl, 0);
       const currentEquity = state.marginLedger.totalAccount + totalPnl;
       const peakEquity = Math.max(state.marginLedger.peakEquity, currentEquity);
@@ -277,7 +283,7 @@ export const createTradeSlice: StateCreator<any, [], [], TradeSlice> = (set, get
   setTrades: (trades) => set({ trades }),
   addTrade: (trade) =>
     set((state) => ({
-      trades: [trade, ...state.trades],
+      trades: [trade, ...state.trades].slice(0, 500),
     })),
 
   // Bot Logs
@@ -400,7 +406,7 @@ export const createTradeSlice: StateCreator<any, [], [], TradeSlice> = (set, get
     }
 
     set((s) => ({
-      aiSignals: [signal, ...s.aiSignals],
+      aiSignals: [signal, ...s.aiSignals].slice(0, 100),
     }));
   },
 
@@ -408,7 +414,7 @@ export const createTradeSlice: StateCreator<any, [], [], TradeSlice> = (set, get
   chatMessages: [],
   addChatMessage: (message) =>
     set((state) => ({
-      chatMessages: [...state.chatMessages, message],
+      chatMessages: [...state.chatMessages, message].slice(-200),
     })),
   clearChat: () => set({ chatMessages: [] }),
 });

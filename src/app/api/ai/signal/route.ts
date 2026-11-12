@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrderBookAnalysis } from "@/lib/bot/order-book-cache";
 import { runSignalAgent } from "@/lib/ai/signal-agent";
+import { guardApiRequest } from "@/lib/auth/request-guard";
 
 // Sinal de IA com Tool Use. O agente consulta os motores reais (candles/indicadores, livro L2,
 // funding/scanner, risco) e o gatekeeper recalcula o R:R. Qualquer falha do LLM vira HOLD com
 // agent_error = true: um erro de sistema nunca gera BUY/SELL.
 
 export async function POST(request: NextRequest) {
+  const blocked = guardApiRequest(request, { rateLimit: { limit: 30, windowMs: 60_000, scope: "ai-signal" } });
+  if (blocked) return blocked;
+
   try {
     const body = await request.json();
     const {
@@ -19,7 +23,11 @@ export async function POST(request: NextRequest) {
       low24h = 0,
     } = body;
 
-    const cleanSymbol = symbol ? (symbol.endsWith("USDT") ? symbol : `${symbol}USDT`) : "BTCUSDT";
+    const rawSym = String(symbol || "BTCUSDT").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    const cleanSymbol = rawSym.endsWith("USDT") ? rawSym : `${rawSym}USDT`;
+    if (!/^[A-Z0-9]{4,20}$/.test(cleanSymbol)) {
+      return NextResponse.json({ success: false, error: "Símbolo inválido." }, { status: 400 });
+    }
     const numericPrice = Number(price) || 0;
 
     // Contexto de fluxo (exibido no painel e enviado ao agente como resumo inicial).

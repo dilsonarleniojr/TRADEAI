@@ -212,7 +212,10 @@ describe("UI/UX Institutional Enhancements & Post-Trade Quant Copilot", () => {
 
   test("6. Valida o Dry-Run Preview e Aplicação em 1 Clique das Recomendações Paramétricas na Frota Ativa (Apply to Active Fleet)", () => {
     const store = useCryptoStore.getState();
-    const bots = store.bots;
+    if (store.bots.length === 0) {
+      store.addBot({ name: "Bot Teste Copilot", symbol: "BTCUSDT", strategy: "QUANT_ENSEMBLE", active: true });
+    }
+    const bots = useCryptoStore.getState().bots;
     expect(bots.length).toBeGreaterThan(0);
 
     // Gera o Dry-Run Preview para calibragem de Trailing Stop / Realização Parcial TP1 (quando captura MFE < 60%)

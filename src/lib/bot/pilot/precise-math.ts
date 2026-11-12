@@ -25,14 +25,16 @@ export class PreciseMath {
    * Retorna o número de casas decimais a partir de uma string ou número (ex: 0.001 -> 3)
    */
   public static countDecimals(val: number | string): number {
-    const s = typeof val === "string" ? val : val.toString();
+    const s = (typeof val === "string" ? val : val.toString()).trim().toLowerCase();
+    if (s.includes("e-")) {
+      const [mantissa, expStr] = s.split("e-");
+      const frac = mantissa.includes(".") ? mantissa.split(".")[1] : "";
+      const exp = parseInt(expStr, 10);
+      return Number.isFinite(exp) ? frac.length + exp : frac.length;
+    }
     if (s.includes(".")) {
       const parts = s.split(".");
       return parts[1] ? parts[1].length : 0;
-    }
-    if (s.toLowerCase().includes("e-")) {
-      const parts = s.toLowerCase().split("e-");
-      return parseInt(parts[1], 10);
     }
     return 0;
   }

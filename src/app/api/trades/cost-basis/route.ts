@@ -57,10 +57,11 @@ function calculateCostBasis(trades: TradeRecord[]) {
  * Sincroniza trades da Binance para a tabela Trade local caso haja trades recentes não salvos
  */
 async function syncBinanceTrades(symbol: string, apiKey: string, apiSecret: string, testnet: boolean) {
-  if (!apiKey || !apiSecret) return;
+  const cleanSym = symbol.trim().toUpperCase();
+  if (!apiKey || !apiSecret || !/^[A-Z0-9]{4,20}$/.test(cleanSym)) return;
   const baseUrl = testnet ? "https://testnet.binance.vision" : "https://api.binance.com";
   const timestamp = Date.now();
-  const queryString = `symbol=${symbol}&timestamp=${timestamp}&limit=100`;
+  const queryString = new URLSearchParams({ symbol: cleanSym, timestamp: String(timestamp), limit: "100" }).toString();
   const signature = crypto.createHmac("sha256", apiSecret).update(queryString).digest("hex");
   const url = `${baseUrl}/api/v3/myTrades?${queryString}&signature=${signature}`;
 

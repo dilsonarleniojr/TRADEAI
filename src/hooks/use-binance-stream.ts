@@ -437,6 +437,12 @@ export function useBinanceStream() {
           globalSocket = null;
         }
         stopWorkerStream();
+        feedWatchdog.stop();
+        if (backgroundFlushTimer) {
+          clearTimeout(backgroundFlushTimer);
+          backgroundFlushTimer = null;
+        }
+        backgroundTickerBuffer.clear();
         setConnectionStatus("rest-api");
       }
     };

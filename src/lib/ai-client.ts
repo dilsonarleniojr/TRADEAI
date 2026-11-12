@@ -196,16 +196,19 @@ async function askClaude(o: AskAIOptions, model: string): Promise<AIReply> {
   const client = getAnthropic(requireKey("claude"));
   let response: Anthropic.Beta.BetaMessage;
   try {
-    response = await client.beta.messages.create({
-      model,
-      max_tokens: o.maxTokens ?? 4096,
-      system: o.system,
-      messages: o.messages,
-      output_config: { effort: o.effort ?? "low" },
-      // Se o modelo recusar por política, a API reexecuta em outro modelo recomendado na mesma chamada.
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-    });
+    response = await client.beta.messages.create(
+      {
+        model,
+        max_tokens: o.maxTokens ?? 4096,
+        system: o.system,
+        messages: o.messages,
+        output_config: { effort: o.effort ?? "low" },
+        // Se o modelo recusar por política, a API reexecuta em outro modelo recomendado na mesma chamada.
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+      },
+      { timeout: 25_000 }
+    );
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError) {
       throw new AIUnavailableError("Chave da Anthropic inválida.", 401);
@@ -244,13 +247,16 @@ async function askOpenAICompatible(o: AskAIOptions, provider: AIProviderId, mode
 
   let completion: OpenAI.Chat.ChatCompletion;
   try {
-    completion = await client.chat.completions.create({
-      model,
-      messages,
-      ...(o.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
-      // A OpenAI exige max_completion_tokens nos modelos novos; Gemini e Qwen aceitam max_tokens.
-      ...(provider === "openai" ? { max_completion_tokens: limit } : { max_tokens: limit }),
-    });
+    completion = await client.chat.completions.create(
+      {
+        model,
+        messages,
+        ...(o.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
+        // A OpenAI exige max_completion_tokens nos modelos novos; Gemini e Qwen aceitam max_tokens.
+        ...(provider === "openai" ? { max_completion_tokens: limit } : { max_tokens: limit }),
+      },
+      { timeout: 25_000 }
+    );
   } catch (error) {
     if (error instanceof OpenAI.AuthenticationError) {
       throw new AIUnavailableError(`Chave do ${info.name} inválida.`, 401);
@@ -283,8 +289,9 @@ export async function askAI(o: AskAIOptions): Promise<AIReply> {
 
   const lastUserText =
     o.messages.length > 0 ? contentToText(o.messages[o.messages.length - 1].content) : "";
-  if (o.enableSemanticCache !== false && o.messages.length === 1 && lastUserText) {
-    const cached = lookupSemanticCache(o.system, lastUserText);
+  // Só usa cache semântico quando explicitamente solicitado e fora de modos JSON estruturados de trading
+  if (o.enableSemanticCache === true && !o.jsonMode && o.messages.length === 1 && lastUserText) {
+    const cached = lookupSemanticCache(`${provider}:${model}:${o.system}`, lastUserText);
     if (cached) return cached;
   }
 

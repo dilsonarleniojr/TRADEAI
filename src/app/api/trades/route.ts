@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getBinanceCredentials } from '@/lib/binance-session';
-import { isRateLimited } from '@/lib/rate-limit';
+import { guardApiRequest } from '@/lib/auth/request-guard';
 import crypto from 'crypto';
+import Decimal from 'decimal.js';
 import { memoryCache } from '@/lib/cache/memory-cache';
 
 // Limites de segurança para ordens em dinheiro real (em USDT). Configuráveis por variável de ambiente.
@@ -13,10 +14,39 @@ const MAX_DAILY_BUY_USD = Number(process.env.MAX_LIVE_DAILY_USD) || 2000;
 let binanceServerTimeOffsetMs = 0;
 let lastTimeSync = 0;
 
-async function getSynchronizedTimestamp(baseUrl: string): Promise<number> {
+/**
+ * Utilitários decimais de precisão exata para evitar discrepâncias de arredondamento IEEE 754
+ */
+function formatStepDecimal(value: number | string, stepSize: number | string): string {
+  try {
+    const dVal = new Decimal(value);
+    const dStep = new Decimal(stepSize);
+    if (dStep.isZero()) return dVal.toString();
+    const precision = Math.max(0, -Math.floor(Math.log10(dStep.toNumber())));
+    const rounded = dVal.div(dStep).floor().mul(dStep);
+    return rounded.toFixed(precision);
+  } catch {
+    return String(value);
+  }
+}
+
+function formatTickDecimal(price: number | string, tickSize: number | string): string {
+  try {
+    const dPrice = new Decimal(price);
+    const dTick = new Decimal(tickSize);
+    if (dTick.isZero()) return dPrice.toString();
+    const precision = Math.max(0, -Math.floor(Math.log10(dTick.toNumber())));
+    const rounded = dPrice.div(dTick).round().mul(dTick);
+    return rounded.toFixed(precision);
+  } catch {
+    return String(price);
+  }
+}
+
+async function getSynchronizedTimestamp(baseUrl: string, force = false): Promise<number> {
   const now = Date.now();
-  // Sincroniza a cada 30 minutos ou no início
-  if (now - lastTimeSync > 30 * 60 * 1000 || lastTimeSync === 0) {
+  // Sincroniza a cada 30 minutos, na inicialização ou quando forçada (ex: erro -1021)
+  if (force || now - lastTimeSync > 30 * 60 * 1000 || lastTimeSync === 0) {
     try {
       const res = await fetch(`${baseUrl}/api/v3/time`, { signal: AbortSignal.timeout(2500), cache: 'no-store' });
       if (res.ok) {
@@ -24,7 +54,7 @@ async function getSynchronizedTimestamp(baseUrl: string): Promise<number> {
         if (data?.serverTime) {
           binanceServerTimeOffsetMs = data.serverTime - now;
           lastTimeSync = now;
-          console.log(`[Binance Time Sync] Relógio sincronizado com a Binance. Offset: ${binanceServerTimeOffsetMs}ms`);
+          console.log(`[Binance Time Sync] Relógio sincronizado com a Binance. Offset: ${binanceServerTimeOffsetMs}ms (force=${force})`);
         }
       }
     } catch (e: any) {
@@ -90,7 +120,8 @@ async function executeBinanceOrder(
   totalVal?: number,
   sellAll?: boolean,
   orderType: 'MARKET' | 'LIMIT' | 'LIMIT_MAKER' = 'MARKET',
-  limitPrice?: number
+  limitPrice?: number,
+  clientOrderId?: string
 ) {
   if (!apiKey || !apiSecret) {
     throw new Error("Chave de API ou segredo da Binance não configurados para Live Trading.");
@@ -147,206 +178,216 @@ async function executeBinanceOrder(
     console.warn('[Trades API] Failed to fetch ticker price:', err.message);
   }
 
-  let queryString = "";
-  const timestamp = await getSynchronizedTimestamp(baseUrl);
+  const clientOrderIdParam = clientOrderId ? `&newClientOrderId=${encodeURIComponent(clientOrderId.slice(0, 36))}` : "";
 
-  if (side === "BUY") {
-    // 1. Verificar saldo Spot livre da moeda de cotação (ex: USDT) na Binance
-    const quoteAsset = symbol.endsWith("USDT") ? "USDT" : symbol.endsWith("USDC") ? "USDC" : "USDT";
-    let freeQuote = -1;
-    let lockedQuote = 0;
-    try {
-      const accQuery = `omitZeroBalances=true&timestamp=${timestamp}&recvWindow=60000`;
-      const accSig = crypto.createHmac('sha256', apiSecret).update(accQuery).digest('hex');
-      const accRes = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/account?${accQuery}&signature=${accSig}`, {
-        headers: { 'X-MBX-APIKEY': apiKey },
-      });
-      if (accRes.ok) {
-        const accData = await accRes.json();
-        const qBal = accData.balances?.find((b: any) => b.asset === quoteAsset);
-        if (qBal) {
-          freeQuote = parseFloat(qBal.free) || 0;
-          lockedQuote = parseFloat(qBal.locked) || 0;
+  // Helper local para despachar ordem com suporte a resync de relógio no erro -1021
+  const dispatchOrder = async (isRetry = false): Promise<any> => {
+    let queryString = "";
+    const timestamp = await getSynchronizedTimestamp(baseUrl, isRetry);
+
+    if (side === "BUY") {
+      // 1. Verificar saldo Spot livre da moeda de cotação (ex: USDT) na Binance
+      const quoteAsset = symbol.endsWith("USDT") ? "USDT" : symbol.endsWith("USDC") ? "USDC" : "USDT";
+      let freeQuote = -1;
+      let lockedQuote = 0;
+      try {
+        const accQuery = `omitZeroBalances=true&timestamp=${timestamp}&recvWindow=60000`;
+        const accSig = crypto.createHmac('sha256', apiSecret).update(accQuery).digest('hex');
+        const accRes = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/account?${accQuery}&signature=${accSig}`, {
+          headers: { 'X-MBX-APIKEY': apiKey },
+        });
+        if (accRes.ok) {
+          const accData = await accRes.json();
+          const qBal = accData.balances?.find((b: any) => b.asset === quoteAsset);
+          if (qBal) {
+            freeQuote = parseFloat(qBal.free) || 0;
+            lockedQuote = parseFloat(qBal.locked) || 0;
+          } else {
+            freeQuote = 0;
+            lockedQuote = 0;
+          }
         } else {
-          // Quando omitZeroBalances=true omite a moeda, o saldo é 0
-          freeQuote = 0;
-          lockedQuote = 0;
+          const errText = await accRes.text().catch(() => '');
+          throw new Error(`Falha ao consultar saldo Spot na Binance (${accRes.status}): ${errText.slice(0, 120)}`);
         }
-      } else {
-        const errText = await accRes.text().catch(() => '');
-        console.warn('[Trades API] Pre-buy account check failed:', accRes.status, errText);
+      } catch (e: any) {
+        if (e?.message?.includes('Falha ao consultar saldo Spot')) throw e;
+        throw new Error(`Falha ao verificar saldo livre na Binance antes da compra: ${e?.message || 'erro de rede'}`);
       }
-    } catch (e: any) {
-      console.warn('[Trades API] Pre-buy account check warning:', e.message);
-    }
 
-    const desiredTotal = totalVal || (currentPrice > 0 ? quantity * currentPrice : 10.0);
-    let finalSpend = Math.max(minNotional * 1.05, desiredTotal);
+      const desiredTotal = totalVal || (currentPrice > 0 ? quantity * currentPrice : 10.0);
+      let finalSpend = Math.max(minNotional * 1.05, desiredTotal);
 
-    // Se conseguimos ler o saldo Spot da Binance:
-    if (freeQuote >= 0) {
-      if (freeQuote < minNotional) {
-        if (lockedQuote > 0 && freeQuote + lockedQuote >= minNotional) {
+      // Se conseguimos ler o saldo Spot da Binance:
+      if (freeQuote >= 0) {
+        if (freeQuote < minNotional) {
+          if (lockedQuote > 0 && freeQuote + lockedQuote >= minNotional) {
+            throw new Error(
+              `Saldo livre de ${quoteAsset} na Carteira Spot da Binance é de $${freeQuote.toFixed(2)} ($${lockedQuote.toFixed(2)} está travado em ordens abertas). Cancele ordens em aberto na Binance para liberar margem.`
+            );
+          }
           throw new Error(
-            `Saldo livre de ${quoteAsset} na Carteira Spot da Binance é de $${freeQuote.toFixed(2)} ($${lockedQuote.toFixed(2)} está travado em ordens abertas). Cancele ordens em aberto na Binance para liberar margem.`
+            `Saldo livre na Carteira Spot da Binance é de apenas $${freeQuote.toFixed(2)} ${quoteAsset}, inferior ao mínimo para compra ($${minNotional.toFixed(2)} ${quoteAsset}). Se você possui USDT na Binance, certifique-se de transferi-los da Carteira de 'Fundos' (Funding) ou 'Earn/Ganhos' para a Carteira 'Spot'.`
           );
         }
-        throw new Error(
-          `Saldo livre na Carteira Spot da Binance é de apenas $${freeQuote.toFixed(2)} ${quoteAsset}, inferior ao mínimo para compra ($${minNotional.toFixed(2)} ${quoteAsset}). Se você possui USDT na Binance, certifique-se de transferi-los da Carteira de 'Fundos' (Funding) ou 'Earn/Ganhos' para a Carteira 'Spot'.`
-        );
-      }
 
-      // IMPORTANTE: Deixar sempre margem de segurança (mínimo 2%) para taxas e buffer de oscilação a mercado da Binance
-      const maxSpendable = parseFloat((freeQuote * 0.98).toFixed(2));
-      if (finalSpend > maxSpendable) {
-        finalSpend = Math.min(finalSpend, maxSpendable);
-      }
-
-      if (finalSpend > freeQuote) {
-        throw new Error(
-          `Saldo insuficiente na Binance: a ordem requer $${finalSpend.toFixed(2)} ${quoteAsset}, mas seu saldo livre na Carteira Spot é de $${freeQuote.toFixed(2)} ${quoteAsset}.`
-        );
-      }
-      if (finalSpend < minNotional) {
-        throw new Error(
-          `O valor disponível para esta ordem ($${finalSpend.toFixed(2)} ${quoteAsset}) é inferior ao lote mínimo exigido pela Binance ($${minNotional.toFixed(2)} ${quoteAsset}).`
-        );
-      }
-    }
-
-    const isLimit = orderType === 'LIMIT' || orderType === 'LIMIT_MAKER';
-    if (isLimit) {
-      const targetPrice = limitPrice && limitPrice > 0 ? limitPrice : currentPrice;
-      const pricePrecision = Math.max(0, Math.round(-Math.log10(tickSize)));
-      const priceClean = (Math.round(targetPrice / tickSize) * tickSize).toFixed(pricePrecision);
-      const precision = Math.max(0, Math.round(-Math.log10(stepSize)));
-      const qtyClean = Math.max(minQty, parseFloat((Math.floor((finalSpend / targetPrice) / stepSize) * stepSize).toFixed(precision)));
-
-      if (orderType === 'LIMIT_MAKER') {
-        queryString = `symbol=${symbol}&side=BUY&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
-      } else {
-        queryString = `symbol=${symbol}&side=BUY&type=LIMIT&timeInForce=GTC&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
-      }
-    } else if (quoteOrderQtyAllowed) {
-      const quoteClean = finalSpend.toFixed(2);
-      queryString = `symbol=${symbol}&side=BUY&type=MARKET&quoteOrderQty=${quoteClean}&timestamp=${timestamp}&recvWindow=60000`;
-    } else {
-      // If quoteOrderQty not supported, calculate clean base quantity
-      const refPrice = currentPrice > 0 ? currentPrice : (desiredTotal / quantity);
-      const safeQty = Math.max(quantity, (minNotional * 1.05) / refPrice);
-      const precision = Math.max(0, Math.round(-Math.log10(stepSize)));
-      const qtyClean = Math.max(minQty, parseFloat((Math.ceil(safeQty / stepSize) * stepSize).toFixed(precision)));
-      queryString = `symbol=${symbol}&side=BUY&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=60000`;
-    }
-  } else {
-    // For SELL: Verify available base asset balance on Binance
-    const isLimit = orderType === 'LIMIT' || orderType === 'LIMIT_MAKER';
-    const targetPrice = limitPrice && limitPrice > 0 ? limitPrice : currentPrice;
-    const pricePrecision = Math.max(0, Math.round(-Math.log10(tickSize)));
-    const priceClean = (Math.round(targetPrice / tickSize) * tickSize).toFixed(pricePrecision);
-
-    const baseAsset = symbol.replace(/USDT$|BUSD$|USDC$/, "");
-    try {
-      const accQuery = `omitZeroBalances=true&timestamp=${timestamp}&recvWindow=60000`;
-      const accSig = crypto.createHmac('sha256', apiSecret).update(accQuery).digest('hex');
-      const accRes = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/account?${accQuery}&signature=${accSig}`, {
-        headers: { 'X-MBX-APIKEY': apiKey },
-      });
-      if (accRes.ok) {
-        const accData = await accRes.json();
-        const assetBal = accData.balances?.find((b: any) => b.asset === baseAsset);
-        const freeQty = assetBal ? parseFloat(assetBal.free) : 0;
-        
-        if (freeQty <= 0) {
-          const err: any = new Error(`Você não possui saldo de ${baseAsset} na sua conta da Binance para vender no mercado Spot.`);
-          err.code = "NO_BALANCE";
-          throw err;
+        const maxSpendable = parseFloat((freeQuote * 0.98).toFixed(2));
+        if (finalSpend > maxSpendable) {
+          finalSpend = Math.min(finalSpend, maxSpendable);
         }
 
-        const precision = Math.max(0, Math.round(-Math.log10(stepSize)));
-        const maxSellable = Math.floor(freeQty / stepSize) * stepSize;
-
-        // Se sellAll for solicitado ou se a quantidade for >= 80% do saldo, vende TODO o montante livre na Binance
-        const isFullClose = Boolean(sellAll) || quantity >= maxSellable * 0.8;
-        const qtyTarget = isFullClose ? maxSellable : Math.min(quantity, maxSellable);
-        const qtyClean = parseFloat(qtyTarget.toFixed(precision));
-
-        if (currentPrice > 0 && qtyClean * currentPrice < minNotional) {
-          const err: any = new Error(
-            `O valor da sua posição de ${baseAsset} ($${(qtyClean * currentPrice).toFixed(2)} USDT) é inferior ao mínimo exigido pela Binance ($${minNotional} USDT).`
+        if (finalSpend > freeQuote) {
+          throw new Error(
+            `Saldo insuficiente na Binance: a ordem requer $${finalSpend.toFixed(2)} ${quoteAsset}, mas seu saldo livre na Carteira Spot é de $${freeQuote.toFixed(2)} ${quoteAsset}.`
           );
-          err.code = "MIN_NOTIONAL_DUST";
-          err.residualUsdt = qtyClean * currentPrice;
-          err.baseAsset = baseAsset;
-          throw err;
         }
+        if (finalSpend < minNotional) {
+          throw new Error(
+            `O valor disponível para esta ordem ($${finalSpend.toFixed(2)} ${quoteAsset}) é inferior ao lote mínimo exigido pela Binance ($${minNotional.toFixed(2)} ${quoteAsset}).`
+          );
+        }
+      }
+
+      const isLimit = orderType === 'LIMIT' || orderType === 'LIMIT_MAKER';
+      if (isLimit) {
+        const targetPrice = limitPrice && limitPrice > 0 ? limitPrice : currentPrice;
+        const priceClean = formatTickDecimal(targetPrice, tickSize);
+        const rawTargetQty = finalSpend / targetPrice;
+        const qtyClean = formatStepDecimal(Math.max(minQty, rawTargetQty), stepSize);
 
         if (orderType === 'LIMIT_MAKER') {
-          queryString = `symbol=${symbol}&side=SELL&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
-        } else if (orderType === 'LIMIT') {
-          queryString = `symbol=${symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
+          queryString = `symbol=${symbol}&side=BUY&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}${clientOrderIdParam}&timestamp=${timestamp}&recvWindow=60000`;
         } else {
-          queryString = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=60000`;
+          queryString = `symbol=${symbol}&side=BUY&type=LIMIT&timeInForce=GTC&quantity=${qtyClean}&price=${priceClean}${clientOrderIdParam}&timestamp=${timestamp}&recvWindow=60000`;
+        }
+      } else if (quoteOrderQtyAllowed) {
+        const quoteClean = finalSpend.toFixed(2);
+        queryString = `symbol=${symbol}&side=BUY&type=MARKET&quoteOrderQty=${quoteClean}${clientOrderIdParam}&timestamp=${timestamp}&recvWindow=60000`;
+      } else {
+        const refPrice = currentPrice > 0 ? currentPrice : (desiredTotal / quantity);
+        const safeQty = Math.max(quantity, (minNotional * 1.05) / refPrice);
+        const qtyClean = formatStepDecimal(Math.max(minQty, safeQty), stepSize);
+        queryString = `symbol=${symbol}&side=BUY&type=MARKET&quantity=${qtyClean}${clientOrderIdParam}&timestamp=${timestamp}&recvWindow=60000`;
+      }
+    } else {
+      // For SELL: Verify available base asset balance on Binance
+      const targetPrice = limitPrice && limitPrice > 0 ? limitPrice : currentPrice;
+      const priceClean = formatTickDecimal(targetPrice, tickSize);
+
+      const baseAsset = symbol.replace(/USDT$|BUSD$|USDC$/, "");
+      try {
+        const accQuery = `omitZeroBalances=true&timestamp=${timestamp}&recvWindow=60000`;
+        const accSig = crypto.createHmac('sha256', apiSecret).update(accQuery).digest('hex');
+        const accRes = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/account?${accQuery}&signature=${accSig}`, {
+          headers: { 'X-MBX-APIKEY': apiKey },
+        });
+        if (accRes.ok) {
+          const accData = await accRes.json();
+          const assetBal = accData.balances?.find((b: any) => b.asset === baseAsset);
+          const freeQty = assetBal ? parseFloat(assetBal.free) : 0;
+          
+          if (freeQty <= 0) {
+            const err: any = new Error(`Você não possui saldo de ${baseAsset} na sua conta da Binance para vender no mercado Spot.`);
+            err.code = "NO_BALANCE";
+            throw err;
+          }
+
+          const maxSellableStr = formatStepDecimal(freeQty, stepSize);
+          const maxSellable = parseFloat(maxSellableStr);
+
+          // Se sellAll for solicitado ou se a quantidade for >= 80% do saldo, vende TODO o montante livre na Binance
+          const isFullClose = Boolean(sellAll) || quantity >= maxSellable * 0.8;
+          const qtyTarget = isFullClose ? maxSellable : Math.min(quantity, maxSellable);
+          const qtyClean = formatStepDecimal(qtyTarget, stepSize);
+
+          if (currentPrice > 0 && parseFloat(qtyClean) * currentPrice < minNotional) {
+            const err: any = new Error(
+              `O valor da sua posição de ${baseAsset} ($${(parseFloat(qtyClean) * currentPrice).toFixed(2)} USDT) é inferior ao mínimo exigido pela Binance ($${minNotional} USDT).`
+            );
+            err.code = "MIN_NOTIONAL_DUST";
+            err.residualUsdt = parseFloat(qtyClean) * currentPrice;
+            err.baseAsset = baseAsset;
+            throw err;
+          }
+
+          if (orderType === 'LIMIT_MAKER') {
+            queryString = `symbol=${symbol}&side=SELL&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}${clientOrderIdParam}&timestamp=${timestamp}&recvWindow=60000`;
+          } else if (orderType === 'LIMIT') {
+            queryString = `symbol=${symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity=${qtyClean}&price=${priceClean}${clientOrderIdParam}&timestamp=${timestamp}&recvWindow=60000`;
+          } else {
+            queryString = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${qtyClean}${clientOrderIdParam}&timestamp=${timestamp}&recvWindow=60000`;
+          }
+        }
+      } catch (accErr: any) {
+        if (accErr.code === "NO_BALANCE" || accErr.code === "MIN_NOTIONAL_DUST" || accErr.message.includes("inferior ao mínimo")) {
+          throw accErr;
+        }
+        console.warn('[Trades API] Account balance check bypassed:', accErr.message);
+      }
+
+      if (!queryString) {
+        const qtyClean = formatStepDecimal(quantity, stepSize);
+        if (orderType === 'LIMIT_MAKER') {
+          queryString = `symbol=${symbol}&side=SELL&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}${clientOrderIdParam}&timestamp=${timestamp}&recvWindow=60000`;
+        } else if (orderType === 'LIMIT') {
+          queryString = `symbol=${symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity=${qtyClean}&price=${priceClean}${clientOrderIdParam}&timestamp=${timestamp}&recvWindow=60000`;
+        } else {
+          queryString = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${qtyClean}${clientOrderIdParam}&timestamp=${timestamp}&recvWindow=60000`;
         }
       }
-    } catch (accErr: any) {
-      if (accErr.code === "NO_BALANCE" || accErr.code === "MIN_NOTIONAL_DUST" || accErr.message.includes("inferior ao mínimo")) {
-        throw accErr;
-      }
-      console.warn('[Trades API] Account balance check bypassed:', accErr.message);
     }
 
-    if (!queryString) {
-      const precision = Math.max(0, Math.round(-Math.log10(stepSize)));
-      const qtyClean = parseFloat(quantity.toFixed(precision));
-      if (orderType === 'LIMIT_MAKER') {
-        queryString = `symbol=${symbol}&side=SELL&type=LIMIT_MAKER&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
-      } else if (orderType === 'LIMIT') {
-        queryString = `symbol=${symbol}&side=SELL&type=LIMIT&timeInForce=GTC&quantity=${qtyClean}&price=${priceClean}&timestamp=${timestamp}&recvWindow=60000`;
-      } else {
-        queryString = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${qtyClean}&timestamp=${timestamp}&recvWindow=60000`;
+    const signature = crypto
+      .createHmac('sha256', apiSecret)
+      .update(queryString)
+      .digest('hex');
+
+    const url = `${baseUrl}/api/v3/order?${queryString}&signature=${signature}`;
+
+    const response = await fetchBinanceWithBackoff(url, {
+      method: 'POST',
+      headers: {
+        'X-MBX-APIKEY': apiKey,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMsg = errorText;
+      let errCode: number | null = null;
+      try {
+        const errJson = JSON.parse(errorText);
+        errCode = errJson.code;
+        if (errJson.code === -2010) {
+          errorMsg = "Saldo insuficiente na Carteira Spot da Binance. Na Binance, o saldo para robôs precisa estar na Carteira 'Spot' (Fiat e Spot). Se seus USDT estiverem na Carteira de 'Fundos' (Funding) ou no 'Simple Earn' (Ganhos), faça uma transferência interna gratuita para a Carteira 'Spot' na Binance.";
+        } else if (errJson.code === -1013) {
+          errorMsg = `Ordem rejeitada pela Binance: ${errJson.msg || 'Filtro NOTIONAL ou LOT_SIZE violado'}. O valor mínimo por ordem é $${minNotional} USDT.`;
+        } else if (errJson.code === -1021) {
+          lastTimeSync = 0; // Força re-sincronização imediata de relógio com a Binance
+          errorMsg = "Descompasso temporal com o servidor da Binance (erro -1021: Timestamp outside recvWindow).";
+        } else if (errJson.code === -5022) {
+          errorMsg = "Ordem LIMIT_MAKER rejeitada (código -5022: Order would immediately match and take). A ordem cruzaria o livro como Taker; a proteção institucional Post-Only cancelou o envio para garantir zero taxa de Taker.";
+        } else if (errJson.code === -2015) {
+          errorMsg = "Chave API da Binance inválida, IP não autorizado ou permissão 'Enable Spot & Margin Trading' desativada na Binance. Verifique a lista de IPs confiáveis no Gerenciamento de API da Binance.";
+        } else {
+          errorMsg = errJson.msg || errorText;
+        }
+      } catch {}
+
+      // Se for erro -1021 (clock drift) e ainda não tiver feito retry, re-sincroniza com force=true e retenta imediatamente 1 vez
+      if (errCode === -1021 && !isRetry) {
+        console.warn('[Trades API] Detectado erro -1021 da Binance. Re-sincronizando relógio e retentando ordem imediatamente...');
+        await getSynchronizedTimestamp(baseUrl, true);
+        return await dispatchOrder(true);
       }
+
+      throw new Error(`Erro na API da Binance: ${errorMsg}`);
     }
-  }
 
-  const signature = crypto
-    .createHmac('sha256', apiSecret)
-    .update(queryString)
-    .digest('hex');
+    return await response.json();
+  };
 
-  const url = `${baseUrl}/api/v3/order?${queryString}&signature=${signature}`;
-
-  const response = await fetchBinanceWithBackoff(url, {
-    method: 'POST',
-    headers: {
-      'X-MBX-APIKEY': apiKey,
-    },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    let errorMsg = errorText;
-    try {
-      const errJson = JSON.parse(errorText);
-      if (errJson.code === -2010) {
-        errorMsg = "Saldo insuficiente na Carteira Spot da Binance. Na Binance, o saldo para robôs precisa estar na Carteira 'Spot' (Fiat e Spot). Se seus USDT estiverem na Carteira de 'Fundos' (Funding) ou no 'Simple Earn' (Ganhos), faça uma transferência interna gratuita para a Carteira 'Spot' na Binance.";
-      } else if (errJson.code === -1013) {
-        errorMsg = `Ordem rejeitada pela Binance: ${errJson.msg || 'Filtro NOTIONAL ou LOT_SIZE violado'}. O valor mínimo por ordem é $${minNotional} USDT.`;
-      } else if (errJson.code === -1021) {
-        lastTimeSync = 0; // Força re-sincronização imediata de relógio com a Binance no próximo ciclo
-        errorMsg = "Descompasso temporal com o servidor da Binance (erro -1021: Timestamp outside recvWindow). O offset de relógio foi resetado para auto-sincronização automática na próxima chamada.";
-      } else if (errJson.code === -5022) {
-        errorMsg = "Ordem LIMIT_MAKER rejeitada (código -5022: Order would immediately match and take). A ordem cruzaria o livro como Taker; a proteção institucional Post-Only cancelou o envio para garantir zero taxa de Taker.";
-      } else if (errJson.code === -2015) {
-        errorMsg = "Chave API da Binance inválida, IP não autorizado ou permissão 'Enable Spot & Margin Trading' desativada na Binance. Verifique se o IP 168.121.98.202 está cadastrado na lista de IPs confiáveis da Binance.";
-      } else {
-        errorMsg = errJson.msg || errorText;
-      }
-    } catch {}
-    throw new Error(`Erro na API da Binance: ${errorMsg}`);
-  }
-
-  return await response.json();
+  return await dispatchOrder(false);
 }
 
 // GET /api/trades - Get all trades (com suporte a filtro por modo e símbolo ou consulta de status de ordem)
@@ -357,11 +398,11 @@ export async function GET(request: NextRequest) {
 
     // Consulta de status de ordem pontual na Binance Spot
     if (action === 'orderStatus') {
-      const orderSymbol = searchParams.get('symbol');
-      const binanceOrderId = searchParams.get('orderId');
-      if (!orderSymbol || !binanceOrderId) {
+      const orderSymbol = (searchParams.get('symbol') || '').trim().toUpperCase();
+      const binanceOrderId = (searchParams.get('orderId') || '').trim();
+      if (!/^[A-Z0-9]{4,20}$/.test(orderSymbol) || !/^\d+$/.test(binanceOrderId)) {
         return NextResponse.json(
-          { success: false, error: 'Parâmetros "symbol" e "orderId" são obrigatórios para consulta de status.' },
+          { success: false, error: 'Parâmetros "symbol" e "orderId" inválidos para consulta de status.' },
           { status: 400 }
         );
       }
@@ -374,7 +415,12 @@ export async function GET(request: NextRequest) {
       }
       const baseUrl = testnet ? 'https://testnet.binance.vision' : 'https://api.binance.com';
       const timestamp = await getSynchronizedTimestamp(baseUrl);
-      const query = `symbol=${orderSymbol}&orderId=${binanceOrderId}&timestamp=${timestamp}&recvWindow=60000`;
+      const query = new URLSearchParams({
+        symbol: orderSymbol,
+        orderId: binanceOrderId,
+        timestamp: String(timestamp),
+        recvWindow: '60000',
+      }).toString();
       const signature = crypto.createHmac('sha256', apiSecret).update(query).digest('hex');
 
       const res = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/order?${query}&signature=${signature}`, {
@@ -443,15 +489,10 @@ export async function GET(request: NextRequest) {
 
 // POST /api/trades - Create a new trade and update balance in a transaction
 export async function POST(request: NextRequest) {
+  const blocked = guardApiRequest(request, { rateLimit: { limit: 120, windowMs: 60_000, scope: 'trades-post' } });
+  if (blocked) return blocked;
+
   try {
-    // 1. Rate Limiting Check (120 req/min para acomodar múltiplos robôs em operação simultânea)
-    const ip = request.headers.get('x-forwarded-for') || '127.0.0.1';
-    if (isRateLimited(ip, 120)) {
-      return NextResponse.json(
-        { success: false, error: 'Too many requests. Please wait before executing more trades.', code: 'RATE_LIMITED' },
-        { status: 429 }
-      );
-    }
 
     const body = await request.json();
     const { symbol, side, price, quantity, total, strategy, mode, pnl } = body;
@@ -476,7 +517,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const sideClean = side === "BUY" ? "BUY" : "SELL";
+    const normalizedSide = String(side).trim().toUpperCase();
+    if (normalizedSide !== "BUY" && normalizedSide !== "SELL") {
+      return NextResponse.json(
+        { success: false, error: 'Invalid trade side: expected BUY or SELL' },
+        { status: 400 }
+      );
+    }
+    const sideClean = normalizedSide;
     const symbolClean = symbol.replace(/[^A-Z0-9]/gi, "").toUpperCase();
 
     if (!symbolClean || symbolClean.length < 5 || (!symbolClean.endsWith("USDT") && !symbolClean.endsWith("FDUSD") && !symbolClean.endsWith("BTC") && !symbolClean.endsWith("BRL"))) {
@@ -574,6 +622,8 @@ export async function POST(request: NextRequest) {
         const requestedOrderType = body.orderType === 'LIMIT_MAKER' || body.orderType === 'LIMIT' ? body.orderType : 'MARKET';
         const requestedLimitPrice = typeof body.limitPrice === 'number' && body.limitPrice > 0 ? body.limitPrice : priceVal;
 
+        const clientOrderId = body.executionId || body.id || (body.botId ? `${body.botId}_${Date.now()}` : undefined);
+
         binanceOrderResult = await executeBinanceOrder(
           symbolClean,
           sideClean,
@@ -584,7 +634,8 @@ export async function POST(request: NextRequest) {
           totalVal,
           Boolean(body.sellAll),
           requestedOrderType,
-          requestedLimitPrice
+          requestedLimitPrice,
+          clientOrderId
         );
         // Extract real quantity and executed price if available
         if (binanceOrderResult) {
@@ -651,10 +702,10 @@ export async function POST(request: NextRequest) {
       let newCash = account.cashBalance;
       let newAssetQty = account.assetQuantity;
 
-      if (side === "BUY") {
+      if (sideClean === "BUY") {
         newCash -= totalVal;
         newAssetQty += qtyVal;
-      } else if (side === "SELL") {
+      } else if (sideClean === "SELL") {
         newCash += totalVal;
         newAssetQty -= qtyVal;
       }
@@ -765,24 +816,32 @@ export async function POST(request: NextRequest) {
 // DELETE /api/trades - Clear trades and reset balance (supports ?mode=paper, ?mode=live or all)
 // OR ?action=cancelOrder&symbol=BTCUSDT&orderId=123 to cancel open Binance orders
 export async function DELETE(request: NextRequest) {
+  const blocked = guardApiRequest(request, { rateLimit: { limit: 30, windowMs: 60_000, scope: 'trades-delete' } });
+  if (blocked) return blocked;
+
   try {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
 
     // Suporte a cancelamento pontual de ordem aberta na Binance Spot
     if (action === 'cancelOrder') {
-      const orderSymbol = searchParams.get('symbol');
-      const binanceOrderId = searchParams.get('orderId');
-      if (!orderSymbol || !binanceOrderId) {
+      const orderSymbol = (searchParams.get('symbol') || '').trim().toUpperCase();
+      const binanceOrderId = (searchParams.get('orderId') || '').trim();
+      if (!/^[A-Z0-9]{4,20}$/.test(orderSymbol) || !/^\d+$/.test(binanceOrderId)) {
         return NextResponse.json(
-          { success: false, error: 'Parâmetros "symbol" e "orderId" são obrigatórios para cancelamento de ordem.' },
+          { success: false, error: 'Parâmetros "symbol" e "orderId" inválidos para cancelamento de ordem.' },
           { status: 400 }
         );
       }
       const { apiKey, apiSecret, testnet } = getBinanceCredentials(request);
       const baseUrl = testnet ? 'https://testnet.binance.vision' : 'https://api.binance.com';
       const timestamp = await getSynchronizedTimestamp(baseUrl);
-      const query = `symbol=${orderSymbol}&orderId=${binanceOrderId}&timestamp=${timestamp}&recvWindow=60000`;
+      const query = new URLSearchParams({
+        symbol: orderSymbol,
+        orderId: binanceOrderId,
+        timestamp: String(timestamp),
+        recvWindow: '60000',
+      }).toString();
       const signature = crypto.createHmac('sha256', apiSecret).update(query).digest('hex');
 
       const cancelRes = await fetchBinanceWithBackoff(`${baseUrl}/api/v3/order?${query}&signature=${signature}`, {
