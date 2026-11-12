@@ -147,11 +147,17 @@ export function AiSettingsDialog({ open, onOpenChange }: AiSettingsDialogProps) 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: provId }),
       });
-      const json = await res.json();
+      const rawText = await res.text();
+      let json: { success?: boolean; latencyMs?: number; model?: string; error?: string };
+      try {
+        json = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        throw new Error(`Resposta inválida do servidor (HTTP ${res.status}).`);
+      }
       const resObj: TestResult = json.success
         ? {
             ok: true,
-            text: `Conectado com sucesso! Respondeu em ${(json.latencyMs / 1000).toFixed(1)}s.`,
+            text: `Conectado com sucesso! Respondeu em ${(((json.latencyMs ?? 0) as number) / 1000).toFixed(1)}s.`,
             latencyMs: json.latencyMs,
             model: json.model,
           }

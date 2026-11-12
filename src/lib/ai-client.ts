@@ -357,6 +357,28 @@ export async function listModels(provider: AIProviderId): Promise<string[]> {
   return Array.from(new Set(ids)).sort();
 }
 
+/** Testa conexão direta com um provedor específico (sem failover nem cache semântico). */
+export async function testAIProvider(provider: AIProviderId): Promise<{ model: string; latencyMs: number }> {
+  const model = getModel(provider);
+  const startedAt = Date.now();
+  const opts: AskAIOptions = {
+    provider,
+    system: "You are a health check responder.",
+    messages: [{ role: "user", content: "Reply with OK." }],
+    maxTokens: 16,
+    effort: "low",
+    enableSemanticCache: false,
+  };
+  const reply =
+    provider === "claude"
+      ? await askClaude(opts, model)
+      : await askOpenAICompatible(opts, provider, model);
+  return {
+    model: reply.model || model,
+    latencyMs: Math.max(1, Date.now() - startedAt),
+  };
+}
+
 // Extrai JSON de uma resposta que pode vir dentro de ```json ... ```.
 export function parseJsonLoose<T = unknown>(text: string): T | null {
   const cleaned = text.replace(/```json\n?/gi, "").replace(/```\n?/g, "").trim();
