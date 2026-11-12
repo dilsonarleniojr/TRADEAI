@@ -48,7 +48,16 @@ export function useBotReadiness() {
   );
 
   return useMemo(() => {
-    const symbols = Array.from(new Set(bots.map((b) => b.symbol)));
+    // Robôs em Auto-Screener ("AUTO" sem override fixo) selecionam ativos dinamicamente no tick;
+    // não existe par/cotação chamado "AUTO" para aguardar.
+    const symbols = Array.from(
+      new Set(
+        bots
+          .map((b) => (b.overrideSymbol && b.overrideSymbol !== "AUTO" ? b.overrideSymbol : b.symbol))
+          .filter((s): s is string => Boolean(s) && s !== "AUTO")
+      )
+    );
+    const hasTickers = Object.keys(tickers).length > 0;
     const missingPrice = symbols.filter((s) => !tickers[s]?.price);
     const missingCandles = symbols.filter((s) => (counts[s] ?? 0) < MIN_CANDLES);
     const live = tradingMode === "live";
@@ -63,10 +72,13 @@ export function useBotReadiness() {
       },
       {
         label: "Cotações",
-        ok: Object.keys(tickers).length > 0 && missingPrice.length === 0,
-        detail:
-          missingPrice.length === 0
-            ? "preços de todas as moedas dos robôs"
+        ok: hasTickers && missingPrice.length === 0,
+        detail: !hasTickers
+          ? "conectando ao feed de preços..."
+          : missingPrice.length === 0
+            ? symbols.length > 0
+              ? "preços de todas as moedas dos robôs"
+              : "cotações do Auto-Screener ativas"
             : `aguardando ${missingPrice.slice(0, 4).map((s) => s.replace("USDT", "")).join(", ")}`,
       },
       {
