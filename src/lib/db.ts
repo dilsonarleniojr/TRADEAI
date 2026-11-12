@@ -60,7 +60,7 @@ export const db =
 if (!globalForPrisma.prisma) {
   db.$queryRawUnsafe('PRAGMA journal_mode = WAL;')
     .catch((err) => console.warn('[Prisma] Falha ao definir PRAGMA journal_mode = WAL:', err.message));
-  db.$queryRawUnsafe('PRAGMA synchronous = NORMAL;')
+  db.$queryRawUnsafe('PRAGMA synchronous = FULL;')
     .catch(() => {});
   db.$queryRawUnsafe('PRAGMA busy_timeout = 5000;')
     .catch(() => {});
