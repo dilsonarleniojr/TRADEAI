@@ -6,16 +6,40 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
+function isWritableDb(filePath: string): boolean {
+  try {
+    if (!fs.existsSync(filePath)) return false
+    fs.accessSync(filePath, fs.constants.R_OK | fs.constants.W_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function resolveDatabaseUrl(): string | undefined {
   const url = process.env.DATABASE_URL
   if (url && url.startsWith('file:') && !url.startsWith('file:/')) {
     const rawPath = url.replace(/^file:/, '')
-    const candidate1 = path.resolve(process.cwd(), rawPath)
-    if (fs.existsSync(candidate1)) return `file:${candidate1}`
-    const candidate2 = path.resolve(process.cwd(), 'db/custom.db')
-    if (fs.existsSync(candidate2)) return `file:${candidate2}`
-    const candidate3 = path.resolve(process.cwd(), '../db/custom.db')
-    if (fs.existsSync(candidate3)) return `file:${candidate3}`
+    // Prisma CLI resolve caminhos relativos em relação a prisma/schema.prisma (ex: prisma/db/custom.db).
+    // Prioriza esse caminho se existir e tiver permissão de escrita, evitando abrir cópias vazias/somente-leitura.
+    const candidates = [
+      path.resolve(process.cwd(), 'prisma', rawPath),
+      path.resolve(process.cwd(), 'prisma/db/custom.db'),
+      path.resolve(process.cwd(), '../prisma', rawPath),
+      path.resolve(process.cwd(), rawPath),
+      path.resolve(process.cwd(), 'db/custom.db'),
+      path.resolve(process.cwd(), '../db/custom.db'),
+    ]
+    for (const candidate of candidates) {
+      if (isWritableDb(candidate) && fs.statSync(candidate).size > 0) {
+        return `file:${candidate}`
+      }
+    }
+    for (const candidate of candidates) {
+      if (isWritableDb(candidate)) {
+        return `file:${candidate}`
+      }
+    }
   }
   return url
 }
