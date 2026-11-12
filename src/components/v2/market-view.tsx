@@ -265,20 +265,24 @@ export function MarketView() {
       if (received.length === 0) {
         setIdeasError("Nenhuma oportunidade atendeu aos filtros escolhidos no momento.");
       } else {
-        setAiSignals(
-          received.map((idea) => ({
-            id: `idea-${idea.symbol}-${Date.now()}`,
-            symbol: idea.symbol,
-            action: idea.type === "SHORT" ? "SELL" : "BUY",
-            confidence: Math.min(1, (idea.winProbability || 70) / 100),
-            priceAtSignal: idea.entryPrice,
-            targetPrice: idea.tp1,
-            takeProfit: idea.tp1,
-            stopLoss: idea.stopLoss,
-            reasoning: idea.technicalReason,
-            createdAt: new Date().toISOString(),
-          }))
-        );
+        const mappedIdeas = received.map((idea) => ({
+          id: `idea-${idea.symbol}-${Date.now()}`,
+          symbol: idea.symbol,
+          action: (idea.type === "SHORT" ? "SELL" : "BUY") as "BUY" | "SELL",
+          confidence: Math.min(1, (idea.winProbability || 70) / 100),
+          priceAtSignal: idea.entryPrice,
+          targetPrice: idea.tp1,
+          takeProfit: idea.tp1,
+          stopLoss: idea.stopLoss,
+          reasoning: idea.technicalReason,
+          createdAt: new Date().toISOString(),
+        }));
+        const ideaSymbols = new Set(mappedIdeas.map((m) => m.symbol));
+        const currentSignals = useCryptoStore.getState().aiSignals || [];
+        setAiSignals([
+          ...mappedIdeas,
+          ...currentSignals.filter((s) => !ideaSymbols.has(s.symbol)),
+        ]);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro ao analisar o mercado.";
@@ -317,6 +321,25 @@ export function MarketView() {
         throw new Error(json.error || "Falha ao consultar sinal de IA.");
       }
       setAiSignal(json.signal);
+      if (!json.signal.agent_error) {
+        const raw = json.signal;
+        const rawConf = typeof raw.confidence === "number" ? raw.confidence : (raw.confidence_score ?? 0) / 100;
+        const currentSignals = useCryptoStore.getState().aiSignals || [];
+        setAiSignals([
+          {
+            id: `ai-market-${targetSymbol}-${Date.now()}`,
+            symbol: targetSymbol,
+            action: raw.action || raw.signal || "HOLD",
+            confidence: rawConf > 1 ? rawConf / 100 : rawConf,
+            reasoning: raw.reasoning || raw.key_driver || "Análise de IA",
+            priceAtSignal: t.price,
+            stopLoss: Number(raw.stopLoss ?? raw.stop_loss ?? 0),
+            takeProfit: Number(raw.takeProfit ?? raw.take_profit ?? 0),
+            createdAt: new Date().toISOString(),
+          },
+          ...currentSignals.filter((s) => s.symbol !== targetSymbol),
+        ]);
+      }
     } catch (err: unknown) {
       setSignalError(err instanceof Error ? err.message : "Erro ao gerar sinal de IA.");
     } finally {

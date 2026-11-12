@@ -1,4 +1,4 @@
-import { useCryptoStore, type BotInstance, type BotPosition, type TradeData } from "@/lib/store";
+import { useCryptoStore, type AISignalData, type BotInstance, type BotPosition, type TickerData, type TradeData } from "@/lib/store";
 import type { BotExecutionReport, MarketSnapshot, RiskParams, BotEntryCheck } from "@/lib/store/types";
 import { calculateRSI, calculateEMA } from "./indicators";
 import { evaluateEntry } from "./entry-engine";
@@ -96,6 +96,110 @@ export const MAX_SIMULTANEOUS_BOT_POSITIONS = 5;
 
 export function getMaxSimultaneousPositions(): number {
   return riskManager.getMaxSimultaneousPositions();
+}
+
+// Cache de controle para auto-hidratação de sinais da IA em robôs ativos com estratégia "AI"
+const AI_SIGNAL_MAX_AGE_MS = 8 * 60_000;
+const AI_SIGNAL_FETCH_COOLDOWN_MS = 3 * 60_000;
+const aiSignalRefreshCooldown = new Map<string, number>();
+const inFlightAiSignalRequests = new Map<string, Promise<AISignalData | null>>();
+
+/**
+ * Garante que robôs ativos com estratégia "AI" recebam análises reais de `/api/ai/signal`
+ * com throttling seguro (cooldown de 3 min por ativo) e sem duplicar chamadas concorrentes.
+ */
+export async function ensureFreshAiSignalForSymbol(
+  symbol: string,
+  ticker?: Partial<TickerData>,
+  force = false
+): Promise<AISignalData | null> {
+  if (typeof window === "undefined" || typeof fetch !== "function") return null;
+  const cleanSymbol = symbol.trim().toUpperCase().endsWith("USDT")
+    ? symbol.trim().toUpperCase()
+    : `${symbol.trim().toUpperCase()}USDT`;
+  if (!cleanSymbol || cleanSymbol === "AUTOUSDT") return null;
+
+  const store = useCryptoStore.getState();
+  const existing = store.aiSignals.find((s) => s.symbol === cleanSymbol);
+  if (!force && existing?.createdAt) {
+    const ageMs = Date.now() - new Date(existing.createdAt).getTime();
+    if (!Number.isNaN(ageMs) && ageMs <= AI_SIGNAL_MAX_AGE_MS) {
+      return existing;
+    }
+  }
+
+  const inFlight = inFlightAiSignalRequests.get(cleanSymbol);
+  if (inFlight) return inFlight;
+
+  const lastAttempt = aiSignalRefreshCooldown.get(cleanSymbol) || 0;
+  if (!force && Date.now() - lastAttempt < AI_SIGNAL_FETCH_COOLDOWN_MS) {
+    return existing || null;
+  }
+
+  aiSignalRefreshCooldown.set(cleanSymbol, Date.now());
+  const liveTicker = ticker || store.tickers?.[cleanSymbol];
+
+  const promise = (async (): Promise<AISignalData | null> => {
+    try {
+      const res = await fetch("/api/ai/signal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(18_000),
+        body: JSON.stringify({
+          symbol: cleanSymbol,
+          price: liveTicker?.price ?? 0,
+          priceChange24h: liveTicker?.priceChangePercent ?? 0,
+          volume: liveTicker?.volume ?? 0,
+          quoteVolume: liveTicker?.quoteVolume ?? 0,
+          high24h: liveTicker?.high ?? 0,
+          low24h: liveTicker?.low ?? 0,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success || !json?.signal) return null;
+
+      const raw = json.signal;
+      if (raw.agent_error) {
+        return null;
+      }
+
+      const rawConf = typeof raw.confidence === "number" ? raw.confidence : (raw.confidence_score ?? 0) / 100;
+      const normalizedConf = rawConf > 1 ? rawConf / 100 : rawConf;
+      const mappedSignal: AISignalData = {
+        id: `ai-bot-${cleanSymbol}-${Date.now()}`,
+        symbol: cleanSymbol,
+        action: raw.action || raw.signal || "HOLD",
+        confidence: normalizedConf,
+        reasoning: raw.reasoning || raw.key_driver || "Análise quantitativa de IA",
+        priceAtSignal: Number(liveTicker?.price ?? 0),
+        stopLoss: Number(raw.stopLoss ?? raw.stop_loss ?? 0),
+        takeProfit: Number(raw.takeProfit ?? raw.take_profit ?? 0),
+        createdAt: new Date().toISOString(),
+        signal: raw.signal,
+        confidence_score: raw.confidence_score,
+        risk_reward_ratio: raw.risk_reward_ratio,
+        key_driver: raw.key_driver,
+        risk_warning: raw.risk_warning,
+        vetoed: raw.vetoed,
+        veto_reason: raw.veto_reason,
+        flow_context: raw.flow_context,
+      };
+
+      const currentSignals = useCryptoStore.getState().aiSignals || [];
+      useCryptoStore.getState().setAiSignals([
+        mappedSignal,
+        ...currentSignals.filter((s) => s.symbol !== cleanSymbol),
+      ]);
+      return mappedSignal;
+    } catch {
+      return null;
+    } finally {
+      inFlightAiSignalRequests.delete(cleanSymbol);
+    }
+  })();
+
+  inFlightAiSignalRequests.set(cleanSymbol, promise);
+  return promise;
 }
 
 export function getCircuitBreakerStatus(): CircuitBreakerState {
@@ -1983,6 +2087,12 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       })
     );
 
+    // Se estratégia for "AI" no Auto-Screener, garante sinal fresco para a candidata líder
+    if (bot.strategy === "AI" && candidatesToEvaluate.length > 0) {
+      await ensureFreshAiSignalForSymbol(candidatesToEvaluate[0].symbol, tickers[candidatesToEvaluate[0].symbol]);
+    }
+    const latestScreenerAiSignals = useCryptoStore.getState().aiSignals;
+
     // Avalia as candidatas selecionadas por ordem de score quantitativo
     for (const { cand, candKlines1m, candKlines15m, orderBook } of candidatesData) {
       const candTicker = tickers[cand.symbol] || {
@@ -1996,7 +2106,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
         quoteVolume: cand.quoteVolume,
       };
 
-      const decision = evaluateEntry(bot, candTicker, btcTicker, candKlines1m, aiSignals, candKlines15m, orderBook);
+      const decision = evaluateEntry(bot, candTicker, btcTicker, candKlines1m, latestScreenerAiSignals, candKlines15m, orderBook);
       const currentApprovals = decision.checks.filter((c) => c.ok).length;
       if (currentApprovals > bestApprovals || bestChecks.length === 0) {
         bestApprovals = currentApprovals;
@@ -2198,6 +2308,12 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     return;
   }
 
+  // Se o robô opera pela estratégia "AI", busca/atualiza sinal da IA com cooldown seguro se ausente ou obsoleto
+  if (bot.strategy === "AI") {
+    await ensureFreshAiSignalForSymbol(symbol, ticker);
+  }
+  const latestAiSignals = useCryptoStore.getState().aiSignals;
+
   // Decisão de entrada com candles reais do próprio ativo do robô (Multi-Timeframe 15m + 1m + Order Book)
   const [klines, klines15m, orderBook] = await Promise.all([
     getSymbolKlines(symbol, "1m"),
@@ -2206,7 +2322,7 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
       ? getOrderBookAnalysis(symbol, bot.maxSpreadPercent, bot.minBidAskRatio)
       : Promise.resolve(undefined),
   ]);
-  const decision = evaluateEntry(bot, ticker!, btcTicker, klines, aiSignals, klines15m, orderBook);
+  const decision = evaluateEntry(bot, ticker!, btcTicker, klines, latestAiSignals, klines15m, orderBook);
   const { shouldBuy, reason: entryReason, checks } = decision;
 
   const approvedChecksCount = checks ? checks.filter((c) => c.ok).length : 0;
