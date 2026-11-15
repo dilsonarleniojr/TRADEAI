@@ -7,6 +7,7 @@ Implements Volatility-Adjusted Trailing Stop (using ATR) and dynamic microsecond
 import time
 import logging
 import math
+from collections import deque
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("RiskManager")
@@ -23,7 +24,7 @@ class RiskManager:
         self.atr_multiplier = atr_multiplier
         self.connector = connector
         self.position = None # Contém dict: {'symbol': str, 'entry_price': float, 'qty': float, 'active': bool}
-        self.market_orders = [] # Histórico de ordens emitidas
+        self.market_orders = deque(maxlen=1000) # Histórico de ordens emitidas limitado a 1000 para evitar memory leak
         self.reaction_time_ns = None # Tempo de reação medido em nanosegundos
         
         # Volatility Trailing Stop state
