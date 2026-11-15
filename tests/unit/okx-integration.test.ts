@@ -1,5 +1,5 @@
-import { describe, expect, it } from "bun:test";
-import { toOkxInstrument, fromOkxInstrument, signOkxHeaders } from "@/lib/okx/okx-client";
+import { describe, expect, it, mock } from "bun:test";
+import { toOkxInstrument, fromOkxInstrument, signOkxHeaders, executeOkxOrder } from "@/lib/okx/okx-client";
 import { formatOkxTimestamp } from "@/lib/okx/okx-client";
 
 describe("OKX v5 Integration & Symbol Normalization", () => {
@@ -51,5 +51,43 @@ describe("OKX v5 Integration & Symbol Normalization", () => {
     };
     const headers = signOkxHeaders("GET", "/api/v5/account/balance", "", creds);
     expect(headers["x-simulated-trading"]).toBe("1");
+  });
+
+  it("suporta chamada de executeOkxOrder tanto posicional quanto por objeto de opções", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () =>
+      new Response(
+        JSON.stringify({
+          code: "0",
+          msg: "",
+          data: [{ ordId: "okx-ord-999", clOrdId: "cl999", sCode: "0" }],
+        }),
+        { status: 200 }
+      )
+    ) as any;
+
+    try {
+      const creds = {
+        apiKey: "my-api-key",
+        apiSecret: "sec",
+        passphrase: "pass",
+        simulated: true,
+      };
+
+      const resPositional = await executeOkxOrder("BTCUSDT", "BUY", 0.001, creds, undefined, "MARKET", 95);
+      expect(resPositional.orderId).toBe("okx-ord-999");
+      expect(resPositional.symbol).toBe("BTCUSDT");
+
+      const resObject = await executeOkxOrder(creds, {
+        symbol: "ETHUSDT",
+        side: "SELL",
+        quantity: 0.05,
+        orderType: "market",
+      });
+      expect(resObject.orderId).toBe("okx-ord-999");
+      expect(resObject.symbol).toBe("ETHUSDT");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

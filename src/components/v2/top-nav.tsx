@@ -52,6 +52,7 @@ export function TopNav() {
     binanceConnected,
     binanceTestnet,
     selectedExchange,
+    setSelectedExchange,
     okxConnected,
     okxSimulated,
     setIsCommandSearchOpen,
@@ -71,6 +72,7 @@ export function TopNav() {
       binanceConnected: s.binanceConnected,
       binanceTestnet: s.binanceTestnet,
       selectedExchange: s.selectedExchange,
+      setSelectedExchange: s.setSelectedExchange,
       okxConnected: s.okxConnected,
       okxSimulated: s.okxSimulated,
       setIsCommandSearchOpen: s.setIsCommandSearchOpen,
@@ -181,36 +183,86 @@ export function TopNav() {
             </nav>
           </div>
 
-          {/* Direita: Status, Simulado/Real, Botão Nova Ordem */}
-          <div className="flex items-center space-x-3 sm:space-x-4">
+          {/* Direita: Seletor de Exchange (Binance/OKX), Status, Simulado/Real, Botão Nova Ordem */}
+          <div className="flex items-center space-x-2.5 sm:space-x-3.5">
+            {/* Alternador Rápido de Exchange: Binance | OKX */}
+            <div className="inline-flex p-0.5 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedExchange("binance");
+                }}
+                onDoubleClick={() => {
+                  setSelectedExchange("binance");
+                  setOpenApiSettingsModal(true);
+                }}
+                title="Selecionar Binance Spot (duplo clique para configurar API)"
+                className={cn(
+                  "px-2.5 py-1 text-[12px] font-instrument-sans rounded-full transition-all select-none flex items-center gap-1.5 cursor-pointer",
+                  selectedExchange === "binance"
+                    ? "bg-[#FFFFFF] dark:bg-[#0f1622] text-[#0E1B2C] dark:text-white shadow-[0_1px_2px_rgba(14,27,44,0.08)] font-semibold"
+                    : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C] dark:hover:text-white"
+                )}
+              >
+                <span
+                  className={cn(
+                    "w-1.5 h-1.5 rounded-full shrink-0",
+                    binanceConnected
+                      ? "bg-[#0B8F6A]"
+                      : tradingMode === "live" && selectedExchange === "binance"
+                        ? "bg-[#B42318]"
+                        : "bg-muted-foreground/40"
+                  )}
+                />
+                <span>Binance</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedExchange("okx");
+                  if (!okxConnected) {
+                    setOpenApiSettingsModal(true);
+                  }
+                }}
+                title="Selecionar OKX V5 Unified (abre painel de conexão se desconectada)"
+                className={cn(
+                  "px-2.5 py-1 text-[12px] font-instrument-sans rounded-full transition-all select-none flex items-center gap-1.5 cursor-pointer",
+                  selectedExchange === "okx"
+                    ? "bg-[#FFFFFF] dark:bg-[#0f1622] text-[#0E1B2C] dark:text-white shadow-[0_1px_2px_rgba(14,27,44,0.08)] font-semibold"
+                    : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C] dark:hover:text-white"
+                )}
+              >
+                <span
+                  className={cn(
+                    "w-1.5 h-1.5 rounded-full shrink-0",
+                    okxConnected
+                      ? "bg-[#0B8F6A]"
+                      : tradingMode === "live" && selectedExchange === "okx"
+                        ? "bg-[#B42318]"
+                        : "bg-muted-foreground/40"
+                  )}
+                />
+                <span>OKX</span>
+              </button>
+            </div>
+
             {/* Status da Exchange ativa (clicável para configurar chaves API) */}
             <button
               type="button"
               onClick={() => setOpenApiSettingsModal(true)}
               title={`Clique para configurar conexão com a ${selectedExchange === "okx" ? "OKX" : "Binance"}`}
-              className="hidden lg:flex items-center space-x-2 text-[13px] font-instrument-sans text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C] dark:hover:text-white transition-colors cursor-pointer"
+              className="hidden md:flex items-center space-x-1.5 px-2.5 py-1 rounded-full border border-[#E7EBF0] dark:border-white/10 text-[12px] font-instrument-sans text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C] dark:hover:text-white hover:bg-[#EEF1F5]/60 dark:hover:bg-white/5 transition-colors cursor-pointer"
             >
-              <span
-                className={cn(
-                  "w-2 h-2 rounded-full shrink-0",
-                  selectedExchange === "okx"
-                    ? (tradingMode === "live" && !okxConnected ? "bg-[#B42318]" : okxConnected ? "bg-[#0B8F6A]" : "bg-muted-foreground/40")
-                    : (connectionStatus === "disconnected" || (tradingMode === "live" && !binanceConnected)
-                        ? "bg-[#B42318]"
-                        : connectionStatus === "connecting"
-                          ? "bg-amber-500"
-                          : "bg-[#0B8F6A]")
-                )}
-              />
+              <KeyRound className="w-3.5 h-3.5 shrink-0" />
               <span>
                 {selectedExchange === "okx"
                   ? (tradingMode === "live" && !okxConnected
-                      ? "Sem chave OKX"
+                      ? "Conectar OKX"
                       : okxConnected
                         ? (okxSimulated ? "OKX Demo" : "OKX conectada")
-                        : "OKX (Desconectada)")
+                        : "Configurar OKX")
                   : (tradingMode === "live" && !binanceConnected
-                      ? "Sem chave Binance"
+                      ? "Conectar Binance"
                       : connectionStatus === "disconnected"
                         ? "Sem conexão"
                         : connectionStatus === "connecting"
@@ -219,9 +271,7 @@ export function TopNav() {
                             ? binanceTestnet
                               ? "Binance Testnet"
                               : "Binance conectada"
-                            : connectionStatus === "connected"
-                              ? "Mercado conectado"
-                              : "Binance (REST)")}
+                            : "API Chaves")}
               </span>
             </button>
 
@@ -280,7 +330,7 @@ export function TopNav() {
               Ativar Modo Real
             </AlertDialogTitle>
             <AlertDialogDescription className="text-sm text-[#4A586A] dark:text-[#94a3b8] pt-2">
-              No Modo Real, ordens serão enviadas para sua conta da Binance com capital real. Certifique-se de que suas chaves de API estão configuradas com restrição a IP fixo e sem permissão de saque.
+              No Modo Real, ordens serão enviadas para sua conta da {selectedExchange === "okx" ? "OKX (V5 Unified)" : "Binance"} com capital real. Certifique-se de que suas chaves de API estão configuradas com restrição a IP fixo e sem permissão de saque.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="pt-4">

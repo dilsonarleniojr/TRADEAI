@@ -63,6 +63,8 @@ export function GlobalCommandSearch({
     setActiveSection,
     selectedSymbol,
     setSelectedSymbol,
+    selectedExchange,
+    setSelectedExchange,
     tickers,
     bots,
     portfolio,
@@ -82,6 +84,8 @@ export function GlobalCommandSearch({
       setActiveSection: s.setActiveSection,
       selectedSymbol: s.selectedSymbol,
       setSelectedSymbol: s.setSelectedSymbol,
+      selectedExchange: s.selectedExchange,
+      setSelectedExchange: s.setSelectedExchange,
       tickers: s.tickers,
       bots: s.bots,
       portfolio: s.portfolio,
@@ -175,7 +179,7 @@ export function GlobalCommandSearch({
     try {
       const modeParam = tradingMode === "live" ? "live" : "paper";
       const [accRes, tradesRes] = await Promise.all([
-        fetch(`/api/account?mode=${modeParam}`),
+        fetch(`/api/account?mode=${modeParam}&exchange=${selectedExchange}`),
         fetch(`/api/trades?mode=${modeParam}`),
       ]);
       const result = await accRes.json();
@@ -718,6 +722,7 @@ export function GlobalCommandSearch({
             <CommandItem
               onSelect={() => {
                 setIsCommandSearchOpen(false);
+                setSelectedExchange("binance");
                 if (onOpenApiDialog) {
                   onOpenApiDialog();
                 } else {
@@ -730,7 +735,26 @@ export function GlobalCommandSearch({
                 <KeyRound className="w-4 h-4 text-amber-400" />
                 <span className="text-xs font-medium text-foreground">Configurar Chaves de API da Binance</span>
               </div>
-              <Badge variant="outline" className="text-[9px] border-white/[0.1] text-slate-400">API Key & Secret</Badge>
+              <Badge variant="outline" className="text-[9px] border-white/[0.1] text-slate-400">API Key &amp; Secret</Badge>
+            </CommandItem>
+
+            <CommandItem
+              onSelect={() => {
+                setIsCommandSearchOpen(false);
+                setSelectedExchange("okx");
+                if (onOpenApiDialog) {
+                  onOpenApiDialog();
+                } else {
+                  setOpenApiSettingsModal(true);
+                }
+              }}
+              className="flex items-center justify-between py-2 px-3 rounded-lg cursor-pointer hover:bg-white/[0.06]"
+            >
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-medium text-foreground">Abrir / Configurar OKX (V5 Unified Account)</span>
+              </div>
+              <Badge variant="outline" className="text-[9px] border-cyan-500/30 text-cyan-300 bg-cyan-500/10">OKX V5</Badge>
             </CommandItem>
 
             <CommandItem

@@ -28,6 +28,10 @@ export function LearnView() {
     setActiveSection,
     binanceConnected,
     binanceTestnet,
+    okxConnected,
+    okxSimulated,
+    selectedExchange,
+    setSelectedExchange,
     connectionStatus,
   } = useCryptoStore(
     useShallow((s) => ({
@@ -40,6 +44,10 @@ export function LearnView() {
       setActiveSection: s.setActiveSection,
       binanceConnected: s.binanceConnected,
       binanceTestnet: s.binanceTestnet,
+      okxConnected: s.okxConnected,
+      okxSimulated: s.okxSimulated,
+      selectedExchange: s.selectedExchange,
+      setSelectedExchange: s.setSelectedExchange,
       connectionStatus: s.connectionStatus,
     }))
   );
@@ -172,8 +180,13 @@ export function LearnView() {
               {/* Conexão com a Binance */}
               <div className="py-3.5 flex items-center justify-between">
                 <div>
-                  <h4 className="font-semibold text-[#0E1B2C] dark:text-white">
-                    Conexão com a Binance
+                  <h4 className="font-semibold text-[#0E1B2C] dark:text-white flex items-center gap-1.5">
+                    <span>Conexão com a Binance</span>
+                    {selectedExchange === "binance" && (
+                      <span className="px-2 py-0.5 rounded-full bg-[#EEF1F5] dark:bg-white/10 text-[10px] font-bold text-[#0E1B2C] dark:text-white">
+                        Ativa
+                      </span>
+                    )}
                   </h4>
                   <span
                     className={`text-[12px] font-medium block ${
@@ -194,8 +207,47 @@ export function LearnView() {
                   </span>
                 </div>
                 <button
-                  onClick={() => setOpenApiSettingsModal(true)}
-                  className="px-4 py-1.5 rounded-full border border-[#D3DAE3] text-[13px] font-semibold text-[#0E1B2C] hover:bg-[#EEF1F5] transition-colors"
+                  onClick={() => {
+                    setSelectedExchange("binance");
+                    setOpenApiSettingsModal(true);
+                  }}
+                  className="px-4 py-1.5 rounded-full border border-[#D3DAE3] dark:border-white/20 text-[13px] font-semibold text-[#0E1B2C] dark:text-white hover:bg-[#EEF1F5] dark:hover:bg-white/5 transition-colors cursor-pointer"
+                >
+                  Configurar
+                </button>
+              </div>
+
+              {/* Conexão com a OKX */}
+              <div className="py-3.5 flex items-center justify-between">
+                <div>
+                  <h4 className="font-semibold text-[#0E1B2C] dark:text-white flex items-center gap-1.5">
+                    <span>Conexão com a OKX (V5)</span>
+                    {selectedExchange === "okx" && (
+                      <span className="px-2 py-0.5 rounded-full bg-[#EEF1F5] dark:bg-white/10 text-[10px] font-bold text-[#0E1B2C] dark:text-white">
+                        Ativa
+                      </span>
+                    )}
+                  </h4>
+                  <span
+                    className={`text-[12px] font-medium block ${
+                      okxConnected
+                        ? "text-[#0A7A59]"
+                        : "text-[#4A586A] dark:text-[#94a3b8]"
+                    }`}
+                  >
+                    {okxConnected
+                      ? okxSimulated
+                        ? "Ativa · Demo Trading (x-simulated: 1)"
+                        : "Ativa · Produção Spot Cash"
+                      : "Desconectada · Clique para configurar"}
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedExchange("okx");
+                    setOpenApiSettingsModal(true);
+                  }}
+                  className="px-4 py-1.5 rounded-full border border-[#D3DAE3] dark:border-white/20 text-[13px] font-semibold text-[#0E1B2C] dark:text-white hover:bg-[#EEF1F5] dark:hover:bg-white/5 transition-colors cursor-pointer"
                 >
                   Configurar
                 </button>

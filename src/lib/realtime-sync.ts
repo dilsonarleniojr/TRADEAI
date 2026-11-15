@@ -125,7 +125,8 @@ class RealTimeSyncManagerImpl {
 
       this.isPollingBusy = true;
       try {
-        const accountRes = await fetch(`/api/account?mode=${store.tradingMode}`);
+        const exchange = store.selectedExchange || "binance";
+        const accountRes = await fetch(`/api/account?mode=${store.tradingMode}&exchange=${exchange}`);
         if (accountRes.ok) {
           const result = await accountRes.json();
           if (result.success && result.data) {

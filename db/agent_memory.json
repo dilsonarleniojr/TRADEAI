@@ -1,5 +1,24 @@
 [
   {
+    "category": "ARCHITECTURE_DECISION",
+    "title": "Integração Completa da OKX V5 Unified no Frontend V2 (TopNav, ApiSettingsDialog, LearnView, BotView e Trades API)",
+    "summary": "Correção da abertura e seleção da OKX no frontend V2: 1) ApiSettingsDialog (src/components/header/api-settings-dialog.tsx) atualizado com seletor de corretora Binance Spot | OKX (V5 Unified), formulário completo de API Key, Secret Key, Passphrase e chave Demo Trading (x-simulated-trading: 1); 2) TopNav (src/components/v2/top-nav.tsx) com alternador rápido Binance | OKX sempre visível no cabeçalho principal; 3) LearnView (src/components/v2/learn-view.tsx) e BotView (src/components/v2/bot-view.tsx) com botões diretos para abrir/configurar a OKX; 4) Correção da assinatura de executeOkxOrder em src/lib/okx/okx-client.ts e src/app/api/trades/route.ts, além de propagação de exchange: selectedExchange no MarketView e RealTimeSyncManager.",
+    "tags": [
+      "okx-v5-unified",
+      "frontend-v2-exchange-switcher",
+      "api-settings-dialog",
+      "top-nav-okx"
+    ],
+    "details": {
+      "dialogPath": "src/components/header/api-settings-dialog.tsx",
+      "topNavPath": "src/components/v2/top-nav.tsx",
+      "okxClientPath": "src/lib/okx/okx-client.ts",
+      "status": "PRODUCTION_READY"
+    },
+    "id": "mem-1794789800000-okx-frontend-v2-fix",
+    "timestamp": "2026-11-15T22:03:00.000Z"
+  },
+  {
     "category": "QUANT_STRATEGY",
     "title": "Calibragem Trailing Stop ATR e Order Flow L2",
     "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",

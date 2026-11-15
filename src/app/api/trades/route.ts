@@ -639,14 +639,16 @@ export async function POST(request: NextRequest) {
               { status: 400 }
             );
           }
-          const okxResult = await executeOkxOrder(okxCreds, {
-            symbol: symbolClean,
-            side: sideClean as 'BUY' | 'SELL',
-            quantity: qtyVal,
-            price: requestedLimitPrice,
-            orderType: requestedOrderType === 'LIMIT' ? 'limit' : 'market',
-            clientOrderId: clientOrderId?.slice(0, 32),
-          });
+          const okxResult = await executeOkxOrder(
+            symbolClean,
+            sideClean as 'BUY' | 'SELL',
+            qtyVal,
+            okxCreds,
+            requestedLimitPrice,
+            requestedOrderType === 'LIMIT' ? 'LIMIT' : 'MARKET',
+            totalVal,
+            clientOrderId?.slice(0, 32)
+          );
 
           binanceOrderResult = {
             orderId: okxResult.orderId,

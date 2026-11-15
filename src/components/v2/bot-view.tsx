@@ -110,6 +110,11 @@ export function BotView() {
     setOpenBotCreateModal,
     openProtectionModal,
     setOpenProtectionModal,
+    setOpenApiSettingsModal,
+    selectedExchange,
+    setSelectedExchange,
+    okxConnected,
+    binanceConnected,
     protectionSettings,
     updateProtectionSettings,
     resetConsecutiveLossBrake,
@@ -133,6 +138,11 @@ export function BotView() {
       setOpenBotCreateModal: s.setOpenBotCreateModal,
       openProtectionModal: s.openProtectionModal,
       setOpenProtectionModal: s.setOpenProtectionModal,
+      setOpenApiSettingsModal: s.setOpenApiSettingsModal,
+      selectedExchange: s.selectedExchange,
+      setSelectedExchange: s.setSelectedExchange,
+      okxConnected: s.okxConnected,
+      binanceConnected: s.binanceConnected,
       protectionSettings: s.protectionSettings,
       updateProtectionSettings: s.updateProtectionSettings,
       resetConsecutiveLossBrake: s.resetConsecutiveLossBrake,
@@ -312,8 +322,35 @@ export function BotView() {
           </p>
         </div>
 
-        {/* Ações da direita: Proteções, Sugestões IA, Novo robô, Ligar todos, Menu Mais */}
+        {/* Ações da direita: Exchange (Binance/OKX), Proteções, Sugestões IA, Novo robô, Ligar todos, Menu Mais */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+          <button
+            onClick={() => {
+              setSelectedExchange("okx");
+              setViewTab("risk");
+              setOpenApiSettingsModal(true);
+            }}
+            className={`px-3.5 py-2 rounded-full border text-[13px] font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+              selectedExchange === "okx"
+                ? "border-[#0E1B2C] bg-[#0E1B2C] text-white dark:border-white dark:bg-white dark:text-[#0E1B2C]"
+                : "border-[#D3DAE3] dark:border-white/20 text-[#0E1B2C] dark:text-white hover:bg-[#EEF1F5] dark:hover:bg-white/5"
+            }`}
+            title="Configurar e alternar para OKX V5 Unified ou Binance Spot"
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                selectedExchange === "okx"
+                  ? okxConnected
+                    ? "bg-[#5BE3A8]"
+                    : "bg-amber-400"
+                  : binanceConnected
+                    ? "bg-[#0A7A59]"
+                    : "bg-amber-400"
+              }`}
+            />
+            <span>{selectedExchange === "okx" ? "OKX Ativa" : "Abrir OKX / Exchange"}</span>
+          </button>
+
           <button
             onClick={() => setOpenProtectionModal(true)}
             className={`px-3.5 py-2 rounded-full border text-[13px] font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${

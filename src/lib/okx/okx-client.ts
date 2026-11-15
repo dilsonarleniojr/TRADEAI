@@ -155,25 +155,64 @@ export async function fetchOkxAccount(creds: OkxCredentials) {
   };
 }
 
+export interface OkxOrderInput {
+  symbol: string;
+  side: "BUY" | "SELL";
+  quantity: number;
+  price?: number;
+  orderType?: "MARKET" | "LIMIT" | "market" | "limit";
+  totalVal?: number;
+  clientOrderId?: string;
+}
+
 /**
  * Executa uma ordem Spot a mercado ou a limite na OKX (POST /api/v5/trade/order)
  */
 export async function executeOkxOrder(
-  symbol: string,
-  side: "BUY" | "SELL",
-  quantity: number,
-  creds: OkxCredentials,
+  symbolOrCreds: string | OkxCredentials,
+  sideOrInput: "BUY" | "SELL" | OkxOrderInput,
+  quantity?: number,
+  creds?: OkxCredentials,
   price?: number,
   orderType: "MARKET" | "LIMIT" = "MARKET",
   totalVal?: number,
   clientOrderId?: string
 ) {
-  const requestPath = "/api/v5/trade/order";
-  const instId = toOkxInstrument(symbol);
-  const normalizedSide = side.toLowerCase() as "buy" | "sell";
-  const normalizedOrdType = orderType.toLowerCase() as "market" | "limit";
+  let resolvedSymbol: string;
+  let resolvedSide: "BUY" | "SELL";
+  let resolvedQty: number;
+  let resolvedCreds: OkxCredentials;
+  let resolvedPrice: number | undefined;
+  let resolvedOrdType: "MARKET" | "LIMIT";
+  let resolvedTotalVal: number | undefined;
+  let resolvedClientOrderId: string | undefined;
 
-  const clOrdId = (clientOrderId || `t${Date.now()}${Math.random().toString(36).slice(2, 6)}`)
+  if (typeof symbolOrCreds === "object" && typeof sideOrInput === "object") {
+    resolvedCreds = symbolOrCreds;
+    resolvedSymbol = sideOrInput.symbol;
+    resolvedSide = sideOrInput.side;
+    resolvedQty = sideOrInput.quantity;
+    resolvedPrice = sideOrInput.price;
+    resolvedOrdType = (sideOrInput.orderType || "MARKET").toUpperCase() as "MARKET" | "LIMIT";
+    resolvedTotalVal = sideOrInput.totalVal;
+    resolvedClientOrderId = sideOrInput.clientOrderId;
+  } else {
+    resolvedSymbol = String(symbolOrCreds);
+    resolvedSide = sideOrInput as "BUY" | "SELL";
+    resolvedQty = Number(quantity || 0);
+    resolvedCreds = creds!;
+    resolvedPrice = price;
+    resolvedOrdType = orderType;
+    resolvedTotalVal = totalVal;
+    resolvedClientOrderId = clientOrderId;
+  }
+
+  const requestPath = "/api/v5/trade/order";
+  const instId = toOkxInstrument(resolvedSymbol);
+  const normalizedSide = resolvedSide.toLowerCase() as "buy" | "sell";
+  const normalizedOrdType = resolvedOrdType.toLowerCase() as "market" | "limit";
+
+  const clOrdId = (resolvedClientOrderId || `t${Date.now()}${Math.random().toString(36).slice(2, 6)}`)
     .replace(/[^A-Za-z0-9]/g, "")
     .slice(0, 32);
 
@@ -188,27 +227,27 @@ export async function executeOkxOrder(
   if (normalizedOrdType === "market") {
     if (normalizedSide === "buy") {
       // Na OKX, ordens a mercado de compra Spot usam tgtCcy para comprar por montante nocional USDT
-      if (totalVal && totalVal > 0) {
+      if (resolvedTotalVal && resolvedTotalVal > 0) {
         payload.tgtCcy = "quote_ccy";
-        payload.sz = totalVal.toFixed(2);
+        payload.sz = resolvedTotalVal.toFixed(2);
       } else {
         payload.tgtCcy = "base_ccy";
-        payload.sz = quantity.toString();
+        payload.sz = resolvedQty.toString();
       }
     } else {
-      payload.sz = quantity.toString();
+      payload.sz = resolvedQty.toString();
     }
   } else {
     // Limit order
-    if (!price || price <= 0) {
+    if (!resolvedPrice || resolvedPrice <= 0) {
       throw new Error("Preço limite obrigatório para ordens LIMIT na OKX.");
     }
-    payload.px = price.toString();
-    payload.sz = quantity.toString();
+    payload.px = resolvedPrice.toString();
+    payload.sz = resolvedQty.toString();
   }
 
   const bodyStr = JSON.stringify(payload);
-  const headers = signOkxHeaders("POST", requestPath, bodyStr, creds);
+  const headers = signOkxHeaders("POST", requestPath, bodyStr, resolvedCreds);
 
   const res = await fetch(`${OKX_BASE_URL}${requestPath}`, {
     method: "POST",
@@ -228,10 +267,10 @@ export async function executeOkxOrder(
     orderId: orderData.ordId,
     clientOrderId: orderData.clOrdId,
     status: orderData.sCode === "0" ? "FILLED" : "NEW",
-    executedQty: quantity,
-    cummulativeQuoteQty: totalVal || 0,
-    symbol,
-    side,
+    executedQty: resolvedQty,
+    cummulativeQuoteQty: resolvedTotalVal || 0,
+    symbol: resolvedSymbol,
+    side: resolvedSide,
     raw: orderData,
   };
 }

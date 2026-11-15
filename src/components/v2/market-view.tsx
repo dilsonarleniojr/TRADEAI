@@ -90,6 +90,7 @@ export function MarketView() {
   const { toast } = useToast();
   const {
     selectedSymbol,
+    selectedExchange,
     tickers,
     portfolio,
     bots,
@@ -108,6 +109,7 @@ export function MarketView() {
   } = useCryptoStore(
     useShallow((s) => ({
       selectedSymbol: s.selectedSymbol,
+      selectedExchange: s.selectedExchange,
       tickers: s.tickers,
       portfolio: s.portfolio,
       bots: s.bots,
@@ -441,6 +443,7 @@ export function MarketView() {
           total: order.total,
           strategy: tradePrefill?.source || "Manual V2",
           mode: tradingMode,
+          exchange: selectedExchange,
           pnl: 0,
           sellAll: order.sellAll,
           marginMode: "SPOT",
