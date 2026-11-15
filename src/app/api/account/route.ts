@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getBinanceCredentials } from '@/lib/binance-session';
+import { getOkxCredentials } from '@/lib/okx/okx-session';
+import { fetchOkxAccount } from '@/lib/okx/okx-client';
 import { guardApiRequest } from '@/lib/auth/request-guard';
 import crypto from 'crypto';
 
@@ -135,11 +137,54 @@ import { memoryCache } from '@/lib/cache/memory-cache';
 export async function GET(request: NextRequest) {
   try {
     const mode = request.nextUrl.searchParams.get('mode') === 'live' ? 'live' : 'paper';
-
-    // Credenciais vêm da sessão criptografada no servidor (nunca de headers do cliente)
-    const { apiKey: binanceApiKey, apiSecret: binanceApiSecret, testnet: isTestnet } = getBinanceCredentials(request);
+    const exchange = (request.nextUrl.searchParams.get('exchange') || 'binance').toLowerCase();
 
     if (mode === 'live') {
+      if (exchange === 'okx') {
+        const okxCreds = getOkxCredentials(request);
+        if (!okxCreds.apiKey || !okxCreds.apiSecret || !okxCreds.passphrase) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Autenticação OKX necessária para modo real (Chave API, Segredo e Passphrase).",
+              code: "OKX_AUTH_REQUIRED",
+            },
+            { status: 401 }
+          );
+        }
+
+        try {
+          const cacheKey = `account:okx:${(okxCreds.apiKey || '').slice(-6)}:${okxCreds.simulated}`;
+          const { data: okxData, isHit, durationMs } = await memoryCache.getOrFetch(
+            cacheKey,
+            () => fetchOkxAccount(okxCreds),
+            1800
+          );
+
+          return NextResponse.json(
+            { success: true, data: okxData },
+            {
+              headers: {
+                'Server-Timing': `cache;desc="${isHit ? 'HIT' : 'MISS'}", total;dur=${durationMs}`,
+              },
+            }
+          );
+        } catch (okxErr: any) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: okxErr.message || "Falha ao conectar com a OKX",
+              code: "OKX_CONNECTION_ERROR",
+            },
+            { status: 400 }
+          );
+        }
+      }
+
+      // Default: Binance
+      // Credenciais vêm da sessão criptografada no servidor (nunca de headers do cliente)
+      const { apiKey: binanceApiKey, apiSecret: binanceApiSecret, testnet: isTestnet } = getBinanceCredentials(request);
+
       try {
         const cacheKey = `account:live:${(binanceApiKey || '').slice(-6)}:${isTestnet}`;
         const { data: liveData, isHit, durationMs } = await memoryCache.getOrFetch(

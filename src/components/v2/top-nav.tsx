@@ -51,6 +51,9 @@ export function TopNav() {
     connectionStatus,
     binanceConnected,
     binanceTestnet,
+    selectedExchange,
+    okxConnected,
+    okxSimulated,
     setIsCommandSearchOpen,
     openApiSettingsModal,
     setOpenApiSettingsModal,
@@ -67,6 +70,9 @@ export function TopNav() {
       connectionStatus: s.connectionStatus,
       binanceConnected: s.binanceConnected,
       binanceTestnet: s.binanceTestnet,
+      selectedExchange: s.selectedExchange,
+      okxConnected: s.okxConnected,
+      okxSimulated: s.okxSimulated,
       setIsCommandSearchOpen: s.setIsCommandSearchOpen,
       openApiSettingsModal: s.openApiSettingsModal,
       setOpenApiSettingsModal: s.setOpenApiSettingsModal,
@@ -177,37 +183,45 @@ export function TopNav() {
 
           {/* Direita: Status, Simulado/Real, Botão Nova Ordem */}
           <div className="flex items-center space-x-3 sm:space-x-4">
-            {/* Status da Binance (clicável para configurar chaves API) */}
+            {/* Status da Exchange ativa (clicável para configurar chaves API) */}
             <button
               type="button"
               onClick={() => setOpenApiSettingsModal(true)}
-              title="Clique para configurar ou verificar a conexão com a Binance"
+              title={`Clique para configurar conexão com a ${selectedExchange === "okx" ? "OKX" : "Binance"}`}
               className="hidden lg:flex items-center space-x-2 text-[13px] font-instrument-sans text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C] dark:hover:text-white transition-colors cursor-pointer"
             >
               <span
                 className={cn(
                   "w-2 h-2 rounded-full shrink-0",
-                  connectionStatus === "disconnected" || (tradingMode === "live" && !binanceConnected)
-                    ? "bg-[#B42318]"
-                    : connectionStatus === "connecting"
-                      ? "bg-amber-500"
-                      : "bg-[#0B8F6A]"
+                  selectedExchange === "okx"
+                    ? (tradingMode === "live" && !okxConnected ? "bg-[#B42318]" : okxConnected ? "bg-[#0B8F6A]" : "bg-muted-foreground/40")
+                    : (connectionStatus === "disconnected" || (tradingMode === "live" && !binanceConnected)
+                        ? "bg-[#B42318]"
+                        : connectionStatus === "connecting"
+                          ? "bg-amber-500"
+                          : "bg-[#0B8F6A]")
                 )}
               />
               <span>
-                {tradingMode === "live" && !binanceConnected
-                  ? "Sem chave Binance"
-                  : connectionStatus === "disconnected"
-                    ? "Sem conexão"
-                    : connectionStatus === "connecting"
-                      ? "Conectando"
-                      : binanceConnected
-                        ? binanceTestnet
-                          ? "Binance Testnet"
-                          : "Binance conectada"
-                        : connectionStatus === "connected"
-                          ? "Mercado conectado"
-                          : "Binance (REST)"}
+                {selectedExchange === "okx"
+                  ? (tradingMode === "live" && !okxConnected
+                      ? "Sem chave OKX"
+                      : okxConnected
+                        ? (okxSimulated ? "OKX Demo" : "OKX conectada")
+                        : "OKX (Desconectada)")
+                  : (tradingMode === "live" && !binanceConnected
+                      ? "Sem chave Binance"
+                      : connectionStatus === "disconnected"
+                        ? "Sem conexão"
+                        : connectionStatus === "connecting"
+                          ? "Conectando"
+                          : binanceConnected
+                            ? binanceTestnet
+                              ? "Binance Testnet"
+                              : "Binance conectada"
+                            : connectionStatus === "connected"
+                              ? "Mercado conectado"
+                              : "Binance (REST)")}
               </span>
             </button>
 

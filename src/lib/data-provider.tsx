@@ -15,11 +15,12 @@
  */
 
 import { restoreBinanceSession } from "@/lib/binance-client";
+import { restoreOkxSession } from "@/lib/okx/okx-client";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useCryptoStore } from "@/lib/store";
 import type { TickerData } from "@/lib/store";
 import { getOrFetch, CACHE_TTL } from "@/lib/cache";
-import { getPersistedTradingMode } from "@/lib/store/accountSlice";
+import { getPersistedTradingMode, getPersistedExchange } from "@/lib/store/accountSlice";
 
 import { registerDynamicSymbols } from "@/lib/crypto-meta";
 
@@ -97,7 +98,8 @@ async function fetchSymbolsMetadata() {
 }
 
 async function fetchInitialAccount(mode: string, state: any) {
-  const res = await fetch(`/api/account?mode=${mode}`);
+  const exchange = state?.selectedExchange || "binance";
+  const res = await fetch(`/api/account?mode=${mode}&exchange=${exchange}`);
   if (!res.ok) throw new Error("Failed to fetch account");
   const result = await res.json();
   if (!result.success || !result.data) throw new Error("Invalid account data");
@@ -152,6 +154,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
         st.setBinanceConnected(status.connected);
         st.setBinanceTestnet(status.testnet);
       });
+
+      restoreOkxSession().then((status) => {
+        if (!mounted) return;
+        const st = useCryptoStore.getState();
+        st.setOkxConnected(status.connected);
+        st.setOkxSimulated(status.simulated);
+      });
+
+      const persistedExchange = getPersistedExchange();
+      store.setSelectedExchange(persistedExchange);
 
       // Preserva o modo escolhido pelo usuário (live ou paper) sem resetar no F5
       const persistedMode = getPersistedTradingMode();

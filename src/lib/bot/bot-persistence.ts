@@ -87,11 +87,21 @@ export function startBotPersistence(): () => void {
       const usePartialTp = b.usePartialTp ?? false; // Opção A: Foco em lucro cheio sem fatiamento
       const partialTpTrigger = (!b.partialTpTrigger || b.partialTpTrigger < 2.0) ? 2.5 : b.partialTpTrigger;
       const partialTpPercent = b.partialTpPercent ?? 30;
-      const strategy = (b.symbol === "AUTO" && b.strategy === "BREAKOUT") ? "QUANT_ENSEMBLE" : b.strategy;
-      const useMarketRegime = b.symbol === "AUTO" ? false : (b.useMarketRegime ?? true);
+      // Higienização contra símbolos fantasmas "AUTOUSDT" ou resíduos de auto-screener
+      const rawSym = (b.symbol || "").trim().toUpperCase();
+      const sanitizedSymbol = (rawSym === "AUTOUSDT" || rawSym === "AUTO") ? "AUTO" : b.symbol;
+      const rawOverride = (b.overrideSymbol || "").trim().toUpperCase();
+      const sanitizedOverride = (rawOverride === "AUTOUSDT" || rawOverride === "AUTO" || !rawOverride)
+        ? undefined
+        : b.overrideSymbol;
+
+      const strategy = (sanitizedSymbol === "AUTO" && b.strategy === "BREAKOUT") ? "QUANT_ENSEMBLE" : b.strategy;
+      const useMarketRegime = sanitizedSymbol === "AUTO" ? false : (b.useMarketRegime ?? true);
 
       return {
         ...b,
+        symbol: sanitizedSymbol,
+        overrideSymbol: sanitizedOverride,
         stopAfterProfit: false, // Força modo contínuo: robôs operam sem interrupção buscando lucro
         strategy,
         useMarketRegime,

@@ -122,7 +122,8 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
 
   const handleSetOverride = (newSymbol: string, ttlMode?: "indefinite" | "single_trade" | "1h" | "4h") => {
     const chosenTtl = ttlMode || overrideTtl;
-    if (newSymbol === "AUTO" || !newSymbol) {
+    const symClean = (newSymbol || "").trim().toUpperCase();
+    if (!symClean || symClean === "AUTO" || symClean === "AUTOUSDT") {
       updateBot(bot.id, {
         overrideSymbol: undefined,
         overrideMode: undefined,
@@ -138,7 +139,6 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
         description: "Auto-Screener restaurado: varredura dinâmica de momentum reativada.",
       });
     } else {
-      const symClean = newSymbol.trim().toUpperCase();
       const formatted = symClean.endsWith("USDT") ? symClean : `${symClean}USDT`;
       let expiresAt: number | undefined = undefined;
       let ttlDesc = "Até cancelamento manual";

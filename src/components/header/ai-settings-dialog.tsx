@@ -152,7 +152,11 @@ export function AiSettingsDialog({ open, onOpenChange }: AiSettingsDialogProps) 
       try {
         json = rawText ? JSON.parse(rawText) : {};
       } catch {
-        throw new Error(`Resposta inválida do servidor (HTTP ${res.status}).`);
+        throw new Error(
+          res.status === 404
+            ? "Serviço de IA não encontrado no servidor (HTTP 404). Reinicie o TradeAI com build atualizada."
+            : `Resposta inválida do servidor (HTTP ${res.status}).`
+        );
       }
       const resObj: TestResult = json.success
         ? {
@@ -213,8 +217,18 @@ export function AiSettingsDialog({ open, onOpenChange }: AiSettingsDialogProps) 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.details || json.error || "Falha ao salvar");
+    const text = await res.text();
+    let json: any = {};
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error(
+        res.status === 404
+          ? "Rota /api/ai/settings não encontrada (HTTP 404). Reinicie o TradeAI com build atualizada."
+          : `Falha no servidor (HTTP ${res.status}): resposta inesperada.`
+      );
+    }
+    if (!res.ok || !json.success) throw new Error(json.details || json.error || `Erro HTTP ${res.status}`);
     setData(json.data);
     return json.data;
   };
@@ -326,8 +340,18 @@ export function AiSettingsDialog({ open, onOpenChange }: AiSettingsDialogProps) 
         setApiKey("");
       }
       const res = await fetch(`/api/ai/models?provider=${editing}`);
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error);
+      const text = await res.text();
+      let json: any = {};
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error(
+          res.status === 404
+            ? "Rota /api/ai/models não encontrada (HTTP 404)."
+            : `Falha no servidor (HTTP ${res.status}): resposta inesperada.`
+        );
+      }
+      if (!json.success) throw new Error(json.error || `Erro HTTP ${res.status}`);
       setModels(json.models);
       setModelDropdownOpen(true);
       toast({ title: "Modelos carregados", description: `${json.models.length} modelos disponíveis na sua conta.` });

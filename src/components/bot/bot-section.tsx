@@ -28,7 +28,7 @@ import { OrphanOrdersDialog } from "./orphan-orders-dialog";
 import { BotBacktestDialog } from "./bot-backtest-dialog";
 import { BotRiskCockpit } from "./bot-risk-cockpit";
 import { BotCockpit } from "./bot-cockpit";
-import { BinanceConnection } from "./binance-connection";
+import { ExchangeConnection } from "./exchange-connection";
 import { EnginePanel } from "./engine-panel";
 import { BotReadinessBar } from "./bot-readiness";
 import { BotActivityLog } from "./bot-activity-log";
@@ -1129,7 +1129,7 @@ export function BotSection() {
         </TabsContent>
 
         <TabsContent value="config">
-          <BinanceConnection />
+          <ExchangeConnection />
         </TabsContent>
       </Tabs>
 

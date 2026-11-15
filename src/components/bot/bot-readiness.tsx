@@ -49,12 +49,22 @@ export function useBotReadiness() {
 
   return useMemo(() => {
     // Robôs em Auto-Screener ("AUTO" sem override fixo) selecionam ativos dinamicamente no tick;
-    // não existe par/cotação chamado "AUTO" para aguardar.
+    // Não existe par de negociação na exchange chamado "AUTO" ou "AUTOUSDT".
     const symbols = Array.from(
       new Set(
         bots
-          .map((b) => (b.overrideSymbol && b.overrideSymbol !== "AUTO" ? b.overrideSymbol : b.symbol))
-          .filter((s): s is string => Boolean(s) && s !== "AUTO")
+          .map((b) => {
+            const override = b.overrideSymbol?.trim().toUpperCase();
+            if (override && override !== "AUTO" && override !== "AUTOUSDT" && !override.includes("AUTO")) {
+              return override;
+            }
+            const baseSym = b.symbol?.trim().toUpperCase();
+            if (baseSym && baseSym !== "AUTO" && baseSym !== "AUTOUSDT" && !baseSym.includes("AUTO")) {
+              return baseSym;
+            }
+            return null;
+          })
+          .filter((s): s is string => Boolean(s) && s.endsWith("USDT") && s !== "AUTOUSDT")
       )
     );
     const hasTickers = Object.keys(tickers).length > 0;

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getBinanceCredentials } from '@/lib/binance-session';
+import { getOkxCredentials } from '@/lib/okx/okx-session';
+import { executeOkxOrder } from '@/lib/okx/okx-client';
 import { guardApiRequest } from '@/lib/auth/request-guard';
 import crypto from 'crypto';
 import Decimal from 'decimal.js';
@@ -621,22 +623,54 @@ export async function POST(request: NextRequest) {
       try {
         const requestedOrderType = body.orderType === 'LIMIT_MAKER' || body.orderType === 'LIMIT' ? body.orderType : 'MARKET';
         const requestedLimitPrice = typeof body.limitPrice === 'number' && body.limitPrice > 0 ? body.limitPrice : priceVal;
+        const targetExchange = String(body.exchange || request.nextUrl.searchParams.get('exchange') || 'binance').toLowerCase();
 
         const clientOrderId = body.executionId || body.id || (body.botId ? `${body.botId}_${Date.now()}` : undefined);
 
-        binanceOrderResult = await executeBinanceOrder(
-          symbolClean,
-          sideClean,
-          qtyVal,
-          binanceApiKey || '',
-          binanceApiSecret || '',
-          isTestnet,
-          totalVal,
-          Boolean(body.sellAll),
-          requestedOrderType,
-          requestedLimitPrice,
-          clientOrderId
-        );
+        if (targetExchange === 'okx') {
+          const okxCreds = getOkxCredentials(request);
+          if (!okxCreds.apiKey || !okxCreds.apiSecret || !okxCreds.passphrase) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: 'Credenciais da OKX não configuradas. Conecte sua conta da OKX em Conexão & Risco.',
+                code: 'OKX_CREDENTIALS_MISSING',
+              },
+              { status: 400 }
+            );
+          }
+          const okxResult = await executeOkxOrder(okxCreds, {
+            symbol: symbolClean,
+            side: sideClean as 'BUY' | 'SELL',
+            quantity: qtyVal,
+            price: requestedLimitPrice,
+            orderType: requestedOrderType === 'LIMIT' ? 'limit' : 'market',
+            clientOrderId: clientOrderId?.slice(0, 32),
+          });
+
+          binanceOrderResult = {
+            orderId: okxResult.orderId,
+            clientOrderId: okxResult.clientOrderId,
+            status: 'FILLED',
+            symbol: symbolClean,
+            executedQty: String(qtyVal),
+            cummulativeQuoteQty: String(totalVal),
+          };
+        } else {
+          binanceOrderResult = await executeBinanceOrder(
+            symbolClean,
+            sideClean,
+            qtyVal,
+            binanceApiKey || '',
+            binanceApiSecret || '',
+            isTestnet,
+            totalVal,
+            Boolean(body.sellAll),
+            requestedOrderType,
+            requestedLimitPrice,
+            clientOrderId
+          );
+        }
         // Extract real quantity and executed price if available
         if (binanceOrderResult) {
           const executedQty = parseFloat(binanceOrderResult.executedQty);

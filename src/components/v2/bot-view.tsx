@@ -14,7 +14,7 @@ import { OrphanOrdersDialog } from "@/components/bot/orphan-orders-dialog";
 import { BotBacktestDialog } from "@/components/bot/bot-backtest-dialog";
 import { BotRiskCockpit } from "@/components/bot/bot-risk-cockpit";
 import { BotCockpit } from "@/components/bot/bot-cockpit";
-import { BinanceConnection } from "@/components/bot/binance-connection";
+import { ExchangeConnection } from "@/components/bot/exchange-connection";
 import { EnginePanel } from "@/components/bot/engine-panel";
 import { BotReadinessBar } from "@/components/bot/bot-readiness";
 import { BotActivityLog } from "@/components/bot/bot-activity-log";
@@ -1151,7 +1151,7 @@ export function BotView() {
             </button>
           </div>
           <BotCockpit />
-          <BinanceConnection />
+          <ExchangeConnection />
         </div>
       )}
 
