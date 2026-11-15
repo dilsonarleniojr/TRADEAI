@@ -19,6 +19,12 @@ export function HomeView() {
     tickers,
     connectionStatus,
     lastSyncAt,
+    selectedExchange,
+    setSelectedExchange,
+    binanceConnected,
+    okxConnected,
+    okxSimulated,
+    setOpenApiSettingsModal,
   } = useCryptoStore(
     useShallow((s) => ({
       portfolio: s.portfolio,
@@ -29,6 +35,12 @@ export function HomeView() {
       tickers: s.tickers,
       connectionStatus: s.connectionStatus,
       lastSyncAt: s.lastSyncAt,
+      selectedExchange: s.selectedExchange,
+      setSelectedExchange: s.setSelectedExchange,
+      binanceConnected: s.binanceConnected,
+      okxConnected: s.okxConnected,
+      okxSimulated: s.okxSimulated,
+      setOpenApiSettingsModal: s.setOpenApiSettingsModal,
     }))
   );
 
@@ -128,9 +140,39 @@ export function HomeView() {
         {/* Cartão Escuro Focal (8 colunas em desktop) */}
         <div className="lg:col-span-7 xl:col-span-8 flex flex-col justify-between bg-[#0E1B2C] text-white p-7 sm:p-9 rounded-[28px] shadow-[0_4px_20px_rgba(14,27,44,0.08)]">
           <div>
-            {/* Topo do Card: Rótulo + Seletor de Período */}
-            <div className="flex items-center justify-between pb-2">
-              <span className="text-[14px] text-[#A9B7C8] font-medium">Patrimônio</span>
+            {/* Topo do Card: Rótulo + Seletor de Exchange + Seletor de Período */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
+              <div className="flex items-center gap-2.5">
+                <span className="text-[14px] text-[#A9B7C8] font-medium">Patrimônio</span>
+                {/* Seletor Rápido de Exchange Binance | OKX */}
+                <div className="inline-flex p-0.5 bg-[#17273d] rounded-full border border-white/10 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedExchange("binance")}
+                    className={`px-2.5 py-0.5 rounded-full transition-all flex items-center gap-1.5 cursor-pointer select-none ${
+                      selectedExchange === "binance"
+                        ? "bg-white text-[#0E1B2C] font-bold shadow-xs"
+                        : "text-[#A9B7C8] hover:text-white"
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${binanceConnected ? "bg-emerald-400" : "bg-amber-400"}`} />
+                    <span>Binance</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedExchange("okx")}
+                    className={`px-2.5 py-0.5 rounded-full transition-all flex items-center gap-1.5 cursor-pointer select-none ${
+                      selectedExchange === "okx"
+                        ? "bg-white text-[#0E1B2C] font-bold shadow-xs"
+                        : "text-[#A9B7C8] hover:text-white"
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${okxConnected ? "bg-emerald-400" : "bg-sky-400"}`} />
+                    <span>OKX</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="inline-flex p-0.5 bg-[#17273d] rounded-full border border-white/10 text-[13px]">
                 {(["24h", "7d", "30d"] as const).map((p) => (
                   <button

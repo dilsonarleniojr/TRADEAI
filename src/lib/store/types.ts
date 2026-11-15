@@ -168,6 +168,9 @@ export interface BotInstance {
   active: boolean;
   status: "idle" | "scanning" | "in_position" | "take_profit" | "stopped";
 
+  // Exchange de execução do robô (Binance Spot ou OKX V5)
+  exchange?: "binance" | "okx";
+
   // Override manual de ativo para Auto-Screener (fixação temporária de par pelo operador)
   overrideSymbol?: string;
   overrideMode?: "indefinite" | "single_trade" | "1h" | "4h";

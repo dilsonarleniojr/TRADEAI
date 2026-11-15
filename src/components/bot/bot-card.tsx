@@ -282,6 +282,19 @@ export const BotCard = memo(function BotCard({ bot, onEdit }: BotCardProps) {
             </div>
 
             <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Exchange Badge */}
+              <Badge
+                variant="outline"
+                className={`text-[9px] font-bold px-1.5 py-0 border ${
+                  bot.exchange === "okx"
+                    ? "bg-sky-500/15 border-sky-500/40 text-sky-400"
+                    : "bg-amber-500/15 border-amber-500/40 text-amber-400"
+                }`}
+                title={`Operando na ${bot.exchange === "okx" ? "OKX V5 Unified" : "Binance Spot"}`}
+              >
+                {bot.exchange === "okx" ? "OKX V5" : "BINANCE"}
+              </Badge>
+
               {/* Symbol Badge */}
               <Badge
                 variant="outline"

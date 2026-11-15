@@ -45,17 +45,19 @@ interface BotDialogProps {
 }
 
 export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
-  const { addBot, updateBot, tickers, bots } = useCryptoStore(
+  const { addBot, updateBot, tickers, bots, selectedExchange } = useCryptoStore(
     useShallow((s) => ({
       addBot: s.addBot,
       updateBot: s.updateBot,
       tickers: s.tickers,
       bots: s.bots,
+      selectedExchange: s.selectedExchange,
     }))
   );
   const { toast } = useToast();
 
   const [name, setName] = useState("");
+  const [exchange, setExchange] = useState<"binance" | "okx">("binance");
   const [symbol, setSymbol] = useState("BTCUSDT");
   const [strategy, setStrategy] = useState<BotStrategy>("QUANT_ENSEMBLE");
   const [takeProfit, setTakeProfit] = useState(3.0);
@@ -271,6 +273,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
   useEffect(() => {
     if (botToEdit) {
       setName(botToEdit.name);
+      setExchange(botToEdit.exchange || selectedExchange || "binance");
       setSymbol(botToEdit.symbol);
       setStrategy(botToEdit.strategy);
       setTakeProfit(botToEdit.takeProfit);
@@ -307,6 +310,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
       setDisableConsecutiveLossBrake(botToEdit.disableConsecutiveLossBrake ?? false);
     } else {
       setName("Novo Robô de Lucro");
+      setExchange(selectedExchange || "binance");
       setSymbol("SOLUSDT");
       setStrategy("QUANT_ENSEMBLE");
       setTakeProfit(3.0);
@@ -462,6 +466,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
     if (botToEdit) {
       updateBot(botToEdit.id, {
         name,
+        exchange: exchange || "binance",
         symbol,
         strategy,
         takeProfit,
@@ -504,6 +509,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
     } else {
       addBot({
         name,
+        exchange: exchange || "binance",
         symbol,
         strategy,
         takeProfit,
@@ -640,6 +646,39 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
                 <Switch checked={active} onCheckedChange={setActive} />
                 <span className="text-xs font-medium">{active ? "Ativo" : "Pausado"}</span>
               </div>
+            </div>
+          </div>
+
+          {/* Corretora de Operação do Robô (Binance Spot vs OKX V5) */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Corretora de Execução (Investimento)</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setExchange("binance")}
+                className={cn(
+                  "flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold border transition-all cursor-pointer",
+                  exchange === "binance"
+                    ? "bg-[#0E1B2C] text-white border-[#0E1B2C] dark:bg-white dark:text-[#0E1B2C] shadow-xs"
+                    : "bg-secondary/40 text-muted-foreground border-border/50 hover:text-foreground"
+                )}
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                <span>Binance Spot</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setExchange("okx")}
+                className={cn(
+                  "flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold border transition-all cursor-pointer",
+                  exchange === "okx"
+                    ? "bg-[#0E1B2C] text-white border-[#0E1B2C] dark:bg-white dark:text-[#0E1B2C] shadow-xs"
+                    : "bg-secondary/40 text-muted-foreground border-border/50 hover:text-foreground"
+                )}
+              >
+                <span className="w-2 h-2 rounded-full bg-sky-400" />
+                <span>OKX V5 Unified</span>
+              </button>
             </div>
           </div>
 

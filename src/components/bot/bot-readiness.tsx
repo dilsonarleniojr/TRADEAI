@@ -36,7 +36,18 @@ export function useBotReadiness() {
   const restored = useFleetRestore((s) => s.restored);
   const pendingResume = useFleetRestore((s) => s.pendingResume);
   const counts = useKlineCounts((s) => s.counts);
-  const { bots, tickers, tradingMode, accountSyncedAt, accountSource, binanceTestnet } = useCryptoStore(
+  const {
+    bots,
+    tickers,
+    tradingMode,
+    accountSyncedAt,
+    accountSource,
+    binanceTestnet,
+    selectedExchange,
+    binanceConnected,
+    okxConnected,
+    okxSimulated,
+  } = useCryptoStore(
     useShallow((s) => ({
       bots: s.bots,
       tickers: s.tickers,
@@ -44,6 +55,10 @@ export function useBotReadiness() {
       accountSyncedAt: s.accountSyncedAt,
       accountSource: s.accountSource,
       binanceTestnet: s.binanceTestnet,
+      selectedExchange: s.selectedExchange,
+      binanceConnected: s.binanceConnected,
+      okxConnected: s.okxConnected,
+      okxSimulated: s.okxSimulated,
     }))
   );
 
@@ -71,8 +86,13 @@ export function useBotReadiness() {
     const missingPrice = symbols.filter((s) => !tickers[s]?.price);
     const missingCandles = symbols.filter((s) => (counts[s] ?? 0) < MIN_CANDLES);
     const live = tradingMode === "live";
+    const isOkx = selectedExchange === "okx";
+    const expectedSourcePrefix = isOkx ? "okx" : "binance";
     const balanceOk =
-      accountSyncedAt !== null && (live ? !!accountSource?.startsWith("binance") : !accountSource?.startsWith("binance"));
+      accountSyncedAt !== null &&
+      (live ? Boolean(accountSource?.startsWith(expectedSourcePrefix)) : !accountSource?.startsWith("binance") && !accountSource?.startsWith("okx"));
+
+    const exchangeLabel = isOkx ? "OKX" : "Binance";
 
     const checks: ReadinessCheck[] = [
       {
@@ -100,24 +120,44 @@ export function useBotReadiness() {
             : `baixando ${missingCandles.slice(0, 4).map((s) => s.replace("USDT", "")).join(", ")}`,
       },
       {
-        label: live ? "Saldo da Binance" : "Saldo simulado",
+        label: live ? `Saldo da ${exchangeLabel}` : "Saldo simulado",
         ok: balanceOk,
         detail: balanceOk
           ? `sincronizado às ${new Date(accountSyncedAt!).toLocaleTimeString("pt-BR")}`
           : live
-            ? "aguardando sincronizar com a Binance"
+            ? `aguardando sincronizar com a ${exchangeLabel}`
             : "aguardando o saldo simulado",
       },
     ];
 
+    const currentModeText = live
+      ? isOkx
+        ? (okxSimulated ? "OKX DEMO" : "OKX REAL")
+        : (binanceTestnet ? "BINANCE TESTNET" : "BINANCE REAL")
+      : "SIMULADO";
+
     return {
       ready: checks.every((c) => c.ok),
       checks,
-      modeLabel: live ? (binanceTestnet ? "TESTNET" : "REAL") : "SIMULADO",
+      modeLabel: currentModeText,
       pendingResume,
       symbols,
     };
-  }, [restored, pendingResume, counts, bots, tickers, tradingMode, accountSyncedAt, accountSource, binanceTestnet]);
+  }, [
+    restored,
+    pendingResume,
+    counts,
+    bots,
+    tickers,
+    tradingMode,
+    accountSyncedAt,
+    accountSource,
+    binanceTestnet,
+    selectedExchange,
+    binanceConnected,
+    okxConnected,
+    okxSimulated,
+  ]);
 }
 
 /**

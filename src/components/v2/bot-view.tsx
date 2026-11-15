@@ -36,6 +36,7 @@ import {
 } from "@/lib/bot/background-settings";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -72,6 +73,7 @@ import {
   Layers,
   Loader2,
   Pencil,
+  Plug,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
@@ -114,6 +116,7 @@ export function BotView() {
     selectedExchange,
     setSelectedExchange,
     okxConnected,
+    okxSimulated,
     binanceConnected,
     protectionSettings,
     updateProtectionSettings,
@@ -142,6 +145,7 @@ export function BotView() {
       selectedExchange: s.selectedExchange,
       setSelectedExchange: s.setSelectedExchange,
       okxConnected: s.okxConnected,
+      okxSimulated: s.okxSimulated,
       binanceConnected: s.binanceConnected,
       protectionSettings: s.protectionSettings,
       updateProtectionSettings: s.updateProtectionSettings,
@@ -631,6 +635,69 @@ export function BotView() {
             />
             <span className="text-[#4A586A] dark:text-[#94a3b8]">min</span>
           </label>
+        </div>
+      </div>
+
+      {/* Seletor Institucional de Corretora de Investimento (Binance vs OKX) */}
+      <div className="rounded-[20px] border border-[#E7EBF0] dark:border-white/10 bg-white/80 dark:bg-[#0f1622]/80 backdrop-blur-md p-3 sm:p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="text-[11px] font-semibold tracking-wider text-[#4A586A] dark:text-[#94a3b8] uppercase">
+            Corretora Ativa:
+          </span>
+
+          <div className="inline-flex p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10">
+            <button
+              type="button"
+              onClick={() => setSelectedExchange("binance")}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-instrument-sans font-semibold transition-all flex items-center gap-2 cursor-pointer ${
+                selectedExchange === "binance"
+                  ? "bg-white dark:bg-[#0E1B2C] text-[#0E1B2C] dark:text-white shadow-xs"
+                  : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C] dark:hover:text-white"
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${binanceConnected ? "bg-emerald-500 animate-pulse" : "bg-amber-400"}`} />
+              <span>Binance Spot</span>
+              {binanceConnected ? (
+                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">
+                  Conectada
+                </span>
+              ) : (
+                <span className="text-[10px] text-muted-foreground">Configurar</span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedExchange("okx")}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-instrument-sans font-semibold transition-all flex items-center gap-2 cursor-pointer ${
+                selectedExchange === "okx"
+                  ? "bg-white dark:bg-[#0E1B2C] text-[#0E1B2C] dark:text-white shadow-xs"
+                  : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C] dark:hover:text-white"
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${okxConnected ? "bg-emerald-500 animate-pulse" : "bg-sky-400"}`} />
+              <span>OKX V5 Unified</span>
+              {okxConnected ? (
+                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">
+                  {okxSimulated ? "Demo" : "Conectada"}
+                </span>
+              ) : (
+                <span className="text-[10px] text-muted-foreground">Configurar</span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setOpenApiSettingsModal(true)}
+            className="h-8 rounded-full border-[#D3DAE3] dark:border-white/20 text-xs font-semibold cursor-pointer gap-1.5"
+          >
+            <Plug className="w-3.5 h-3.5 text-crypto-cyan" />
+            <span>Gerenciar Chaves {selectedExchange === "okx" ? "OKX" : "Binance"}</span>
+          </Button>
         </div>
       </div>
 
