@@ -228,4 +228,49 @@ describe("OKX v5 Integration & Symbol Normalization", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("tenta fallback cross no erro 50124 e diagnostica permissão via /api/v5/account/config se persistir", async () => {
+    const originalFetch = globalThis.fetch;
+    let attemptCount = 0;
+
+    globalThis.fetch = mock(async (url: string | URL, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("/api/v5/public/instruments")) {
+        return new Response(
+          JSON.stringify({ code: "0", data: [{ lotSz: "0.0001", minSz: "0.0001", tickSz: "0.01" }] }),
+          { status: 200 }
+        );
+      }
+      if (u.includes("/api/v5/account/config")) {
+        return new Response(
+          JSON.stringify({ code: "0", data: [{ acctLv: "1", perm: "read_only", ip: "168.121.99.215" }] }),
+          { status: 200 }
+        );
+      }
+      if (u.includes("/api/v5/trade/order") && (!init?.method || init.method === "POST")) {
+        attemptCount++;
+        return new Response(
+          JSON.stringify({
+            code: "1",
+            data: [{ ordId: "", sCode: "50124", sMsg: "This API Key does not have trading permission for the market" }],
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify({ code: "0", data: [] }), { status: 200 });
+    }) as any;
+
+    try {
+      await expect(
+        executeOkxOrder(
+          { apiKey: "k-readonly-50124", apiSecret: "s", passphrase: "p", simulated: false },
+          { symbol: "UNIUSDT", side: "BUY", quantity: 5, totalVal: 30, orderType: "MARKET" }
+        )
+      ).rejects.toThrow(/read_only.*50124|permissão de negociação/);
+      // Tentou cash e depois cross antes de lançar erro diagnóstico
+      expect(attemptCount).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

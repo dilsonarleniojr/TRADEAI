@@ -152,9 +152,16 @@ export function BotActivityLog() {
   // Merge e Deduplicação dos logs (mantém até 2.000 entradas)
   const allLogs = useMemo(() => {
     const merged = new Map<string, BotLogEntry>();
+    const seenKeys = new Set<string>();
 
-    // 1. Structured logs primeiro (maior precisão)
+    const makeCompositeKey = (entry: { timestamp: number; botId?: string; message: string }) =>
+      `${entry.timestamp}_${entry.botId || ""}_${entry.message}`;
+
+    // 1. Structured logs primeiro (maior precisão de canal e severidade)
     for (const log of structuredLogs) {
+      const compKey = makeCompositeKey(log);
+      if (seenKeys.has(compKey)) continue;
+      seenKeys.add(compKey);
       merged.set(log.id, {
         id: log.id,
         timestamp: log.timestamp,
@@ -176,12 +183,20 @@ export function BotActivityLog() {
 
     // 2. Trade logs
     for (const log of tradeLogs) {
-      if (!merged.has(log.id)) merged.set(log.id, log);
+      const compKey = makeCompositeKey(log);
+      if (!merged.has(log.id) && !seenKeys.has(compKey)) {
+        seenKeys.add(compKey);
+        merged.set(log.id, log);
+      }
     }
 
     // 3. Bot logs convencionais
     for (const log of botLogs) {
-      if (!merged.has(log.id)) merged.set(log.id, log);
+      const compKey = makeCompositeKey(log);
+      if (!merged.has(log.id) && !seenKeys.has(compKey)) {
+        seenKeys.add(compKey);
+        merged.set(log.id, log);
+      }
     }
 
     return Array.from(merged.values())

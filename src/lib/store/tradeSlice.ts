@@ -291,11 +291,6 @@ export const createTradeSlice: StateCreator<any, [], [], TradeSlice> = (set, get
   addBotLog: (log) =>
     set((state) => {
       const now = Date.now();
-      const newLog: BotLogEntry = {
-        ...log,
-        id: `log-${now}-${Math.random().toString(36).slice(2, 6)}`,
-        timestamp: now,
-      };
 
       // Mapeia automaticamente para o canal e severidade do StructuredLogger
       let channel: LogChannel = log.channel || "SIGNALS";
@@ -311,6 +306,14 @@ export const createTradeSlice: StateCreator<any, [], [], TradeSlice> = (set, get
         else if (log.type === "warning") severity = "WARN";
         else if (log.type === "loss" && (log.message.includes("Stop-Loss") || log.message.includes("Circuit Breaker"))) severity = "CRITICAL";
       }
+
+      const newLog: BotLogEntry = {
+        ...log,
+        id: `log-${now}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: now,
+        channel,
+        severity,
+      };
 
       structuredLogger.log(channel, severity, log.message, {
         botId: log.botId,

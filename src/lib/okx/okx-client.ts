@@ -297,12 +297,54 @@ export async function getOkxInstrumentFilters(instId: string): Promise<OkxInstru
   return cached || fallback;
 }
 
+export interface OkxAccountConfig {
+  acctLv: string;
+  perm: string;
+  ip: string;
+  fetchedAt: number;
+}
+
+const accountConfigCache = new Map<string, OkxAccountConfig>();
+const ACCOUNT_CONFIG_TTL_MS = 60 * 1000;
+
+/**
+ * Consulta configuração de conta e permissões da API Key (GET /api/v5/account/config).
+ */
+export async function fetchOkxAccountConfig(creds: OkxCredentials): Promise<OkxAccountConfig | null> {
+  const cacheKey = `${creds.apiKey}:${Boolean(creds.simulated)}`;
+  const cached = accountConfigCache.get(cacheKey);
+  if (cached && Date.now() - cached.fetchedAt < ACCOUNT_CONFIG_TTL_MS) {
+    return cached;
+  }
+
+  try {
+    const res = await requestOkxApi("GET", "/api/v5/account/config", "", creds);
+    const item = res.json?.data?.[0];
+    if (res.status >= 200 && res.status < 300 && String(res.json?.code) === "0" && item && (item.perm || item.acctLv)) {
+      const cfg: OkxAccountConfig = {
+        acctLv: String(item.acctLv || ""),
+        perm: String(item.perm || ""),
+        ip: String(item.ip || ""),
+        fetchedAt: Date.now(),
+      };
+      accountConfigCache.set(cacheKey, cfg);
+      return cfg;
+    }
+  } catch {
+    // Falha opcional não impede consulta de saldo
+  }
+  return cached || null;
+}
+
 /**
  * Consulta a carteira / saldo da conta unificada na OKX (GET /api/v5/account/balance)
  */
 export async function fetchOkxAccount(creds: OkxCredentials) {
   const requestPath = "/api/v5/account/balance";
-  const res = await requestOkxApi("GET", requestPath, "", creds);
+  const [res, accountCfg] = await Promise.all([
+    requestOkxApi("GET", requestPath, "", creds),
+    fetchOkxAccountConfig(creds),
+  ]);
 
   if (res.status < 200 || res.status >= 300) {
     throw new Error(
@@ -402,6 +444,14 @@ export async function fetchOkxAccount(creds: OkxCredentials) {
     totalEquityUsd = cashBalance + assetBalance;
   }
 
+  let permissionWarning: string | undefined;
+  if (accountCfg?.perm && !accountCfg.perm.toLowerCase().includes("trade")) {
+    permissionWarning =
+      "Sua chave API da OKX possui apenas permissão de Leitura (read_only). Acesse OKX → Perfil → API → Editar e marque 'Negociar (Trade)' com a opção 'Spot' habilitada.";
+  }
+
+  const combinedWarning = [permissionWarning, fundingWarning].filter(Boolean).join(" ") || undefined;
+
   return {
     id: "okx-live-account",
     userId: "okx_user",
@@ -420,7 +470,9 @@ export async function fetchOkxAccount(creds: OkxCredentials) {
     positions,
     portfolio: positions,
     fundingBalance,
-    warning: fundingWarning,
+    permissions: accountCfg?.perm,
+    accountLevel: accountCfg?.acctLv,
+    warning: combinedWarning,
     syncedAt: Date.now(),
   };
 }
@@ -637,23 +689,47 @@ export async function executeOkxOrder(
   let json = res.json || {};
   let orderData = json.data?.[0] || {};
 
-  // Fallback automático caso a conta OKX esteja em modo Single/Multi-currency Margin (código 51010)
+  // Fallback automático caso a conta OKX esteja em modo Single/Multi-currency Margin (51010)
+  // ou a chave permita apenas margem cruzada/Spot específico (50124)
   const errCodeStr = String(orderData.sCode || json.code || "");
-  if (errCodeStr === "51010") {
-    bodyStr = JSON.stringify(buildOrderPayload("cross"));
+  if (errCodeStr === "51010" || errCodeStr === "50124") {
+    const crossPayload = buildOrderPayload("cross");
+    crossPayload.clOrdId = `${clOrdId.slice(0, 30)}x`;
+    bodyStr = JSON.stringify(crossPayload);
     res = await requestOkxApi("POST", requestPath, bodyStr, resolvedCreds);
     json = res.json || {};
     orderData = json.data?.[0] || {};
   }
 
-  if (res.status < 200 || res.status >= 300 || (json.code !== "0" && json.code !== 0)) {
+  const finalCode = String(orderData.sCode || json.code || res.status || "");
+  const isOrderRejected =
+    res.status < 200 ||
+    res.status >= 300 ||
+    (json.code !== "0" && json.code !== 0) ||
+    (orderData.sCode && String(orderData.sCode) !== "0");
+
+  if (isOrderRejected) {
+    if (finalCode === "50124") {
+      const cfg = await fetchOkxAccountConfig(resolvedCreds);
+      const perm = cfg?.perm || "";
+      const acctLv = cfg?.acctLv || "desconhecido";
+      if (perm && !perm.toLowerCase().includes("trade")) {
+        throw new Error(
+          `Chave API da OKX sem permissão de negociação (perm: ${perm}, código 50124). Acesse OKX → Perfil → API → Editar na sua chave e marque a permissão 'Negociar (Trade)'.`
+        );
+      }
+      if (perm) {
+        throw new Error(
+          `A chave API da OKX não tem permissão para o mercado Spot neste par (código 50124, perm: ${perm}, conta nível ${acctLv}). Acesse OKX → Perfil → API → Editar na sua chave e marque 'Spot (À vista)' nas permissões de mercado (ou crie uma chave no modo correspondente Real vs Demo).`
+        );
+      }
+      throw new Error(
+        "Ordem rejeitada pela OKX (código 50124): esta chave API não possui permissão de negociação no mercado Spot. Acesse OKX → Perfil → API → Editar e habilite 'Trade' + mercado 'Spot' (e verifique se Real vs Demo coincidem)."
+      );
+    }
     const errorMsg = orderData.sMsg || json.msg || `Erro HTTP ${res.status}`;
     const errCode = orderData.sCode || json.code || res.status;
     throw new Error(`Ordem rejeitada pela OKX: ${errorMsg} (código ${errCode})`);
-  }
-
-  if (orderData.sCode && String(orderData.sCode) !== "0") {
-    throw new Error(`Ordem rejeitada pela OKX: ${orderData.sMsg || "Falha na execução"} (código ${orderData.sCode})`);
   }
 
   let executedQty = normalizedSide === "sell" ? parseFloat(szStr) || resolvedQty : resolvedQty;
