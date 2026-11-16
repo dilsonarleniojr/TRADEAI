@@ -84,7 +84,7 @@ export function useBotReadiness() {
             }
             return null;
           })
-          .filter((s): s is string => Boolean(s) && s.endsWith("USDT") && s !== "AUTOUSDT")
+          .filter((s): s is string => typeof s === "string" && s.endsWith("USDT") && s !== "AUTOUSDT")
       )
     );
     const hasTickers = Object.keys(tickers).length > 0;
