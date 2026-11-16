@@ -254,11 +254,33 @@ export function calculateBotProfitabilityScore(bot: BotInstance): number {
   return parseFloat(score.toFixed(2));
 }
 
+function getActiveExchange(bot?: BotInstance): "binance" | "okx" {
+  const storeExchange = useCryptoStore.getState().selectedExchange;
+  return storeExchange || bot?.exchange || "binance";
+}
+
+function getExchangeLabel(exchange?: "binance" | "okx"): string {
+  return (exchange || getActiveExchange()) === "okx" ? "OKX" : "Binance";
+}
+
+function refreshLiveAccountInBackground(exchange: "binance" | "okx") {
+  if (typeof window === "undefined" || typeof fetch !== "function") return;
+  fetch(`/api/account?mode=live&exchange=${exchange}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((json) => {
+      if (json?.success && json.data) {
+        useCryptoStore.getState().setAccount(json.data);
+      }
+    })
+    .catch(() => {});
+}
+
 export interface RestingLimitMakerOrder {
   orderId: string | number;
   symbol: string;
   botId: string;
   botName: string;
+  exchange?: "binance" | "okx";
   price: number;
   quantity: number;
   createdAt: number;
@@ -323,10 +345,11 @@ export async function checkRestingMakerOrdersTimeout() {
   for (const [key, order] of restingMakerOrders.entries()) {
     const elapsed = now - order.createdAt;
 
-    // 1. Em modo LIVE, consulta a Binance para reconciliar se a ordem foi executada ou cancelada
+    // 1. Em modo LIVE, consulta a exchange ativa (Binance ou OKX) para reconciliar se a ordem foi executada ou cancelada
+    const orderExchange = order.exchange || getActiveExchange();
     if (store.tradingMode === "live") {
       try {
-        const statusRes = await fetch(`/api/trades?action=orderStatus&symbol=${order.symbol}&orderId=${order.orderId}`);
+        const statusRes = await fetch(`/api/trades?action=orderStatus&symbol=${order.symbol}&orderId=${order.orderId}&exchange=${orderExchange}`);
         if (statusRes.ok) {
           const statusJson = await statusRes.json();
           if (statusJson.success && statusJson.data) {
@@ -479,9 +502,9 @@ export async function checkRestingMakerOrdersTimeout() {
         });
 
         if (store.tradingMode === "live") {
-          // Cancela ordem anterior na Binance
+          // Cancela ordem anterior na exchange
           try {
-            await fetch(`/api/trades?action=cancelOrder&symbol=${order.symbol}&orderId=${order.orderId}`, {
+            await fetch(`/api/trades?action=cancelOrder&symbol=${order.symbol}&orderId=${order.orderId}&exchange=${orderExchange}`, {
               method: "DELETE",
             });
           } catch {}
@@ -500,6 +523,7 @@ export async function checkRestingMakerOrdersTimeout() {
                 strategy: "DYNAMIC_REPRICED_MAKER",
                 mode: "live",
                 orderType: "LIMIT_MAKER",
+                exchange: orderExchange,
               }),
             });
             const repriceData = await repriceRes.json();
@@ -528,7 +552,7 @@ export async function checkRestingMakerOrdersTimeout() {
 
       if (store.tradingMode === "live") {
         try {
-          const res = await fetch(`/api/trades?action=cancelOrder&symbol=${order.symbol}&orderId=${order.orderId}`, {
+          const res = await fetch(`/api/trades?action=cancelOrder&symbol=${order.symbol}&orderId=${order.orderId}&exchange=${orderExchange}`, {
             method: "DELETE",
           });
           const resData = await res.json().catch(() => ({}));
@@ -1139,11 +1163,13 @@ async function tickMultiBotFleetLocked(callbacks?: MultiBotEngineCallbacks) {
     );
   }
 
-  // Sempre sincroniza o saldo real da conta (Spot Binance) periodicamente para que o portfólio esteja sempre atualizado
+  // Sempre sincroniza o saldo real da conta (Binance Spot ou OKX V5) periodicamente para que o portfólio esteja sempre atualizado
   if (tradingMode === "live" && Date.now() - lastFleetAccountSync >= 4000) {
     lastFleetAccountSync = Date.now();
+    const activeExchange = getActiveExchange();
+    const exchangeLabel = getExchangeLabel(activeExchange);
     try {
-      const accRes = await fetch("/api/account?mode=live");
+      const accRes = await fetch(`/api/account?mode=live&exchange=${activeExchange}`);
       if (accRes.ok) {
         const accJson = await accRes.json();
         if (accJson.success && accJson.data) {
@@ -1153,12 +1179,12 @@ async function tickMultiBotFleetLocked(callbacks?: MultiBotEngineCallbacks) {
         }
       } else {
         const errJson = await accRes.json().catch(() => ({}));
-        const errMsg = errJson.error || "Falha ao sincronizar conta Binance";
+        const errMsg = errJson.error || `Falha ao sincronizar conta ${exchangeLabel}`;
         lastLiveAccountError = errMsg;
         if (Date.now() - lastLiveAccountErrorLoggedAt > 30000) {
           lastLiveAccountErrorLoggedAt = Date.now();
           store.addBotLog({
-            message: `🔴 [Binance] ${errMsg}`,
+            message: `🔴 [${exchangeLabel}] ${errMsg}`,
             type: "error",
           });
         }
@@ -1933,11 +1959,12 @@ async function processSingleBotTick(bot: BotInstance, callbacks?: MultiBotEngine
     return;
   }
 
-  // Check minimum execution balance (mínimo Binance de $5.50 USDT ou lote do robô)
+  // Check minimum execution balance (mínimo da exchange de $5.50 USDT ou lote do robô)
   const minRequiredCash = Math.max(5.50, Math.min(bot.allocationAmount || 15.0, 15.0));
   if (cash < minRequiredCash) {
+    const activeExchLabel = getExchangeLabel(getActiveExchange(bot));
     const actionMsg = (tradingMode === "live" && lastLiveAccountError)
-      ? `Aguardando Binance: ${lastLiveAccountError.replace("Conexão Binance falhou: ", "")}`
+      ? `Aguardando ${activeExchLabel}: ${lastLiveAccountError.replace("Conexão Binance falhou: ", "")}`
       : `Aguardando capital livre: Saldo ($${cash.toFixed(2)}) abaixo do lote mínimo ($${minRequiredCash.toFixed(2)}).`;
     store.updateBot(bot.id, {
       status: "scanning",
@@ -2599,6 +2626,9 @@ async function executeBotBuy({
           : parseFloat((buyPrice * 0.9998).toFixed(6)))
       : buyPrice;
 
+    const activeExchange = getActiveExchange(bot);
+    const exchangeLabel = getExchangeLabel(activeExchange);
+
     const trade: TradeData = {
       id: `trade-${bot.id}-${Date.now()}`,
       executionId,
@@ -2614,6 +2644,7 @@ async function executeBotBuy({
       timestamp: new Date().toISOString(),
       botId: bot.id,
       botName: bot.name,
+      exchange: activeExchange,
       riskParams,
       marketSnapshot,
       slippagePercent: estimatedSlippage,
@@ -2635,7 +2666,7 @@ async function executeBotBuy({
       const result = await res.json();
       if (!res.ok || !result.success) {
         store.addBotLog({
-          message: `🔴 [${bot.name}] Falha na Binance: ${result.error || "Erro de execução"}`,
+          message: `🔴 [${bot.name}] Falha na ${exchangeLabel}: ${result.error || "Erro de execução"}`,
           type: "error",
           botId: bot.id,
           botName: bot.name,
@@ -2643,11 +2674,11 @@ async function executeBotBuy({
         store.updateBot(bot.id, {
           stats: {
             ...bot.stats,
-            lastAction: `Erro na Binance: ${result.error || "Ordem rejeitada"}`,
+            lastAction: `Erro na ${exchangeLabel}: ${result.error || "Ordem rejeitada"}`,
             lastActionTime: new Date().toISOString(),
           },
         });
-        // Cooldown de 20s para evitar floodar logs a cada ciclo quando a Binance rejeita
+        // Cooldown de 20s para evitar floodar logs a cada ciclo quando a exchange rejeita
         botErrorCooldown.set(bot.id, Date.now() + 20_000);
         return;
       }
@@ -2665,6 +2696,8 @@ async function executeBotBuy({
 
       if (result.account) {
         store.setAccount(result.account);
+      } else {
+        refreshLiveAccountInBackground(activeExchange);
       }
 
       // Se a ordem for LIMIT_MAKER, registra telemetria de preenchimento e ordem descansando no livro
@@ -2679,6 +2712,7 @@ async function executeBotBuy({
             symbol: execSymbol,
             botId: bot.id,
             botName: bot.name,
+            exchange: activeExchange,
             price: makerLimitPrice,
             quantity: trade.quantity,
             createdAt: Date.now(),
@@ -2688,7 +2722,7 @@ async function executeBotBuy({
       }
     } catch (e: any) {
       store.addBotLog({
-        message: `🔴 [${bot.name}] Erro de conexão com a Binance: ${e.message}`,
+        message: `🔴 [${bot.name}] Erro de conexão com a ${exchangeLabel}: ${e.message}`,
         type: "error",
         botId: bot.id,
         botName: bot.name,
@@ -2853,6 +2887,9 @@ async function executeBotDcaReentry({
   const dcaQuantity = parseFloat((targetSpend / currentPrice).toFixed(6));
   const dcaTotal = parseFloat((dcaQuantity * currentPrice).toFixed(2));
 
+  const activeExchange = getActiveExchange(bot);
+  const exchangeLabel = getExchangeLabel(activeExchange);
+
   const dcaTrade: TradeData = {
     id: `dca-${bot.id}-${Date.now()}`,
     symbol: execSymbol,
@@ -2866,6 +2903,7 @@ async function executeBotDcaReentry({
     timestamp: new Date().toISOString(),
     botId: bot.id,
     botName: bot.name,
+    exchange: activeExchange,
   };
 
   let executedTrade: TradeData = dcaTrade;
@@ -2880,7 +2918,7 @@ async function executeBotDcaReentry({
       const result = await res.json();
       if (!res.ok || !result.success) {
         store.addBotLog({
-          message: `🔴 [${bot.name}] Falha na Binance ao executar DCA: ${result.error || "Ordem rejeitada"}`,
+          message: `🔴 [${bot.name}] Falha na ${exchangeLabel} ao executar DCA: ${result.error || "Ordem rejeitada"}`,
           type: "warning",
           botId: bot.id,
           botName: bot.name,
@@ -2897,6 +2935,7 @@ async function executeBotDcaReentry({
       store.addTrade(executedTrade);
       store.applyTradeToPortfolio(executedTrade);
       if (result.account) store.setAccount(result.account);
+      else refreshLiveAccountInBackground(activeExchange);
     } catch (e: any) {
       store.addBotLog({
         message: `🔴 [${bot.name}] Erro de rede ao executar DCA: ${e.message}`,
@@ -3024,6 +3063,8 @@ async function executeBotPartialSell({
       return false;
     }
 
+  const activeExchange = getActiveExchange(bot);
+  const exchangeLabel = getExchangeLabel(activeExchange);
   const executionId = `exec_partial_${bot.id}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const trade: TradeData = {
     id: `trade-partial-${bot.id}-${Date.now()}`,
@@ -3041,6 +3082,7 @@ async function executeBotPartialSell({
     botId: bot.id,
     botName: bot.name,
     sellAll: false,
+    exchange: activeExchange,
     riskParams: {
       riskPerTradePercent: bot.riskPerTradePercent || 35.0,
       maxOrderUsd: 150.0,
@@ -3067,7 +3109,7 @@ async function executeBotPartialSell({
         const errMsg = result.error || "Ordem rejeitada";
         const errCode = result.code || "";
 
-        // 1. Caso Posição Órfã / Saldo Zerado na Binance (apenas se confirmado NO_BALANCE ou saldo estritamente inexistente)
+        // 1. Caso Posição Órfã / Saldo Zerado na exchange (apenas se confirmado NO_BALANCE ou saldo estritamente inexistente)
         const isZeroBalance =
           errCode === "NO_BALANCE" ||
           errMsg.includes("não possui saldo");
@@ -3078,7 +3120,7 @@ async function executeBotPartialSell({
             status: "scanning",
             stats: {
               ...bot.stats,
-              lastAction: `⚠️ Posição órfã de ${execSymbol.replace("USDT", "")} ($0.00 na Binance) encerrada automaticamente`,
+              lastAction: `⚠️ Posição órfã de ${execSymbol.replace("USDT", "")} ($0.00 na ${exchangeLabel}) encerrada automaticamente`,
               lastActionTime: new Date().toISOString(),
             },
           });
@@ -3086,7 +3128,7 @@ async function executeBotPartialSell({
           partialRetryCooldown.delete(bot.id);
 
           store.addBotLog({
-            message: `⚠️ [${bot.name}] Posição órfã de ${execSymbol.replace("USDT", "")} encerrada no robô: saldo na Binance é $0.00 USDT. Robô liberado para novas varreduras.`,
+            message: `⚠️ [${bot.name}] Posição órfã de ${execSymbol.replace("USDT", "")} encerrada no robô: saldo na ${exchangeLabel} é $0.00 USDT. Robô liberado para novas varreduras.`,
             type: "warning",
             botId: bot.id,
             botName: bot.name,
@@ -3094,13 +3136,13 @@ async function executeBotPartialSell({
 
           callbacks?.onToast?.({
             title: `⚠️ Posição Órfã Limpa [${bot.name}]`,
-            description: `Saldo de ${execSymbol.replace("USDT", "")} era $0.00 na Binance. Robô liberado para novas operações.`,
+            description: `Saldo de ${execSymbol.replace("USDT", "")} era $0.00 na ${exchangeLabel}. Robô liberado para novas operações.`,
             variant: "default",
           });
           return false;
         }
 
-        // 2. Caso Dust / Fatia inferior ao mínimo de $5 da Binance (mas com saldo existente)
+        // 2. Caso Dust / Fatia inferior ao mínimo da exchange (mas com saldo existente)
         const isDustOrMinNotional =
           errCode === "MIN_NOTIONAL_DUST" ||
           errMsg.includes("inferior ao mínimo");
@@ -3115,7 +3157,7 @@ async function executeBotPartialSell({
           partialRetryCooldown.delete(bot.id);
 
           store.addBotLog({
-            message: `ℹ️ [${bot.name}] Parcial desativada: fatia de ${execSymbol.replace("USDT", "")} é inferior a $5 USDT na Binance. A posição continuará aberta até o Take Profit total ou Stop Loss.`,
+            message: `ℹ️ [${bot.name}] Parcial desativada: fatia de ${execSymbol.replace("USDT", "")} é inferior ao lote mínimo na ${exchangeLabel}. A posição continuará aberta até o Take Profit total ou Stop Loss.`,
             type: "info",
             botId: bot.id,
             botName: bot.name,
@@ -3146,7 +3188,7 @@ async function executeBotPartialSell({
           partialRetryCooldown.set(bot.id, Date.now() + waitSeconds * 1000);
 
           store.addBotLog({
-            message: `⚠️ [${bot.name}] Parcial não executada na Binance (${errMsg}). Aguardando ${waitSeconds}s antes de tentar novamente (tentativa ${retries}/3).`,
+            message: `⚠️ [${bot.name}] Parcial não executada na ${exchangeLabel} (${errMsg}). Aguardando ${waitSeconds}s antes de tentar novamente (tentativa ${retries}/3).`,
             type: "warning",
             botId: bot.id,
             botName: bot.name,
@@ -3171,6 +3213,7 @@ async function executeBotPartialSell({
       store.addTrade(executedTrade);
       store.applyTradeToPortfolio(executedTrade);
       if (result.account) store.setAccount(result.account);
+      else refreshLiveAccountInBackground(activeExchange);
     } catch (e: any) {
       const retries = (partialRetryCount.get(bot.id) || 0) + 1;
       partialRetryCount.set(bot.id, retries);
@@ -3334,6 +3377,8 @@ async function executeBotSell({
       ? parseFloat((((totalReturned - totalFees - totalInvested) / totalInvested) * 100).toFixed(2))
       : parseFloat(gainPercent.toFixed(2));
 
+    const activeExchange = getActiveExchange(bot);
+    const exchangeLabel = getExchangeLabel(activeExchange);
     const executionId = `exec_exit_${bot.id}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const trade: TradeData = {
       id: `trade-${bot.id}-${Date.now()}`,
@@ -3351,7 +3396,8 @@ async function executeBotSell({
       timestamp: new Date().toISOString(),
       botId: bot.id,
       botName: bot.name,
-      sellAll: true, // Vender 100% de todo o saldo livre na Binance
+      sellAll: true, // Vender 100% de todo o saldo livre na exchange
+      exchange: activeExchange,
       riskParams: {
         riskPerTradePercent: bot.riskPerTradePercent || 35.0,
         maxOrderUsd: 150.0,
@@ -3381,7 +3427,7 @@ async function executeBotSell({
 
       const result = await res.json();
       if (!res.ok || !result.success) {
-        // Se a posição na Binance for resíduo / inferior ao mínimo de $5 da Binance (MIN_NOTIONAL_DUST):
+        // Se a posição for resíduo / inferior ao mínimo da exchange (MIN_NOTIONAL_DUST):
         // Encerra a posição no robô para desobstruí-lo e não travar o usuário
         if (
           result.code === "MIN_NOTIONAL_DUST" ||
@@ -3417,7 +3463,7 @@ async function executeBotSell({
           });
 
           store.addBotLog({
-            message: `⚠️ [${bot.name}] Posição encerrada no robô. A quantidade em carteira (${position.quantity.toFixed(4)} ${execSymbol.replace("USDT", "")}) vale menos que o lote mínimo de $5 da Binance para venda direta. O saldo residual permanece seguro na sua conta Spot da Binance.`,
+            message: `⚠️ [${bot.name}] Posição encerrada no robô. A quantidade em carteira (${position.quantity.toFixed(4)} ${execSymbol.replace("USDT", "")}) vale menos que o lote mínimo da ${exchangeLabel} para venda direta. O saldo residual permanece seguro na sua conta ${exchangeLabel}.`,
             type: "warning",
             botId: bot.id,
             botName: bot.name,
@@ -3425,7 +3471,7 @@ async function executeBotSell({
 
           callbacks?.onToast?.({
             title: `⚠️ Posição Finalizada (${bot.name})`,
-            description: `Posição encerrada no robô. O valor residual (< $5 USDT) permanece seguro na sua conta Spot da Binance.`,
+            description: `Posição encerrada no robô. O valor residual (< mínimo ${exchangeLabel}) permanece seguro na sua conta ${exchangeLabel}.`,
             variant: "default",
           });
           return;
@@ -3433,7 +3479,7 @@ async function executeBotSell({
 
         botErrorCooldown.set(bot.id, Date.now() + 15_000);
         store.addBotLog({
-          message: `🔴 [${bot.name}] Falha na ordem de venda Binance: ${result.error || "Erro"} (novo teste em 15s)`,
+          message: `🔴 [${bot.name}] Falha na ordem de venda ${exchangeLabel}: ${result.error || "Erro"} (novo teste em 15s)`,
           type: "error",
           botId: bot.id,
           botName: bot.name,
@@ -3454,11 +3500,13 @@ async function executeBotSell({
 
       if (result.account) {
         store.setAccount(result.account);
+      } else {
+        refreshLiveAccountInBackground(activeExchange);
       }
     } catch (e: any) {
       botErrorCooldown.set(bot.id, Date.now() + 15_000);
       store.addBotLog({
-        message: `🔴 [${bot.name}] Erro ao enviar venda Binance: ${e.message} (novo teste em 15s)`,
+        message: `🔴 [${bot.name}] Erro ao enviar venda ${exchangeLabel}: ${e.message} (novo teste em 15s)`,
         type: "error",
         botId: bot.id,
         botName: bot.name,
@@ -4000,11 +4048,12 @@ export async function manualOpenBotPosition(botId: string, callbacks?: MultiBotE
   }
 
   if (cash < 5.20) {
+    const activeExchLabel = getExchangeLabel(getActiveExchange(bot));
     const detail = (store.tradingMode === "live" && lastLiveAccountError)
-      ? `Falha ao consultar saldo na Binance: ${lastLiveAccountError.replace("Conexão Binance falhou: ", "")}`
+      ? `Falha ao consultar saldo na ${activeExchLabel}: ${lastLiveAccountError.replace("Conexão Binance falhou: ", "")}`
       : `Saldo em caixa ($${cash.toFixed(2)} USDT) é inferior ao mínimo ($5.20 USDT).`;
     callbacks?.onToast?.({
-      title: "Saldo Insuficiente ou Erro na Binance",
+      title: `Saldo Insuficiente ou Erro na ${activeExchLabel}`,
       description: detail,
       variant: "destructive",
     });
@@ -4055,6 +4104,8 @@ export async function liquidateWalletPosition(
 
   const currentPrice = tickers[symbol]?.price || pos.marketPrice || 0;
   const total = parseFloat((pos.quantity * currentPrice).toFixed(2));
+  const activeExchange = getActiveExchange();
+  const exchangeLabel = getExchangeLabel(activeExchange);
 
   try {
     const res = await fetch("/api/trades", {
@@ -4069,12 +4120,15 @@ export async function liquidateWalletPosition(
         strategy: "Liquidação Manual de Ativo em Carteira",
         mode: tradingMode,
         sellAll: true,
+        exchange: activeExchange,
       }),
     });
     const result = await res.json();
     if (result.success) {
       if (result.account) {
         store.setAccount(result.account);
+      } else if (tradingMode === "live") {
+        refreshLiveAccountInBackground(activeExchange);
       }
       // Se houver algum bot com essa posição vinculada, limpa a posição dele
       const associatedBot = store.bots.find((b) => b.position && b.position.symbol === symbol);
@@ -4083,24 +4137,24 @@ export async function liquidateWalletPosition(
       }
 
       store.addBotLog({
-        message: `⚡ [Liquidação de Carteira] ${pos.quantity} ${symbol.replace("USDT", "")} vendido a mercado na Binance por ~$${total.toFixed(2)} USDT.`,
+        message: `⚡ [Liquidação de Carteira] ${pos.quantity} ${symbol.replace("USDT", "")} vendido a mercado na ${exchangeLabel} por ~$${total.toFixed(2)} USDT.`,
         type: "profit",
       });
 
       callbacks?.onToast?.({
         title: `⚡ Ativo Liquidado (${symbol.replace("USDT", "")})`,
-        description: `${pos.quantity} ${symbol.replace("USDT", "")} vendido a mercado com sucesso na Binance Spot!`,
+        description: `${pos.quantity} ${symbol.replace("USDT", "")} vendido a mercado com sucesso na ${exchangeLabel}!`,
         variant: "default",
       });
       return true;
     } else {
       store.addBotLog({
-        message: `🔴 [Liquidação de Carteira] Falha ao vender ${symbol.replace("USDT", "")} na Binance: ${result.error}`,
+        message: `🔴 [Liquidação de Carteira] Falha ao vender ${symbol.replace("USDT", "")} na ${exchangeLabel}: ${result.error}`,
         type: "error",
       });
       callbacks?.onToast?.({
         title: "Falha na Venda",
-        description: result.error || "Erro ao liquidar posição na Binance",
+        description: result.error || `Erro ao liquidar posição na ${exchangeLabel}`,
         variant: "destructive",
       });
       return false;

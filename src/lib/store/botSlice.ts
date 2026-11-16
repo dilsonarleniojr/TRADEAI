@@ -890,6 +890,7 @@ export const createBotSlice: StateCreator<
       name: botData.name || (cleanSymbol === "AUTO" ? "Bot Auto-Screener" : `Bot ${cleanSymbol.replace("USDT", "")}`),
       symbol: cleanSymbol,
       strategy: botData.strategy || "AI",
+      exchange: botData.exchange || (get() as any).selectedExchange || "binance",
       active: botData.active ?? false,
       status: (botData.active ? (botData.position ? "in_position" : "scanning") : "stopped") as BotInstance["status"],
       takeProfit: botData.takeProfit ?? 3.8,

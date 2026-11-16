@@ -137,11 +137,20 @@ import { memoryCache } from '@/lib/cache/memory-cache';
 export async function GET(request: NextRequest) {
   try {
     const mode = request.nextUrl.searchParams.get('mode') === 'live' ? 'live' : 'paper';
-    const exchange = (request.nextUrl.searchParams.get('exchange') || 'binance').toLowerCase();
+    const explicitExchange = request.nextUrl.searchParams.get('exchange')?.toLowerCase();
 
     if (mode === 'live') {
+      const okxCreds = getOkxCredentials(request);
+      const { apiKey: binanceApiKey, apiSecret: binanceApiSecret, testnet: isTestnet } = getBinanceCredentials(request);
+
+      const exchange =
+        explicitExchange === 'okx' || explicitExchange === 'binance'
+          ? explicitExchange
+          : okxCreds.apiKey && !binanceApiKey
+            ? 'okx'
+            : 'binance';
+
       if (exchange === 'okx') {
-        const okxCreds = getOkxCredentials(request);
         if (!okxCreds.apiKey || !okxCreds.apiSecret || !okxCreds.passphrase) {
           return NextResponse.json(
             {
@@ -183,8 +192,6 @@ export async function GET(request: NextRequest) {
 
       // Default: Binance
       // Credenciais vêm da sessão criptografada no servidor (nunca de headers do cliente)
-      const { apiKey: binanceApiKey, apiSecret: binanceApiSecret, testnet: isTestnet } = getBinanceCredentials(request);
-
       try {
         const cacheKey = `account:live:${(binanceApiKey || '').slice(-6)}:${isTestnet}`;
         const { data: liveData, isHit, durationMs } = await memoryCache.getOrFetch(

@@ -347,6 +347,7 @@ export interface TradeData {
   botId?: string;
   botName?: string;
   sellAll?: boolean;
+  exchange?: "binance" | "okx";
 
   // Governança, Rastreabilidade e Auditoria
   executionId?: string;

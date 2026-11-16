@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getBinanceCredentials } from '@/lib/binance-session';
 import { getOkxCredentials } from '@/lib/okx/okx-session';
-import { executeOkxOrder } from '@/lib/okx/okx-client';
+import { executeOkxOrder, getOkxOrderStatus, cancelOkxOrder } from '@/lib/okx/okx-client';
 import { guardApiRequest } from '@/lib/auth/request-guard';
 import crypto from 'crypto';
 import Decimal from 'decimal.js';
@@ -398,17 +398,51 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
 
-    // Consulta de status de ordem pontual na Binance Spot
+    // Consulta de status de ordem pontual (Binance Spot ou OKX V5)
     if (action === 'orderStatus') {
       const orderSymbol = (searchParams.get('symbol') || '').trim().toUpperCase();
-      const binanceOrderId = (searchParams.get('orderId') || '').trim();
-      if (!/^[A-Z0-9]{4,20}$/.test(orderSymbol) || !/^\d+$/.test(binanceOrderId)) {
+      const targetOrderId = (searchParams.get('orderId') || '').trim();
+      const explicitExch = (searchParams.get('exchange') || '').trim().toLowerCase();
+      if (!/^[A-Z0-9]{4,20}$/.test(orderSymbol) || !/^[A-Za-z0-9_-]{1,64}$/.test(targetOrderId)) {
         return NextResponse.json(
           { success: false, error: 'Parâmetros "symbol" e "orderId" inválidos para consulta de status.' },
           { status: 400 }
         );
       }
+
+      const okxCreds = getOkxCredentials(request);
       const { apiKey, apiSecret, testnet } = getBinanceCredentials(request);
+      const targetExchange =
+        explicitExch === 'okx' || explicitExch === 'binance'
+          ? explicitExch
+          : okxCreds.apiKey && !apiKey
+            ? 'okx'
+            : 'binance';
+
+      if (targetExchange === 'okx') {
+        if (!okxCreds.apiKey || !okxCreds.apiSecret || !okxCreds.passphrase) {
+          return NextResponse.json(
+            { success: false, error: 'Credenciais da OKX não configuradas para consulta de ordem.' },
+            { status: 401 }
+          );
+        }
+        try {
+          const data = await getOkxOrderStatus(orderSymbol, targetOrderId, okxCreds);
+          return NextResponse.json({ success: true, data });
+        } catch (err: any) {
+          return NextResponse.json(
+            { success: false, error: err.message || 'Erro ao consultar ordem na OKX' },
+            { status: 400 }
+          );
+        }
+      }
+
+      if (!/^\d+$/.test(targetOrderId)) {
+        return NextResponse.json(
+          { success: false, error: 'orderId numérico inválido para consulta na Binance.' },
+          { status: 400 }
+        );
+      }
       if (!apiKey || !apiSecret) {
         return NextResponse.json(
           { success: false, error: 'Credenciais da Binance não configuradas para consulta de ordem.' },
@@ -419,7 +453,7 @@ export async function GET(request: NextRequest) {
       const timestamp = await getSynchronizedTimestamp(baseUrl);
       const query = new URLSearchParams({
         symbol: orderSymbol,
-        orderId: binanceOrderId,
+        orderId: targetOrderId,
         timestamp: String(timestamp),
         recvWindow: '60000',
       }).toString();
@@ -568,19 +602,29 @@ export async function POST(request: NextRequest) {
 
     let binanceOrderResult: any = null;
 
-    // If live mode, run trade order on Binance first
+    // If live mode, run trade order on selected exchange (Binance or OKX) first
     if (modeClean === "live") {
       const { apiKey: binanceApiKey, apiSecret: binanceApiSecret, testnet: isTestnet } = getBinanceCredentials(request);
+      const okxCreds = getOkxCredentials(request);
+      const explicitExch = String(body.exchange || request.nextUrl.searchParams.get('exchange') || '').toLowerCase();
+      const targetExchange =
+        explicitExch === 'okx' || explicitExch === 'binance'
+          ? explicitExch
+          : okxCreds.apiKey && !binanceApiKey
+            ? 'okx'
+            : 'binance';
 
-      // Trava de risco só vale para dinheiro real (testnet é fictícia).
+      const isSimulatedEnv = targetExchange === 'okx' ? okxCreds.simulated : isTestnet;
+
+      // Trava de risco só vale para dinheiro real (testnet/demo é fictícia).
       // Usa o maior entre o total informado, preço × quantidade e o preço atual do servidor × quantidade.
-      if (!isTestnet) {
+      if (!isSimulatedEnv) {
         // Falha fechada: sem preço de referência do servidor, a ordem não passa pela trava.
         if (refPrice === null) {
           return NextResponse.json(
             {
               success: false,
-              error: 'Não foi possível obter o preço atual na Binance para validar os limites. Tente novamente.',
+              error: 'Não foi possível obter o preço atual de referência para validar os limites. Tente novamente.',
               code: 'PRICE_UNAVAILABLE',
             },
             { status: 503 }
@@ -623,12 +667,10 @@ export async function POST(request: NextRequest) {
       try {
         const requestedOrderType = body.orderType === 'LIMIT_MAKER' || body.orderType === 'LIMIT' ? body.orderType : 'MARKET';
         const requestedLimitPrice = typeof body.limitPrice === 'number' && body.limitPrice > 0 ? body.limitPrice : priceVal;
-        const targetExchange = String(body.exchange || request.nextUrl.searchParams.get('exchange') || 'binance').toLowerCase();
 
         const clientOrderId = body.executionId || body.id || (body.botId ? `${body.botId}_${Date.now()}` : undefined);
 
         if (targetExchange === 'okx') {
-          const okxCreds = getOkxCredentials(request);
           if (!okxCreds.apiKey || !okxCreds.apiSecret || !okxCreds.passphrase) {
             return NextResponse.json(
               {
@@ -639,24 +681,24 @@ export async function POST(request: NextRequest) {
               { status: 400 }
             );
           }
-          const okxResult = await executeOkxOrder(
-            symbolClean,
-            sideClean as 'BUY' | 'SELL',
-            qtyVal,
-            okxCreds,
-            requestedLimitPrice,
-            requestedOrderType === 'LIMIT' ? 'LIMIT' : 'MARKET',
+          const okxResult = await executeOkxOrder(okxCreds, {
+            symbol: symbolClean,
+            side: sideClean as 'BUY' | 'SELL',
+            quantity: qtyVal,
+            price: requestedLimitPrice,
+            orderType: requestedOrderType === 'LIMIT' ? 'LIMIT' : 'MARKET',
             totalVal,
-            clientOrderId?.slice(0, 32)
-          );
+            clientOrderId: clientOrderId?.slice(0, 32),
+            sellAll: Boolean(body.sellAll),
+          });
 
           binanceOrderResult = {
             orderId: okxResult.orderId,
             clientOrderId: okxResult.clientOrderId,
-            status: 'FILLED',
+            status: okxResult.status || 'FILLED',
             symbol: symbolClean,
-            executedQty: String(qtyVal),
-            cummulativeQuoteQty: String(totalVal),
+            executedQty: String(okxResult.executedQty > 0 ? okxResult.executedQty : qtyVal),
+            cummulativeQuoteQty: String(okxResult.cummulativeQuoteQty > 0 ? okxResult.cummulativeQuoteQty : totalVal),
           };
         } else {
           binanceOrderResult = await executeBinanceOrder(
@@ -822,17 +864,22 @@ export async function POST(request: NextRequest) {
       success: true,
       data: auditTrade,
       binanceOrder: binanceOrderResult || undefined,
-      account: {
-        cashBalance: result.account.cashBalance,
-        assetQuantity: result.account.assetQuantity,
-        symbol: result.account.symbol,
-        positions: [{
-          symbol: result.account.symbol,
-          quantity: result.account.assetQuantity,
-          marketValue: result.account.assetQuantity * priceVal,
-        }],
-        totalValue: result.account.cashBalance + (result.account.assetQuantity * priceVal),
-      },
+      // No modo LIVE, o saldo autoritativo vem de /api/account?mode=live&exchange=... e não do db.account local.
+      account:
+        modeClean === 'live'
+          ? undefined
+          : {
+              cashBalance: result.account.cashBalance,
+              assetQuantity: result.account.assetQuantity,
+              symbol: result.account.symbol,
+              positions: [{
+                symbol: result.account.symbol,
+                quantity: result.account.assetQuantity,
+                marketValue: result.account.assetQuantity * priceVal,
+              }],
+              totalValue: result.account.cashBalance + (result.account.assetQuantity * priceVal),
+              source: 'paper',
+            },
     });
   } catch (error: any) {
     console.error('[Trades API] POST error:', error.message);
@@ -859,22 +906,56 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
 
-    // Suporte a cancelamento pontual de ordem aberta na Binance Spot
+    // Suporte a cancelamento pontual de ordem aberta (Binance Spot ou OKX V5)
     if (action === 'cancelOrder') {
       const orderSymbol = (searchParams.get('symbol') || '').trim().toUpperCase();
-      const binanceOrderId = (searchParams.get('orderId') || '').trim();
-      if (!/^[A-Z0-9]{4,20}$/.test(orderSymbol) || !/^\d+$/.test(binanceOrderId)) {
+      const targetOrderId = (searchParams.get('orderId') || '').trim();
+      const explicitExch = (searchParams.get('exchange') || '').trim().toLowerCase();
+      if (!/^[A-Z0-9]{4,20}$/.test(orderSymbol) || !/^[A-Za-z0-9_-]{1,64}$/.test(targetOrderId)) {
         return NextResponse.json(
           { success: false, error: 'Parâmetros "symbol" e "orderId" inválidos para cancelamento de ordem.' },
           { status: 400 }
         );
       }
+
+      const okxCreds = getOkxCredentials(request);
       const { apiKey, apiSecret, testnet } = getBinanceCredentials(request);
+      const targetExchange =
+        explicitExch === 'okx' || explicitExch === 'binance'
+          ? explicitExch
+          : okxCreds.apiKey && !apiKey
+            ? 'okx'
+            : 'binance';
+
+      if (targetExchange === 'okx') {
+        if (!okxCreds.apiKey || !okxCreds.apiSecret || !okxCreds.passphrase) {
+          return NextResponse.json(
+            { success: false, error: 'Credenciais da OKX não configuradas para cancelar ordem.' },
+            { status: 401 }
+          );
+        }
+        try {
+          const cancelData = await cancelOkxOrder(orderSymbol, targetOrderId, okxCreds);
+          return NextResponse.json({ success: true, data: cancelData });
+        } catch (err: any) {
+          return NextResponse.json(
+            { success: false, error: err.message || 'Erro ao cancelar ordem na OKX' },
+            { status: 400 }
+          );
+        }
+      }
+
+      if (!/^\d+$/.test(targetOrderId)) {
+        return NextResponse.json(
+          { success: false, error: 'orderId numérico inválido para cancelamento na Binance.' },
+          { status: 400 }
+        );
+      }
       const baseUrl = testnet ? 'https://testnet.binance.vision' : 'https://api.binance.com';
       const timestamp = await getSynchronizedTimestamp(baseUrl);
       const query = new URLSearchParams({
         symbol: orderSymbol,
-        orderId: binanceOrderId,
+        orderId: targetOrderId,
         timestamp: String(timestamp),
         recvWindow: '60000',
       }).toString();

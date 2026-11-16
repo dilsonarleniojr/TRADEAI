@@ -391,6 +391,7 @@ export const createTradeSlice: StateCreator<any, [], [], TradeSlice> = (set, get
             total,
             strategy: "AI-Signal",
             mode: state.tradingMode || "paper",
+            exchange: state.selectedExchange || "binance",
             slippageTolerance: 50,
             pnl: 0,
           }),

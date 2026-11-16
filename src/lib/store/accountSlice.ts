@@ -46,27 +46,58 @@ export interface AccountSlice {
   setOkxSimulated: (simulated: boolean) => void;
 }
 
-export const createAccountSlice: StateCreator<AccountSlice, [], [], AccountSlice> = (set) => ({
+function syncAccountInBrowser(mode: string, exchange: SupportedExchange, getState: () => any, resetBreakerOnSwitch = false) {
+  if (typeof window === "undefined" || typeof fetch !== "function") return;
+  fetch(`/api/account?mode=${mode}&exchange=${exchange}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((json) => {
+      if (json?.success && json.data) {
+        getState().setAccount?.(json.data);
+        if (resetBreakerOnSwitch) {
+          import("@/lib/bot/multi-bot-engine")
+            .then((m) => {
+              if (m.getCircuitBreakerStatus?.().tripped) {
+                m.resetGlobalCircuitBreaker?.();
+              }
+            })
+            .catch(() => {});
+        }
+      }
+    })
+    .catch(() => {});
+}
+
+export const createAccountSlice: StateCreator<AccountSlice, [], [], AccountSlice> = (set, get) => ({
   // Trading mode - inicialização segura para SSR/hidratação; DataProvider sincroniza com localStorage após montar
   tradingMode: "paper",
   setTradingMode: (mode) => {
+    const prevMode = get().tradingMode;
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem(TRADING_MODE_STORAGE_KEY, mode);
       } catch {}
     }
     set({ tradingMode: mode });
+    if (prevMode !== mode) {
+      const exch = get().selectedExchange || "binance";
+      syncAccountInBrowser(mode, exch, get, true);
+    }
   },
 
   // Selected Exchange
   selectedExchange: "binance",
   setSelectedExchange: (exchange) => {
+    const prevExchange = get().selectedExchange;
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem(SELECTED_EXCHANGE_STORAGE_KEY, exchange);
       } catch {}
     }
     set({ selectedExchange: exchange });
+    if (prevExchange !== exchange) {
+      const mode = get().tradingMode || "paper";
+      syncAccountInBrowser(mode, exchange, get, true);
+    }
   },
 
   // Binance connection state

@@ -47,7 +47,7 @@ interface PortfolioHistoryPoint {
 }
 
 export function BotPortfolio() {
-  const { portfolio, botConfig, trades, botActive, tickers, tradingMode, bots } = useCryptoStore(
+  const { portfolio, botConfig, trades, botActive, tickers, tradingMode, bots, selectedExchange } = useCryptoStore(
     useShallow((s) => ({
       portfolio: s.portfolio,
       botConfig: s.botConfig,
@@ -56,6 +56,7 @@ export function BotPortfolio() {
       tickers: s.tickers,
       tradingMode: s.tradingMode,
       bots: s.bots,
+      selectedExchange: s.selectedExchange,
     }))
   );
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioHistoryPoint[]>([]);
@@ -86,7 +87,8 @@ export function BotPortfolio() {
     try {
       const state = useCryptoStore.getState();
       const mode = state.tradingMode;
-      const res = await fetch(`/api/account?mode=${mode}`);
+      const exchange = state.selectedExchange || "binance";
+      const res = await fetch(`/api/account?mode=${mode}&exchange=${exchange}`);
       const result = await res.json();
       if (res.ok && result.success && result.data) {
         state.setAccount(result.data);
@@ -147,7 +149,8 @@ export function BotPortfolio() {
       try {
         const state = useCryptoStore.getState();
         const mode = state.tradingMode;
-        const res = await fetch(`/api/account?mode=${mode}`);
+        const exchange = state.selectedExchange || "binance";
+        const res = await fetch(`/api/account?mode=${mode}&exchange=${exchange}`);
         if (res.ok) {
           const result = await res.json();
           if (mounted && result.success && result.data) {
@@ -162,7 +165,7 @@ export function BotPortfolio() {
     return () => {
       mounted = false;
     };
-  }, [tradingMode]);
+  }, [tradingMode, selectedExchange]);
 
   useEffect(() => {
     syncCustodyPositionsWithBots();
