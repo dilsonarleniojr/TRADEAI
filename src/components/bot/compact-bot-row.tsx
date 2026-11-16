@@ -28,6 +28,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useShallow } from "zustand/react/shallow";
 import { strategyName } from "@/lib/bot/strategy-catalog";
+import { ExchangeBadge } from "./exchange-badge";
 
 interface CompactBotRowProps {
   bot: BotInstance;
@@ -157,6 +158,7 @@ export const CompactBotRow = memo(function CompactBotRow({
             <span className="font-bold text-xs text-foreground truncate max-w-[160px] sm:max-w-[200px]" title={bot.name}>
               {bot.name}
             </span>
+            <ExchangeBadge exchange={bot.exchange} />
             <Badge
               variant="outline"
               className="text-[9px] px-1.5 py-0 border-border/50 bg-secondary/30 text-muted-foreground flex items-center gap-1 shrink-0"

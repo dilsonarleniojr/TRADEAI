@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { type BotInstance } from "@/lib/store";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { AppCard, AppSwitch } from "./atoms";
+import { ExchangeBadge } from "@/components/bot/exchange-badge";
 import { X, Sliders, Shield, Target, Zap, DollarSign, Check } from "lucide-react";
 
 interface BotDrawerProps {
@@ -17,6 +18,7 @@ export function BotDrawer({ bot, open, onClose, onSave }: BotDrawerProps) {
   const [takeProfit, setTakeProfit] = useState<number>(3.5);
   const [stopLoss, setStopLoss] = useState<number>(1.8);
   const [capitalAllocation, setCapitalAllocation] = useState<number>(500);
+  const [exchange, setExchange] = useState<"binance" | "okx">("binance");
   const [trailingStop, setTrailingStop] = useState<boolean>(true);
   const [useBtcGatekeeper, setUseBtcGatekeeper] = useState<boolean>(true);
   const [useOrderBookFilter, setUseOrderBookFilter] = useState<boolean>(true);
@@ -29,6 +31,7 @@ export function BotDrawer({ bot, open, onClose, onSave }: BotDrawerProps) {
       setTakeProfit(bot.takeProfit ?? 3.5);
       setStopLoss(bot.stopLoss ?? 1.8);
       setCapitalAllocation(bot.allocationAmount ?? 25);
+      setExchange(bot.exchange === "okx" ? "okx" : "binance");
       setTrailingStop(bot.trailingStop ?? true);
       setUseBtcGatekeeper(bot.useBtcGatekeeper ?? true);
       setUseOrderBookFilter(bot.useOrderBookFilter ?? true);
@@ -40,8 +43,11 @@ export function BotDrawer({ bot, open, onClose, onSave }: BotDrawerProps) {
 
   if (!open || !bot) return null;
 
+  const hasOpenPosition = !!(bot.position && bot.position.quantity > 0);
+
   const handleSave = () => {
     onSave(bot.id, {
+      exchange,
       takeProfit,
       stopLoss,
       allocationAmount: capitalAllocation,
@@ -71,9 +77,12 @@ export function BotDrawer({ bot, open, onClose, onSave }: BotDrawerProps) {
           {/* Header do Drawer */}
           <div className="p-6 border-b border-[#E7EBF0] dark:border-white/10 flex items-center justify-between">
             <div>
-              <span className="text-[12px] font-mono uppercase tracking-wider text-[#1F5FD6] font-semibold">
-                {bot.symbol === "AUTO" ? "Auto-Screener" : bot.symbol} • {bot.strategy}
-              </span>
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <ExchangeBadge exchange={exchange} />
+                <span className="text-[12px] font-mono uppercase tracking-wider text-[#1F5FD6] font-semibold">
+                  {bot.symbol === "AUTO" ? "Auto-Screener" : bot.symbol} • {bot.strategy}
+                </span>
+              </div>
               <h3 className="font-instrument-serif text-[24px] text-[#0E1B2C] dark:text-[#f8fafc] leading-tight">
                 Ajustar {bot.name}
               </h3>
@@ -88,6 +97,47 @@ export function BotDrawer({ bot, open, onClose, onSave }: BotDrawerProps) {
 
           {/* Conteúdo com Sliders e Campos */}
           <div className="p-6 space-y-6 overflow-y-auto flex-1">
+            {/* Corretora de Execução */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium text-[#0E1B2C] dark:text-[#f8fafc]">
+                  Corretora de Execução
+                </span>
+                {hasOpenPosition && (
+                  <span className="text-[11px] text-amber-600 dark:text-amber-300 font-medium">
+                    Bloqueado (posição aberta)
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    { id: "binance", label: "Binance Spot" },
+                    { id: "okx", label: "OKX V5 Unified" },
+                  ] as const
+                ).map((item) => {
+                  const selected = exchange === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      disabled={hasOpenPosition}
+                      onClick={() => setExchange(item.id)}
+                      className={`py-2 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                        selected
+                          ? item.id === "okx"
+                            ? "border-sky-500 bg-sky-500/15 text-sky-700 dark:text-sky-300"
+                            : "border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                          : "border-[#E7EBF0] dark:border-white/10 bg-[#F8FAFC] dark:bg-white/5 text-[#4A586A] dark:text-[#94a3b8]"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Alvo de Lucro (Take Profit) */}
             <div className="space-y-2">
               <div className="flex justify-between text-sm">

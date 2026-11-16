@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { useCryptoStore } from "@/lib/store";
+import type { ConnectionProbeStatus, ServiceProbeResult } from "@/lib/store/accountSlice";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Loader2, Play, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Play, RefreshCw, XCircle } from "lucide-react";
 import { getSymbolKlines } from "@/lib/bot/kline-cache";
 import { MIN_CANDLES } from "@/lib/bot/entry-engine";
 import { resumePendingBots, startBotPersistence, useFleetRestore } from "@/lib/bot/bot-persistence";
@@ -47,6 +48,8 @@ export function useBotReadiness() {
     binanceConnected,
     okxConnected,
     okxSimulated,
+    startupHealth,
+    runStartupConnectionTests,
   } = useCryptoStore(
     useShallow((s) => ({
       bots: s.bots,
@@ -59,6 +62,8 @@ export function useBotReadiness() {
       binanceConnected: s.binanceConnected,
       okxConnected: s.okxConnected,
       okxSimulated: s.okxSimulated,
+      startupHealth: s.startupHealth,
+      runStartupConnectionTests: s.runStartupConnectionTests,
     }))
   );
 
@@ -142,6 +147,8 @@ export function useBotReadiness() {
       modeLabel: currentModeText,
       pendingResume,
       symbols,
+      startupHealth,
+      runStartupConnectionTests,
     };
   }, [
     restored,
@@ -157,6 +164,8 @@ export function useBotReadiness() {
     binanceConnected,
     okxConnected,
     okxSimulated,
+    startupHealth,
+    runStartupConnectionTests,
   ]);
 }
 
@@ -168,6 +177,7 @@ export function BotReadinessWatcher() {
   const { toast } = useToast();
   const readiness = useBotReadiness();
   const notifiedFor = useRef<string | null>(null);
+  const startupToastSent = useRef<boolean>(false);
   const symbolsKey = readiness.symbols.join(",");
 
   useEffect(() => startBotPersistence(), []);
@@ -187,6 +197,33 @@ export function BotReadinessWatcher() {
       clearInterval(timer);
     };
   }, [symbolsKey]);
+
+  useEffect(() => {
+    const health = readiness.startupHealth;
+    if (!health?.lastRunAt || startupToastSent.current) return;
+    if (
+      health.binance.status === "checking" ||
+      health.okx.status === "checking" ||
+      health.ai.status === "checking"
+    ) {
+      return;
+    }
+    startupToastSent.current = true;
+
+    const results = [health.binance, health.okx, health.ai];
+    const hasError = results.some((r) => r.status === "error");
+    const hasWarning = results.some((r) => r.status === "warning");
+
+    toast({
+      title: hasError
+        ? "⚠️ Diagnóstico inicial: falha em conexão"
+        : hasWarning
+          ? "⚠️ Conexões testadas com alertas"
+          : "🔌 Conexões testadas ao abrir",
+      description: `Binance: ${health.binance.label} · OKX: ${health.okx.label} · ${health.ai.label}`,
+      variant: hasError ? "destructive" : "default",
+    });
+  }, [readiness.startupHealth, toast]);
 
   useEffect(() => {
     if (!readiness.ready) {
@@ -214,59 +251,152 @@ export function BotReadinessWatcher() {
   return null;
 }
 
+function probePillClasses(status: ConnectionProbeStatus): string {
+  switch (status) {
+    case "ok":
+      return "border-crypto-green/30 bg-crypto-green/10 text-crypto-green";
+    case "warning":
+      return "border-amber-500/40 bg-amber-500/15 text-amber-500 dark:text-amber-300";
+    case "error":
+      return "border-rose-500/40 bg-rose-500/10 text-rose-500 dark:text-rose-300";
+    case "checking":
+      return "border-sky-500/30 bg-sky-500/10 text-sky-500 dark:text-sky-300";
+    case "unconfigured":
+    default:
+      return "border-border/50 bg-secondary/40 text-muted-foreground";
+  }
+}
+
+function ProbeIcon({ status }: { status: ConnectionProbeStatus }) {
+  switch (status) {
+    case "ok":
+      return <CheckCircle2 className="w-3 h-3 shrink-0" />;
+    case "warning":
+      return <AlertTriangle className="w-3 h-3 shrink-0" />;
+    case "error":
+      return <XCircle className="w-3 h-3 shrink-0" />;
+    case "checking":
+      return <Loader2 className="w-3 h-3 shrink-0 animate-spin" />;
+    default:
+      return <XCircle className="w-3 h-3 shrink-0 opacity-60" />;
+  }
+}
+
 /** Faixa de status na Central de Robôs. */
 export function BotReadinessBar() {
-  const { ready, checks, modeLabel, pendingResume } = useBotReadiness();
+  const { ready, checks, modeLabel, pendingResume, startupHealth, runStartupConnectionTests } = useBotReadiness();
+  const { toast } = useToast();
+  const [retesting, setRetesting] = useState(false);
+
+  const probes: Array<{ key: string; name: string; result: ServiceProbeResult }> = [
+    { key: "binance", name: "Binance", result: startupHealth.binance },
+    { key: "okx", name: "OKX", result: startupHealth.okx },
+    { key: "ai", name: "IA", result: startupHealth.ai },
+  ];
+
+  const handleRetest = async () => {
+    setRetesting(true);
+    try {
+      const h = await runStartupConnectionTests();
+      const hasErr = h.binance.status === "error" || h.okx.status === "error" || h.ai.status === "error";
+      toast({
+        title: hasErr ? "⚠️ Teste de conexões concluiu com falha" : "🔌 Teste de conexões concluído",
+        description: `Binance: ${h.binance.label} | OKX: ${h.okx.label} | ${h.ai.label}`,
+        variant: hasErr ? "destructive" : "default",
+      });
+    } finally {
+      setRetesting(false);
+    }
+  };
 
   return (
     <div
       className={cn(
-        "rounded-xl border p-3 flex flex-col md:flex-row md:items-center gap-3 text-xs",
+        "rounded-xl border p-3 flex flex-col gap-2.5 text-xs",
         ready ? "border-crypto-green/30 bg-crypto-green/5" : "border-amber-500/30 bg-amber-500/5"
       )}
     >
-      <div className="flex items-center gap-2 font-semibold shrink-0">
-        {ready ? (
-          <CheckCircle2 className="w-4 h-4 text-crypto-green" />
-        ) : (
-          <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
-        )}
-        <span className={ready ? "text-crypto-green" : "text-amber-400"}>
-          {ready ? `Pronto para operar · ${modeLabel}` : `Preparando robôs · ${modeLabel}`}
-        </span>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5 flex-1">
-        {checks.map((c) => (
-          <span
-            key={c.label}
-            title={c.detail}
-            className={cn(
-              "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px]",
-              c.ok
-                ? "border-crypto-green/25 bg-crypto-green/10 text-crypto-green"
-                : "border-border/50 bg-secondary/30 text-muted-foreground"
-            )}
-          >
-            {c.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-            {c.label}
-            {!c.ok && <span className="opacity-70">— {c.detail}</span>}
+      <div className="flex flex-col md:flex-row md:items-center gap-3">
+        <div className="flex items-center gap-2 font-semibold shrink-0">
+          {ready ? (
+            <CheckCircle2 className="w-4 h-4 text-crypto-green" />
+          ) : (
+            <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
+          )}
+          <span className={ready ? "text-crypto-green" : "text-amber-400"}>
+            {ready ? `Pronto para operar · ${modeLabel}` : `Preparando robôs · ${modeLabel}`}
           </span>
-        ))}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 flex-1">
+          {checks.map((c) => (
+            <span
+              key={c.label}
+              title={c.detail}
+              className={cn(
+                "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px]",
+                c.ok
+                  ? "border-crypto-green/25 bg-crypto-green/10 text-crypto-green"
+                  : "border-border/50 bg-secondary/30 text-muted-foreground"
+              )}
+            >
+              {c.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+              {c.label}
+              {!c.ok && <span className="opacity-70">— {c.detail}</span>}
+            </span>
+          ))}
+        </div>
+
+        {pendingResume.length > 0 && (
+          <Button
+            size="sm"
+            onClick={() => resumePendingBots()}
+            disabled={!ready}
+            title={ready ? "Religar os robôs que estavam ativos" : "Aguarde ficar pronto para retomar"}
+            className="h-7 text-xs bg-crypto-green hover:bg-crypto-green/90 text-white shrink-0"
+          >
+            <Play className="w-3 h-3 mr-1 fill-current" />
+            Retomar {pendingResume.length} robô(s)
+          </Button>
+        )}
       </div>
 
-      {pendingResume.length > 0 && (
+      {/* Linha de diagnóstico de conexões (Binance, OKX e IA) */}
+      <div className="pt-2 border-t border-border/30 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mr-1">
+            Conexões:
+          </span>
+          {probes.map((p) => (
+            <span
+              key={p.key}
+              title={p.result.detail}
+              className={cn(
+                "inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-medium",
+                probePillClasses(p.result.status)
+              )}
+            >
+              <ProbeIcon status={p.result.status} />
+              <span>{p.result.label}</span>
+              {p.result.status !== "checking" && (
+                <span className="opacity-75 hidden sm:inline">· {p.result.detail}</span>
+              )}
+            </span>
+          ))}
+        </div>
+
         <Button
+          variant="ghost"
           size="sm"
-          onClick={() => resumePendingBots()}
-          disabled={!ready}
-          title={ready ? "Religar os robôs que estavam ativos" : "Aguarde ficar pronto para retomar"}
-          className="h-7 text-xs bg-crypto-green hover:bg-crypto-green/90 text-white shrink-0"
+          onClick={handleRetest}
+          disabled={retesting}
+          className="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
+          title="Testar conexões Binance, OKX e IA agora"
         >
-          <Play className="w-3 h-3 mr-1 fill-current" />
-          Retomar {pendingResume.length} robô(s)
+          <RefreshCw className={cn("w-3 h-3", retesting && "animate-spin")} />
+          <span>{retesting ? "Testando..." : "Testar conexões"}</span>
         </Button>
-      )}
+      </div>
     </div>
   );
 }

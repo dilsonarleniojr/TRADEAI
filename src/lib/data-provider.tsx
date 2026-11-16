@@ -14,8 +14,6 @@
  * - Provides a "dataReady" flag for skeleton→content transitions
  */
 
-import { restoreBinanceSession } from "@/lib/binance-client";
-import { restoreOkxSession } from "@/lib/okx/okx-client";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useCryptoStore } from "@/lib/store";
 import type { TickerData } from "@/lib/store";
@@ -146,28 +144,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     const store = useCryptoStore.getState();
 
-    // Restaura o estado da conexão a partir da sessão do servidor (as chaves nunca chegam ao navegador)
+    // Testa automaticamente as conexões Binance, OKX e Motor de IA ao abrir a plataforma
     if (typeof window !== "undefined") {
-      restoreBinanceSession().then((status) => {
-        if (!mounted) return;
-        const st = useCryptoStore.getState();
-        st.setBinanceConnected(status.connected);
-        st.setBinanceTestnet(status.testnet);
-      });
-
-      restoreOkxSession().then((status) => {
-        if (!mounted) return;
-        const st = useCryptoStore.getState();
-        st.setOkxConnected(status.connected);
-        st.setOkxSimulated(status.simulated);
-      });
-
       const persistedExchange = getPersistedExchange();
       store.setSelectedExchange(persistedExchange);
 
       // Preserva o modo escolhido pelo usuário (live ou paper) sem resetar no F5
       const persistedMode = getPersistedTradingMode();
       store.setTradingMode(persistedMode);
+
+      store
+        .runStartupConnectionTests()
+        .then((health) => {
+          if (!mounted) return;
+          console.log(
+            `[DataProvider] Diagnóstico inicial -> Binance: ${health.binance.label} | OKX: ${health.okx.label} | IA: ${health.ai.label}`
+          );
+        })
+        .catch(() => {});
     }
 
     // Limpa apenas sinais antigos de IA (mantém status de robôs ativos e configurações)

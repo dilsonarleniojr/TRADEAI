@@ -17,6 +17,7 @@ import { BotCockpit } from "@/components/bot/bot-cockpit";
 import { ExchangeConnection } from "@/components/bot/exchange-connection";
 import { EnginePanel } from "@/components/bot/engine-panel";
 import { BotReadinessBar } from "@/components/bot/bot-readiness";
+import { ExchangeBadge } from "@/components/bot/exchange-badge";
 import { BotActivityLog } from "@/components/bot/bot-activity-log";
 import { BotPortfolio } from "@/components/bot/bot-portfolio";
 import { BotPerformanceChart } from "@/components/bot/bot-performance-chart";
@@ -161,6 +162,7 @@ export function BotView() {
 
   const [viewTab, setViewTab] = useState<"fleet" | "engines" | "pnl" | "risk">("fleet");
   const [filter, setFilter] = useState<"todos" | "ligados" | "pausados">("todos");
+  const [exchangeFilter, setExchangeFilter] = useState<"todas" | "binance" | "okx">("todas");
   const [selectedBotId, setSelectedBotId] = useState<string>(bots[0]?.id || "");
   const [confirmAction, setConfirmAction] = useState<ConfirmActionType>(null);
   const [editingBot, setEditingBot] = useState<BotInstance | null>(null);
@@ -177,6 +179,8 @@ export function BotView() {
 
   const activeCount = bots.filter((b) => b.active).length;
   const pausedCount = bots.filter((b) => !b.active).length;
+  const binanceCount = bots.filter((b) => (b.exchange || "binance") === "binance").length;
+  const okxCount = bots.filter((b) => b.exchange === "okx").length;
   const openPositionsCount = bots.filter((b) => b.position && b.position.quantity > 0).length;
 
   const totalRealizedPnl = useMemo(
@@ -218,10 +222,14 @@ export function BotView() {
   );
 
   const filteredBots = useMemo(() => {
-    if (filter === "ligados") return bots.filter((b) => b.active);
-    if (filter === "pausados") return bots.filter((b) => !b.active);
-    return bots;
-  }, [bots, filter]);
+    return bots.filter((b) => {
+      if (filter === "ligados" && !b.active) return false;
+      if (filter === "pausados" && b.active) return false;
+      const exch = b.exchange === "okx" ? "okx" : "binance";
+      if (exchangeFilter !== "todas" && exch !== exchangeFilter) return false;
+      return true;
+    });
+  }, [bots, filter, exchangeFilter]);
 
   const selectedBot = bots.find((b) => b.id === selectedBotId) || filteredBots[0] || bots[0] || null;
 
@@ -701,8 +709,8 @@ export function BotView() {
         </div>
       </div>
 
-      {/* Prontidão de Cotações, Candles e Saldo */}
-      {bots.length > 0 && <BotReadinessBar />}
+      {/* Prontidão de Cotações, Candles, Saldo e Conexões (Binance, OKX, IA) */}
+      <BotReadinessBar />
 
       {/* Banner Global de Circuit Breaker / Trava de Perdas Consecutivas */}
       {(circuitBreakerStatus.tripped || circuitBreakerBots.length > 0) && (
@@ -832,25 +840,51 @@ export function BotView() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Coluna Esquerda: Filtros e Lista */}
         <div className="lg:col-span-8 bg-white dark:bg-[#0f1622] border border-[#E7EBF0] dark:border-white/10 rounded-[24px] p-6 shadow-xs space-y-4">
-          {/* Pílulas de Filtro */}
-          <div className="inline-flex p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10 text-[13px]">
-            {[
-              { id: "todos", label: `Todos (${bots.length})` },
-              { id: "ligados", label: `Ligados (${activeCount})` },
-              { id: "pausados", label: `Pausados (${pausedCount})` },
-            ].map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setFilter(f.id as "todos" | "ligados" | "pausados")}
-                className={`px-3.5 py-1 rounded-full transition-all cursor-pointer ${
-                  filter === f.id
-                    ? "bg-[#0E1B2C] text-white font-semibold shadow-xs"
-                    : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C]"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
+          {/* Pílulas de Filtro (Estado + Corretora) */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10 text-[13px]">
+              {[
+                { id: "todos", label: `Todos (${bots.length})` },
+                { id: "ligados", label: `Ligados (${activeCount})` },
+                { id: "pausados", label: `Pausados (${pausedCount})` },
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setFilter(f.id as "todos" | "ligados" | "pausados")}
+                  className={`px-3.5 py-1 rounded-full transition-all cursor-pointer ${
+                    filter === f.id
+                      ? "bg-[#0E1B2C] text-white font-semibold shadow-xs"
+                      : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C]"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="inline-flex p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10 text-[12px]">
+              {[
+                { id: "todas", label: "Todas" },
+                { id: "binance", label: `Binance (${binanceCount})` },
+                { id: "okx", label: `OKX (${okxCount})` },
+              ].map((ex) => (
+                <button
+                  key={ex.id}
+                  onClick={() => setExchangeFilter(ex.id as "todas" | "binance" | "okx")}
+                  className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
+                    exchangeFilter === ex.id
+                      ? ex.id === "okx"
+                        ? "bg-sky-600 text-white font-semibold shadow-xs"
+                        : ex.id === "binance"
+                          ? "bg-amber-600 text-white font-semibold shadow-xs"
+                          : "bg-[#0E1B2C] text-white font-semibold shadow-xs"
+                      : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C]"
+                  }`}
+                >
+                  {ex.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Linhas da Lista de Robôs ou Estado Vazio */}
@@ -873,10 +907,11 @@ export function BotView() {
                     }`}
                   >
                     <div className="space-y-0.5 min-w-[200px]">
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center flex-wrap gap-2">
                         <span className="font-bold text-[15px] text-[#0E1B2C] dark:text-white">
                           {bot.name}
                         </span>
+                        <ExchangeBadge exchange={bot.exchange} />
                         <span className="text-[12px] text-[#4A586A] dark:text-[#94a3b8] uppercase font-mono">
                           {displaySymbol === "AUTO" ? "Auto" : displaySymbol}
                         </span>
@@ -972,9 +1007,12 @@ export function BotView() {
                 <h2 className="font-instrument-serif text-[32px] text-[#0E1B2C] dark:text-white leading-tight pt-0.5">
                   {selectedBot.name}
                 </h2>
-                <p className="text-[13px] text-[#4A586A] dark:text-[#94a3b8]">
-                  {selectedBot.symbol === "AUTO" ? "Auto-Screener" : selectedBot.symbol} · {selectedBot.strategy}
-                </p>
+                <div className="flex items-center gap-2 pt-1 flex-wrap">
+                  <ExchangeBadge exchange={selectedBot.exchange} long />
+                  <p className="text-[13px] text-[#4A586A] dark:text-[#94a3b8]">
+                    {selectedBot.symbol === "AUTO" ? "Auto-Screener" : selectedBot.symbol} · {selectedBot.strategy}
+                  </p>
+                </div>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
@@ -1016,6 +1054,46 @@ export function BotView() {
 
             {/* Linhas Chave / Valor */}
             <div className="divide-y divide-[#E7EBF0] dark:divide-white/5 text-[14px]">
+              <div className="py-2.5 flex items-center justify-between gap-2">
+                <span className="text-[#4A586A] dark:text-[#94a3b8]">Corretora</span>
+                <div className="inline-flex p-0.5 rounded-full bg-[#EEF1F5] dark:bg-[#162032] border border-[#E7EBF0] dark:border-white/10 text-[11px]">
+                  {(["binance", "okx"] as const).map((ex) => {
+                    const active = (selectedBot.exchange || "binance") === ex;
+                    const hasOpenPos = !!(selectedBot.position && selectedBot.position.quantity > 0);
+                    return (
+                      <button
+                        key={ex}
+                        type="button"
+                        onClick={() => {
+                          if (active) return;
+                          if (hasOpenPos) {
+                            toast({
+                              title: "Posição aberta",
+                              description: "Feche a posição atual antes de trocar a corretora deste robô.",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+                          updateBot(selectedBot.id, { exchange: ex });
+                          toast({
+                            title: `Corretora alterada: ${ex === "okx" ? "OKX V5" : "Binance Spot"}`,
+                            description: `${selectedBot.name} agora executará ordens na ${ex === "okx" ? "OKX" : "Binance"}.`,
+                          });
+                        }}
+                        className={`px-2.5 py-0.5 rounded-full font-semibold transition-all cursor-pointer ${
+                          active
+                            ? ex === "okx"
+                              ? "bg-sky-600 text-white shadow-xs"
+                              : "bg-amber-600 text-white shadow-xs"
+                            : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C] dark:hover:text-white"
+                        }`}
+                      >
+                        {ex === "okx" ? "OKX" : "Binance"}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="py-2.5 flex justify-between">
                 <span className="text-[#4A586A] dark:text-[#94a3b8]">Alocação</span>
                 <span className="font-medium text-[#0E1B2C] dark:text-white tabular-nums">

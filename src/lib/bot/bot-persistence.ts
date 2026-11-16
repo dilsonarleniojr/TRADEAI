@@ -100,6 +100,7 @@ export function startBotPersistence(): () => void {
 
       return {
         ...b,
+        exchange: (b.exchange === "okx" ? "okx" : "binance") as "binance" | "okx",
         symbol: sanitizedSymbol,
         overrideSymbol: sanitizedOverride,
         stopAfterProfit: false, // Força modo contínuo: robôs operam sem interrupção buscando lucro

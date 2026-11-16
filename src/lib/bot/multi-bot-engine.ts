@@ -255,8 +255,11 @@ export function calculateBotProfitabilityScore(bot: BotInstance): number {
 }
 
 function getActiveExchange(bot?: BotInstance): "binance" | "okx" {
+  if (bot?.exchange === "okx" || bot?.exchange === "binance") {
+    return bot.exchange;
+  }
   const storeExchange = useCryptoStore.getState().selectedExchange;
-  return storeExchange || bot?.exchange || "binance";
+  return storeExchange || "binance";
 }
 
 function getExchangeLabel(exchange?: "binance" | "okx"): string {

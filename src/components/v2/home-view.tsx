@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { useDataProvider } from "@/lib/data-provider";
 import { AppSwitch } from "./atoms";
+import { ExchangeBadge } from "@/components/bot/exchange-badge";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { ResponsiveContainer, AreaChart, Area, XAxis } from "recharts";
 import { useShallow } from "zustand/react/shallow";
@@ -283,11 +284,14 @@ export function HomeView() {
             {/* Lista dos 5 Robôs */}
             <div className="divide-y divide-[#E7EBF0] dark:divide-white/5">
               {bots.slice(0, 5).map((bot) => (
-                <div key={bot.id} className="py-3 flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold text-[15px] text-[#0E1B2C] dark:text-white">
-                      {bot.name}
-                    </h4>
+                <div key={bot.id} className="py-3 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h4 className="font-semibold text-[15px] text-[#0E1B2C] dark:text-white truncate">
+                        {bot.name}
+                      </h4>
+                      <ExchangeBadge exchange={bot.exchange} />
+                    </div>
                     <p className="text-[12px] text-[#4A586A] dark:text-[#94a3b8]">
                       {bot.symbol} · {bot.strategy}
                     </p>

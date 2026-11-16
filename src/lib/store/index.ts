@@ -41,6 +41,12 @@ export type {
 } from "./types";
 
 export { deduplicateBots } from "./botSlice";
+export type {
+  SupportedExchange,
+  ConnectionProbeStatus,
+  ServiceProbeResult,
+  StartupConnectionsHealth,
+} from "./accountSlice";
 
 // Combined store type
 export type CryptoStore = AccountSlice &
