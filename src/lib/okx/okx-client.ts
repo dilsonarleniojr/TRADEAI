@@ -697,5 +697,5 @@ export async function restoreOkxSession(): Promise<OkxSessionStatus> {
 }
 
 export async function disconnectOkxSession(): Promise<void> {
-  await fetch("/api/okx/login", { method: "DELETE" }).catch(() => {});
+  await fetch("/api/okx/login", { method: "DELETE" }).catch(() => { });
 }
