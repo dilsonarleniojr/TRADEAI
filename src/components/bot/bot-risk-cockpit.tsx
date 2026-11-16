@@ -162,7 +162,7 @@ export function BotRiskCockpit({ open, onOpenChange }: BotRiskCockpitProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[92vh] flex flex-col bg-[#0a0f1d]/95 backdrop-blur-xl border border-white/[0.1] text-foreground p-6 shadow-2xl overflow-hidden">
+      <DialogContent className="w-[94vw] max-w-3xl max-h-[92vh] flex flex-col bg-[#0a0f1d]/95 backdrop-blur-xl border border-white/[0.1] text-foreground p-6 shadow-2xl overflow-hidden">
         <DialogHeader className="border-b border-white/[0.08] pb-3 shrink-0">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">

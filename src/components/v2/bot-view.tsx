@@ -558,7 +558,7 @@ export function BotView() {
 
       {/* Sub-navegação de V2: Frota | Motores & Logs | PnL & Portfólio | Risco & Conexão */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex flex-wrap p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10 text-[13px]">
+        <div className="inline-flex max-w-full overflow-x-auto no-scrollbar p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10 text-[12px] sm:text-[13px] shrink-0">
           {[
             { id: "fleet", label: "Visão da Frota", icon: Layers },
             { id: "engines", label: "Motores & Logs", icon: Activity },
@@ -747,11 +747,11 @@ export function BotView() {
       )}
 
       {/* 2. METRICSTRIP EM CARTÃO BRANCO + MÉTRICAS QUANTITATIVAS */}
-      <div className="bg-white dark:bg-[#0f1622] border border-[#E7EBF0] dark:border-white/10 rounded-[24px] p-6 space-y-5 shadow-xs">
+      <div className="bg-white dark:bg-[#0f1622] border border-[#E7EBF0] dark:border-white/10 rounded-[20px] sm:rounded-[24px] p-4 sm:p-6 space-y-4 sm:space-y-5 shadow-xs">
         <div className="grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E7EBF0] dark:divide-white/10">
           <div className="pb-3 sm:pb-0 sm:pr-6">
             <span className="text-[13px] text-[#4A586A] dark:text-[#94a3b8] block">Ligados</span>
-            <span className="font-instrument-serif text-[34px] sm:text-[40px] text-[#0E1B2C] dark:text-white tabular-nums font-bold">
+            <span className="font-instrument-serif text-[26px] xs:text-[30px] sm:text-[36px] md:text-[40px] text-[#0E1B2C] dark:text-white tabular-nums font-bold">
               {activeCount} <span className="text-[20px] font-normal text-[#4A586A]">de {bots.length}</span>
             </span>
           </div>
@@ -759,7 +759,7 @@ export function BotView() {
           <div className="py-3 sm:py-0 sm:px-6">
             <span className="text-[13px] text-[#4A586A] dark:text-[#94a3b8] block">Resultado realizado</span>
             <span
-              className={`font-instrument-serif text-[34px] sm:text-[40px] tabular-nums font-bold ${
+              className={`font-instrument-serif text-[26px] xs:text-[30px] sm:text-[36px] md:text-[40px] tabular-nums font-bold ${
                 totalRealizedPnl > 0
                   ? "text-[#0A7A59] dark:text-[#5BE3A8]"
                   : totalRealizedPnl < 0
@@ -773,20 +773,20 @@ export function BotView() {
 
           <div className="py-3 sm:py-0 sm:px-6">
             <span className="text-[13px] text-[#4A586A] dark:text-[#94a3b8] block">Posições abertas</span>
-            <span className="font-instrument-serif text-[34px] sm:text-[40px] text-[#0E1B2C] dark:text-white tabular-nums font-bold">
+            <span className="font-instrument-serif text-[26px] xs:text-[30px] sm:text-[36px] md:text-[40px] text-[#0E1B2C] dark:text-white tabular-nums font-bold">
               {openPositionsCount}
             </span>
           </div>
 
           <div className="pt-3 sm:pt-0 sm:pl-6">
             <span className="text-[13px] text-[#4A586A] dark:text-[#94a3b8] block">Limite de perda diária</span>
-            <span className="font-instrument-serif text-[34px] sm:text-[40px] text-[#0E1B2C] dark:text-white tabular-nums font-bold">
+            <span className="font-instrument-serif text-[26px] xs:text-[30px] sm:text-[36px] md:text-[40px] text-[#0E1B2C] dark:text-white tabular-nums font-bold">
               {dailyLossLimit > 0 ? formatCurrency(dailyLossLimit) : "—"}
             </span>
           </div>
         </div>
 
-        <div className="pt-4 border-t border-[#E7EBF0] dark:border-white/10 grid grid-cols-2 sm:grid-cols-5 gap-3 text-[12px]">
+        <div className="pt-3 sm:pt-4 border-t border-[#E7EBF0] dark:border-white/10 grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-5 gap-2.5 sm:gap-3 text-[11px] sm:text-[12px]">
           <div>
             <span className="text-[#4A586A] dark:text-[#94a3b8] block">Sharpe anualizado</span>
             <span className="font-semibold text-[#0E1B2C] dark:text-white tabular-nums">
@@ -892,7 +892,7 @@ export function BotView() {
                       </p>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 text-left sm:text-right shrink-0 text-[13px]">
+                    <div className="grid grid-cols-3 gap-2 sm:gap-4 text-left sm:text-right shrink-0 text-[12px] sm:text-[13px] w-full sm:w-auto">
                       <div>
                         <span className="text-[11px] text-[#4A586A] dark:text-[#94a3b8] block">Alocação</span>
                         <span className="font-medium text-[#0E1B2C] dark:text-white tabular-nums">
@@ -1292,7 +1292,7 @@ export function BotView() {
       />
 
       <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
-        <DialogContent className="sm:max-w-2xl rounded-[24px] p-6 bg-white dark:bg-[#0f1622] border border-[#E7EBF0] dark:border-white/10 max-h-[88vh] overflow-y-auto font-instrument-sans">
+        <DialogContent className="w-[94vw] sm:max-w-2xl rounded-[24px] p-6 bg-white dark:bg-[#0f1622] border border-[#E7EBF0] dark:border-white/10 max-h-[88vh] overflow-y-auto font-instrument-sans">
           <DialogHeader>
             <DialogTitle className="font-instrument-serif text-2xl text-[#0E1B2C] dark:text-white">
               Histórico de candles para os robôs

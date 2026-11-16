@@ -289,7 +289,7 @@ export function BinanceProfitableBotsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[92vh] flex flex-col p-0 gap-0 overflow-hidden bg-background border-border/60 shadow-2xl">
+      <DialogContent className="w-[94vw] sm:max-w-5xl max-h-[88dvh] overflow-y-auto flex flex-col p-0 gap-0 overflow-hidden bg-background border-border/60 shadow-2xl">
         {/* ========================================================================= */}
         {/* CABEÇALHO MODAL */}
         {/* ========================================================================= */}
@@ -307,7 +307,7 @@ export function BinanceProfitableBotsDialog({
                   </Badge>
                 </DialogTitle>
               </div>
-              <DialogDescription className="text-xs text-muted-foreground mt-1 max-w-3xl">
+              <DialogDescription className="text-xs text-muted-foreground mt-1 w-[94vw] sm:max-w-3xl">
                 Algoritmo quantitativo varrendo todas as opções de binários USDT da Binance em tempo real.
                 Classifica os ativos pelo Score Institucional de Lucratividade (Momentum, Volume, Amplitude ATR e Relação Risco:Retorno) e permite criá-los na sua frota com 1 clique.
               </DialogDescription>

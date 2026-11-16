@@ -599,7 +599,7 @@ export function AISignals() {
           if (!open) setSelectedSignal(null);
         }}
       >
-        <DialogContent className="max-w-md max-h-[92vh] overflow-y-auto pro-scrollbar bg-card/95 backdrop-blur-xl border border-border/60 shadow-2xl">
+        <DialogContent className="w-[94vw] max-w-md max-h-[92vh] overflow-y-auto pro-scrollbar bg-card/95 backdrop-blur-xl border border-border/60 shadow-2xl">
           {selectedSignal && (
             <>
               <DialogHeader className="pb-2 border-b border-border/40">

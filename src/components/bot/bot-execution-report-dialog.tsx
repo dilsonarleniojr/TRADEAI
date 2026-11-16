@@ -135,7 +135,7 @@ export function BotExecutionReportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-card border-border/80 shadow-2xl p-6">
+      <DialogContent className="w-[94vw] max-w-2xl max-h-[90vh] overflow-y-auto bg-card border-border/80 shadow-2xl p-6">
         <DialogHeader className="space-y-1.5 pb-2">
           <div className="flex items-center justify-between">
             <Badge

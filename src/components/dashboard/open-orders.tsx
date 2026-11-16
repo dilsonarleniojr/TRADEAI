@@ -283,7 +283,7 @@ export function OpenOrders() {
                 Nova Ordem
               </Button>
             </DialogTrigger>
-            <DialogContent className="bg-background border-border sm:max-w-md max-h-[92vh] overflow-y-auto pro-scrollbar glass">
+            <DialogContent className="w-[94vw] bg-background border-border sm:max-w-md max-h-[92vh] overflow-y-auto pro-scrollbar glass">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <Zap className="w-5 h-5 text-crypto-cyan" />

@@ -556,7 +556,7 @@ export function BotDialog({ open, onOpenChange, botToEdit }: BotDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-1.5rem)] sm:max-w-[720px] max-h-[92vh] p-0 gap-0 flex flex-col overflow-hidden bg-card/95 backdrop-blur-xl border border-border/80 text-foreground">
+      <DialogContent className="w-[calc(100vw-1.5rem)] sm:max-w-[720px] max-h-[88dvh] overflow-y-auto p-0 gap-0 flex flex-col overflow-hidden bg-card/95 backdrop-blur-xl border border-border/80 text-foreground">
         <DialogHeader className="px-5 pt-5 pb-3 pr-10 border-b border-border/40 shrink-0">
           <DialogTitle className="flex items-center gap-2 text-base font-bold">
             <Bot className="w-5 h-5 text-crypto-cyan" />

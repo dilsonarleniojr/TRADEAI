@@ -148,7 +148,7 @@ export function TopNav() {
   return (
     <>
       <header className="sticky top-0 z-40 w-full bg-[#FFFFFF]/95 dark:bg-[#0f1622]/95 backdrop-blur-md border-b border-[#E7EBF0] dark:border-white/10 transition-colors">
-        <div className="max-w-[1240px] mx-auto px-4 sm:px-8 h-18 flex items-center justify-between">
+        <div className="max-w-[1240px] mx-auto px-3 sm:px-8 h-16 sm:h-18 flex items-center justify-between gap-2">
           {/* Esquerda: Marca "TradeAI" + Menu 5 Abas */}
           <div className="flex items-center space-x-6 lg:space-x-8">
             <button
@@ -186,7 +186,7 @@ export function TopNav() {
           {/* Direita: Seletor de Exchange (Binance/OKX), Status, Simulado/Real, Botão Nova Ordem */}
           <div className="flex items-center space-x-2.5 sm:space-x-3.5">
             {/* Alternador Rápido de Exchange: Binance | OKX */}
-            <div className="inline-flex p-0.5 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10">
+            <div className="inline-flex p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10 shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -198,7 +198,7 @@ export function TopNav() {
                 }}
                 title="Selecionar Binance Spot (duplo clique para configurar API)"
                 className={cn(
-                  "px-2.5 py-1 text-[12px] font-instrument-sans rounded-full transition-all select-none flex items-center gap-1.5 cursor-pointer",
+                  "px-2 sm:px-3 py-1.5 text-[12px] font-instrument-sans rounded-full transition-all select-none flex items-center gap-1.5 cursor-pointer min-h-[32px]",
                   selectedExchange === "binance"
                     ? "bg-[#FFFFFF] dark:bg-[#0f1622] text-[#0E1B2C] dark:text-white shadow-[0_1px_2px_rgba(14,27,44,0.08)] font-semibold"
                     : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C] dark:hover:text-white"
@@ -206,7 +206,7 @@ export function TopNav() {
               >
                 <span
                   className={cn(
-                    "w-1.5 h-1.5 rounded-full shrink-0",
+                    "w-2 h-2 rounded-full shrink-0",
                     binanceConnected
                       ? "bg-[#0B8F6A]"
                       : tradingMode === "live" && selectedExchange === "binance"
@@ -214,7 +214,8 @@ export function TopNav() {
                         : "bg-muted-foreground/40"
                   )}
                 />
-                <span>Binance</span>
+                <span className="hidden xs:inline">Binance</span>
+                <span className="xs:hidden">BN</span>
               </button>
               <button
                 type="button"
@@ -226,7 +227,7 @@ export function TopNav() {
                 }}
                 title="Selecionar OKX V5 Unified (abre painel de conexão se desconectada)"
                 className={cn(
-                  "px-2.5 py-1 text-[12px] font-instrument-sans rounded-full transition-all select-none flex items-center gap-1.5 cursor-pointer",
+                  "px-2 sm:px-3 py-1.5 text-[12px] font-instrument-sans rounded-full transition-all select-none flex items-center gap-1.5 cursor-pointer min-h-[32px]",
                   selectedExchange === "okx"
                     ? "bg-[#FFFFFF] dark:bg-[#0f1622] text-[#0E1B2C] dark:text-white shadow-[0_1px_2px_rgba(14,27,44,0.08)] font-semibold"
                     : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C] dark:hover:text-white"
@@ -234,7 +235,7 @@ export function TopNav() {
               >
                 <span
                   className={cn(
-                    "w-1.5 h-1.5 rounded-full shrink-0",
+                    "w-2 h-2 rounded-full shrink-0",
                     okxConnected
                       ? "bg-[#0B8F6A]"
                       : tradingMode === "live" && selectedExchange === "okx"
@@ -276,17 +277,18 @@ export function TopNav() {
             </button>
 
             {/* Alternador Simulado / Real */}
-            <div className="inline-flex p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10">
+            <div className="inline-flex p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10 shrink-0">
               <button
                 onClick={() => setTradingMode("paper")}
                 className={cn(
-                  "px-3.5 py-1 text-[13px] font-instrument-sans rounded-full transition-all select-none",
+                  "px-2.5 sm:px-3.5 py-1.5 text-[12px] sm:text-[13px] font-instrument-sans rounded-full transition-all select-none min-h-[32px]",
                   tradingMode === "paper"
                     ? "bg-[#FFFFFF] dark:bg-[#0f1622] text-[#0E1B2C] dark:text-white shadow-[0_1px_2px_rgba(14,27,44,0.08)] font-semibold"
                     : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C]"
                 )}
               >
-                Simulado
+                <span className="hidden xs:inline">Simulado</span>
+                <span className="xs:hidden">Sim</span>
               </button>
               <button
                 onClick={() => {
@@ -295,9 +297,9 @@ export function TopNav() {
                   }
                 }}
                 className={cn(
-                  "px-3.5 py-1 text-[13px] font-instrument-sans rounded-full transition-all select-none",
+                  "px-2.5 sm:px-3.5 py-1.5 text-[12px] sm:text-[13px] font-instrument-sans rounded-full transition-all select-none min-h-[32px]",
                   tradingMode === "live"
-                    ? "bg-[#0E1B2C] text-white shadow-sm font-semibold"
+                    ? "bg-[#0E1B2C] dark:bg-white text-white dark:text-[#0E1B2C] shadow-sm font-semibold"
                     : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C]"
                 )}
               >

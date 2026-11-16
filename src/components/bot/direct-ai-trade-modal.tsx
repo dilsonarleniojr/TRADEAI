@@ -2504,7 +2504,7 @@ export function DirectAiTradeModal({ open, onOpenChange }: DirectAiTradeModalPro
 
     {/* Modal de Confirmação Dupla de Risco em Modo REAL Spot (UI-002) */}
     <Dialog open={showLiveConfirmModal} onOpenChange={setShowLiveConfirmModal}>
-      <DialogContent className="max-w-md border border-rose-500/40 bg-slate-950 text-white shadow-[0_0_35px_rgba(244,63,94,0.3)] rounded-2xl p-6">
+      <DialogContent className="max-w-md border border-rose-500/40 bg-slate-950 text-white shadow-[0_0_35px_rgba(244,63,94,0.3)] rounded-2xl p-6 overflow-y-auto">
         <DialogHeader className="space-y-2">
           <DialogTitle className="text-base sm:text-lg font-bold text-rose-400 flex items-center gap-2">
             <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0" />

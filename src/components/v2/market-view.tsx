@@ -599,7 +599,7 @@ export function MarketView() {
         </div>
 
         {/* Abas da Área de Mercado */}
-        <div className="inline-flex p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10 text-[13px] sm:text-[14px]">
+        <div className="inline-flex max-w-full overflow-x-auto no-scrollbar p-1 bg-[#EEF1F5] dark:bg-[#162032] rounded-full border border-[#E7EBF0] dark:border-white/10 text-[12px] sm:text-[14px] shrink-0">
           {[
             { id: "grafico", label: "Gráfico" },
             { id: "livro", label: "Livro de ofertas" },
@@ -626,7 +626,7 @@ export function MarketView() {
       {activeTab === "grafico" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Coluna Esquerda: Terminal Gráfico */}
-          <div className="lg:col-span-8 bg-white dark:bg-[#0f1622] border border-[#E7EBF0] dark:border-white/10 rounded-[24px] p-6 sm:p-7 shadow-xs space-y-4">
+          <div className="lg:col-span-8 bg-white dark:bg-[#0f1622] border border-[#E7EBF0] dark:border-white/10 rounded-[20px] sm:rounded-[24px] p-4 sm:p-7 shadow-xs space-y-3 sm:space-y-4">
             {/* Linha 1: Par + Cotação em Serifa */}
             <div className="flex items-center space-x-3">
               <span className="px-3 py-1 rounded-full bg-[#EEF1F5] dark:bg-white/10 text-[#0E1B2C] dark:text-white font-bold text-[13px] font-mono">
@@ -638,7 +638,7 @@ export function MarketView() {
             </div>
 
             {/* Linha 2: Intervalos */}
-            <div className="flex items-center space-x-1.5 text-[12px] font-medium text-[#4A586A] dark:text-[#94a3b8] pt-1">
+            <div className="flex items-center space-x-1 sm:space-x-1.5 text-[11px] sm:text-[12px] font-medium text-[#4A586A] dark:text-[#94a3b8] pt-1 overflow-x-auto no-scrollbar py-0.5">
               {["1m", "5m", "15m", "1h", "4h", "1D", "1W", "1M"].map((interval) => (
                 <button
                   key={interval}
@@ -1184,7 +1184,7 @@ export function MarketView() {
           </div>
 
           {/* Coluna Direita: Assistente IA */}
-          <div className="lg:col-span-4 bg-white dark:bg-[#0f1622] border border-[#E7EBF0] dark:border-white/10 rounded-[24px] p-6 sm:p-7 shadow-xs space-y-4">
+          <div className="lg:col-span-4 bg-white dark:bg-[#0f1622] border border-[#E7EBF0] dark:border-white/10 rounded-[20px] sm:rounded-[24px] p-4 sm:p-7 shadow-xs space-y-3 sm:space-y-4">
             <div>
               <h3 className="font-bold text-[18px] text-[#0E1B2C] dark:text-white">
                 Assistente

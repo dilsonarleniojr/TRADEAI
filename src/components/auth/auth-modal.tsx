@@ -136,7 +136,7 @@ export const AuthModal: React.FC = () => {
 
   return (
     <Dialog open={isAuthModalOpen} onOpenChange={(open) => !open && resetForms()}>
-      <DialogContent className="sm:max-w-[460px] bg-slate-950 border-slate-800 text-slate-100 p-6 rounded-2xl shadow-2xl">
+      <DialogContent className="sm:max-w-[460px] bg-slate-950 border-slate-800 text-slate-100 p-6 rounded-2xl shadow-2xl overflow-y-auto">
         <DialogHeader className="space-y-1">
           <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs tracking-wider uppercase">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />

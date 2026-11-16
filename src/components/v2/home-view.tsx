@@ -138,7 +138,7 @@ export function HomeView() {
       {/* 2. LINHA DE FOCO: CARTÃO ESCURO DE PATRIMÔNIO + SEUS ROBÔS */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* Cartão Escuro Focal (8 colunas em desktop) */}
-        <div className="lg:col-span-7 xl:col-span-8 flex flex-col justify-between bg-[#0E1B2C] text-white p-7 sm:p-9 rounded-[28px] shadow-[0_4px_20px_rgba(14,27,44,0.08)]">
+        <div className="lg:col-span-7 xl:col-span-8 flex flex-col justify-between bg-[#0E1B2C] text-white p-5 sm:p-7 md:p-9 rounded-[24px] sm:rounded-[28px] shadow-[0_4px_20px_rgba(14,27,44,0.08)]">
           <div>
             {/* Topo do Card: Rótulo + Seletor de Exchange + Seletor de Período */}
             <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
@@ -192,7 +192,7 @@ export function HomeView() {
 
             {/* Número Heroico em Serifa */}
             <div className="pt-1">
-              <span className="font-instrument-serif text-[50px] sm:text-[68px] md:text-[76px] tracking-[-0.02em] leading-none text-white tabular-nums">
+              <span className="font-instrument-serif text-[40px] xs:text-[48px] sm:text-[64px] md:text-[76px] tracking-[-0.02em] leading-none text-white tabular-nums">
                 {formatCurrency(totalBalance)}
               </span>
             </div>
@@ -245,23 +245,23 @@ export function HomeView() {
             </div>
           </div>
 
-          {/* Rodapé do Card Escuro: MetricStrip Separado por Linhas Verticais */}
-          <div className="pt-6 mt-4 border-t border-[#223652] grid grid-cols-3 divide-x divide-[#223652]">
-            <div className="pr-4">
-              <span className="text-[12px] text-[#A9B7C8] block">Em caixa</span>
-              <span className="font-instrument-serif text-[22px] sm:text-[26px] text-white font-bold tabular-nums">
+          {/* Rodapé do Card Escuro: MetricStrip Separado por Linhas */}
+          <div className="pt-5 mt-4 border-t border-[#223652] grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-0 sm:divide-x divide-[#223652]">
+            <div className="sm:pr-4">
+              <span className="text-[11px] sm:text-[12px] text-[#A9B7C8] block">Em caixa</span>
+              <span className="font-instrument-serif text-[20px] sm:text-[26px] text-white font-bold tabular-nums">
                 {formatCurrency(inCash)}
               </span>
             </div>
-            <div className="px-4">
-              <span className="text-[12px] text-[#A9B7C8] block">Investido</span>
-              <span className="font-instrument-serif text-[22px] sm:text-[26px] text-white font-bold tabular-nums">
+            <div className="sm:px-4">
+              <span className="text-[11px] sm:text-[12px] text-[#A9B7C8] block">Investido</span>
+              <span className="font-instrument-serif text-[20px] sm:text-[26px] text-white font-bold tabular-nums">
                 {formatCurrency(invested)}
               </span>
             </div>
-            <div className="pl-4">
-              <span className="text-[12px] text-[#A9B7C8] block">Ordens executadas</span>
-              <span className="font-instrument-serif text-[22px] sm:text-[26px] text-white font-bold tabular-nums">
+            <div className="col-span-2 sm:col-span-1 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#223652]/60 sm:pl-4">
+              <span className="text-[11px] sm:text-[12px] text-[#A9B7C8] block">Ordens executadas</span>
+              <span className="font-instrument-serif text-[20px] sm:text-[26px] text-white font-bold tabular-nums">
                 {executedTrades}
               </span>
             </div>

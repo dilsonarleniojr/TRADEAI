@@ -388,7 +388,7 @@ export function AIBotRecommendationsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[96vw] sm:max-w-4xl lg:max-w-5xl h-[90vh] max-h-[94vh] flex flex-col p-6 bg-[#0a0f1d]/95 backdrop-blur-2xl border-white/[0.1] text-foreground shadow-2xl overflow-hidden">
+      <DialogContent className="w-[96vw] sm:w-[94vw] sm:max-w-4xl lg:max-w-5xl h-[90vh] max-h-[88dvh] overflow-y-auto flex flex-col p-6 bg-[#0a0f1d]/95 backdrop-blur-2xl border-white/[0.1] text-foreground shadow-2xl overflow-hidden">
         <DialogHeader className="shrink-0 space-y-3 pb-3 border-b border-white/[0.06] pr-16">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2.5">

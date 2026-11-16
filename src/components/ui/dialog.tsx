@@ -250,7 +250,7 @@ function DialogContent({
         data-slot="dialog-content"
         style={computedStyle}
         className={cn(
-          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] max-h-[calc(100vh-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200",
+          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 flex flex-col w-[94vw] sm:w-full max-w-[94vw] max-h-[88dvh] sm:max-h-[90vh] translate-x-[-50%] translate-y-[-50%] rounded-2xl sm:rounded-xl border shadow-2xl duration-200 overflow-y-auto overscroll-contain p-4 sm:p-6",
           !hasCustomMaxWidth && !customSize && !isMaximized && "sm:max-w-lg",
           isResizing && "select-none transition-none",
           className
@@ -306,7 +306,7 @@ function DialogContent({
             {/* Corner Grip Icon */}
             <div
               onMouseDown={handleResizeCornerStart}
-              onTouchStart={handleTouchResizeStart}
+              onTouchStart={handleTouchResizeStart} className="hidden sm:block absolute bottom-1 right-1 p-1 cursor-nwse-resize select-none touch-none text-muted-foreground/40 hover:text-cyan-400 transition-colors z-30 group"
               className="absolute bottom-1 right-1 p-1 cursor-nwse-resize select-none touch-none text-muted-foreground/40 hover:text-cyan-400 transition-colors z-30 group"
               title="Arraste para redimensionar"
             >

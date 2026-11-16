@@ -135,7 +135,7 @@ export function ProtectionSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-6 bg-card border-border/80 shadow-2xl">
+      <DialogContent className="w-[94vw] sm:max-w-2xl max-h-[88dvh] overflow-y-auto overflow-y-auto p-6 bg-card border-border/80 shadow-2xl">
         <DialogHeader className="space-y-2 pb-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
