@@ -256,3 +256,27 @@ export async function getDepthSlippage(
   }
   return estimateDepthSlippage(symbol, orderUsd, side);
 }
+
+export interface OrderBookSnapshot {
+  symbol: string;
+  timestamp: number;
+  analysis: OrderBookAnalysis;
+  bids: { price: number; volume: number }[];
+  asks: { price: number; volume: number }[];
+}
+
+/**
+ * Expõe o snapshot completo L2 em cache (níveis Bids/Asks + análise OFI/Spread)
+ * para visualização na UI sem duplicar requisições ou alocações de rede.
+ */
+export async function getOrderBookSnapshot(symbol: string): Promise<OrderBookSnapshot> {
+  const analysis = await getOrderBookAnalysis(symbol);
+  const cached = depthCache.get(symbol);
+  return {
+    symbol,
+    timestamp: cached?.timestamp ?? Date.now(),
+    analysis,
+    bids: cached?.bids ?? [],
+    asks: cached?.asks ?? [],
+  };
+}

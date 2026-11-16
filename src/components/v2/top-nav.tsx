@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useCryptoStore } from "@/lib/store";
 import { useTheme } from "next-themes";
 import {
@@ -13,6 +14,7 @@ import {
   Brain,
   Sliders,
   AlertTriangle,
+  Smartphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SystemStatusPopover } from "@/components/header/system-status-popover";
@@ -43,6 +45,7 @@ import { useShallow } from "zustand/react/shallow";
 export type V2NavigationArea = "inicio" | "mercado" | "robos" | "cockpit" | "carteira" | "aprender";
 
 export function TopNav() {
+  const router = useRouter();
   const {
     activeSection,
     setActiveSection,
@@ -309,6 +312,16 @@ export function TopNav() {
 
             {/* Popover de Telemetria e Pulso Técnico */}
             <SystemStatusPopover />
+
+            {/* Atalho rápido para UI Mobile (/mobile) */}
+            <button
+              type="button"
+              onClick={() => router.push("/mobile")}
+              title="Abrir modo Mobile-First (/mobile)"
+              className="p-1.5 rounded-lg border border-[#E7EBF0] dark:border-white/10 text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C] dark:hover:text-white hover:bg-[#EEF1F5]/60 dark:hover:bg-white/5 transition-colors cursor-pointer"
+            >
+              <Smartphone className="w-4 h-4" />
+            </button>
 
             {/* Botão Primário: Nova Ordem */}
             <button

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { DataProvider, useDataProvider } from "@/lib/data-provider";
 import { useBinanceData } from "@/hooks/use-binance-data";
@@ -13,8 +14,15 @@ import { PortfolioView } from "@/components/v2/portfolio-view";
 import { LearnView } from "@/components/v2/learn-view";
 import { CockpitView } from "@/components/v2/cockpit-view";
 import { ShortcutsHint } from "@/components/dashboard/shortcuts-hint";
+import { MobileLayout } from "@/components/mobile/mobile-layout";
+import { AlertNotification } from "@/components/dashboard/alert-notification";
+import { BotBackgroundRunner } from "@/components/bot/bot-background-runner";
+import { HistoryBootstrap } from "@/components/bot/history-bootstrap";
+import { BotReadinessWatcher } from "@/components/bot/bot-readiness";
 import { Loader2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
+
+const VIEW_MODE_STORAGE_KEY = "tradeai_view_mode_override";
 
 // Loading skeleton limpo e elegante no estilo Instrumento Calmo
 function DashboardSkeleton() {
@@ -37,11 +45,60 @@ function HomePageContent() {
     }))
   );
   const { dataReady } = useDataProvider();
+  const [useMobileView, setUseMobileView] = useState(false);
 
-  // Conexões e atalhos em tempo real
+  // Conexões e atalhos em tempo real (mantidos no root para zero reinicialização de WebSocket)
   useBinanceData();
   useBinanceStream();
   useKeyboardShortcuts();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const evaluateViewport = () => {
+      let override: string | null = null;
+      try {
+        override = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+      } catch {}
+
+      if (override === "mobile") {
+        setUseMobileView(true);
+        return;
+      }
+      if (override === "desktop") {
+        setUseMobileView(false);
+        return;
+      }
+      setUseMobileView(window.innerWidth < 768);
+    };
+
+    evaluateViewport();
+    window.addEventListener("resize", evaluateViewport);
+    window.addEventListener("tradeai:viewmode", evaluateViewport);
+    return () => {
+      window.removeEventListener("resize", evaluateViewport);
+      window.removeEventListener("tradeai:viewmode", evaluateViewport);
+    };
+  }, []);
+
+  const handleSwitchToDesktop = () => {
+    try {
+      localStorage.setItem(VIEW_MODE_STORAGE_KEY, "desktop");
+    } catch {}
+    setUseMobileView(false);
+  };
+
+  if (useMobileView) {
+    return (
+      <>
+        <AlertNotification />
+        <BotBackgroundRunner />
+        <HistoryBootstrap />
+        <BotReadinessWatcher />
+        <MobileLayout onSwitchToDesktop={handleSwitchToDesktop} />
+      </>
+    );
+  }
 
   const renderContent = () => {
     if (!dataReady && activeSection === "dashboard") {
