@@ -365,8 +365,8 @@ export async function POST(request: Request) {
         const horizonInstruction = horizon === 'fast'
           ? 'FOCO EXCLUSIVO EM APLICAÇÕES RÁPIDAS (Day Trade e Scalp, timeframes 15m/1H, duração de minutos a poucas horas, stop curto e alvos ágeis de volatilidade).'
           : horizon === 'long'
-            ? 'FOCO EXCLUSIVO EM MÉDIO E LONGO PRAZO (Swing Trade e Position Trade, timeframes 4H/1D, duração de dias a semanas, acumulação estrutural e alvos amplos).'
-            : 'DIVERSIFIQUE OS HORIZONTES: Apresente tanto APLICAÇÕES RÁPIDAS (Scalp/Day Trade em 15m/1H) quanto oportunidades de MÉDIO/LONGO PRAZO (Swing/Position em 4H/1D).';
+          ? 'FOCO EXCLUSIVO EM MÉDIO E LONGO PRAZO (Swing Trade e Position Trade, timeframes 4H/1D, duração de dias a semanas, acumulação estrutural e alvos amplos).'
+          : 'DIVERSIFIQUE OS HORIZONTES: Apresente tanto APLICAÇÕES RÁPIDAS (Scalp/Day Trade em 15m/1H) quanto oportunidades de MÉDIO/LONGO PRAZO (Swing/Position em 4H/1D).';
 
         const antiCannibalizationInstruction = excludeSymbols.length > 0
           ? `DIRETRIZ DE NÃO-CANIBALIZAÇÃO (ANTI-CANNIBALIZATION FILTER):
@@ -1222,11 +1222,11 @@ Responda APENAS em JSON estruturado com o esquema:
         const tradesSummary = customTrades
           ? `Operações informadas pelo operador:\n${customTrades}`
           : tradesData
-            .map(
-              (t, i) =>
-                `Operação ${i + 1}: ${t.symbol} | Lado: ${t.side} | Preço: $${t.price} | PnL: ${t.pnl >= 0 ? '+' : ''}$${t.pnl} | Estratégia: ${t.strategy} | Data: ${t.date}`
-            )
-            .join('\n');
+              .map(
+                (t, i) =>
+                  `Operação ${i + 1}: ${t.symbol} | Lado: ${t.side} | Preço: $${t.price} | PnL: ${t.pnl >= 0 ? '+' : ''}$${t.pnl} | Estratégia: ${t.strategy} | Data: ${t.date}`
+              )
+              .join('\n');
 
         const systemPrompt = `Você é o Analisador de Diário de Negociação da TradeAI.
 Missão: "Analise minhas últimas 20 operações: [insira negociações com entrada, saída e resultados]. Identifique erros recorrentes, oportunidades perdidas e vieses comportamentais. Depois, forneça 3 regras personalizadas para melhorar a consistência imediatamente."
