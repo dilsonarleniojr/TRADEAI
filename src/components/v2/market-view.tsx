@@ -250,6 +250,7 @@ export function MarketView() {
         body: JSON.stringify({
           tool: "trade_ideas",
           params: {
+            exchange: selectedExchange,
             category: TEMA_CATEGORY_MAP[tema] || "all",
             horizon: prazo,
             excludeSymbols: hideActive ? activeBotSymbols : [],
@@ -610,11 +611,10 @@ export function MarketView() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`px-3.5 sm:px-4 py-1.5 rounded-full transition-all cursor-pointer ${
-                activeTab === tab.id
+              className={`px-3.5 sm:px-4 py-1.5 rounded-full transition-all cursor-pointer ${activeTab === tab.id
                   ? "bg-white dark:bg-[#0f1622] text-[#0E1B2C] dark:text-white font-semibold shadow-xs"
                   : "text-[#4A586A] dark:text-[#94a3b8] hover:text-[#0E1B2C]"
-              }`}
+                }`}
             >
               {tab.label}
             </button>
@@ -643,11 +643,10 @@ export function MarketView() {
                 <button
                   key={interval}
                   onClick={() => setSelectedInterval(interval)}
-                  className={`px-2.5 py-1 rounded-full transition-colors ${
-                    selectedInterval === interval
+                  className={`px-2.5 py-1 rounded-full transition-colors ${selectedInterval === interval
                       ? "bg-[#0E1B2C] text-white font-semibold"
                       : "hover:bg-[#EEF1F5] dark:hover:bg-white/10 text-[#4A586A]"
-                  }`}
+                    }`}
                 >
                   {interval}
                 </button>
@@ -668,11 +667,10 @@ export function MarketView() {
                   <button
                     key={ind.id}
                     onClick={() => toggleIndicator(ind.id)}
-                    className={`px-3 py-1 rounded-full text-[12px] font-medium transition-all ${
-                      isActive
+                    className={`px-3 py-1 rounded-full text-[12px] font-medium transition-all ${isActive
                         ? "bg-[#E7EEFC] text-[#1F4FB0] border border-[#C5D7FA]"
                         : "bg-[#EEF1F5] dark:bg-white/5 text-[#4A586A] dark:text-[#94a3b8] border border-transparent"
-                    }`}
+                      }`}
                   >
                     {ind.label}
                   </button>
@@ -705,11 +703,10 @@ export function MarketView() {
                   setTradeError(null);
                   setIsSellMax(false);
                 }}
-                className={`py-2 rounded-full text-[14px] font-semibold transition-all cursor-pointer ${
-                  tradeSide === "buy"
+                className={`py-2 rounded-full text-[14px] font-semibold transition-all cursor-pointer ${tradeSide === "buy"
                     ? "bg-[#0B8F6A] text-white shadow-xs"
                     : "text-[#4A586A] dark:text-[#94a3b8]"
-                }`}
+                  }`}
               >
                 Comprar
               </button>
@@ -719,11 +716,10 @@ export function MarketView() {
                   setTradeError(null);
                   setIsSellMax(false);
                 }}
-                className={`py-2 rounded-full text-[14px] font-semibold transition-all cursor-pointer ${
-                  tradeSide === "sell"
+                className={`py-2 rounded-full text-[14px] font-semibold transition-all cursor-pointer ${tradeSide === "sell"
                     ? "bg-[#B42318] text-white shadow-xs"
                     : "text-[#4A586A] dark:text-[#94a3b8]"
-                }`}
+                  }`}
               >
                 Vender
               </button>
@@ -792,11 +788,10 @@ export function MarketView() {
                   setTradeType("agora");
                   setTradeError(null);
                 }}
-                className={`py-1.5 rounded-full font-medium transition-all cursor-pointer ${
-                  tradeType === "agora"
+                className={`py-1.5 rounded-full font-medium transition-all cursor-pointer ${tradeType === "agora"
                     ? "bg-white dark:bg-[#0f1622] text-[#0E1B2C] dark:text-white font-semibold shadow-xs"
                     : "text-[#4A586A] dark:text-[#94a3b8]"
-                }`}
+                  }`}
               >
                 Agora
               </button>
@@ -808,11 +803,10 @@ export function MarketView() {
                     setTriggerPriceInput(String(price).replace(".", ","));
                   }
                 }}
-                className={`py-1.5 rounded-full font-medium transition-all cursor-pointer ${
-                  tradeType === "programada"
+                className={`py-1.5 rounded-full font-medium transition-all cursor-pointer ${tradeType === "programada"
                     ? "bg-white dark:bg-[#0f1622] text-[#0E1B2C] dark:text-white font-semibold shadow-xs"
                     : "text-[#4A586A] dark:text-[#94a3b8]"
-                }`}
+                  }`}
               >
                 Programada
               </button>
@@ -881,11 +875,10 @@ export function MarketView() {
             <button
               onClick={handleSubmitOrder}
               disabled={isSubmittingTrade}
-              className={`w-full py-3 rounded-full text-white text-[15px] font-bold transition-colors cursor-pointer shadow-xs disabled:opacity-60 flex items-center justify-center gap-2 ${
-                tradeSide === "buy"
+              className={`w-full py-3 rounded-full text-white text-[15px] font-bold transition-colors cursor-pointer shadow-xs disabled:opacity-60 flex items-center justify-center gap-2 ${tradeSide === "buy"
                   ? "bg-[#0B8F6A] hover:bg-[#097758]"
                   : "bg-[#B42318] hover:bg-[#911a10]"
-              }`}
+                }`}
             >
               {isSubmittingTrade && <Loader2 className="w-4 h-4 animate-spin" />}
               <span>
@@ -937,11 +930,10 @@ export function MarketView() {
                       setPrazoFilter(next);
                       if (ideas.length > 0) runMarketAnalysis({ prazo: next });
                     }}
-                    className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all cursor-pointer ${
-                      prazoFilter === p.id
+                    className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all cursor-pointer ${prazoFilter === p.id
                         ? "bg-[#0E1B2C] text-white font-semibold"
                         : "bg-[#EEF1F5] dark:bg-white/10 text-[#4A586A] hover:text-[#0E1B2C]"
-                    }`}
+                      }`}
                   >
                     {p.label}
                   </button>
@@ -965,11 +957,10 @@ export function MarketView() {
                       setTemaFilter(t);
                       if (ideas.length > 0) runMarketAnalysis({ tema: t });
                     }}
-                    className={`px-3.5 py-1.5 rounded-full text-[13px] font-medium transition-all cursor-pointer ${
-                      temaFilter === t
+                    className={`px-3.5 py-1.5 rounded-full text-[13px] font-medium transition-all cursor-pointer ${temaFilter === t
                         ? "bg-[#0E1B2C] text-white font-semibold"
                         : "bg-[#EEF1F5] dark:bg-white/10 text-[#4A586A] hover:text-[#0E1B2C]"
-                    }`}
+                      }`}
                   >
                     {t}
                   </button>
@@ -1015,7 +1006,9 @@ export function MarketView() {
             {ideasLoading ? (
               <div className="bg-[#F8FAFC] dark:bg-white/5 border border-[#E7EBF0] dark:border-white/10 rounded-[18px] p-6 flex items-center gap-3 text-[14px] text-[#4A586A] dark:text-[#94a3b8]">
                 <Loader2 className="w-5 h-5 animate-spin text-[#0E1B2C] dark:text-white shrink-0" />
-                <span>Analisando mercado em tempo real na Binance Spot...</span>
+                <span>
+                  Analisando mercado em tempo real na {selectedExchange === "okx" ? "OKX Spot" : "Binance Spot"}...
+                </span>
               </div>
             ) : ideas.length > 0 ? (
               <div className="space-y-4">
@@ -1056,11 +1049,10 @@ export function MarketView() {
                         </div>
                         <div className="flex items-center gap-2 text-[12px] font-semibold">
                           <span
-                            className={`px-2.5 py-0.5 rounded-full ${
-                              isLong
+                            className={`px-2.5 py-0.5 rounded-full ${isLong
                                 ? "bg-[#E6F7F1] text-[#0A7A59]"
                                 : "bg-[#FDF4F3] text-[#B42318]"
-                            }`}
+                              }`}
                           >
                             {isLong ? "COMPRA" : "VENDA"}
                           </span>
@@ -1204,11 +1196,10 @@ export function MarketView() {
                 {chatHistory.map((m, idx) => (
                   <div
                     key={idx}
-                    className={`p-3 rounded-[14px] text-[13px] leading-relaxed whitespace-pre-wrap ${
-                      m.role === "user"
+                    className={`p-3 rounded-[14px] text-[13px] leading-relaxed whitespace-pre-wrap ${m.role === "user"
                         ? "bg-[#0E1B2C] text-white ml-4"
                         : "bg-[#EEF1F5] dark:bg-white/5 text-[#0E1B2C] dark:text-[#e2e8f0] mr-2"
-                    }`}
+                      }`}
                   >
                     {m.content}
                   </div>
