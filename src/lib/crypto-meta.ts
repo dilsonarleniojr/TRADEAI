@@ -23,6 +23,7 @@ export interface CryptoMeta {
   description?: string; // Brief description
   rank?: number;        // Approx market cap rank
   launchYear?: number;
+  exchanges?: ("binance" | "okx")[];
 }
 
 export const CRYPTO_LIST: CryptoMeta[] = [
@@ -167,13 +168,23 @@ export function getAssetCategory(baseOrSymbol: string): CryptoCategory {
   return CRYPTO_CATEGORIES[sym] || "Inovação";
 }
 
-// Dynamically register new symbols fetched from Binance (only valid Spot crypto pairs)
+// Dynamically register new symbols fetched from Binance / OKX (only valid Spot crypto pairs)
 export function registerDynamicSymbols(
-  symbols: Array<{ symbol: string; name?: string; short?: string; category?: string }>
+  symbols: Array<{ symbol: string; name?: string; short?: string; category?: string; exchange?: "binance" | "okx"; exchanges?: ("binance" | "okx")[] }>
 ) {
   for (const item of symbols) {
     const sym = String(item?.symbol || "").toUpperCase();
-    if (!isTradableBinanceSpotSymbol(sym)) continue;
+    if (!sym.endsWith("USDT")) continue;
+    const itemExchanges: ("binance" | "okx")[] = item.exchanges
+      ? item.exchanges
+      : item.exchange
+        ? [item.exchange]
+        : ["binance"];
+
+    // Para Binance, aplica validação estrita de elegibilidade Spot (TRD_GRP_261 / delisted).
+    // Para OKX, os pares já chegam validados via getVerifiedOkxSpotRegistry(state === "live").
+    if (!itemExchanges.includes("okx") && !isTradableBinanceSpotSymbol(sym)) continue;
+
     if (!CRYPTO_BY_SYMBOL[sym]) {
       const short = item.short || sym.replace(/USDT$/, "");
       const name = item.name && item.name !== sym ? item.name : short;
@@ -186,8 +197,9 @@ export function registerDynamicSymbols(
         short,
         color,
         category,
-        description: `Par ${short}/USDT negociado na Binance`,
+        description: `Par ${short}/USDT negociado na ${itemExchanges.includes("okx") ? "OKX" : "Binance"}`,
         rank: 999,
+        exchanges: [...itemExchanges],
       };
 
       CRYPTO_LIST.push(meta);
@@ -199,6 +211,10 @@ export function registerDynamicSymbols(
       if (!ALL_SYMBOLS.includes(sym)) {
         ALL_SYMBOLS.push(sym);
       }
+    } else if (itemExchanges.length > 0) {
+      const existing = CRYPTO_BY_SYMBOL[sym];
+      const merged = Array.from(new Set([...(existing.exchanges || ["binance"]), ...itemExchanges]));
+      existing.exchanges = merged;
     }
   }
 }

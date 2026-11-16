@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { useCryptoStore, type BotInstance } from "@/lib/store";
+import { useDataProvider } from "@/lib/data-provider";
 import { AppSwitch } from "./atoms";
 import { BotDrawer } from "./bot-drawer";
 import { BotDialog } from "@/components/bot/bot-dialog";
@@ -95,6 +96,8 @@ type ConfirmActionType =
 
 export function BotView() {
   const { toast } = useToast();
+  const { syncOkxCoins } = useDataProvider();
+  const [syncingOkxPairs, setSyncingOkxPairs] = useState(false);
   const {
     bots,
     portfolio,
@@ -696,7 +699,31 @@ export function BotView() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={syncingOkxPairs}
+            onClick={async () => {
+              setSyncingOkxPairs(true);
+              try {
+                const res = await syncOkxCoins();
+                toast({
+                  title: res.success ? "✅ Pares OKX sincronizados" : "⚠️ Falha ao sincronizar OKX",
+                  description: res.success
+                    ? `${res.count} pares Spot USDT ativos da OKX carregados no catálogo.`
+                    : "Não foi possível consultar os instrumentos Spot da OKX.",
+                  variant: res.success ? "default" : "destructive",
+                });
+              } finally {
+                setSyncingOkxPairs(false);
+              }
+            }}
+            className="h-8 rounded-full border-[#D3DAE3] dark:border-white/20 text-xs font-semibold cursor-pointer gap-1.5"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-sky-500 ${syncingOkxPairs ? "animate-spin" : ""}`} />
+            <span>{syncingOkxPairs ? "Sincronizando OKX..." : "Sincronizar Pares OKX"}</span>
+          </Button>
           <Button
             variant="outline"
             size="sm"

@@ -689,10 +689,23 @@ export async function executeOkxOrder(
   let json = res.json || {};
   let orderData = json.data?.[0] || {};
 
+  const firstAttemptCode = String(orderData.sCode || json.code || "");
+  const firstAttemptMsg = String(orderData.sMsg || json.msg || "");
+  const firstAttemptRejected =
+    res.status < 200 ||
+    res.status >= 300 ||
+    (json.code !== "0" && json.code !== 0) ||
+    (orderData.sCode && String(orderData.sCode) !== "0");
+
+  if (firstAttemptRejected) {
+    console.warn(
+      `[OKX Order] Tentativa tdMode=cash rejeitada em ${instId} (${normalizedSide}): sCode=${firstAttemptCode} sMsg="${firstAttemptMsg}"`
+    );
+  }
+
   // Fallback automático caso a conta OKX esteja em modo Single/Multi-currency Margin (51010)
   // ou a chave permita apenas margem cruzada/Spot específico (50124)
-  const errCodeStr = String(orderData.sCode || json.code || "");
-  if (errCodeStr === "51010" || errCodeStr === "50124") {
+  if (firstAttemptRejected && (firstAttemptCode === "51010" || firstAttemptCode === "50124")) {
     const crossPayload = buildOrderPayload("cross");
     crossPayload.clOrdId = `${clOrdId.slice(0, 30)}x`;
     bodyStr = JSON.stringify(crossPayload);
@@ -709,6 +722,11 @@ export async function executeOkxOrder(
     (orderData.sCode && String(orderData.sCode) !== "0");
 
   if (isOrderRejected) {
+    if (firstAttemptCode === "51010" && finalCode === "50124") {
+      throw new Error(
+        `Conta OKX recusou modo cash (${firstAttemptCode}: ${firstAttemptMsg}) e a chave não tem permissão de margem cross (${finalCode}). Verifique o modo da conta na OKX (Trading -> Configurações -> Modo de conta).`
+      );
+    }
     if (finalCode === "50124") {
       const cfg = await fetchOkxAccountConfig(resolvedCreds);
       const perm = cfg?.perm || "";
@@ -720,7 +738,7 @@ export async function executeOkxOrder(
       }
       if (perm) {
         throw new Error(
-          `A chave API da OKX não tem permissão para o mercado Spot neste par (código 50124, perm: ${perm}, conta nível ${acctLv}). Acesse OKX → Perfil → API → Editar na sua chave e marque 'Spot (À vista)' nas permissões de mercado (ou crie uma chave no modo correspondente Real vs Demo).`
+          `A OKX recusou a ordem no par ${instId} com código 50124 (perm: ${perm}, conta nível ${acctLv}, detalhe: ${orderData.sMsg || json.msg || firstAttemptMsg || "sem detalhe"}). Se 'Spot' e '${baseCcy}' já estão liberados na chave, esse par pode estar restrito via API na sua conta/região ou exigir modo de conta nível 2 (Single-currency margin).`
         );
       }
       throw new Error(

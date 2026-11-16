@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getVerifiedBinanceSpotRegistry, isTradableBinanceSpotSymbol, VERIFIED_FALLBACK_SPOT_SYMBOLS } from '@/lib/binance-spot-sync';
+import { fetchOkxSpotTickers, getVerifiedOkxSpotRegistry } from '@/lib/okx/okx-spot-sync';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -73,4 +74,63 @@ export async function GET(request: Request) {
       { status: 502 }
     );
   }
+}
+
+/**
+ * POST /api/market/sync?exchange=okx|binance|all
+ * Sincroniza a lista de pares Spot USDT e cotações em tempo real da OKX e/ou Binance.
+ */
+export async function POST(request: Request) {
+  const { searchParams } = new URL(request.url);
+  let exchange = (searchParams.get('exchange') || 'all').toLowerCase();
+  if (!searchParams.get('exchange')) {
+    const body = await request.json().catch(() => null);
+    if (body?.exchange && typeof body.exchange === 'string') {
+      exchange = body.exchange.toLowerCase();
+    }
+  }
+
+  let binanceCount = 0;
+  let okxCount = 0;
+  let okxTickers: Record<string, any> = {};
+  const errors: string[] = [];
+
+  if (exchange === 'binance' || exchange === 'all') {
+    try {
+      const bnReg = await getVerifiedBinanceSpotRegistry();
+      binanceCount = bnReg.size;
+    } catch (err: any) {
+      errors.push(`Binance: ${err?.message || 'falha'}`);
+    }
+  }
+
+  if (exchange === 'okx' || exchange === 'all') {
+    try {
+      const [okxReg, tickers] = await Promise.all([
+        getVerifiedOkxSpotRegistry(true),
+        fetchOkxSpotTickers().catch(() => ({})),
+      ]);
+      okxCount = okxReg.size;
+      okxTickers = tickers;
+    } catch (err: any) {
+      errors.push(`OKX: ${err?.message || 'falha'}`);
+    }
+  }
+
+  const symbolsCount = exchange === 'okx' ? okxCount : exchange === 'binance' ? binanceCount : Math.max(okxCount, binanceCount);
+  const success = exchange === 'okx' ? okxCount > 0 : exchange === 'binance' ? binanceCount > 0 : okxCount > 0 || binanceCount > 0;
+
+  return NextResponse.json(
+    {
+      success,
+      exchange,
+      symbolsCount,
+      binanceCount,
+      okxCount,
+      okxTickers,
+      errors: errors.length > 0 ? errors : undefined,
+      syncedAt: Date.now(),
+    },
+    { status: success ? 200 : 502 }
+  );
 }

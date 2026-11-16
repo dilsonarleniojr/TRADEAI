@@ -29,6 +29,7 @@ interface DataProviderState {
   tradesLoaded: boolean;
   error: string | null;
   syncBinanceCoins: () => Promise<{ success: boolean; count: number }>;
+  syncOkxCoins: () => Promise<{ success: boolean; count: number }>;
 }
 
 const DataProviderContext = createContext<DataProviderState>({
@@ -38,6 +39,7 @@ const DataProviderContext = createContext<DataProviderState>({
   tradesLoaded: false,
   error: null,
   syncBinanceCoins: async () => ({ success: false, count: 0 }),
+  syncOkxCoins: async () => ({ success: false, count: 0 }),
 });
 
 export function useDataProvider() {
@@ -80,14 +82,15 @@ async function fetchInitialTickers(): Promise<Record<string, TickerData>> {
   return tickersMap;
 }
 
-async function fetchSymbolsMetadata() {
+async function fetchSymbolsMetadata(exchange: "binance" | "okx" | "all" = "all", refresh = false) {
   try {
-    const res = await fetch("/api/market/symbols");
+    const res = await fetch(`/api/market/symbols?exchange=${exchange}${refresh ? "&refresh=1" : ""}`);
     if (res.ok) {
       const json = await res.json();
-      if (Array.isArray(json.data)) {
-        registerDynamicSymbols(json.data);
-        console.log(`[DataProvider] ${json.data.length} moedas Binance sincronizadas.`);
+      const list = Array.isArray(json.symbols) ? json.symbols : Array.isArray(json.data) ? json.data : [];
+      if (list.length > 0) {
+        registerDynamicSymbols(list);
+        console.log(`[DataProvider] ${list.length} pares (${exchange.toUpperCase()}) sincronizados.`);
       }
     }
   } catch (err: any) {
@@ -114,15 +117,40 @@ async function fetchInitialTrades(mode?: string) {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const syncBinanceCoins = async (): Promise<{ success: boolean; count: number }> => {
+  const syncOkxCoins = async (): Promise<{ success: boolean; count: number }> => {
     try {
-      const syncRes = await fetch("/api/market/sync", { method: "POST" });
+      const syncRes = await fetch("/api/market/sync?exchange=okx", { method: "POST" });
+      if (syncRes.ok) {
+        const syncData = await syncRes.json();
+        if (syncData?.okxTickers && typeof syncData.okxTickers === "object") {
+          const prev = useCryptoStore.getState().tickers;
+          useCryptoStore.getState().setTickers({ ...prev, ...syncData.okxTickers });
+        }
+        await fetchSymbolsMetadata("okx", true);
+        return { success: true, count: syncData.okxCount || syncData.symbolsCount || 0 };
+      }
+    } catch (err: any) {
+      console.error("[DataProvider] OKX sync error:", err.message);
+    }
+    return { success: false, count: 0 };
+  };
+
+  const syncBinanceCoins = async (): Promise<{ success: boolean; count: number }> => {
+    const activeExch = useCryptoStore.getState().selectedExchange;
+    if (activeExch === "okx") {
+      return syncOkxCoins();
+    }
+    try {
+      const syncRes = await fetch("/api/market/sync?exchange=all", { method: "POST" });
       if (syncRes.ok) {
         const syncData = await syncRes.json();
         const updatedTickers = await fetchInitialTickers();
-        useCryptoStore.getState().setTickers(updatedTickers);
-        await fetchSymbolsMetadata();
-        return { success: true, count: syncData.symbolsCount || Object.keys(updatedTickers).length };
+        const merged = syncData?.okxTickers
+          ? { ...syncData.okxTickers, ...updatedTickers }
+          : updatedTickers;
+        useCryptoStore.getState().setTickers(merged);
+        await fetchSymbolsMetadata("all", true);
+        return { success: true, count: syncData.symbolsCount || Object.keys(merged).length };
       }
     } catch (err: any) {
       console.error("[DataProvider] Sync error:", err.message);
@@ -137,6 +165,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     tradesLoaded: false,
     error: null,
     syncBinanceCoins,
+    syncOkxCoins,
   });
 
 

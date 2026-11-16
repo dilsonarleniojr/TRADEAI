@@ -26,8 +26,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useShallow } from "zustand/react/shallow";
 
 export function CryptoSelector() {
-  const { selectedSymbol, setSelectedSymbol, tickers } = useCryptoStore(
-  useShallow((s) => ({ selectedSymbol: s.selectedSymbol, setSelectedSymbol: s.setSelectedSymbol, tickers: s.tickers }))
+  const { selectedSymbol, setSelectedSymbol, tickers, selectedExchange } = useCryptoStore(
+  useShallow((s) => ({
+    selectedSymbol: s.selectedSymbol,
+    setSelectedSymbol: s.setSelectedSymbol,
+    tickers: s.tickers,
+    selectedExchange: s.selectedExchange,
+  }))
 );
   const { syncBinanceCoins } = useDataProvider();
   const { toast } = useToast();
@@ -73,9 +78,10 @@ export function CryptoSelector() {
   const handleSync = async () => {
     if (isSyncing) return;
     setIsSyncing(true);
+    const exchLabel = selectedExchange === "okx" ? "OKX" : "Binance";
     toast({
-      title: "🔄 Sincronizando com a Binance...",
-      description: "Buscando todas as moedas e opções ativas em tempo real.",
+      title: `🔄 Sincronizando com a ${exchLabel}...`,
+      description: "Buscando todas as moedas e pares Spot USDT ativos em tempo real.",
     });
 
     const result = await syncBinanceCoins();
@@ -83,8 +89,8 @@ export function CryptoSelector() {
 
     if (result.success) {
       toast({
-        title: "✅ Sincronização Concluída!",
-        description: `${result.count} moedas e pares Spot USDT atualizados diretamente da Binance.`,
+        title: `✅ Pares ${exchLabel} Sincronizados!`,
+        description: `${result.count} moedas e pares Spot USDT atualizados diretamente da ${exchLabel}.`,
       });
     } else {
       toast({

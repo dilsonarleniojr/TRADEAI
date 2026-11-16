@@ -8,6 +8,7 @@ import {
   formatOkxStep,
   formatOkxTimestamp,
 } from "@/lib/okx/okx-client";
+import { getVerifiedOkxSpotRegistry, fetchOkxSpotTickers } from "@/lib/okx/okx-spot-sync";
 
 describe("OKX v5 Integration & Symbol Normalization", () => {
   it("converte símbolos Spot Binance para o formato OKX com hífen", () => {
@@ -269,6 +270,56 @@ describe("OKX v5 Integration & Symbol Normalization", () => {
       ).rejects.toThrow(/read_only.*50124|permissão de negociação/);
       // Tentou cash e depois cross antes de lançar erro diagnóstico
       expect(attemptCount).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("sincroniza pares Spot USDT ativos e tickers 24h da OKX excluindo stablecoins", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (url: string | URL) => {
+      const u = String(url);
+      if (u.includes("/api/v5/public/instruments?instType=SPOT")) {
+        return new Response(
+          JSON.stringify({
+            code: "0",
+            data: [
+              { instId: "BTC-USDT", baseCcy: "BTC", quoteCcy: "USDT", state: "live", lotSz: "0.00001", minSz: "0.00001", tickSz: "0.1" },
+              { instId: "OKB-USDT", baseCcy: "OKB", quoteCcy: "USDT", state: "live", lotSz: "0.001", minSz: "0.01", tickSz: "0.01" },
+              { instId: "USDC-USDT", baseCcy: "USDC", quoteCcy: "USDT", state: "live", lotSz: "0.01", minSz: "1", tickSz: "0.0001" },
+              { instId: "OLD-USDT", baseCcy: "OLD", quoteCcy: "USDT", state: "suspend", lotSz: "1", minSz: "1", tickSz: "0.01" },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      if (u.includes("/api/v5/market/tickers?instType=SPOT")) {
+        return new Response(
+          JSON.stringify({
+            code: "0",
+            data: [
+              { instId: "BTC-USDT", last: "95000", open24h: "93000", high24h: "95500", low24h: "92500", vol24h: "1200", volCcy24h: "114000000" },
+              { instId: "OKB-USDT", last: "52.5", open24h: "50.0", high24h: "53.0", low24h: "49.5", vol24h: "50000", volCcy24h: "2625000" },
+              { instId: "USDC-USDT", last: "1.0001", open24h: "1.0", high24h: "1.0002", low24h: "0.9999", vol24h: "100000", volCcy24h: "100000" },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify({ code: "0", data: [] }), { status: 200 });
+    }) as any;
+
+    try {
+      const reg = await getVerifiedOkxSpotRegistry(true);
+      expect(reg.has("BTCUSDT")).toBe(true);
+      expect(reg.has("OKBUSDT")).toBe(true);
+      expect(reg.has("USDCUSDT")).toBe(false);
+      expect(reg.has("OLDUSDT")).toBe(false);
+
+      const tickers = await fetchOkxSpotTickers();
+      expect(tickers["BTCUSDT"]?.price).toBe(95000);
+      expect(tickers["OKBUSDT"]?.price).toBe(52.5);
+      expect(tickers["USDCUSDT"]).toBeUndefined();
     } finally {
       globalThis.fetch = originalFetch;
     }
