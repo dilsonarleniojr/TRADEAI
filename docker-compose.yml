@@ -4,6 +4,8 @@ services:
       context: ./mini-services/quant-ai-service
       dockerfile: Dockerfile
     container_name: tradeai_quant_ai
+    mem_limit: 512m
+    cpus: 1.0
     restart: unless-stopped
     ports:
       - "8001:8001"
@@ -27,6 +29,8 @@ services:
       context: ./mini-services/funding-rates-mcp
       dockerfile: Dockerfile
     container_name: tradeai_funding_rates_mcp
+    mem_limit: 512m
+    cpus: 1.0
     restart: unless-stopped
     ports:
       - "8002:8002"
@@ -44,6 +48,8 @@ services:
       context: ./mini-services/crypto-portfolio-mcp
       dockerfile: Dockerfile
     container_name: tradeai_crypto_portfolio_mcp
+    mem_limit: 512m
+    cpus: 1.0
     restart: unless-stopped
     ports:
       - "8003:8003"
@@ -63,6 +69,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: tradeai_app
+    mem_limit: 2g
+    cpus: 2.0
     restart: always
     entrypoint: ["/bin/bash", "/app/start.sh"]
     ports:
@@ -90,6 +98,8 @@ services:
   caddy-proxy:
     image: caddy:alpine
     container_name: trade_caddy_proxy
+    mem_limit: 128m
+    cpus: 0.5
     restart: always
     network_mode: host
     volumes:
