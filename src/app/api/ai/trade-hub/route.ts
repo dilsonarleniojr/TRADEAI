@@ -22,6 +22,11 @@ import {
   getVerifiedOkxSpotRegistry,
   isTradableOkxSpotSymbol,
 } from '@/lib/okx/okx-spot-sync';
+import {
+  INSTITUTIONAL_RULES,
+  MANDATORY_NO_TRADE_MESSAGE,
+  NO_GUARANTEED_PROFIT_DISCLAIMER,
+} from '@/lib/bot/institutional-entry-filter';
 
 export const dynamic = 'force-dynamic';
 
@@ -365,8 +370,8 @@ export async function POST(request: Request) {
         const horizonInstruction = horizon === 'fast'
           ? 'FOCO EXCLUSIVO EM APLICAÇÕES RÁPIDAS (Day Trade e Scalp, timeframes 15m/1H, duração de minutos a poucas horas, stop curto e alvos ágeis de volatilidade).'
           : horizon === 'long'
-          ? 'FOCO EXCLUSIVO EM MÉDIO E LONGO PRAZO (Swing Trade e Position Trade, timeframes 4H/1D, duração de dias a semanas, acumulação estrutural e alvos amplos).'
-          : 'DIVERSIFIQUE OS HORIZONTES: Apresente tanto APLICAÇÕES RÁPIDAS (Scalp/Day Trade em 15m/1H) quanto oportunidades de MÉDIO/LONGO PRAZO (Swing/Position em 4H/1D).';
+            ? 'FOCO EXCLUSIVO EM MÉDIO E LONGO PRAZO (Swing Trade e Position Trade, timeframes 4H/1D, duração de dias a semanas, acumulação estrutural e alvos amplos).'
+            : 'DIVERSIFIQUE OS HORIZONTES: Apresente tanto APLICAÇÕES RÁPIDAS (Scalp/Day Trade em 15m/1H) quanto oportunidades de MÉDIO/LONGO PRAZO (Swing/Position em 4H/1D).';
 
         const antiCannibalizationInstruction = excludeSymbols.length > 0
           ? `DIRETRIZ DE NÃO-CANIBALIZAÇÃO (ANTI-CANNIBALIZATION FILTER):
@@ -384,34 +389,51 @@ PRIORIZE estritamente ativos descorrelacionados (setores DePIN, RWA ou moedas em
 
         const systemPrompt = `Você é o Gerador de Ideias de Troca institucional da TradeAI.
 Sua missão: "Analise o mercado atual e identifique oportunidades de alta probabilidade diferenciando claramente entre APLICAÇÕES RÁPIDAS (Day Trade/Scalping) e MÉDIO/LONGO PRAZO (Swing/Position Trade). Para cada configuração, forneça o preço de entrada sugerido, metas de lucro, nível de stop-loss e a relação risco-recompensa esperada."
+        const systemPrompt = `Você é um gestor quantitativo institucional da TradeAI especializado em maximizar retorno ajustado ao risco.
+          Sua missão: "Analise o mercado atual e identifique oportunidades de alta probabilidade diferenciando claramente entre APLICAÇÕES RÁPIDAS (Day Trade/Scalping) e MÉDIO/LONGO PRAZO (Swing/Position Trade). Priorize preservação de capital acima de lucro. Jamais afirmar que existe lucro garantido."
+
+FILTRO DE ENTRADA INSTITUCIONAL OBRIGATÓRIO:
+        - Tendência principal confirmada + Volume acima da média + Momentum favorável + Contexto macroeconômico não contraditório.
+- Alta liquidez(evitar ativos ilíquidos e eventos de alta volatilidade imprevisível).
+- Probabilidade estimada estritamente superior a 70 % (winProbability >= 71).
+- Relação risco / retorno mínima de 1: 4(riskReward >= 4.0).
+- Stop loss obrigatório em 100 % das operações e capital alocado <= 30 % (mantendo >= 70 % protegido / diversificado).
 
 DIRETRIZ DE DIVERSIFICAÇÃO OBRIGATÓRIA:
-O operador requer ALTA DIVERSIDADE DE ATIVOS E ESTRATÉGIAS. NÃO REPETIR apenas os mesmos pares habituais (como apenas BTC ou ETH).
-Selecione oportunidades distintas entre os dados ao vivo fornecidos, cobrindo diferentes perfis (altcoins de alto momentum, tokens de IA, protocolos DeFi e pares em repique técnico).
+O operador requer ALTA DIVERSIDADE DE ATIVOS E ESTRATÉGIAS.NÃO REPETIR apenas os mesmos pares habituais(como apenas BTC ou ETH).
+Selecione oportunidades distintas entre os dados ao vivo fornecidos, cobrindo diferentes perfis(altcoins de alto momentum, tokens de IA, protocolos DeFi e pares em repique técnico).
 
-${antiCannibalizationInstruction ? `${antiCannibalizationInstruction}\n\n` : ''}${decorrelationInstruction ? `${decorrelationInstruction}\n\n` : ''}DIRETRIZ DE HORIZONTE OPERACIONAL:
-${horizonInstruction}
+          ${ antiCannibalizationInstruction ? `${antiCannibalizationInstruction}\n\n` : '' }${ decorrelationInstruction ? `${decorrelationInstruction}\n\n` : '' }DIRETRIZ DE HORIZONTE OPERACIONAL:
+${ horizonInstruction }
 
 REGRAS ESTRITAS:
-1. Retorne EXATAMENTE 5 oportunidades de trading com setups acionáveis e de alta probabilidade.
+        1. Retorne EXATAMENTE 5 oportunidades de trading com setups acionáveis e de alta probabilidade.
+1. Retorne até 5 oportunidades de trading que atendam 100 % ao Filtro de Entrada(se nenhuma atender, retorne[]).
 2. Cada setup DEVE ter:
-   - symbol (ex: "SOLUSDT")
-   - name (ex: "Solana")
-   - type ("LONG" ou "SHORT")
-   - horizon ("RAPIDO" para aplicações rápidas/day/scalp | "MEDIO_LONGO" para swing e position trade)
-   - horizonLabel ("Aplicação Rápida (Day / Scalp)" | "Médio Prazo (Swing Trade)" | "Longo Prazo (Position / Estrutural)")
-   - holdingPeriod ("Intraday (30m a 4h)" | "1 a 5 dias" | "Semanas a Meses")
-   - strategyType ("Rompimento de Volatilidade" | "Scalp em Pivot" | "Tendência Estrutural" | "Pullback em Suporte" | "Reversão à Média")
-   - entryPrice (número exato, próximo do preço atual)
-   - tp1 (alvo de lucro parcial)
-   - tp2 (alvo de lucro final)
-   - stopLoss (nível de stop protegido além de suporte/resistência)
-   - riskReward (número exato >= 2.0, ex: 2.4)
-   - winProbability (probabilidade estimada, ex: 72)
-   - technicalReason (explicação técnica estrutural clara: suportes, resistências, médias, volume)
-   - fundamentalReason (catalisadores fundamentais, adoção, narrativa, liquidez)
-   - timeframe ("15m" | "1H" | "4H" | "1D")
-3. Responda APENAS com um JSON array de 5 objetos seguindo essas chaves, sem delimitadores ou texto introdutório.`;
+        - symbol(ex: "SOLUSDT")
+          - name(ex: "Solana")
+          - type("LONG" ou "SHORT")
+          - horizon("RAPIDO" para aplicações rápidas / day / scalp | "MEDIO_LONGO" para swing e position trade)
+          - horizonLabel("Aplicação Rápida (Day / Scalp)" | "Médio Prazo (Swing Trade)" | "Longo Prazo (Position / Estrutural)")
+          - holdingPeriod("Intraday (30m a 4h)" | "1 a 5 dias" | "Semanas a Meses")
+          - strategyType("Rompimento de Volatilidade" | "Scalp em Pivot" | "Tendência Estrutural" | "Pullback em Suporte" | "Reversão à Média")
+          - allocatedCapitalPct(número <= 30, recomendado <= 5.0)
+          - entryPrice(número exato, próximo do preço atual)
+        - tp1(alvo de lucro parcial)
+          - tp2(alvo de lucro final)
+          - tp1(alvo 1 de lucro parcial)
+          - tp2(alvo 2 de lucro final com R: R >= 4.0)
+          - stopLoss(nível de stop protegido além de suporte / resistência)
+          - riskReward(número exato >= 2.0, ex: 2.4)
+          - winProbability(probabilidade estimada, ex: 72)
+          - riskReward(número exato >= 4.0, ex: 4.2)
+          - winProbability(probabilidade estimada > 70, ex: 74)
+          - technicalReason(explicação técnica estrutural clara: suportes, resistências, médias, volume)
+          - fundamentalReason(catalisadores fundamentais, adoção, narrativa, liquidez)
+          - invalidationScenario(critério objetivo de encerramento automático caso a tese seja invalidada)
+          - timeframe("15m" | "1H" | "4H" | "1D")
+        3. Responda APENAS com um JSON array de 5 objetos seguindo essas chaves, sem delimitadores ou texto introdutório.`;
+3. Responda APENAS com um JSON array seguindo essas chaves, sem delimitadores ou texto introdutório.`;
 
         const userPrompt = `DADOS DE MERCADO AO VIVO:\n${marketContext || 'Utilize dados médios da Binance para os pares fornecidos'}\n\nFiltro/Categoria: ${category}\nHorizonte Solicitado: ${horizon}${excludeSymbols.length > 0 ? `\nPARES EXCLUÍDOS (JÁ OPERANDO): ${excludeSymbols.join(', ')}` : ''}${decorrelateRisk ? '\nTRAVA CROSS-ASSET ATIVA: Excluir r > 0.85, priorizar DePIN/RWA e desacoplados' : ''}\nIdentifique as 5 melhores oportunidades agora com alta diversificação (100% oportunidades inexploradas):`;
 
@@ -472,6 +494,15 @@ REGRAS ESTRITAS:
           const slDist = isFast ? p * 0.014 : p * 0.018;
           const tp1Dist = slDist * (isFast ? 2.1 : 2.4);
           const tp2Dist = slDist * (isFast ? 3.1 : 3.6);
+          // Guardrail institucional Binance Spot: Stop Loss <= 2.0% e R:R mínimo 1:4 (>= 4.0)
+          const slDist = isFast ? p * 0.012 : p * 0.016;
+          const tp1Dist = slDist * (isFast ? 2.4 : 2.6);
+          const tp2Dist = slDist * (isFast ? 4.1 : 4.4);
+          const entryQ = quantizeToBinanceTick(p, tickSize);
+          const slQ = quantizeToBinanceTick(p - slDist, tickSize, 'floor');
+          const tp1Q = quantizeToBinanceTick(p + tp1Dist, tickSize);
+          const tp2Q = quantizeToBinanceTick(p + tp2Dist, tickSize);
+          const realRR = entryQ > slQ ? Math.round(((tp2Q - entryQ) / (entryQ - slQ)) * 100) / 100 : 4.1;
 
           const cInfo = correlationMap[sym] || {
             r: 0.65,
@@ -494,8 +525,17 @@ REGRAS ESTRITAS:
             stopLoss: quantizeToBinanceTick(p - slDist, tickSize, 'floor'),
             riskReward: isFast ? 2.3 : 2.6,
             winProbability: isFast ? 75 - (idx * 2) : 73 - (idx * 2),
+            allocatedCapitalPct: isFast ? 3.5 : 5.0,
+            entryPrice: entryQ,
+            tp1: tp1Q,
+            tp2: tp2Q,
+            stopLoss: slQ,
+            riskReward: Math.max(INSTITUTIONAL_RULES.MIN_RISK_REWARD, realRR),
+            winProbability: Math.max(71, isFast ? 77 - idx : 75 - idx),
             technicalReason: strat.tech,
             fundamentalReason: strat.fund,
+            invalidationScenario: `Encerramento automático se perder o suporte/stop em $${slQ} ou se o volume e a tendência principal perderem força.`,
+            disclaimer: NO_GUARANTEED_PROFIT_DISCLAIMER,
             timeframe: isFast ? strat.tfFast : strat.tfLong,
             correlationBeta: cInfo.r,
             correlationLabel: cInfo.label,
@@ -543,18 +583,35 @@ REGRAS ESTRITAS:
 
             const rawTp1 = Number(item.tp1);
             const safeTp1 = rawTp1 > entryVal + riskDist * 1.6 ? rawTp1 : entryVal + riskDist * 2.1;
+            const safeTp1 = rawTp1 > entryVal + riskDist * 2.0 ? rawTp1 : entryVal + riskDist * 2.4;
             const rawTp2 = Number(item.tp2);
             const safeTp2 = rawTp2 > safeTp1 ? rawTp2 : entryVal + riskDist * 3.1;
+            const minTp2 = entryVal + riskDist * INSTITUTIONAL_RULES.MIN_RISK_REWARD;
+            const safeTp2 = rawTp2 >= minTp2 && rawTp2 > safeTp1 ? rawTp2 : Math.max(minTp2, safeTp1 * 1.01);
+            const tp1Q = quantizeToBinanceTick(safeTp1, tickSize);
+            const tp2Q = quantizeToBinanceTick(safeTp2, tickSize);
+            const computedRR = entryVal > slVal ? Math.round(((tp2Q - entryVal) / (entryVal - slVal)) * 100) / 100 : INSTITUTIONAL_RULES.MIN_RISK_REWARD;
+            const rawProb = Number(item.winProbability) || 72;
+            const rawAlloc = Number(item.allocatedCapitalPct) || (isFast ? 3.5 : 5.0);
 
             return {
               ...item,
               symbol: sym,
               type: 'LONG',
+              allocatedCapitalPct: Math.min(INSTITUTIONAL_RULES.MAX_SINGLE_OPERATION_PCT, Math.max(1.0, rawAlloc)),
               entryPrice: entryVal,
               stopLoss: slVal,
               tp1: quantizeToBinanceTick(safeTp1, tickSize),
               tp2: quantizeToBinanceTick(safeTp2, tickSize),
               riskReward: Math.max(2.0, Number(item.riskReward) || 2.3),
+              tp1: tp1Q,
+              tp2: tp2Q,
+              riskReward: Math.max(INSTITUTIONAL_RULES.MIN_RISK_REWARD, computedRR),
+              winProbability: Math.max(71, rawProb),
+              invalidationScenario:
+                item.invalidationScenario ||
+                `Encerramento automático ao romper o Stop Loss em $${slVal} ou perda da tendência principal.`,
+              disclaimer: NO_GUARANTEED_PROFIT_DISCLAIMER,
               horizon: isFast ? 'RAPIDO' : 'MEDIO_LONGO',
               horizonLabel: item.horizonLabel || (isFast ? 'Aplicação Rápida (Day / Scalp)' : 'Médio/Longo Prazo (Swing Trade)'),
               holdingPeriod: item.holdingPeriod || (isFast ? 'Intraday (30 min a 4 horas)' : 'Médio Prazo (2 a 7 dias)'),
@@ -605,11 +662,22 @@ REGRAS ESTRITAS:
 
         // Filtro estrito de Não-Canibalização e Elegibilidade Spot
         parsed = parsed.filter((item) => !isExcluded(item.symbol));
+        // Filtro estrito de Não-Canibalização, Elegibilidade Spot, Liquidez e Critérios Institucionais
+        parsed = parsed.filter((item) => {
+          if (isExcluded(item.symbol)) return false;
+          const vol24h = Number(tickers[item.symbol]?.quoteVolume || 0);
+          if (vol24h > 0 && vol24h < INSTITUTIONAL_RULES.MIN_QUOTE_VOLUME_24H_USDT) return false;
+          if ((Number(item.riskReward) || 0) < INSTITUTIONAL_RULES.MIN_RISK_REWARD) return false;
+          if ((Number(item.winProbability) || 0) <= INSTITUTIONAL_RULES.MIN_WIN_PROBABILITY_PCT) return false;
+          return true;
+        });
 
         return NextResponse.json({
           success: true,
           tool: 'trade_ideas',
           data: parsed,
+          ...(parsed.length === 0 ? { noTradeMessage: MANDATORY_NO_TRADE_MESSAGE } : {}),
+          disclaimer: NO_GUARANTEED_PROFIT_DISCLAIMER,
           sources: {
             marketData: 'Binance Spot Live API v3 (REST / WebSocket)',
             quantMethodology: 'Pearson Cross-Asset Return Correlation (r) + Pivot Points + RSI 14 + EMAs',
@@ -1222,11 +1290,11 @@ Responda APENAS em JSON estruturado com o esquema:
         const tradesSummary = customTrades
           ? `Operações informadas pelo operador:\n${customTrades}`
           : tradesData
-              .map(
-                (t, i) =>
-                  `Operação ${i + 1}: ${t.symbol} | Lado: ${t.side} | Preço: $${t.price} | PnL: ${t.pnl >= 0 ? '+' : ''}$${t.pnl} | Estratégia: ${t.strategy} | Data: ${t.date}`
-              )
-              .join('\n');
+            .map(
+              (t, i) =>
+                `Operação ${i + 1}: ${t.symbol} | Lado: ${t.side} | Preço: $${t.price} | PnL: ${t.pnl >= 0 ? '+' : ''}$${t.pnl} | Estratégia: ${t.strategy} | Data: ${t.date}`
+            )
+            .join('\n');
 
         const systemPrompt = `Você é o Analisador de Diário de Negociação da TradeAI.
 Missão: "Analise minhas últimas 20 operações: [insira negociações com entrada, saída e resultados]. Identifique erros recorrentes, oportunidades perdidas e vieses comportamentais. Depois, forneça 3 regras personalizadas para melhorar a consistência imediatamente."

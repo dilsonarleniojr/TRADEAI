@@ -64,8 +64,8 @@ assert(score.compositeScore > 0, `Score composto em alta deve ser positivo (rece
 assert(score.regime === "Trending Up" || score.regime === "Ranging", `Regime detectado: ${score.regime}`);
 
 // 4. Teste do Gatekeeper de R:R (AI Signal Agent)
-console.log("\n--- 4. Validação da Matriz de Risco do Gatekeeper (R:R >= 2.2:1) ---");
-assert(MIN_RISK_REWARD_THRESHOLD === 2.2, `MIN_RISK_REWARD_THRESHOLD deve ser 2.2 (atual: ${MIN_RISK_REWARD_THRESHOLD})`);
+console.log("\n--- 4. Validação da Matriz de Risco do Gatekeeper (R:R >= 4.0:1) ---");
+assert(MIN_RISK_REWARD_THRESHOLD === 4.0, `MIN_RISK_REWARD_THRESHOLD deve ser 4.0 (atual: ${MIN_RISK_REWARD_THRESHOLD})`);
 
 // Sinal com R:R = 1.5 (Stop = 90, Preço = 100, Alvo = 115 -> R:R = 15/10 = 1.5 < 2.2)
 const badRrSignal = applyGatekeeper(
@@ -82,20 +82,20 @@ const badRrSignal = applyGatekeeper(
 assert(badRrSignal.signal === "HOLD", "Sinal com R:R 1.5 deve ser convertido para HOLD");
 assert(badRrSignal.vetoed === true, "Sinal com R:R 1.5 deve ser vetado");
 
-// Sinal com R:R = 2.5 (Stop = 90, Preço = 100, Alvo = 125 -> R:R = 25/10 = 2.5 >= 2.2)
+// Sinal com R:R = 4.2 (Stop = 90, Preço = 100, Alvo = 142 -> R:R = 42/10 = 4.2 >= 4.0)
 const goodRrSignal = applyGatekeeper(
   {
     signal: "BUY",
     confidence_score: 90,
     stop_loss: 90,
-    take_profit: 125,
+    take_profit: 142,
     key_driver: "Teste R:R favorável",
     risk_warning: "Alerta",
   },
   100
 );
-assert(goodRrSignal.signal === "BUY", "Sinal com R:R 2.5 deve permanecer BUY");
-assert(goodRrSignal.vetoed === false, "Sinal com R:R 2.5 não deve ser vetado");
-assert(goodRrSignal.risk_reward_ratio === 2.5, `R:R retornado deve ser 2.5 (recebido: ${goodRrSignal.risk_reward_ratio})`);
+assert(goodRrSignal.signal === "BUY", "Sinal com R:R 4.2 deve permanecer BUY");
+assert(goodRrSignal.vetoed === false, "Sinal com R:R 4.2 não deve ser vetado");
+assert(goodRrSignal.risk_reward_ratio === 4.2, `R:R retornado deve ser 4.2 (recebido: ${goodRrSignal.risk_reward_ratio})`);
 
 console.log("\n🎉 TODOS OS TESTES QUANTITATIVOS DA SKILL TECHNICAL-SCANNER PASSARAM COM SUCESSO!");

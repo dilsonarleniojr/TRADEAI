@@ -190,7 +190,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             `[DataProvider] Diagnóstico inicial -> Binance: ${health.binance.label} | OKX: ${health.okx.label} | IA: ${health.ai.label}`
           );
         })
-        .catch(() => {});
+        .catch(() => { });
     }
 
     // Limpa apenas sinais antigos de IA (mantém status de robôs ativos e configurações)
@@ -205,7 +205,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           useCryptoStore.getState().setTickers(tickers);
           setState((s) => ({ ...s, marketsLoaded: true }));
           console.log("[DataProvider] Markets loaded:", Object.keys(tickers).length, "symbols");
-          fetchSymbolsMetadata().catch(() => {});
+          fetchSymbolsMetadata().catch(() => { });
         }
       } catch (err) {
         console.error("[DataProvider] Market data failed:", err);

@@ -236,25 +236,36 @@ async function askClaude(o: AskAIOptions, model: string): Promise<AIReply> {
   };
 }
 
-async function askOpenAICompatible(o: AskAIOptions, provider: AIProviderId, model: string): Promise<AIReply> {
-  const info = getProvider(provider);
-  const client = getOpenAICompatible(provider, requireKey(provider));
+export function buildOpenAICompatibleParams(
+  o: AskAIOptions,
+  provider: AIProviderId,
+  model: string
+): OpenAI.Chat.ChatCompletionCreateParamsNonStreaming {
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: "system", content: o.system },
     ...o.messages.map((m) => ({ role: m.role, content: contentToText(m.content) })),
   ];
-  const limit = o.maxTokens ?? 4096;
+  // Modelos Gemini 2.5+ consomem thinking tokens de max_tokens; piso de 1024 evita truncamento.
+  const limit = provider === "gemini" ? Math.max(o.maxTokens ?? 4096, 1024) : (o.maxTokens ?? 4096);
+
+  return {
+    model,
+    messages,
+    ...(o.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
+    ...(provider === "gemini" && o.effort === "low" ? { reasoning_effort: "low" as const } : {}),
+    // A OpenAI exige max_completion_tokens nos modelos novos; Gemini e Qwen aceitam max_tokens.
+    ...(provider === "openai" ? { max_completion_tokens: limit } : { max_tokens: limit }),
+  };
+}
+
+async function askOpenAICompatible(o: AskAIOptions, provider: AIProviderId, model: string): Promise<AIReply> {
+  const info = getProvider(provider);
+  const client = getOpenAICompatible(provider, requireKey(provider));
 
   let completion: OpenAI.Chat.ChatCompletion;
   try {
     completion = await client.chat.completions.create(
-      {
-        model,
-        messages,
-        ...(o.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
-        // A OpenAI exige max_completion_tokens nos modelos novos; Gemini e Qwen aceitam max_tokens.
-        ...(provider === "openai" ? { max_completion_tokens: limit } : { max_tokens: limit }),
-      },
+      buildOpenAICompatibleParams(o, provider, model),
       { timeout: 25_000 }
     );
   } catch (error) {
@@ -380,6 +391,9 @@ export async function testAIProvider(provider: AIProviderId): Promise<{ model: s
     provider === "claude"
       ? await askClaude(opts, model)
       : await askOpenAICompatible(opts, provider, model);
+  if (!reply.text) {
+    throw new AIUnavailableError(`O provedor ${provider} (${model}) retornou resposta vazia.`);
+  }
   return {
     model: reply.model || model,
     latencyMs: Math.max(1, Date.now() - startedAt),

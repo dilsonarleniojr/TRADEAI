@@ -59,7 +59,7 @@ function HomePageContent() {
       let override: string | null = null;
       try {
         override = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
-      } catch {}
+      } catch { }
 
       if (override === "mobile") {
         setUseMobileView(true);
@@ -84,7 +84,7 @@ function HomePageContent() {
   const handleSwitchToDesktop = () => {
     try {
       localStorage.setItem(VIEW_MODE_STORAGE_KEY, "desktop");
-    } catch {}
+    } catch { }
     setUseMobileView(false);
   };
 

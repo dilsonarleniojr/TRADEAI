@@ -12,6 +12,102 @@
     "details": {
       "minRr": 2.2
     },
+    "id": "mem-1794987908091-heqo3",
+    "timestamp": "2026-11-18T07:45:08.091Z"
+  },
+  {
+    "category": "QUANT_STRATEGY",
+    "title": "Calibragem Trailing Stop ATR e Order Flow L2",
+    "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
+    "tags": [
+      "mfe",
+      "trailing-stop",
+      "order-flow",
+      "atr"
+    ],
+    "details": {
+      "minRr": 2.2
+    },
+    "id": "mem-1794987892200-qbq99",
+    "timestamp": "2026-11-18T07:44:52.200Z"
+  },
+  {
+    "category": "QUANT_STRATEGY",
+    "title": "Calibragem Trailing Stop ATR e Order Flow L2",
+    "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
+    "tags": [
+      "mfe",
+      "trailing-stop",
+      "order-flow",
+      "atr"
+    ],
+    "details": {
+      "minRr": 2.2
+    },
+    "id": "mem-1794987879612-7dnvm",
+    "timestamp": "2026-11-18T07:44:39.612Z"
+  },
+  {
+    "category": "QUANT_STRATEGY",
+    "title": "Calibragem Trailing Stop ATR e Order Flow L2",
+    "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
+    "tags": [
+      "mfe",
+      "trailing-stop",
+      "order-flow",
+      "atr"
+    ],
+    "details": {
+      "minRr": 2.2
+    },
+    "id": "mem-1794987870927-otvjm",
+    "timestamp": "2026-11-18T07:44:30.927Z"
+  },
+  {
+    "category": "QUANT_STRATEGY",
+    "title": "Calibragem Trailing Stop ATR e Order Flow L2",
+    "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
+    "tags": [
+      "mfe",
+      "trailing-stop",
+      "order-flow",
+      "atr"
+    ],
+    "details": {
+      "minRr": 2.2
+    },
+    "id": "mem-1794987643745-i5tid",
+    "timestamp": "2026-11-18T07:40:43.745Z"
+  },
+  {
+    "category": "QUANT_STRATEGY",
+    "title": "Calibragem Trailing Stop ATR e Order Flow L2",
+    "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
+    "tags": [
+      "mfe",
+      "trailing-stop",
+      "order-flow",
+      "atr"
+    ],
+    "details": {
+      "minRr": 2.2
+    },
+    "id": "mem-1794980691220-ms8hb",
+    "timestamp": "2026-11-18T05:44:51.220Z"
+  },
+  {
+    "category": "QUANT_STRATEGY",
+    "title": "Calibragem Trailing Stop ATR e Order Flow L2",
+    "summary": "Redução de devolução de MFE usando parcial TP1 em +1.6% e filtro RVOL > 3 sigma.",
+    "tags": [
+      "mfe",
+      "trailing-stop",
+      "order-flow",
+      "atr"
+    ],
+    "details": {
+      "minRr": 2.2
+    },
     "id": "mem-1794802616623-rzrai",
     "timestamp": "2026-11-16T04:16:56.624Z"
   },

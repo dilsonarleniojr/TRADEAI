@@ -1,14 +1,14 @@
 // Centralized crypto metadata for 50+ symbols
 import { isTradableBinanceSpotSymbol } from "@/lib/binance-spot-sync";
 
-export type CryptoCategory = 
-  | "Layer 1" 
-  | "Layer 2" 
-  | "DeFi" 
-  | "Meme" 
-  | "AI" 
-  | "Gaming" 
-  | "Infrastructure" 
+export type CryptoCategory =
+  | "Layer 1"
+  | "Layer 2"
+  | "DeFi"
+  | "Meme"
+  | "AI"
+  | "Gaming"
+  | "Infrastructure"
   | "Exchange"
   | "Stablecoin"
   | "Inovação"
@@ -43,14 +43,14 @@ export const CRYPTO_LIST: CryptoMeta[] = [
   { symbol: "SEIUSDT", name: "Sei", short: "SEI", color: "#9b1c2e", category: "Layer 1", rank: 45, launchYear: 2023, description: "Blockchain otimizada para trading" },
   { symbol: "TIAUSDT", name: "Celestia", short: "TIA", color: "#7c3aed", category: "Layer 1", rank: 35, launchYear: 2023, description: "Rede modular de disponibilidade de dados" },
   { symbol: "INJUSDT", name: "Injective", short: "INJ", color: "#0082fa", category: "Layer 1", rank: 40, launchYear: 2020, description: "Blockchain para finanças DeFi" },
-  
+
   // === Layer 2 ===
   { symbol: "POLUSDT", name: "Polygon (POL)", short: "POL", color: "#8247e5", category: "Layer 2", rank: 20, launchYear: 2020, description: "Solução Layer 2 para Ethereum (ex-MATIC)" },
   { symbol: "ARBUSDT", name: "Arbitrum", short: "ARB", color: "#28a0f0", category: "Layer 2", rank: 28, launchYear: 2023, description: "Rollup otimístico para Ethereum" },
   { symbol: "OPUSDT", name: "Optimism", short: "OP", color: "#ff0420", category: "Layer 2", rank: 32, launchYear: 2022, description: "Optimistic rollup para Ethereum" },
   { symbol: "MANTAUSDT", name: "Manta Network", short: "MANTA", color: "#1e40af", category: "Layer 2", rank: 80, launchYear: 2024, description: "Layer 2 com privacidade ZK" },
   { symbol: "STRKUSDT", name: "Starknet", short: "STRK", color: "#ec796b", category: "Layer 2", rank: 55, launchYear: 2024, description: "ZK-rollup com STARK proofs" },
-  
+
   // === DeFi ===
   { symbol: "LINKUSDT", name: "Chainlink", short: "LINK", color: "#2a5ada", category: "DeFi", rank: 15, launchYear: 2017, description: "Rede oráculo descentralizada líder" },
   { symbol: "UNIUSDT", name: "Uniswap", short: "UNI", color: "#ff007a", category: "DeFi", rank: 22, launchYear: 2020, description: "DEX líder com AMM" },
@@ -62,7 +62,7 @@ export const CRYPTO_LIST: CryptoMeta[] = [
   { symbol: "LDOUSDT", name: "Lido DAO", short: "LDO", color: "#00a3ff", category: "DeFi", rank: 33, launchYear: 2020, description: "Liquid staking líder para ETH" },
   { symbol: "DYDXUSDT", name: "dYdX", short: "DYDX", color: "#6966ff", category: "DeFi", rank: 48, launchYear: 2021, description: "Exchange descentralizada de margem" },
   { symbol: "PENDLEUSDT", name: "Pendle", short: "PENDLE", color: "#1f6fff", category: "DeFi", rank: 75, launchYear: 2021, description: "Protocolo para rendimentos futuros" },
-  
+
   // === Meme ===
   { symbol: "DOGEUSDT", name: "Dogecoin", short: "DOGE", color: "#c3a634", category: "Meme", rank: 9, launchYear: 2013, description: "A primeira meme coin" },
   { symbol: "SHIBUSDT", name: "Shiba Inu", short: "SHIB", color: "#ffa409", category: "Meme", rank: 11, launchYear: 2020, description: "Meme coin ecossistema DeFi" },
@@ -70,24 +70,24 @@ export const CRYPTO_LIST: CryptoMeta[] = [
   { symbol: "FLOKIUSDT", name: "Floki", short: "FLOKI", color: "#f6a623", category: "Meme", rank: 55, launchYear: 2021, description: "Meme coin inspirada por Elon Musk" },
   { symbol: "BONKUSDT", name: "Bonk", short: "BONK", color: "#f8a400", category: "Meme", rank: 60, launchYear: 2022, description: "Meme coin da Solana" },
   { symbol: "WIFUSDT", name: "dogwifhat", short: "WIF", color: "#a855f7", category: "Meme", rank: 45, launchYear: 2023, description: "Meme coin do dog com chapéu" },
-  
+
   // === AI ===
   { symbol: "FETUSDT", name: "Fetch.ai", short: "FET", color: "#1d1d3c", category: "AI", rank: 50, launchYear: 2019, description: "Plataforma de IA autônoma" },
   { symbol: "RENDERUSDT", name: "Render", short: "RNDR", color: "#e63946", category: "AI", rank: 35, launchYear: 2017, description: "Rede descentralizada de renderização GPU" },
   { symbol: "IOUSDT", name: "io.net", short: "IO", color: "#00f0ff", category: "AI", rank: 65, launchYear: 2024, description: "Rede descentralizada de clusters GPU de alta performance para IA" },
   { symbol: "TAOUSDT", name: "Bittensor", short: "TAO", color: "#2a2a3d", category: "AI", rank: 38, launchYear: 2023, description: "Rede de machine learning descentralizada" },
-  
+
   // === Gaming ===
   { symbol: "IMXUSDT", name: "Immutable", short: "IMX", color: "#00c3ff", category: "Gaming", rank: 40, launchYear: 2021, description: "Plataforma NFT e gaming Layer 2" },
   { symbol: "GALAUSDT", name: "Gala Games", short: "GALA", color: "#000000", category: "Gaming", rank: 70, launchYear: 2020, description: "Plataforma de jogos blockchain" },
   { symbol: "RONINUSDT", name: "Ronin", short: "RON", color: "#1268fb", category: "Gaming", rank: 55, launchYear: 2022, description: "Blockchain para jogos Sky Mavis" },
   { symbol: "AXSUSDT", name: "Axie Infinity", short: "AXS", color: "#0055d5", category: "Gaming", rank: 75, launchYear: 2020, description: "Jogo play-to-earn líder" },
-  
+
   // === Infrastructure ===
   { symbol: "FILUSDT", name: "Filecoin", short: "FIL", color: "#0090ff", category: "Infrastructure", rank: 30, launchYear: 2020, description: "Armazenamento descentralizado" },
   { symbol: "ARUSDT", name: "Arweave", short: "AR", color: "#222326", category: "Infrastructure", rank: 55, launchYear: 2018, description: "Armazenamento permanente descentralizado" },
   { symbol: "ETHFIUSDT", name: "ether.fi", short: "ETHFI", color: "#7c3aed", category: "Infrastructure", rank: 60, launchYear: 2023, description: "Protocolo de liquid staking" },
-  
+
   // === Exchange/Payment ===
   { symbol: "XRPUSDT", name: "XRP", short: "XRP", color: "#00aae4", category: "Exchange", rank: 6, launchYear: 2012, description: "Protocolo de pagamento global" },
   { symbol: "LTCUSDT", name: "Litecoin", short: "LTC", color: "#bfbbbb", category: "Exchange", rank: 20, launchYear: 2011, description: "Pagamentos rápidos e baratos" },
@@ -254,9 +254,9 @@ export function getSymbolsByCategory(category: CryptoCategory): string[] {
 export function searchCrypto(query: string): CryptoMeta[] {
   const q = query.toLowerCase().trim();
   if (!q) return CRYPTO_LIST;
-  return CRYPTO_LIST.filter(c => 
-    c.name.toLowerCase().includes(q) || 
-    c.short.toLowerCase().includes(q) || 
+  return CRYPTO_LIST.filter(c =>
+    c.name.toLowerCase().includes(q) ||
+    c.short.toLowerCase().includes(q) ||
     c.symbol.toLowerCase().includes(q) ||
     c.category.toLowerCase().includes(q)
   );

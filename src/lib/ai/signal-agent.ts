@@ -23,7 +23,8 @@ import {
 } from "@/lib/bot/indicators";
 import type { KlineData } from "@/lib/store";
 
-export const MIN_RISK_REWARD_THRESHOLD = 2.2;
+export const MIN_RISK_REWARD_THRESHOLD = 4.0;
+export const MIN_WIN_PROBABILITY_THRESHOLD = 70; // Exigido estritamente > 70%
 const TOOL_TIMEOUT_MS = 3_000;
 const LLM_TIMEOUT_MS = 20_000;
 const MAX_ITERATIONS = 4;
@@ -356,7 +357,7 @@ async function tradeRisk(args: any, signal: AbortSignal): Promise<ToolOutcome> {
   return {
     status: partial ? "fallback" : "success",
     data,
-    summary: geometryOk ? `R:R ${rr.toFixed(2)}${rr >= MIN_RISK_REWARD_THRESHOLD ? " ✓" : " < 2.2"}` : "SL/TP no lado errado",
+    summary: geometryOk ? `R:R ${rr.toFixed(2)}${rr >= MIN_RISK_REWARD_THRESHOLD ? " ✓" : ` < ${MIN_RISK_REWARD_THRESHOLD.toFixed(1)}`}` : "SL/TP no lado errado",
   };
 }
 
@@ -458,15 +459,16 @@ export async function executeAgentTool(
 // Loop do agente (por provedor)
 // ---------------------------------------------------------------------------
 
-export const AGENT_SYSTEM_PROMPT = `<role>Motor Quant Institucional TradeAI. Decida estritamente via ferramentas reais Binance.</role>
+export const AGENT_SYSTEM_PROMPT = `<role>Gestor Quant TradeAI. Decida via ferramentas Binance. Sem garantia de lucro.</role>
 <grounding_rules>
-1. Chame em paralelo: trend_momentum_analysis, order_book_liquidity e technical_scanner.
+1. Chame em paralelo: trend_momentum_analysis, order_book_liquidity, technical_scanner.
 2. Antes de BUY/SELL, valide com trade_risk_evaluation.
-3. ZERO ALUCINAÇÃO: Falha de ferramenta ou incerteza -> signal="HOLD".
-4. VETOS: <0.8% de R1/R2; BUY com Composite Score < +3 ou tendência BAIXA; R:R < 2.2 -> signal="HOLD".
+3. ZERO ALUCINAÇÃO: Falha, baixa liquidez ou volatilidade imprevisível -> HOLD.
+4. FILTRO: Tendência confirmada, volume > média, momentum favorável, macro alinhado, confidence_score > 70, R:R >= 4.0, stop_loss obrigatório.
+5. VETO: Falhou critério ou <0.8% de R1/R2 -> HOLD, risk_warning="NÃO OPERAR. Preservar capital é mais importante que buscar lucro.".
 </grounding_rules>
 <output_schema>
-Retorne EXCLUSIVAMENTE JSON (sem markdown):
+Retorne APENAS JSON:
 {"signal":"BUY"|"SELL"|"HOLD","confidence_score":0..100,"risk_reward_ratio":number,"key_driver":"max 10 palavras","risk_warning":"max 10 palavras","stop_loss":number,"take_profit":number}
 Para HOLD: stop_loss e take_profit = preço atual.
 </output_schema>`;
@@ -557,8 +559,11 @@ async function runOpenAICompatibleLoop(
         {
           model,
           messages,
-          ...(last ? {} : { tools, tool_choice: "auto" as const }),
-          ...(provider === "openai" ? { max_completion_tokens: 1500 } : { max_tokens: 1500 }),
+          ...(last
+            ? { response_format: { type: "json_object" as const } }
+            : { tools, tool_choice: "auto" as const }),
+          ...(provider === "gemini" ? { reasoning_effort: "low" as const } : {}),
+          ...(provider === "openai" ? { max_completion_tokens: 4096 } : { max_tokens: 4096 }),
         },
         { timeout: LLM_TIMEOUT_MS, maxRetries: 0 }
       );
@@ -663,7 +668,17 @@ export function applyGatekeeper(raw: RawDecision, price: number) {
       risk_reward_ratio: rr,
       ...holdAt(price),
       vetoed: true,
-      veto_reason: "Operação vetada pela matriz de risco: Assimetria desfavorável",
+      veto_reason: `NÃO OPERAR. Preservar capital é mais importante que buscar lucro. (R:R ${rr.toFixed(2)} < 1:${MIN_RISK_REWARD_THRESHOLD})`,
+    };
+  }
+  if (confidence <= MIN_WIN_PROBABILITY_THRESHOLD) {
+    return {
+      ...base,
+      signal: "HOLD" as const,
+      risk_reward_ratio: rr,
+      ...holdAt(price),
+      vetoed: true,
+      veto_reason: `NÃO OPERAR. Preservar capital é mais importante que buscar lucro. (Probabilidade ${confidence}% <= 70%)`,
     };
   }
   return { ...base, signal, risk_reward_ratio: rr, stop_loss: sl, take_profit: tp, vetoed: false };
