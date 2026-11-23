@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import { useMicrostructureStore } from "@/lib/store/institutional-stores";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -78,7 +77,7 @@ export function MicrostructurePanel() {
   const spread = currentData.spreadPercent;
 
   // Determinar status do alerta preditivo da microestrutura
-  const predBadge = useMemo(() => {
+  const predBadge = (() => {
     switch (currentData.predictiveAlert) {
       case "ROMPIMENTO":
         return {
@@ -109,7 +108,7 @@ export function MicrostructurePanel() {
           icon: Activity,
         };
     }
-  }, [currentData.predictiveAlert]);
+  })();
 
   const IconComp = predBadge.icon;
 

@@ -207,7 +207,7 @@ export function GlobalCommandSearch({
         variant: "destructive",
       });
     }
-  }, [setIsCommandSearchOpen, toast, tradingMode, setAccount, setTrades]);
+  }, [setIsCommandSearchOpen, toast, tradingMode, selectedExchange, setAccount, setTrades]);
 
   // Lista dos pares mais relevantes do sistema com cotações
   const marketPairs = useMemo(() => {

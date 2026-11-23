@@ -172,7 +172,7 @@ export function BotSection() {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("tradeai_bot_view_mode");
       if (saved === "compact" || saved === "full") {
-        setViewMode(saved);
+        queueMicrotask(() => setViewMode(saved));
       }
     }
   }, []);
@@ -186,9 +186,11 @@ export function BotSection() {
 
   useEffect(() => {
     if (openBotCreateModal) {
-      setBotToEdit(null);
-      setIsDialogOpen(true);
-      setOpenBotCreateModal(false);
+      queueMicrotask(() => {
+        setBotToEdit(null);
+        setIsDialogOpen(true);
+        setOpenBotCreateModal(false);
+      });
     }
   }, [openBotCreateModal, setOpenBotCreateModal]);
 

@@ -207,7 +207,7 @@ export function ChartSection({
     try {
       const saved = localStorage.getItem('tradeai_chart_side_view');
       if (saved === 'both' || saved === 'trade' || saved === 'book') {
-        setSideView(saved);
+        queueMicrotask(() => setSideView(saved));
       }
     } catch {
       // LocalStorage access fallback
@@ -252,8 +252,10 @@ export function ChartSection({
   }, []);
 
   useEffect(() => {
-    setSpoofingAlert(null);
     let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setSpoofingAlert(null);
+    });
 
     // Carrega histórico de eventos de evasão de spoofing do robô / radar
     async function fetchSpoofingEvents() {

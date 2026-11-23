@@ -122,11 +122,13 @@ export function OpenOrders() {
   useEffect(() => {
     const saved = localStorage.getItem("tradeai_open_orders");
     if (saved) {
-      try {
-        setOrders(JSON.parse(saved));
-      } catch (e) {
-        setOrders([]);
-      }
+      queueMicrotask(() => {
+        try {
+          setOrders(JSON.parse(saved));
+        } catch {
+          setOrders([]);
+        }
+      });
     }
   }, []);
 
@@ -180,8 +182,10 @@ export function OpenOrders() {
     });
 
     if (updated) {
-      setOrders(nextOrders);
-      localStorage.setItem("tradeai_open_orders", JSON.stringify(nextOrders));
+      queueMicrotask(() => {
+        setOrders(nextOrders);
+        localStorage.setItem("tradeai_open_orders", JSON.stringify(nextOrders));
+      });
     }
   }, [tickers, orders, toast]);
 

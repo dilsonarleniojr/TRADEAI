@@ -85,9 +85,12 @@ export function MiniBook() {
   }, [selectedSymbol]);
 
   useEffect(() => {
-    updateData();
+    const initTimer = setTimeout(() => {
+      void updateData();
+    }, 0);
     intervalRef.current = setInterval(updateData, 3000);
     return () => {
+      clearTimeout(initTimer);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [updateData]);

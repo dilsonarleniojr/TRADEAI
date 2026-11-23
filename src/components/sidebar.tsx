@@ -61,7 +61,7 @@ export function Sidebar() {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("tradeai_sidebar_expanded");
       if (saved !== null) {
-        setIsExpanded(saved === "true");
+        queueMicrotask(() => setIsExpanded(saved === "true"));
       }
     }
   }, []);

@@ -51,9 +51,12 @@ export function HomeView() {
   const [nowMs, setNowMs] = useState<number>(0);
 
   useEffect(() => {
-    setNowMs(Date.now());
+    const init = setTimeout(() => setNowMs(Date.now()), 0);
     const id = setInterval(() => setNowMs(Date.now()), 30_000);
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(init);
+      clearInterval(id);
+    };
   }, []);
 
   // Métricas reais de patrimônio do store

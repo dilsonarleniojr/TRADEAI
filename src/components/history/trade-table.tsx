@@ -34,16 +34,48 @@ interface TradeTableProps {
 type SortField = "timestamp" | "symbol" | "side" | "price" | "quantity" | "total" | "pnl";
 type SortDirection = "asc" | "desc";
 
+function SortHeader({
+  field,
+  sortField,
+  sortDirection,
+  onSort,
+  children,
+}: {
+  field: SortField;
+  sortField: SortField;
+  sortDirection: SortDirection;
+  onSort: (field: SortField) => void;
+  children: React.ReactNode;
+}) {
+  const isSorted = sortField === field;
+  return (
+    <TableHead
+      onClick={() => onSort(field)}
+      className="text-[11px] text-muted-foreground font-medium cursor-pointer select-none hover:text-foreground transition-colors"
+    >
+      <div className="flex items-center gap-1">
+        {children}
+        {isSorted ? (
+          sortDirection === "asc" ? (
+            <ArrowUp className="w-3 h-3 text-crypto-cyan" />
+          ) : (
+            <ArrowDown className="w-3 h-3 text-crypto-cyan" />
+          )
+        ) : (
+          <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100" />
+        )}
+      </div>
+    </TableHead>
+  );
+}
+
 export function TradeTable({ trades }: { trades: TradeData[] }) {
   const [sortField, setSortField] = useState<SortField>("timestamp");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [rawCurrentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
-
-  // Reset page if trades list changes (e.g., filtered)
-  useMemo(() => {
-    setCurrentPage(1);
-  }, [trades.length]);
+  const totalPages = Math.max(1, Math.ceil(trades.length / itemsPerPage));
+  const currentPage = Math.min(rawCurrentPage, totalPages);
 
   // Handle Sort
   const handleSort = (field: SortField) => {
@@ -87,46 +119,21 @@ export function TradeTable({ trades }: { trades: TradeData[] }) {
     return sortedTrades.slice(start, start + itemsPerPage);
   }, [sortedTrades, currentPage]);
 
-  const totalPages = Math.ceil(trades.length / itemsPerPage);
-
-  const SortHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => {
-    const isSorted = sortField === field;
-    return (
-      <TableHead
-        onClick={() => handleSort(field)}
-        className="text-[11px] text-muted-foreground font-medium cursor-pointer select-none hover:text-foreground transition-colors"
-      >
-        <div className="flex items-center gap-1">
-          {children}
-          {isSorted ? (
-            sortDirection === "asc" ? (
-              <ArrowUp className="w-3 h-3 text-crypto-cyan" />
-            ) : (
-              <ArrowDown className="w-3 h-3 text-crypto-cyan" />
-            )
-          ) : (
-            <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100" />
-          )}
-        </div>
-      </TableHead>
-    );
-  };
-
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-border/40 overflow-hidden bg-background/30 backdrop-blur-sm">
         <Table>
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent bg-secondary/25">
-              <SortHeader field="timestamp">Hora</SortHeader>
-              <SortHeader field="symbol">Símbolo</SortHeader>
-              <SortHeader field="side">Lado</SortHeader>
-              <SortHeader field="price">Preço</SortHeader>
-              <SortHeader field="quantity">Qtd</SortHeader>
-              <SortHeader field="total">Total</SortHeader>
+              <SortHeader field="timestamp" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Hora</SortHeader>
+              <SortHeader field="symbol" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Símbolo</SortHeader>
+              <SortHeader field="side" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Lado</SortHeader>
+              <SortHeader field="price" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Preço</SortHeader>
+              <SortHeader field="quantity" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Qtd</SortHeader>
+              <SortHeader field="total" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Total</SortHeader>
               <TableHead className="text-[11px] text-muted-foreground font-medium">Estratégia</TableHead>
               <TableHead className="text-[11px] text-muted-foreground font-medium">Modo</TableHead>
-              <SortHeader field="pnl">L/P</SortHeader>
+              <SortHeader field="pnl" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>L/P</SortHeader>
             </TableRow>
           </TableHeader>
           <TableBody>

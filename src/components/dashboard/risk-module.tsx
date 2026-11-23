@@ -53,7 +53,7 @@ export function RiskModule() {
   // Compute Sharpe/Sortino via Worker when trades change
   useEffect(() => {
     if (tradePnls.length < 2) {
-      setMetrics(null);
+      queueMicrotask(() => setMetrics(null));
       return;
     }
 

@@ -44,17 +44,19 @@ export function PriceInfo({ symbol, interval, rsiValue }: PriceInfoProps) {
         flash = newPrice > prevPrice ? 'up' : 'down';
       }
 
-      setTickerData((prev) => ({
-        symbol: currentTicker.symbol,
-        price: newPrice,
-        priceChange: currentTicker.priceChange ?? prev?.priceChange ?? 0,
-        priceChangePercent: currentTicker.priceChangePercent ?? prev?.priceChangePercent ?? 0,
-        high: currentTicker.high ?? prev?.high ?? newPrice,
-        low: currentTicker.low ?? prev?.low ?? newPrice,
-        volume: currentTicker.volume ?? prev?.volume ?? 0,
-        quoteVolume: currentTicker.quoteVolume ?? prev?.quoteVolume ?? 0,
-        flash: flash ?? prev?.flash ?? null,
-      }));
+      queueMicrotask(() => {
+        setTickerData((prev) => ({
+          symbol: currentTicker.symbol,
+          price: newPrice,
+          priceChange: currentTicker.priceChange ?? prev?.priceChange ?? 0,
+          priceChangePercent: currentTicker.priceChangePercent ?? prev?.priceChangePercent ?? 0,
+          high: currentTicker.high ?? prev?.high ?? newPrice,
+          low: currentTicker.low ?? prev?.low ?? newPrice,
+          volume: currentTicker.volume ?? prev?.volume ?? 0,
+          quoteVolume: currentTicker.quoteVolume ?? prev?.quoteVolume ?? 0,
+          flash: flash ?? prev?.flash ?? null,
+        }));
+      });
 
       if (flash) {
         if (clearFlashTimerRef.current) clearTimeout(clearFlashTimerRef.current);

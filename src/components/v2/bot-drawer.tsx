@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { type BotInstance } from "@/lib/store";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { AppCard, AppSwitch } from "./atoms";
@@ -15,33 +15,31 @@ interface BotDrawerProps {
 }
 
 export function BotDrawer({ bot, open, onClose, onSave }: BotDrawerProps) {
-  const [takeProfit, setTakeProfit] = useState<number>(3.5);
-  const [stopLoss, setStopLoss] = useState<number>(1.8);
-  const [capitalAllocation, setCapitalAllocation] = useState<number>(500);
-  const [exchange, setExchange] = useState<"binance" | "okx">("binance");
-  const [trailingStop, setTrailingStop] = useState<boolean>(true);
-  const [useBtcGatekeeper, setUseBtcGatekeeper] = useState<boolean>(true);
-  const [useOrderBookFilter, setUseOrderBookFilter] = useState<boolean>(true);
-  const [usePartialTp, setUsePartialTp] = useState<boolean>(true);
-  const [disableConsecutiveLossBrake, setDisableConsecutiveLossBrake] = useState<boolean>(false);
-  const [savedFeedback, setSavedFeedback] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (bot) {
-      setTakeProfit(bot.takeProfit ?? 3.5);
-      setStopLoss(bot.stopLoss ?? 1.8);
-      setCapitalAllocation(bot.allocationAmount ?? 25);
-      setExchange(bot.exchange === "okx" ? "okx" : "binance");
-      setTrailingStop(bot.trailingStop ?? true);
-      setUseBtcGatekeeper(bot.useBtcGatekeeper ?? true);
-      setUseOrderBookFilter(bot.useOrderBookFilter ?? true);
-      setUsePartialTp(bot.usePartialTp ?? true);
-      setDisableConsecutiveLossBrake(bot.disableConsecutiveLossBrake ?? false);
-      setSavedFeedback(false);
-    }
-  }, [bot]);
-
   if (!open || !bot) return null;
+  return <BotDrawerContent key={bot.id} bot={bot} onClose={onClose} onSave={onSave} />;
+}
+
+function BotDrawerContent({
+  bot,
+  onClose,
+  onSave,
+}: {
+  bot: BotInstance;
+  onClose: () => void;
+  onSave: (botId: string, updates: Partial<BotInstance>) => void;
+}) {
+  const [takeProfit, setTakeProfit] = useState<number>(bot.takeProfit ?? 3.5);
+  const [stopLoss, setStopLoss] = useState<number>(bot.stopLoss ?? 1.8);
+  const [capitalAllocation, setCapitalAllocation] = useState<number>(bot.allocationAmount ?? 25);
+  const [exchange, setExchange] = useState<"binance" | "okx">(bot.exchange === "okx" ? "okx" : "binance");
+  const [trailingStop, setTrailingStop] = useState<boolean>(bot.trailingStop ?? true);
+  const [useBtcGatekeeper, setUseBtcGatekeeper] = useState<boolean>(bot.useBtcGatekeeper ?? true);
+  const [useOrderBookFilter, setUseOrderBookFilter] = useState<boolean>(bot.useOrderBookFilter ?? true);
+  const [usePartialTp, setUsePartialTp] = useState<boolean>(bot.usePartialTp ?? true);
+  const [disableConsecutiveLossBrake, setDisableConsecutiveLossBrake] = useState<boolean>(
+    bot.disableConsecutiveLossBrake ?? false
+  );
+  const [savedFeedback, setSavedFeedback] = useState<boolean>(false);
 
   const hasOpenPosition = !!(bot.position && bot.position.quantity > 0);
 
