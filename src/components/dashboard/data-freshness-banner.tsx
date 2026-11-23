@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useCryptoStore } from "@/lib/store";
 import { useDataProvider } from "@/lib/data-provider";
 
+// Limite estrito institucional de tolerância de latência (10 segundos)
 const STALE_AFTER_MS = 10_000;
 
 function formatAge(ms: number) {
@@ -26,7 +27,7 @@ export function DataFreshnessBanner() {
   useEffect(() => {
     setMounted(true);
     setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 5000);
+    const id = setInterval(() => setNow(Date.now()), 2000);
     return () => clearInterval(id);
   }, []);
 

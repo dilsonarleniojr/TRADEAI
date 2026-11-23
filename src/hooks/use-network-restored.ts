@@ -35,12 +35,10 @@ export function useNetworkRestored({
 
     const triggerRestore = async (detail: NetworkRestoredDetail) => {
       const now = Date.now();
-      const effectiveCooldown =
-        detail.transport === "CELLULAR" ? Math.max(cooldownMs, 2500) : cooldownMs;
 
       // Evita duplicidade em rajada (ex.: 'online' + 'tradeai:network-restored' ou oscilação rápida)
       if (inFlightRef.current) return;
-      if (now - lastRunAtRef.current < effectiveCooldown) return;
+      if (now - lastRunAtRef.current < cooldownMs) return;
 
       inFlightRef.current = true;
       lastRunAtRef.current = now;

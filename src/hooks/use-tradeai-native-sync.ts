@@ -3,9 +3,12 @@
 
 import { useEffect, useRef } from "react";
 import {
-  tradeAINativeBridge,
-  type NativeTradingMode,
+  syncTradingState,
+  syncFeedHeartbeat,
+  requestNativeHaptic,
 } from "@/lib/bridge/tradeai-native-bridge";
+
+export type NativeTradingMode = "paper" | "live";
 
 interface UseTradeAINativeSyncParams {
   tradingMode: NativeTradingMode;
@@ -27,34 +30,18 @@ export function useTradeAINativeSync({
   const previousModeRef = useRef<NativeTradingMode | null>(null);
 
   useEffect(() => {
-    tradeAINativeBridge.syncTradingState({
-      mode: tradingMode,
-      symbol: selectedSymbol,
-      hasBlockingModal,
-    });
+    syncTradingState(tradingMode, selectedSymbol, hasBlockingModal);
 
     if (previousModeRef.current !== null && previousModeRef.current !== tradingMode) {
-      tradeAINativeBridge.requestHaptic(
-        tradingMode === "live" ? "critical" : "selection"
-      );
+      requestNativeHaptic(tradingMode === "live" ? "live" : "selection");
     }
     previousModeRef.current = tradingMode;
   }, [tradingMode, selectedSymbol, hasBlockingModal]);
 
   useEffect(() => {
     const evaluateAndSync = () => {
-      const now = Date.now();
-      const computedStale =
-        isFeedStale ||
-        !lastMarketUpdateAt ||
-        lastMarketUpdateAt <= 0 ||
-        now - lastMarketUpdateAt > staleThresholdMs;
-
-      tradeAINativeBridge.syncFeedHeartbeat({
-        isStale: computedStale,
-        lastUpdateAt: lastMarketUpdateAt,
-        now,
-      });
+      const ts = isFeedStale || !lastMarketUpdateAt ? 0 : lastMarketUpdateAt;
+      syncFeedHeartbeat(ts, staleThresholdMs);
     };
 
     evaluateAndSync();

@@ -1,123 +1,91 @@
-// src/lib/bridge/tradeai-native-bridge.ts
-
-export type NativeTradingMode = "paper" | "live";
-export type NativeHapticType = "selection" | "warning" | "critical";
-
-export interface TradeAINativeInterface {
-  onTradingStateChanged?: (
-    mode: NativeTradingMode,
-    symbol: string,
-    hasBlockingModal: boolean
-  ) => void;
-  onFeedHeartbeat?: (isStale: boolean, ageMs: number) => void;
-  onRequestHaptic?: (type: NativeHapticType) => void;
-}
+/**
+ * Cliente TypeScript da ponte bidirecional TradeAI Web <-> Android Nativo (window.TradeAINative).
+ */
 
 declare global {
   interface Window {
-    TradeAINative?: TradeAINativeInterface;
+    TradeAINative?: {
+      onTradingStateChanged: (mode: string, symbol: string, hasBlockingModal: boolean) => void;
+      onFeedHeartbeat: (isStale: boolean, ageMs: number) => void;
+      onRequestHaptic: (type: string) => void;
+    };
   }
 }
 
-export interface TradingStatePayload {
-  mode: NativeTradingMode;
-  symbol: string;
-  hasBlockingModal: boolean;
+let lastTradingState = {
+  mode: "",
+  symbol: "",
+  hasBlockingModal: false,
+};
+
+let lastHeartbeatState = {
+  isStale: false,
+  ageMs: 0,
+};
+
+/**
+ * Notifica o shell Android nativo sobre mudanças no estado da sessão de trading.
+ * Possui deduplicação em memória para evitar chamadas redundantes através da JNI bridge.
+ */
+export function syncTradingState(mode: string, symbol: string, hasBlockingModal: boolean) {
+  if (typeof window === "undefined" || !window.TradeAINative) return;
+
+  if (
+    lastTradingState.mode === mode &&
+    lastTradingState.symbol === symbol &&
+    lastTradingState.hasBlockingModal === hasBlockingModal
+  ) {
+    return;
+  }
+
+  lastTradingState = { mode, symbol, hasBlockingModal };
+  window.TradeAINative.onTradingStateChanged(mode, symbol, hasBlockingModal);
 }
 
-export interface FeedHeartbeatPayload {
-  isStale: boolean;
-  lastUpdateAt: number | null;
-  now?: number;
+/**
+ * Envia batimento de feed para o Android monitorar latência e dados obsoletos.
+ * @param lastUpdateTimestamp Timestamp em ms do último tick recebido da Binance.
+ * @param staleThresholdMs Limiar estrito institucional de tolerância (padrão: 10.000 ms).
+ */
+export function syncFeedHeartbeat(lastUpdateTimestamp: number, staleThresholdMs = 10_000) {
+  if (typeof window === "undefined" || !window.TradeAINative) return;
+
+  const now = Date.now();
+  const ageMs = lastUpdateTimestamp > 0 ? Math.max(0, now - lastUpdateTimestamp) : 999_999;
+  const isStale = lastUpdateTimestamp === 0 || ageMs > staleThresholdMs;
+
+  // Atualiza apenas se houve mudança de status ou a cada 2 segundos
+  if (
+    lastHeartbeatState.isStale === isStale &&
+    Math.abs(lastHeartbeatState.ageMs - ageMs) < 2000
+  ) {
+    return;
+  }
+
+  lastHeartbeatState = { isStale, ageMs };
+  window.TradeAINative.onFeedHeartbeat(isStale, ageMs);
 }
 
-class TradeAINativeBridgeClient {
-  private lastStateSignature = "";
-  private lastStaleState: boolean | null = null;
-  private lastHeartbeatSentAt = 0;
-
-  public isAvailable(): boolean {
-    if (typeof window === "undefined") return false;
-    return Boolean(window.TradeAINative);
-  }
-
-  public syncTradingState(payload: TradingStatePayload): void {
-    const bridge = this.getBridge();
-    if (!bridge?.onTradingStateChanged) return;
-
-    const normalizedMode: NativeTradingMode =
-      payload.mode === "live" ? "live" : "paper";
-    const normalizedSymbol = (payload.symbol || "").trim().toUpperCase();
-    const hasBlockingModal = Boolean(payload.hasBlockingModal);
-
-    const signature = `${normalizedMode}|${normalizedSymbol}|${hasBlockingModal}`;
-    if (signature === this.lastStateSignature) return;
-
-    this.lastStateSignature = signature;
-
-    try {
-      bridge.onTradingStateChanged(
-        normalizedMode,
-        normalizedSymbol,
-        hasBlockingModal
-      );
-    } catch {
-      // Ignora falhas transitórias da ponte nativa em runtime
-    }
-  }
-
-  public syncFeedHeartbeat(
-    payload: FeedHeartbeatPayload,
-    minIntervalMs = 1_000
-  ): void {
-    const bridge = this.getBridge();
-    if (!bridge?.onFeedHeartbeat) return;
-
-    const now = payload.now ?? Date.now();
-    const ageMs =
-      payload.lastUpdateAt && payload.lastUpdateAt > 0
-        ? Math.max(0, Math.round(now - payload.lastUpdateAt))
-        : Number.MAX_SAFE_INTEGER;
-    const isStale = Boolean(payload.isStale);
-
-    const staleTransition = this.lastStaleState !== isStale;
-    const elapsedSinceLastSend = now - this.lastHeartbeatSentAt;
-
-    if (!staleTransition && elapsedSinceLastSend < minIntervalMs) {
-      return;
-    }
-
-    this.lastStaleState = isStale;
-    this.lastHeartbeatSentAt = now;
-
-    try {
-      bridge.onFeedHeartbeat(isStale, ageMs);
-    } catch {
-      // Ignora falhas transitórias da ponte nativa em runtime
-    }
-  }
-
-  public requestHaptic(type: NativeHapticType): void {
-    const bridge = this.getBridge();
-    if (!bridge?.onRequestHaptic) return;
-
-    try {
-      bridge.onRequestHaptic(type);
-    } catch {
-      // Ignora falhas transitórias da ponte nativa em runtime
-    }
-  }
-
-  public resetCache(): void {
-    this.lastStateSignature = "";
-    this.lastStaleState = null;
-    this.lastHeartbeatSentAt = 0;
-  }
-
-  private getBridge(): TradeAINativeInterface | undefined {
-    if (typeof window === "undefined") return undefined;
-    return window.TradeAINative;
-  }
+/**
+ * Solicita feedback tátil no hardware nativo do dispositivo Android.
+ */
+export function requestNativeHaptic(type: "selection" | "heavy" | "live" | "error" | "alert" = "selection") {
+  if (typeof window === "undefined" || !window.TradeAINative) return;
+  window.TradeAINative.onRequestHaptic(type);
 }
 
-export const tradeAINativeBridge = new TradeAINativeBridgeClient();
+/**
+ * Registra listener para fechar modais/gavetas quando o botão voltar nativo do Android for acionado.
+ */
+export function registerNativeDismissListener(onDismiss: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  const handleDismiss = () => {
+    onDismiss();
+  };
+
+  window.addEventListener("tradeai:dismiss-modal", handleDismiss);
+  return () => {
+    window.removeEventListener("tradeai:dismiss-modal", handleDismiss);
+  };
+}

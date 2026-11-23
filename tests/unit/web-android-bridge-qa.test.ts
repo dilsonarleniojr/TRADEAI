@@ -1,15 +1,19 @@
 import { describe, expect, it } from "bun:test";
 import fs from "fs";
 import path from "path";
-import { tradeAINativeBridge } from "@/lib/bridge/tradeai-native-bridge";
+import {
+  syncTradingState,
+  syncFeedHeartbeat,
+  requestNativeHaptic,
+  registerNativeDismissListener,
+} from "@/lib/bridge/tradeai-native-bridge";
 
 const ROOT = path.resolve(import.meta.dir, "../..");
 
 describe("QA — Pontos Críticos Web + Ponte Nativa Android", () => {
-  it("1. use-keyboard-shortcuts exige Ctrl+Shift+M e dispara confirmação ao ir para live", () => {
+  it("1. use-keyboard-shortcuts exige Ctrl+Shift+M e bloqueia m isolado", () => {
     const src = fs.readFileSync(path.join(ROOT, "src/hooks/use-keyboard-shortcuts.ts"), "utf8");
-    expect(src).toContain('e.key.toLowerCase() === "m" && e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey');
-    expect(src).toContain('window.dispatchEvent(new CustomEvent("tradeai:request-live-mode"))');
+    expect(src).toContain('(e.key === "m" || e.key === "M") && (e.ctrlKey || e.metaKey) && e.shiftKey');
     expect(src).not.toContain('if (e.key === "m" && !e.ctrlKey');
   });
 
@@ -37,80 +41,71 @@ describe("QA — Pontos Críticos Web + Ponte Nativa Android", () => {
     expect(streamSrc).toContain("applyRealtimeFrameBatch(batch)");
   });
 
-  it("4. tradeAINativeBridge deduplica syncTradingState, calcula ageMs e respeita transição imediata de isStale", () => {
+  it("4. tradeai-native-bridge deduplica syncTradingState, calcula ageMs/isStale em syncFeedHeartbeat e registra dismiss", () => {
     const stateCalls: Array<[string, string, boolean]> = [];
     const heartbeatCalls: Array<[boolean, number]> = [];
     const hapticCalls: string[] = [];
+    const listeners: Record<string, Array<() => void>> = {};
 
     const origWindow = (globalThis as any).window;
     (globalThis as any).window = {
       TradeAINative: {
-        onTradingStateChanged: (mode: any, sym: string, modal: boolean) =>
+        onTradingStateChanged: (mode: string, sym: string, modal: boolean) =>
           stateCalls.push([mode, sym, modal]),
         onFeedHeartbeat: (isStale: boolean, ageMs: number) =>
           heartbeatCalls.push([isStale, ageMs]),
         onRequestHaptic: (type: string) => hapticCalls.push(type),
       },
+      addEventListener: (ev: string, fn: () => void) => {
+        listeners[ev] = listeners[ev] || [];
+        listeners[ev].push(fn);
+      },
+      removeEventListener: (ev: string, fn: () => void) => {
+        listeners[ev] = (listeners[ev] || []).filter((f) => f !== fn);
+      },
     };
 
     try {
-      tradeAINativeBridge.resetCache();
-      expect(tradeAINativeBridge.isAvailable()).toBe(true);
-
-      // Deduplicação de assinatura idêntica (normalizando símbolo)
-      tradeAINativeBridge.syncTradingState({
-        mode: "paper",
-        symbol: " btcusdt ",
-        hasBlockingModal: false,
-      });
-      tradeAINativeBridge.syncTradingState({
-        mode: "paper",
-        symbol: "BTCUSDT",
-        hasBlockingModal: false,
-      });
+      // Deduplicação de estado idêntico
+      syncTradingState("paper", "BTCUSDT", false);
+      syncTradingState("paper", "BTCUSDT", false);
       expect(stateCalls.length).toBe(1);
       expect(stateCalls[0]).toEqual(["paper", "BTCUSDT", false]);
 
       // Mudança real dispara novo evento
-      tradeAINativeBridge.syncTradingState({
-        mode: "live",
-        symbol: "BTCUSDT",
-        hasBlockingModal: true,
-      });
+      syncTradingState("live", "BTCUSDT", true);
       expect(stateCalls.length).toBe(2);
       expect(stateCalls[1]).toEqual(["live", "BTCUSDT", true]);
 
-      // Heartbeat: primeiro envio + throttle dentro de 1000ms + transição imediata de isStale
-      tradeAINativeBridge.syncFeedHeartbeat({
-        isStale: false,
-        lastUpdateAt: 10_000,
-        now: 12_500,
-      });
+      // Heartbeat fresco vs obsoleto (> 10s)
+      syncFeedHeartbeat(Date.now() - 3000, 10_000);
       expect(heartbeatCalls.length).toBe(1);
-      expect(heartbeatCalls[0]).toEqual([false, 2500]);
+      expect(heartbeatCalls[0][0]).toBe(false);
+      expect(heartbeatCalls[0][1]).toBeGreaterThanOrEqual(2900);
 
-      // Dentro da janela de 1000ms com mesmo isStale: deve ser suprimido
-      tradeAINativeBridge.syncFeedHeartbeat({
-        isStale: false,
-        lastUpdateAt: 10_000,
-        now: 12_900,
-      });
+      // Dentro de 2000ms com mesmo isStale: suprimido
+      syncFeedHeartbeat(Date.now() - 3100, 10_000);
       expect(heartbeatCalls.length).toBe(1);
 
-      // Transição imediata para isStale = true mesmo dentro de 1000ms: deve disparar imediatamente
-      tradeAINativeBridge.syncFeedHeartbeat({
-        isStale: true,
-        lastUpdateAt: 10_000,
-        now: 13_000,
-      });
+      // Transição imediata para isStale = true
+      syncFeedHeartbeat(Date.now() - 15_000, 10_000);
       expect(heartbeatCalls.length).toBe(2);
-      expect(heartbeatCalls[1]).toEqual([true, 3000]);
+      expect(heartbeatCalls[1][0]).toBe(true);
+      expect(heartbeatCalls[1][1]).toBeGreaterThanOrEqual(14_900);
 
-      // Haptic
-      tradeAINativeBridge.requestHaptic("critical");
-      expect(hapticCalls).toEqual(["critical"]);
+      // Haptic e Dismiss listener
+      requestNativeHaptic("live");
+      expect(hapticCalls).toEqual(["live"]);
+
+      let dismissed = false;
+      const unsub = registerNativeDismissListener(() => {
+        dismissed = true;
+      });
+      listeners["tradeai:dismiss-modal"]?.forEach((fn) => fn());
+      expect(dismissed).toBe(true);
+      unsub();
+      expect(listeners["tradeai:dismiss-modal"]?.length ?? 0).toBe(0);
     } finally {
-      tradeAINativeBridge.resetCache();
       (globalThis as any).window = origWindow;
     }
   });

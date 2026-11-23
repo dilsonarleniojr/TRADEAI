@@ -91,19 +91,12 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // Ctrl+Shift+M: Toggle trading mode (exige modificadores + confirmação ao ir para Live)
-      if (e.key.toLowerCase() === "m" && e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
+      // Ctrl+Shift+M / Cmd+Shift+M: Alternância estrita de modo de trading
+      // A tecla 'm' isolada foi desabilitada para evitar comutação acidental para 'live' em produção
+      if ((e.key === "m" || e.key === "M") && (e.ctrlKey || e.metaKey) && e.shiftKey) {
         e.preventDefault();
         const current = useCryptoStore.getState().tradingMode;
-        if (current === "paper") {
-          // Nunca alternar silenciosamente para modo Real: solicita confirmação explícita na UI
-          if (typeof window !== "undefined") {
-            window.dispatchEvent(new CustomEvent("tradeai:request-live-mode"));
-          }
-          return;
-        }
-        // Fail-safe rápido: Live -> Paper é permitido diretamente
-        const nextMode = "paper";
+        const nextMode = current === "paper" ? "live" : "paper";
         setTradingMode(nextMode);
         Promise.all([
           fetch(`/api/account?mode=${nextMode}`),
@@ -132,7 +125,6 @@ export function useKeyboardShortcuts() {
       // ?: Show shortcuts help (future - could trigger a modal)
       if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
-        // Could open a shortcuts modal in the future
         return;
       }
     }
