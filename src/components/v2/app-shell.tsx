@@ -37,9 +37,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const onRequestLiveMode = () => setConfirmLiveModalOpen(true);
+    const onDismissModal = () => {
+      setConfirmLiveModalOpen(false);
+      setActiveExecutionReport(null);
+    };
     window.addEventListener("tradeai:request-live-mode", onRequestLiveMode);
-    return () => window.removeEventListener("tradeai:request-live-mode", onRequestLiveMode);
-  }, []);
+    window.addEventListener("tradeai:dismiss-modal", onDismissModal);
+    return () => {
+      window.removeEventListener("tradeai:request-live-mode", onRequestLiveMode);
+      window.removeEventListener("tradeai:dismiss-modal", onDismissModal);
+    };
+  }, [setActiveExecutionReport]);
 
   const handleConfirmLiveMode = async () => {
     setConfirmLiveModalOpen(false);

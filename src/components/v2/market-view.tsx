@@ -11,7 +11,7 @@ import { OrderBook } from "@/components/chart/order-book";
 import { ChatSection } from "@/components/ai/chat-section";
 import { TradeHubSection } from "@/components/trade-hub";
 import { useToast } from "@/hooks/use-toast";
-import { useTradeAINativeSync } from "@/hooks/use-tradeai-native-sync";
+import { useTradeAINativeBridge } from "@/hooks/use-tradeai-native-bridge";
 import { useTradeRecoveryOnRestore } from "@/hooks/use-trade-recovery-on-restore";
 import { getGlobalWorkerManager } from "@/hooks/use-binance-stream";
 import {
@@ -177,12 +177,16 @@ export function MarketView() {
 
   const hasBlockingModal = Boolean(pendingLiveConfirm);
 
-  useTradeAINativeSync({
+  useTradeAINativeBridge({
     tradingMode,
-    selectedSymbol: (selectedSymbol || "BTCUSDT").toUpperCase(),
+    activeSymbol: (selectedSymbol || "BTCUSDT").toUpperCase(),
     hasBlockingModal,
     isFeedStale: isFeedUnhealthy,
-    lastMarketUpdateAt: lastMarketUpdate > 0 ? lastMarketUpdate : null,
+    lastUpdateAgeMs: lastMarketUpdate > 0 ? feedAgeMs : 999_999,
+    onDismissModal: () => {
+      setPendingLiveConfirm(null);
+    },
+    heartbeatIntervalMs: 2000,
     staleThresholdMs: 10_000,
   });
 
