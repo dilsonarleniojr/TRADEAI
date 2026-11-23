@@ -422,7 +422,6 @@ export function MarketView() {
     if (activeTab === "ideias" && !aiSignal && !signalLoading && ticker && ticker.price > 0) {
       fetchQuickSignal();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, targetSymbol, ticker?.price]);
 
   const sendAssistantMessage = async (textOverride?: string) => {

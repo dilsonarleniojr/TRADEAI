@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo, useState, useEffect } from "react";
+import { useRef, useMemo, useState, useEffect, useCallback } from "react";
 import { useCryptoStore, type BotLogEntry, type LogChannel, type LogSeverity } from "@/lib/store";
 import { useShallow } from "zustand/react/shallow";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -220,10 +220,13 @@ export function BotActivityLog() {
   }, [allLogs, selectedChannel, selectedSeverity, searchQuery]);
 
   // Virtualizador de alta performance (60 FPS contínuos com 2.000 itens)
+  const getScrollElement = useCallback(() => parentRef.current, []);
+  const estimateSize = useCallback(() => 40, []);
+  // eslint-disable-next-line react-hooks/incompatible-library -- @tanstack/react-virtual useVirtualizer retorna funções não memoizáveis pelo React Compiler
   const rowVirtualizer = useVirtualizer({
     count: filteredLogs.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 40,
+    getScrollElement,
+    estimateSize,
     overscan: 10,
   });
 
