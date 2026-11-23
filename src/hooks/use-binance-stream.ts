@@ -17,6 +17,7 @@ import { OffscreenChartController } from "@/lib/performance/offscreen-chart-cont
 
 let globalSocket: Socket | null = null;
 let globalWorkerManager: BinanceWorkerManager | null = null;
+let activeMarketSource: "worker" | "socket" = "worker";
 let activeHookCount = 0;
 let atomicDrainRafId: number | null = null;
 
@@ -79,15 +80,20 @@ function handleIncomingTicker(sym: string, ticker: TickerData) {
   vSyncCoalescer.enqueue(ticker);
 }
 
-if (typeof window !== "undefined" && typeof document !== "undefined") {
-  document.addEventListener("visibilitychange", () => {
-    isDocumentHidden = document.hidden;
-    if (!isDocumentHidden) {
-      // Aba voltou a ficar em foco: descarrega imediatamente os tickers pendentes
-      flushBackgroundTickers();
-      vSyncCoalescer.flushNow();
+function handleVisibilityChange() {
+  if (typeof document === "undefined") return;
+  isDocumentHidden = document.hidden;
+  if (!isDocumentHidden) {
+    // Aba voltou a ficar em foco: descarrega imediatamente os tickers pendentes e retoma o dreno V-Sync
+    flushBackgroundTickers();
+    vSyncCoalescer.flushNow();
+    if (globalWorkerManager) {
+      startAtomicQueueConsumer();
     }
-  });
+  } else {
+    // Aba em segundo plano: suspende o agendamento contínuo de requestAnimationFrame
+    stopAtomicQueueConsumer();
+  }
 }
 
 function getNeededSymbols(): string[] {
@@ -141,10 +147,11 @@ function syncSocketSubscriptions(socket: Socket) {
  */
 function startAtomicQueueConsumer() {
   if (typeof window === "undefined") return;
+  if (isDocumentHidden) return;
   if (atomicDrainRafId !== null) return;
 
   function drainStep() {
-    if (!globalWorkerManager) {
+    if (!globalWorkerManager || isDocumentHidden) {
       atomicDrainRafId = null;
       return;
     }
@@ -163,7 +170,11 @@ function startAtomicQueueConsumer() {
       }
     }
 
-    atomicDrainRafId = window.requestAnimationFrame(drainStep);
+    if (!isDocumentHidden) {
+      atomicDrainRafId = window.requestAnimationFrame(drainStep);
+    } else {
+      atomicDrainRafId = null;
+    }
   }
 
   atomicDrainRafId = window.requestAnimationFrame(drainStep);
@@ -224,6 +235,7 @@ function startWorkerStream() {
 
     const started = globalWorkerManager.start();
     if (started) {
+      activeMarketSource = "worker";
       console.log(
         `[BinanceStream] Web Worker conectado com isolamento de rede e buffer atômico para: ${symbols.join(", ")}`
       );
@@ -231,9 +243,18 @@ function startWorkerStream() {
       startAtomicQueueConsumer();
       return;
     }
+
+    // Fallback controlado: se o Web Worker não puder ser iniciado, delega stream de mercado ao Socket.IO
+    activeMarketSource = "socket";
+    globalWorkerManager = null;
+    if (globalSocket && globalSocket.connected) {
+      syncSocketSubscriptions(globalSocket);
+    }
+    return;
   }
 
   if (globalWorkerManager) {
+    activeMarketSource = "worker";
     globalWorkerManager.subscribe(symbols);
     startAtomicQueueConsumer();
   }
@@ -273,6 +294,10 @@ export function useBinanceStream() {
 
   useEffect(() => {
     let mounted = true;
+    if (activeHookCount === 0 && typeof document !== "undefined") {
+      isDocumentHidden = document.hidden;
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
     activeHookCount++;
 
     function connectSocket() {
@@ -281,8 +306,10 @@ export function useBinanceStream() {
       if (globalSocket) {
         if (globalSocket.connected) {
           syncManager.onWSConnected();
-          syncSocketSubscriptions(globalSocket);
-        } else {
+          if (activeMarketSource === "socket") {
+            syncSocketSubscriptions(globalSocket);
+          }
+        } else if (!globalWorkerManager || !globalWorkerManager.isUsingWorker()) {
           startWorkerStream();
         }
         return;
@@ -321,7 +348,9 @@ export function useBinanceStream() {
         reconnectionManager.syncClock().catch(() => {});
         feedWatchdog.start();
         syncManager.onWSConnected();
-        syncSocketSubscriptions(socket);
+        if (activeMarketSource === "socket") {
+          syncSocketSubscriptions(socket);
+        }
       });
 
       socket.on(
@@ -338,6 +367,8 @@ export function useBinanceStream() {
           priceChangePercent: string;
           timestamp: number;
         }) => {
+          // Exclusividade mútua: ignora ticks de mercado do Socket.IO quando o Web Worker está ativo
+          if (activeMarketSource === "worker") return;
           const sym = data.symbol.toUpperCase();
           handleIncomingTicker(sym, {
             symbol: sym,
@@ -389,7 +420,9 @@ export function useBinanceStream() {
       socket.on("disconnect", (reason) => {
         console.log("[BinanceStream] Disconnected:", reason);
         syncManager.onWSDisconnected();
-        startWorkerStream();
+        if (!globalWorkerManager || !globalWorkerManager.isUsingWorker()) {
+          startWorkerStream();
+        }
       });
 
       socket.on("reconnect_attempt", (attempt) => {
@@ -400,13 +433,14 @@ export function useBinanceStream() {
         if (attempt === 1) {
           useCryptoStore.getState().setConnectionStatus("connecting");
         }
-        startWorkerStream();
       });
 
       socket.on("reconnect_failed", () => {
         console.log("[BinanceStream] Reconnect failed — Web Worker atomic stream active");
         syncManager.onWSDisconnected();
-        startWorkerStream();
+        if (!globalWorkerManager || !globalWorkerManager.isUsingWorker()) {
+          startWorkerStream();
+        }
       });
 
       socket.on("connect_error", (err) => {
@@ -418,19 +452,21 @@ export function useBinanceStream() {
           failedRef.current = true;
           syncManager.onWSDisconnected();
         }
-        startWorkerStream();
       });
     }
 
-    connectSocket();
-    // Inicia stream via Web Worker em paralelo
+    // Inicia stream de mercado via Web Worker como fonte primária e Socket.IO para eventos privados/backend
     startWorkerStream();
+    connectSocket();
 
     return () => {
       mounted = false;
       activeHookCount--;
       if (activeHookCount <= 0) {
         console.log("[BinanceStream] No active hooks left, cleaning up connections & worker");
+        if (typeof document !== "undefined") {
+          document.removeEventListener("visibilitychange", handleVisibilityChange);
+        }
         const socket = globalSocket;
         if (socket) {
           socket.disconnect();
@@ -451,7 +487,7 @@ export function useBinanceStream() {
   // Sincroniza assinaturas sempre que mudar o símbolo selecionado ou os robôs ativos
   useEffect(() => {
     const socket = globalSocket;
-    if (socket && socket.connected) {
+    if (activeMarketSource === "socket" && socket && socket.connected) {
       syncSocketSubscriptions(socket);
     }
     // Re-sincroniza assinaturas no Web Worker com a tabela de símbolos atualizada

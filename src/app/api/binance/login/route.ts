@@ -2,13 +2,15 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import {
   clearBinanceSession,
-  isSameOrigin,
   readBinanceSession,
   setBinanceSession,
 } from '@/lib/binance-session';
+import { guardApiRequest } from '@/lib/auth/request-guard';
 
 // Estado da conexão para o cliente restaurar a UI após recarregar: nunca devolve as chaves.
 export async function GET(request: Request) {
+  const blocked = guardApiRequest(request, { requireSession: true });
+  if (blocked) return blocked;
   const session = readBinanceSession(request);
   const hasEnvCredentials = !!(process.env.BINANCE_API_KEY?.trim() && process.env.BINANCE_API_SECRET?.trim());
   return NextResponse.json({
@@ -20,18 +22,19 @@ export async function GET(request: Request) {
 
 // Remove a sessão (desconectar).
 export async function DELETE(request: Request) {
-  if (!isSameOrigin(request)) {
-    return NextResponse.json({ success: false, error: 'Origem não permitida.' }, { status: 403 });
-  }
+  const blocked = guardApiRequest(request, { requireSession: true });
+  if (blocked) return blocked;
   const res = NextResponse.json({ success: true });
   clearBinanceSession(res, request);
   return res;
 }
 
 export async function POST(request: Request) {
-  if (!isSameOrigin(request)) {
-    return NextResponse.json({ success: false, error: 'Origem não permitida.' }, { status: 403 });
-  }
+  const blocked = guardApiRequest(request, {
+    requireSession: true,
+    rateLimit: { limit: 10, windowMs: 60_000, scope: 'binance-login' },
+  });
+  if (blocked) return blocked;
 
   try {
     const { apiKey, apiSecret, testnet } = await request.json();

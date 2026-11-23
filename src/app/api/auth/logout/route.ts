@@ -3,7 +3,7 @@ import { AuthService } from '@/lib/auth/auth-service';
 import { guardApiRequest } from '@/lib/auth/request-guard';
 
 export async function POST(req: NextRequest) {
-  const blocked = guardApiRequest(req);
+  const blocked = guardApiRequest(req, { requireSession: false });
   if (blocked) return blocked;
 
   const token = req.cookies.get('tradeai_session')?.value;

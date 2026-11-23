@@ -79,6 +79,7 @@ export type WorkerInboundMessage =
   | { type: "INIT_SHARED_BUFFER"; buffer: SharedArrayBuffer; queueType?: "SPSC" | "ATOMIC" }
   | { type: "INIT_L2_DEPTH_BUFFER"; buffer: SharedArrayBuffer; maxLevels?: number }
   | { type: "SUBSCRIBE"; symbols: string[]; symbolMap?: Record<string, number> }
+  | { type: "SET_DEPTH_SYMBOL"; symbol: string }
   | { type: "CONNECT_PEER_PORT"; port: MessagePort }
   | { type: "DISPATCH_L2_UPDATE"; symbol: string; bids: [number, number][]; asks: [number, number][]; timestamp?: number }
   | { type: "DISCONNECT" }
@@ -90,6 +91,7 @@ export type WorkerOutboundMessage =
   | { type: "ERROR"; error: SerializedWorkerError }
   | { type: "TRANSFER_BATCH"; count: number; stride: number; buffer: ArrayBuffer; symbolMap: Record<string, number> }
   | { type: "BATCH"; tickers: NormalizedMicrostructureTicker[] }
+  | { type: "L2_DEPTH_UPDATE"; symbol: string; bids: [number, number][]; asks: [number, number][]; timestamp: number }
   | { type: "PEER_PORT_CONNECTED" }
   | { type: "PONG"; timestamp: number };
 
@@ -236,6 +238,7 @@ export function parseBinanceMicrostructurePayload(
 if (typeof self !== "undefined" && typeof (self as any).postMessage === "function" && typeof window === "undefined") {
   let ws: WebSocket | null = null;
   let subscribedSymbols: string[] = [];
+  let depthSymbol: string = "BTCUSDT";
   const symbolMap: Record<string, number> = {};
   const cacheMap: Record<string, Partial<NormalizedMicrostructureTicker>> = {};
   let nextSymbolId = 1;
@@ -377,6 +380,16 @@ if (typeof self !== "undefined" && typeof (self as any).postMessage === "functio
               });
             } catch {}
           }
+          // Fallback estruturado para OrderBook quando SharedArrayBuffer não estiver disponível
+          if (!sharedDepthBuffer) {
+            (self as any).postMessage({
+              type: "L2_DEPTH_UPDATE",
+              symbol: sym,
+              bids: data.bids.map((lvl: any) => [parseFloat(lvl[0]), parseFloat(lvl[1])]),
+              asks: data.asks.map((lvl: any) => [parseFloat(lvl[0]), parseFloat(lvl[1])]),
+              timestamp: ts,
+            });
+          }
           return;
         }
 
@@ -448,6 +461,9 @@ if (typeof self !== "undefined" && typeof (self as any).postMessage === "functio
       streamNames.push(`${lower}@bookTicker`);
       streamNames.push(`${lower}@ticker`);
     });
+    if (depthSymbol) {
+      streamNames.push(`${depthSymbol.toLowerCase()}@depth20@100ms`);
+    }
 
     const streamUrl = `wss://stream.binance.com:9443/stream?streams=${streamNames.join("/")}`;
 
@@ -530,7 +546,21 @@ if (typeof self !== "undefined" && typeof (self as any).postMessage === "functio
         } else {
           subscribedSymbols.forEach((s) => getSymbolId(s));
         }
+        if (subscribedSymbols.length > 0 && !subscribedSymbols.includes(depthSymbol)) {
+          depthSymbol = subscribedSymbols[0];
+        }
         connect();
+        break;
+      }
+
+      case "SET_DEPTH_SYMBOL": {
+        const nextSym = String((msg as any).symbol || "").toUpperCase();
+        if (nextSym && nextSym !== depthSymbol) {
+          depthSymbol = nextSym;
+          if (subscribedSymbols.length > 0) {
+            connect();
+          }
+        }
         break;
       }
 

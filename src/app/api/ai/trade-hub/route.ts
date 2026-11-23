@@ -387,8 +387,6 @@ PROIBIDO recomendar pares com correlação co-integrada quase perfeita com Bitco
 PRIORIZE estritamente ativos descorrelacionados (setores DePIN, RWA ou moedas em desacoplamento com fluxo proprietário no order flow, r <= 0.70).`
           : '';
 
-        const systemPrompt = `Você é o Gerador de Ideias de Troca institucional da TradeAI.
-Sua missão: "Analise o mercado atual e identifique oportunidades de alta probabilidade diferenciando claramente entre APLICAÇÕES RÁPIDAS (Day Trade/Scalping) e MÉDIO/LONGO PRAZO (Swing/Position Trade). Para cada configuração, forneça o preço de entrada sugerido, metas de lucro, nível de stop-loss e a relação risco-recompensa esperada."
         const systemPrompt = `Você é um gestor quantitativo institucional da TradeAI especializado em maximizar retorno ajustado ao risco.
           Sua missão: "Analise o mercado atual e identifique oportunidades de alta probabilidade diferenciando claramente entre APLICAÇÕES RÁPIDAS (Day Trade/Scalping) e MÉDIO/LONGO PRAZO (Swing/Position Trade). Priorize preservação de capital acima de lucro. Jamais afirmar que existe lucro garantido."
 

@@ -20,6 +20,9 @@ async function getSynchronizedTimestamp(baseUrl: string): Promise<number> {
  * Lista todas as ordens abertas na Binance Spot (ou Testnet).
  */
 export async function GET(request: Request) {
+  const { guardApiRequest } = await import("@/lib/auth/request-guard");
+  const blocked = guardApiRequest(request, { requireSession: true, rateLimit: { limit: 30, windowMs: 60_000, scope: "binance-reconcile-get" } });
+  if (blocked) return blocked;
   try {
     const { apiKey, apiSecret, testnet } = getBinanceCredentials(request);
 

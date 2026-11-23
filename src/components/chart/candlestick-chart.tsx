@@ -10,9 +10,34 @@ import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ZoomIn, ZoomOut, Maximize2, Zap, X, Activity, Sparkles, Gauge, Clock, Shield, Flame, Layers, AlertTriangle } from 'lucide-react';
 import { structuredLogger } from '@/lib/telemetry/structured-logger';
-import { vSyncCoalescer } from '@/hooks/use-binance-stream';
+import { vSyncCoalescer, connectChartToWorker } from '@/hooks/use-binance-stream';
+import { OffscreenChartController, type RenderEngineType } from '@/lib/performance/offscreen-chart-controller';
 import { playTakeProfitHitSound } from '@/lib/sound/sound-effects';
 import { RenderTelemetryHUD } from '@/components/telemetry/render-telemetry-hud';
+
+function ChartLatencyBadge() {
+  const [e2eLatencyMs, setE2eLatencyMs] = useState(1);
+
+  useEffect(() => {
+    const update = () => {
+      const last = useCryptoStore.getState().lastMarketUpdate;
+      setE2eLatencyMs(Math.max(1, Date.now() - (last || Date.now())));
+    };
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <>
+      <div className={`w-2 h-2 rounded-full ${e2eLatencyMs < 40 ? 'bg-emerald-500 animate-pulse' : e2eLatencyMs < 120 ? 'bg-amber-500' : 'bg-rose-500'}`} />
+      <span className="text-muted-foreground font-semibold">TICK E2E:</span>
+      <span className={`font-bold ${e2eLatencyMs < 40 ? 'text-emerald-400' : e2eLatencyMs < 120 ? 'text-amber-400' : 'text-rose-400'}`}>
+        {e2eLatencyMs.toFixed(0)}ms
+      </span>
+    </>
+  );
+}
 
 const EMPTY_SPOOFING_MARKERS: SpoofingChartMarker[] = [];
 
@@ -252,6 +277,9 @@ export function CandlestickChart({
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
   const [zoom, setZoom] = useState(1);
   const svgRef = useRef<SVGSVGElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const chartControllerRef = useRef<OffscreenChartController | null>(null);
+  const [renderEngine, setRenderEngine] = useState<RenderEngineType>('CANVAS_2D_FALLBACK');
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 400 });
 
@@ -261,7 +289,6 @@ export function CandlestickChart({
   const [measureAnchor, setMeasureAnchor] = useState<MeasureAnchor | null>(null);
 
   const currentTicker = useCryptoStore((s) => s.tickers[symbol]);
-  const lastMarketUpdate = useCryptoStore((s) => s.lastMarketUpdate);
   const [renderMetrics, setRenderMetrics] = useState({ fps: 60, lastFrameDurationMs: 16.6 });
 
   useEffect(() => {
@@ -269,6 +296,25 @@ export function CandlestickChart({
       setRenderMetrics(vSyncCoalescer.getMetrics());
     }, 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  // Inicializa pipeline de renderização WebGL2 / OffscreenCanvas dedicado fora da reconciliação React/SVG
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const controller = new OffscreenChartController({ candleWidthPx: 6, wickWidthPx: 1.5 });
+    const engine = controller.attach(canvas);
+    chartControllerRef.current = controller;
+    setRenderEngine(engine);
+
+    if (engine === 'OFFSCREEN_WEBGL2') {
+      connectChartToWorker(controller);
+    }
+
+    return () => {
+      controller.destroy();
+      chartControllerRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -280,10 +326,6 @@ export function CandlestickChart({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  const e2eLatencyMs = useMemo(() => {
-    return Math.max(1, Date.now() - (lastMarketUpdate || Date.now()));
-  }, [lastMarketUpdate]);
 
   // Stop Hunt Popover state (Velocidade de Rejeição do Pavio & Order Flow)
   const [activeStopHuntPopover, setActiveStopHuntPopover] = useState<{
@@ -492,6 +534,26 @@ export function CandlestickChart({
   }, [visibleCandles, showIchimoku]);
 
   const { minPrice, maxPrice, maxVolume, priceRange } = chartMetrics;
+
+  // Sincroniza dados e bounds com OffscreenChartController (WebGL2 / OffscreenCanvas)
+  useEffect(() => {
+    const controller = chartControllerRef.current;
+    if (!controller || renderEngine === 'CANVAS_2D_FALLBACK') return;
+    controller.resize(dimensions.width, dimensions.height);
+    if (candles.length > 0) {
+      controller.setCandleData(candles);
+      const startIdx = Math.max(0, candles.length - visibleCandles.length);
+      const endIdx = candles.length - 1;
+      controller.render({
+        minPrice,
+        maxPrice,
+        startIdx,
+        endIdx,
+        width: dimensions.width,
+        height: dimensions.height,
+      });
+    }
+  }, [candles, visibleCandles.length, minPrice, maxPrice, dimensions.width, dimensions.height, renderEngine]);
 
   // Layout calculations
   const chartWidth = dimensions.width - CHART_PADDING.left - CHART_PADDING.right;
@@ -914,11 +976,7 @@ export function CandlestickChart({
           {/* Indicador Numérico de Latência E2E e Telemetria de Render V-Sync (µs e Jank) */}
           <div className="absolute top-2 left-2 z-10 flex items-center gap-2 select-none">
             <div className="flex items-center gap-2 bg-background/85 backdrop-blur-md px-2.5 py-1 rounded-md border border-border/50 text-[10px] font-mono shadow-sm">
-              <div className={`w-2 h-2 rounded-full ${e2eLatencyMs < 40 ? 'bg-emerald-500 animate-pulse' : e2eLatencyMs < 120 ? 'bg-amber-500' : 'bg-rose-500'}`} />
-              <span className="text-muted-foreground font-semibold">TICK E2E:</span>
-              <span className={`font-bold ${e2eLatencyMs < 40 ? 'text-emerald-400' : e2eLatencyMs < 120 ? 'text-amber-400' : 'text-rose-400'}`}>
-                {e2eLatencyMs.toFixed(0)}ms
-              </span>
+              <ChartLatencyBadge />
               {measureAnchor && (
                 <>
                   <span className="text-muted-foreground/40">|</span>
@@ -972,11 +1030,18 @@ export function CandlestickChart({
             </div>
           )}
 
-          <svg
-            ref={svgRef}
-            width={dimensions.width}
-            height={dimensions.height}
-            className="select-none"
+          <div className="relative rounded-lg overflow-hidden" style={{ backgroundColor: 'oklch(0.14 0.012 260)' }}>
+            <canvas
+              ref={canvasRef}
+              width={dimensions.width}
+              height={dimensions.height}
+              className="absolute inset-0 pointer-events-none"
+            />
+            <svg
+              ref={svgRef}
+              width={dimensions.width}
+              height={dimensions.height}
+              className="relative select-none"
             style={{ cursor: draggedOrderLine ? 'ns-resize' : drawingTool !== 'crosshair' ? 'crosshair' : 'default' }}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
@@ -1025,13 +1090,13 @@ export function CandlestickChart({
                 <stop offset="100%" stopColor="#ef4444" stopOpacity="0.12" />
               </linearGradient>
             </defs>
-            {/* Background */}
+            {/* Background transparente quando WebGL2/OffscreenCanvas está ativo */}
             <rect
               x={0}
               y={0}
               width={dimensions.width}
               height={dimensions.height}
-              fill="oklch(0.14 0.012 260)"
+              fill={renderEngine === 'CANVAS_2D_FALLBACK' ? 'oklch(0.14 0.012 260)' : 'transparent'}
               rx={8}
             />
 
@@ -1350,7 +1415,9 @@ export function CandlestickChart({
               );
             })}
 
-            {/* Candlesticks: Separação de Camadas (Histórico Estático vs Dirty Rect Ativo) */}
+            {/* Candlesticks SVG (Fallback apenas quando WebGL2 / OffscreenCanvas indisponível) */}
+            {renderEngine === 'CANVAS_2D_FALLBACK' && (
+              <>
             <g key="layer-historical-candles">
               {visibleCandles.slice(0, -1).map((candle, i) => {
                 const x = indexToX(i);
@@ -1423,6 +1490,8 @@ export function CandlestickChart({
                 </g>
               );
             })()}
+              </>
+            )}
 
             {/* SMA 20 line */}
             {showSMA20 &&
@@ -2622,6 +2691,7 @@ Ação da IA: Disparo a mercado retido por 3s. Evitou falso rompimento e adverse
               );
             })()}
           </svg>
+          </div>
 
           {/* Mini-Popover Flutuante: Velocidade de Rejeição do Pavio (Stop Hunt) & Order Flow */}
           <AnimatePresence>

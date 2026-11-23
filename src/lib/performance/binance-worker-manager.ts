@@ -48,6 +48,12 @@ export interface WorkerTickerUpdate {
 
 export type WorkerBatchCallback = (tickers: WorkerTickerUpdate[]) => void;
 export type WorkerErrorCallback = (error: OrderBookFetchError) => void;
+export type WorkerDepthCallback = (depth: {
+  symbol: string;
+  bids: [number, number][];
+  asks: [number, number][];
+  timestamp: number;
+}) => void;
 
 // Offsets do Slot Float64 (Microstructure Stride = 16 = 128 bytes = 2 Cache Lines de 64B)
 export const SLOT_OFFSET_TIMESTAMP = 0;
@@ -84,6 +90,8 @@ export class BinanceWorkerManager {
   private subscribedSymbols = new Set<string>();
   private onBatchCallback: WorkerBatchCallback | null = null;
   private onErrorCallback: WorkerErrorCallback | null = null;
+  private onDepthCallback: WorkerDepthCallback | null = null;
+  private activeDepthSymbol: string = "BTCUSDT";
 
   // Filas atômicas e matrizes de profundidade L2 em memória compartilhada
   private spscQueue: LockFreeSPSCQueue | null = null;
@@ -147,6 +155,19 @@ export class BinanceWorkerManager {
 
   public setErrorCallback(callback: WorkerErrorCallback): void {
     this.onErrorCallback = callback;
+  }
+
+  public setDepthCallback(callback: WorkerDepthCallback | null): void {
+    this.onDepthCallback = callback;
+  }
+
+  public subscribeDepth(symbol: string): void {
+    const clean = symbol.toUpperCase();
+    if (!clean || clean === this.activeDepthSymbol) return;
+    this.activeDepthSymbol = clean;
+    if (this.worker) {
+      this.worker.postMessage({ type: "SET_DEPTH_SYMBOL", symbol: clean });
+    }
   }
 
   public getSPSCQueue(): LockFreeSPSCQueue | null {
@@ -933,6 +954,19 @@ export class BinanceWorkerManager {
         // Modo C: Fallback estruturado
         if (Array.isArray(msg.tickers) && msg.tickers.length > 0 && this.onBatchCallback) {
           this.onBatchCallback(msg.tickers);
+        }
+        break;
+      }
+
+      case "L2_DEPTH_UPDATE": {
+        const depthMsg = msg as any;
+        if (this.onDepthCallback && depthMsg.symbol) {
+          this.onDepthCallback({
+            symbol: depthMsg.symbol,
+            bids: depthMsg.bids || [],
+            asks: depthMsg.asks || [],
+            timestamp: depthMsg.timestamp || Date.now(),
+          });
         }
         break;
       }

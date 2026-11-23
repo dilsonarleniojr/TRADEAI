@@ -38,7 +38,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onOpenAiSettings,
 }) => {
   const [showApiKey, setShowApiKey] = useState(false);
-  const [apiKey, setApiKey] = useState('vm208349028490284092840928409284029482');
+  const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('••••••••••••••••••••••••••••••••••••••••••••');
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(true);
   const [telegramAlerts, setTelegramAlerts] = useState(true);

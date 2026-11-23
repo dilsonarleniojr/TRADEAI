@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 
 // Remove a sessão (desconectar).
 export async function DELETE(request: Request) {
-  const blocked = guardApiRequest(request);
+  const blocked = guardApiRequest(request, { requireSession: true });
   if (blocked) return blocked;
 
   const res = NextResponse.json({ success: true, message: "OKX desconectada com sucesso." });
@@ -35,6 +35,7 @@ export async function DELETE(request: Request) {
 
 export async function POST(request: Request) {
   const blocked = guardApiRequest(request, {
+    requireSession: true,
     rateLimit: { limit: 10, windowMs: 60_000, scope: "okx-login" },
   });
   if (blocked) return blocked;

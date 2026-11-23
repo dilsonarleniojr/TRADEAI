@@ -64,6 +64,35 @@ function calculateRSI(closes: number[], period = 14): number[] {
   return rsi;
 }
 
+function SymbolDropdownRow({
+  sym,
+  isSelected,
+  onSelect,
+}: {
+  sym: string;
+  isSelected: boolean;
+  onSelect: (sym: string) => void;
+}) {
+  const price = useCryptoStore((s) => s.tickers[sym]?.price);
+
+  return (
+    <button
+      onClick={() => onSelect(sym)}
+      className={cn(
+        "w-full text-left px-2 py-1.5 text-xs rounded hover:bg-secondary/40 flex items-center justify-between transition-colors",
+        isSelected && "bg-crypto-cyan/15 text-crypto-cyan font-bold"
+      )}
+    >
+      <span>{(sym || '').replace('USDT', '/USDT')}</span>
+      {price !== undefined && (
+        <span className="text-[10px] font-mono text-muted-foreground">
+          ${price < 1 ? price.toFixed(4) : price.toFixed(2)}
+        </span>
+      )}
+    </button>
+  );
+}
+
 function SymbolDropdownList({
   selectedSymbol,
   onSelect,
@@ -73,39 +102,27 @@ function SymbolDropdownList({
   onSelect: (sym: string) => void;
   symbolSearch: string;
 }) {
-  const tickers = useCryptoStore((s) => s.tickers);
   const filteredSymbols = useMemo(() => {
     const query = symbolSearch.toLowerCase().trim();
     if (!query) {
+      const snapshotTickers = useCryptoStore.getState().tickers;
       return [...ALL_SYMBOLS]
-        .sort((a, b) => (tickers[b]?.quoteVolume || 0) - (tickers[a]?.quoteVolume || 0))
+        .sort((a, b) => (snapshotTickers[b]?.quoteVolume || 0) - (snapshotTickers[a]?.quoteVolume || 0))
         .slice(0, 50);
     }
     return ALL_SYMBOLS.filter((s) => s.toLowerCase().includes(query)).slice(0, 60);
-  }, [symbolSearch, tickers]);
+  }, [symbolSearch]);
 
   return (
     <div className="max-h-[220px] overflow-y-auto cyan-scrollbar p-1">
-      {filteredSymbols.map((sym) => {
-        const t = tickers[sym];
-        return (
-          <button
-            key={sym}
-            onClick={() => onSelect(sym)}
-            className={cn(
-              "w-full text-left px-2 py-1.5 text-xs rounded hover:bg-secondary/40 flex items-center justify-between transition-colors",
-              sym === selectedSymbol && "bg-crypto-cyan/15 text-crypto-cyan font-bold"
-            )}
-          >
-            <span>{(sym || '').replace('USDT', '/USDT')}</span>
-            {t && (
-              <span className="text-[10px] font-mono text-muted-foreground">
-                ${t.price < 1 ? t.price.toFixed(4) : t.price.toFixed(2)}
-              </span>
-            )}
-          </button>
-        );
-      })}
+      {filteredSymbols.map((sym) => (
+        <SymbolDropdownRow
+          key={sym}
+          sym={sym}
+          isSelected={sym === selectedSymbol}
+          onSelect={onSelect}
+        />
+      ))}
       {filteredSymbols.length === 0 && (
         <div className="p-3 text-center text-xs text-muted-foreground">
           Nenhuma moeda encontrada
@@ -115,23 +132,66 @@ function SymbolDropdownList({
   );
 }
 
-export function ChartSection() {
+export interface ChartSectionProps {
+  selectedInterval?: string;
+  onIntervalChange?: (interval: string) => void;
+  activeIndicators?: string[];
+  onToggleIndicator?: (indicatorId: string) => void;
+}
+
+export function ChartSection({
+  selectedInterval: controlledInterval,
+  onIntervalChange,
+  activeIndicators: controlledIndicators,
+  onToggleIndicator,
+}: ChartSectionProps = {}) {
   const rawSelectedSymbol = useCryptoStore((s) => s.selectedSymbol);
   const selectedSymbol = rawSelectedSymbol || 'BTCUSDT';
   const setSelectedSymbol = useCryptoStore((s) => s.setSelectedSymbol);
-  const [interval, setInterval] = useState('1h');
+  const [internalInterval, setInternalInterval] = useState('1h');
+  const interval = controlledInterval ?? internalInterval;
+  const setInterval = useCallback(
+    (next: string) => {
+      if (onIntervalChange) onIntervalChange(next);
+      else setInternalInterval(next);
+    },
+    [onIntervalChange]
+  );
+
   const [symbolSearch, setSymbolSearch] = useState('');
   const [symbolSelectOpen, setSymbolSelectOpen] = useState(false);
-  const [showSMA20, setShowSMA20] = useState(true);
-  const [showSMA50, setShowSMA50] = useState(true);
-  const [showBollinger, setShowBollinger] = useState(false);
+  const [internalSMA20, setInternalSMA20] = useState(true);
+  const [internalSMA50, setInternalSMA50] = useState(true);
+  const [internalBollinger, setInternalBollinger] = useState(false);
   const [showFibonacci, setShowFibonacci] = useState(false);
-  const [showEMA12, setShowEMA12] = useState(false);
+  const [internalEMA12, setInternalEMA12] = useState(false);
   const [showEMA26, setShowEMA26] = useState(false);
   const [showVolumeProfile, setShowVolumeProfile] = useState(false);
   const [showIchimoku, setShowIchimoku] = useState(false);
   const [showVWAP, setShowVWAP] = useState(false);
   const [showEMARibbon, setShowEMARibbon] = useState(false);
+
+  const showSMA20 = controlledIndicators ? controlledIndicators.includes('media20') : internalSMA20;
+  const showSMA50 = controlledIndicators ? controlledIndicators.includes('media50') : internalSMA50;
+  const showBollinger = controlledIndicators ? controlledIndicators.includes('bollinger') : internalBollinger;
+  const showEMA12 = controlledIndicators ? controlledIndicators.includes('ema12') : internalEMA12;
+
+  const setShowSMA20 = (next: boolean) => {
+    if (onToggleIndicator) onToggleIndicator('media20');
+    else setInternalSMA20(next);
+  };
+  const setShowSMA50 = (next: boolean) => {
+    if (onToggleIndicator) onToggleIndicator('media50');
+    else setInternalSMA50(next);
+  };
+  const setShowBollinger = (next: boolean) => {
+    if (onToggleIndicator) onToggleIndicator('bollinger');
+    else setInternalBollinger(next);
+  };
+  const setShowEMA12 = (next: boolean) => {
+    if (onToggleIndicator) onToggleIndicator('ema12');
+    else setInternalEMA12(next);
+  };
   const hasActiveOverlay = showSMA20 || showSMA50 || showBollinger || showFibonacci || showEMA12 || showEMA26 || showVolumeProfile || showIchimoku || showVWAP || showEMARibbon;
   const [rsiValue, setRsiValue] = useState<number | null>(null);
   const rsiAbortRef = useRef<AbortController | null>(null);

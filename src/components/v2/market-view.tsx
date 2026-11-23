@@ -91,7 +91,10 @@ export function MarketView() {
   const {
     selectedSymbol,
     selectedExchange,
-    tickers,
+    ticker,
+    monitoredCoinsCount,
+    connectionStatus,
+    lastMarketUpdate,
     portfolio,
     bots,
     tradingMode,
@@ -107,25 +110,31 @@ export function MarketView() {
     addScheduledOrder,
     addBot,
   } = useCryptoStore(
-    useShallow((s) => ({
-      selectedSymbol: s.selectedSymbol,
-      selectedExchange: s.selectedExchange,
-      tickers: s.tickers,
-      portfolio: s.portfolio,
-      bots: s.bots,
-      tradingMode: s.tradingMode,
-      activeSection: s.activeSection,
-      tradePrefill: s.tradePrefill,
-      setSelectedSymbol: s.setSelectedSymbol,
-      setActiveSection: s.setActiveSection,
-      setTradePrefill: s.setTradePrefill,
-      setOpenAiSettingsModal: s.setOpenAiSettingsModal,
-      setAiSignals: s.setAiSignals,
-      addTrade: s.addTrade,
-      setAccount: s.setAccount,
-      addScheduledOrder: s.addScheduledOrder,
-      addBot: s.addBot,
-    }))
+    useShallow((s) => {
+      const sym = (s.selectedSymbol || "BTCUSDT").toUpperCase();
+      return {
+        selectedSymbol: s.selectedSymbol,
+        selectedExchange: s.selectedExchange,
+        ticker: s.tickers[sym],
+        monitoredCoinsCount: Object.keys(s.tickers).length,
+        connectionStatus: s.connectionStatus,
+        lastMarketUpdate: s.lastMarketUpdate,
+        portfolio: s.portfolio,
+        bots: s.bots,
+        tradingMode: s.tradingMode,
+        activeSection: s.activeSection,
+        tradePrefill: s.tradePrefill,
+        setSelectedSymbol: s.setSelectedSymbol,
+        setActiveSection: s.setActiveSection,
+        setTradePrefill: s.setTradePrefill,
+        setOpenAiSettingsModal: s.setOpenAiSettingsModal,
+        setAiSignals: s.setAiSignals,
+        addTrade: s.addTrade,
+        setAccount: s.setAccount,
+        addScheduledOrder: s.addScheduledOrder,
+        addBot: s.addBot,
+      };
+    })
   );
 
   const [activeTab, setActiveTab] = useState<"grafico" | "livro" | "ideias" | "assistente" | "mais">(
@@ -149,6 +158,18 @@ export function MarketView() {
   const [selectedInterval, setSelectedInterval] = useState<string>("1h");
   const [activeIndicators, setActiveIndicators] = useState<string[]>(["media20", "media50"]);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
+  const [feedNowMs, setFeedNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setFeedNowMs(Date.now()), 2500);
+    return () => clearInterval(id);
+  }, []);
+
+  const isFeedDisconnected = connectionStatus === "disconnected";
+  const feedAgeMs = lastMarketUpdate > 0 ? Math.max(0, feedNowMs - lastMarketUpdate) : 0;
+  const isFeedStale = lastMarketUpdate > 0 && feedAgeMs > 10_000;
+  const isFeedUnhealthy = isFeedDisconnected || isFeedStale;
+  const isOrderBlockedByFeed = tradingMode === "live" && isFeedUnhealthy;
 
   // Ideias da IA - filtros e estado real
   const [prazoFilter, setPrazoFilter] = useState<"all" | "fast" | "long">("all");
@@ -179,7 +200,6 @@ export function MarketView() {
 
   const targetSymbol = (selectedSymbol || "BTCUSDT").toUpperCase();
   const baseAsset = stripQuoteAsset(targetSymbol);
-  const ticker = tickers[targetSymbol];
   const price = ticker?.price;
   const availableBalance = portfolio?.cashBalance ?? 0;
   const heldPosition = useMemo(
@@ -190,7 +210,6 @@ export function MarketView() {
     [portfolio?.positions, targetSymbol, baseAsset]
   );
   const heldQty = heldPosition?.quantity ?? 0;
-  const monitoredCoinsCount = useMemo(() => Object.keys(tickers).length, [tickers]);
 
   // Limpa níveis de IA e feedback de ordem ao trocar de par (evita mostrar Stop/Alvo do BTC em outro ativo)
   useEffect(() => {
@@ -296,7 +315,7 @@ export function MarketView() {
   };
 
   const fetchQuickSignal = async () => {
-    const t = tickers[targetSymbol];
+    const t = ticker;
     if (!t || !(t.price > 0)) {
       await syncBinanceCoins();
       setSignalError(`Ainda sem cotação ao vivo para ${targetSymbol}.`);
@@ -452,7 +471,10 @@ export function MarketView() {
           horizon: "MEDIO_LONGO",
         }),
       });
-      const result = await res.json();
+      const result = await res.json().catch(() => ({}));
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(result.error || "Sessão expirada ou não autenticada. Faça login para continuar.");
+      }
       if (!res.ok || !result.success) {
         throw new Error(result.details || result.error || "Não foi possível executar a ordem.");
       }
@@ -640,17 +662,26 @@ export function MarketView() {
 
             {/* Linha 2: Intervalos */}
             <div className="flex items-center space-x-1 sm:space-x-1.5 text-[11px] sm:text-[12px] font-medium text-[#4A586A] dark:text-[#94a3b8] pt-1 overflow-x-auto no-scrollbar py-0.5">
-              {["1m", "5m", "15m", "1h", "4h", "1D", "1W", "1M"].map((interval) => (
+              {[
+                { value: "1m", label: "1m" },
+                { value: "5m", label: "5m" },
+                { value: "15m", label: "15m" },
+                { value: "1h", label: "1h" },
+                { value: "4h", label: "4h" },
+                { value: "1d", label: "1D" },
+                { value: "1w", label: "1W" },
+                { value: "1M", label: "1M" },
+              ].map((interval) => (
                 <button
-                  key={interval}
-                  onClick={() => setSelectedInterval(interval)}
+                  key={interval.value}
+                  onClick={() => setSelectedInterval(interval.value)}
                   className={`px-2.5 py-1 rounded-full transition-colors ${
-                    selectedInterval === interval
+                    selectedInterval === interval.value
                       ? "bg-[#0E1B2C] text-white font-semibold"
                       : "hover:bg-[#EEF1F5] dark:hover:bg-white/10 text-[#4A586A]"
                   }`}
                 >
-                  {interval}
+                  {interval.label}
                 </button>
               ))}
             </div>
@@ -683,7 +714,12 @@ export function MarketView() {
 
             {/* Container do Gráfico Real */}
             <div className="pt-2">
-              <ChartSection />
+              <ChartSection
+                selectedInterval={selectedInterval}
+                onIntervalChange={setSelectedInterval}
+                activeIndicators={activeIndicators}
+                onToggleIndicator={toggleIndicator}
+              />
             </div>
           </div>
 
@@ -872,6 +908,14 @@ export function MarketView() {
               )}
             </div>
 
+            {isFeedUnhealthy && (
+              <div className="p-3 rounded-[12px] bg-[#FFF4DC] dark:bg-amber-950/40 border border-[#FFE7A8] dark:border-amber-500/40 text-[#6B4300] dark:text-amber-300 text-[12px] font-medium">
+                {isFeedDisconnected
+                  ? "Feed desconectado da Binance. Envio de ordens reais bloqueado até restabelecer o stream."
+                  : `Dados de mercado obsoletos há ${Math.floor(feedAgeMs / 1000)} s (>10 s). ${tradingMode === "live" ? "Envio bloqueado em modo Real." : "Atenção ao operar em modo Simulado."}`}
+              </div>
+            )}
+
             {tradeError && (
               <div className="p-3 rounded-[12px] bg-[#FDF4F3] border border-[#F1C9C5] text-[#B42318] text-[12px] font-medium">
                 {tradeError}
@@ -881,8 +925,8 @@ export function MarketView() {
             {/* Botão de Ação Grande */}
             <button
               onClick={handleSubmitOrder}
-              disabled={isSubmittingTrade}
-              className={`w-full py-3 rounded-full text-white text-[15px] font-bold transition-colors cursor-pointer shadow-xs disabled:opacity-60 flex items-center justify-center gap-2 ${
+              disabled={isSubmittingTrade || isOrderBlockedByFeed}
+              className={`w-full py-3 rounded-full text-white text-[15px] font-bold transition-colors cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
                 tradeSide === "buy"
                   ? "bg-[#0B8F6A] hover:bg-[#097758]"
                   : "bg-[#B42318] hover:bg-[#911a10]"

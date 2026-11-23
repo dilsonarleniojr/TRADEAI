@@ -12,7 +12,7 @@ const shortcuts = [
   { keys: ["Esc", "Esc"], label: "Kill-Switch de Emergência" },
   { keys: ["B"], label: "Alternar frota de robôs" },
   { keys: ["T"], label: "Alternar tema visual" },
-  { keys: ["M"], label: "Alternar Paper / Live" },
+  { keys: ["Ctrl", "⇧", "M"], label: "Alternar Paper / Live" },
   { keys: ["S"], label: "Alternar par cripto" },
 ];
 

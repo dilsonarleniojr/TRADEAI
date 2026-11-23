@@ -664,6 +664,42 @@ export class SharedL2DepthMatrix {
   }
 
   /**
+   * Lê os níveis de Bids e Asks diretamente do Front Buffer ativo para exibição na UI.
+   */
+  public readLevels(maxLevels: number = 22): {
+    sequence: number;
+    timestamp: number;
+    bids: Array<{ price: number; volume: number }>;
+    asks: Array<{ price: number; volume: number }>;
+  } {
+    const slot = this.getActiveBufferIndex();
+    const targetHeaderInt32 = this.slotHeadersInt32[slot];
+    const targetBidPrices = this.slotsBidPrices[slot];
+    const targetBidVolumes = this.slotsBidVolumes[slot];
+    const targetAskPrices = this.slotsAskPrices[slot];
+    const targetAskVolumes = this.slotsAskVolumes[slot];
+
+    const seq = Atomics.load(targetHeaderInt32, L2_OFFSET_WRITE_SEQ);
+    const bidsCount = Math.min(maxLevels, targetHeaderInt32[L2_OFFSET_BIDS_COUNT]);
+    const asksCount = Math.min(maxLevels, targetHeaderInt32[L2_OFFSET_ASKS_COUNT]);
+    const tsLo = targetHeaderInt32[L2_OFFSET_TIMESTAMP_LO];
+    const tsHi = targetHeaderInt32[L2_OFFSET_TIMESTAMP_HI];
+    const timestamp = (tsHi * 0x100000000) + (tsLo >>> 0);
+
+    const bids: Array<{ price: number; volume: number }> = new Array(bidsCount);
+    for (let i = 0; i < bidsCount; i++) {
+      bids[i] = { price: targetBidPrices[i], volume: targetBidVolumes[i] };
+    }
+
+    const asks: Array<{ price: number; volume: number }> = new Array(asksCount);
+    for (let i = 0; i < asksCount; i++) {
+      asks[i] = { price: targetAskPrices[i], volume: targetAskVolumes[i] };
+    }
+
+    return { sequence: seq, timestamp, bids, asks };
+  }
+
+  /**
    * Empacota diretamente a coluna de livro L2 em uma fatia RGBA pronta para gl.texSubImage2D.
    * Por padrão, lê do Front Buffer ativo garantindo zero contenção com gravações no Back Buffer.
    * R = Bid Liquidity [0, 255]

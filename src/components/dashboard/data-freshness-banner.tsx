@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useCryptoStore } from "@/lib/store";
 import { useDataProvider } from "@/lib/data-provider";
 
-const STALE_AFTER_MS = 60_000;
+const STALE_AFTER_MS = 10_000;
 
 function formatAge(ms: number) {
   const s = Math.floor(ms / 1000);

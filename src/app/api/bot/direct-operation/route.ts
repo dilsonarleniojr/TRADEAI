@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DirectOperationManager } from '@/lib/bot/pilot/direct-operation-manager';
 import { getBinanceCredentials } from '@/lib/binance-session';
+import { guardApiRequest } from '@/lib/auth/request-guard';
 
 function sanitizeSession(session: any) {
   if (!session) return session;
@@ -9,6 +10,8 @@ function sanitizeSession(session: any) {
 }
 
 export async function POST(req: NextRequest) {
+  const blocked = guardApiRequest(req, { requireSession: true, rateLimit: { limit: 20, windowMs: 60_000, scope: 'direct-op' } });
+  if (blocked) return blocked;
   try {
     const body = await req.json().catch(() => ({}));
     const { amount, durationMinutes, strategy, mode, overrideSymbol } = body;

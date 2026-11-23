@@ -3,7 +3,7 @@ import { AuthService } from '@/lib/auth/auth-service';
 import { guardApiRequest } from '@/lib/auth/request-guard';
 
 export async function POST(req: NextRequest) {
-  const blocked = guardApiRequest(req, { rateLimit: { limit: 5, windowMs: 60_000, scope: 'auth-register' } });
+  const blocked = guardApiRequest(req, { requireSession: false, rateLimit: { limit: 5, windowMs: 60_000, scope: 'auth-register' } });
   if (blocked) return blocked;
 
   try {

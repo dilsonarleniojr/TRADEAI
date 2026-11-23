@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { BookOpen, RefreshCw, Minimize2, Maximize2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { getOrFetch, CACHE_TTL, invalidateCache } from "@/lib/cache";
+import { getGlobalWorkerManager } from "@/hooks/use-binance-stream";
 import { calculateOrderBookImbalance, detectLiquiditySpoofing, OrderBookImbalanceResult, DepthSnapshot, SpoofingAlert } from "@/lib/order-book-imbalance";
 
 export interface OrderBookLevel {
@@ -122,11 +123,18 @@ export function OrderBook({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [l2Status, setL2Status] = useState<"ws" | "rest-fallback" | "disconnected">("rest-fallback");
   const [flashedLevels, setFlashedLevels] = useState<Record<number, "bid" | "ask">>({});
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const l2ThrottleRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastL2SeqRef = useRef<number>(-1);
+  const lastL2TimestampRef = useRef<number>(0);
+  const lastUiApplyMsRef = useRef<number>(0);
   const previousSnapshotRef = useRef<DepthSnapshot | null>(null);
   const prevVolumesRef = useRef<Map<number, number>>(new Map());
   const spoofingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Armazena callbacks externos em refs para isolar o ciclo de renderização e evitar loops React #185
   const onDepthDataRef = useRef(onDepthData);
@@ -148,6 +156,64 @@ export function OrderBook({
     onSpoofingAlertRef.current?.(null);
   }, [selectedSymbol]);
 
+  const applyOrderBookData = useCallback((data: OrderBookData, source: "ws" | "rest-fallback") => {
+    // Micro-tick flash detection: compare volume shifts
+    const newFlashes: Record<number, "bid" | "ask"> = {};
+    const nextVolumes = new Map<number, number>();
+
+    data.bids.forEach((b) => {
+      nextVolumes.set(b.price, b.volume);
+      const prev = prevVolumesRef.current.get(b.price);
+      if (prev !== undefined && prev !== b.volume) {
+        newFlashes[b.price] = "bid";
+      }
+    });
+
+    data.asks.forEach((a) => {
+      nextVolumes.set(a.price, a.volume);
+      const prev = prevVolumesRef.current.get(a.price);
+      if (prev !== undefined && prev !== a.volume) {
+        newFlashes[a.price] = "ask";
+      }
+    });
+
+    prevVolumesRef.current = nextVolumes;
+    if (Object.keys(newFlashes).length > 0) {
+      setFlashedLevels(newFlashes);
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+      flashTimeoutRef.current = setTimeout(() => setFlashedLevels({}), 450);
+    }
+
+    setOrderBook(data);
+    setL2Status(source);
+    setError(null);
+    onDepthDataRef.current?.({ bids: data.bids, asks: data.asks });
+
+    // Detecção de Liquidity Spoofing (quedas abruptas >= 30% em menos de 3.5s)
+    const currentSnapshot: DepthSnapshot = {
+      totalBidVol: data.totalBidVolume,
+      totalAskVol: data.totalAskVolume,
+      timestamp: Date.now(),
+    };
+
+    if (previousSnapshotRef.current) {
+      const spoofAlert = detectLiquiditySpoofing(currentSnapshot, previousSnapshotRef.current, 30.0, 3500);
+      if (spoofAlert) {
+        onSpoofingAlertRef.current?.(spoofAlert);
+        if (spoofingTimeoutRef.current) clearTimeout(spoofingTimeoutRef.current);
+        spoofingTimeoutRef.current = setTimeout(() => {
+          onSpoofingAlertRef.current?.(null);
+        }, 4500);
+      }
+    }
+    previousSnapshotRef.current = currentSnapshot;
+
+    if (onImbalanceUpdateRef.current) {
+      const imb = calculateOrderBookImbalance(data.bids, data.asks, 8);
+      onImbalanceUpdateRef.current(imb);
+    }
+  }, []);
+
   const refreshOrderBook = useCallback(async () => {
     if (!selectedSymbol) return;
 
@@ -164,85 +230,88 @@ export function OrderBook({
         CACHE_TTL.ORDER_BOOK
       );
 
-      // Micro-tick flash detection: compare volume shifts
-      const newFlashes: Record<number, "bid" | "ask"> = {};
-      const nextVolumes = new Map<number, number>();
-
-      data.bids.forEach((b) => {
-        nextVolumes.set(b.price, b.volume);
-        const prev = prevVolumesRef.current.get(b.price);
-        if (prev !== undefined && prev !== b.volume) {
-          newFlashes[b.price] = "bid";
-        }
-      });
-
-      data.asks.forEach((a) => {
-        nextVolumes.set(a.price, a.volume);
-        const prev = prevVolumesRef.current.get(a.price);
-        if (prev !== undefined && prev !== a.volume) {
-          newFlashes[a.price] = "ask";
-        }
-      });
-
-      prevVolumesRef.current = nextVolumes;
-      if (Object.keys(newFlashes).length > 0) {
-        setFlashedLevels(newFlashes);
-        setTimeout(() => setFlashedLevels({}), 450);
-      }
-
-      setOrderBook(data);
-      onDepthDataRef.current?.({ bids: data.bids, asks: data.asks });
-
-      // Detecção de Liquidity Spoofing (quedas abruptas >= 30% em menos de 3.5s)
-      const currentSnapshot: DepthSnapshot = {
-        totalBidVol: data.totalBidVolume,
-        totalAskVol: data.totalAskVolume,
-        timestamp: Date.now(),
-      };
-
-      if (previousSnapshotRef.current) {
-        const spoofAlert = detectLiquiditySpoofing(currentSnapshot, previousSnapshotRef.current, 30.0, 3500);
-        if (spoofAlert) {
-          onSpoofingAlertRef.current?.(spoofAlert);
-          if (spoofingTimeoutRef.current) clearTimeout(spoofingTimeoutRef.current);
-          spoofingTimeoutRef.current = setTimeout(() => {
-            onSpoofingAlertRef.current?.(null);
-          }, 4500);
-        }
-      }
-      previousSnapshotRef.current = currentSnapshot;
-
-      if (onImbalanceUpdateRef.current) {
-        const imb = calculateOrderBookImbalance(data.bids, data.asks, 8);
-        onImbalanceUpdateRef.current(imb);
-      }
+      applyOrderBookData(data, "rest-fallback");
     } catch (err: unknown) {
       const now = Date.now();
       if (!lastOrderBookWarnTimeRef.current || now - lastOrderBookWarnTimeRef.current > 30000) {
         console.warn("[OrderBook] Falha transitória ao obter livro de ofertas:", (err as any)?.message || err);
         lastOrderBookWarnTimeRef.current = now;
       }
+      setL2Status("disconnected");
       if (err instanceof OrderBookFetchError) {
         setError(err.isRateLimit ? "Limite de requisições atingido (HTTP 429)" : "Livro de ofertas indisponível no momento");
       } else {
         setError("Livro de ofertas indisponível");
       }
     } finally {
-      setTimeout(() => setIsRefreshing(false), 300);
+      if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
+      refreshTimeoutRef.current = setTimeout(() => setIsRefreshing(false), 300);
     }
-  }, [selectedSymbol, levels]);
+  }, [selectedSymbol, levels, applyOrderBookData]);
 
-  // Initial load and auto-refresh every 3 seconds
+  // Snapshot inicial + stream L2 em tempo real (SharedL2DepthMatrix / Worker) com throttling de 150ms e fallback REST
   useEffect(() => {
+    lastL2SeqRef.current = -1;
+    lastL2TimestampRef.current = 0;
+
+    // 1. Snapshot REST inicial imediato para evitar tela vazia
     refreshOrderBook();
 
-    intervalRef.current = setInterval(refreshOrderBook, 3000);
+    const workerManager = getGlobalWorkerManager();
+    if (workerManager && selectedSymbol) {
+      workerManager.subscribeDepth(selectedSymbol);
+      workerManager.setDepthCallback((depth) => {
+        if (depth.symbol.toUpperCase() !== selectedSymbol.toUpperCase()) return;
+        const now = Date.now();
+        if (now - lastUiApplyMsRef.current < 150) return;
+        lastUiApplyMsRef.current = now;
+        lastL2TimestampRef.current = now;
+        const parsed = parseOrderBookDepthResponse({
+          bids: depth.bids.slice(0, levels).map(([p, v]) => ({ price: p, volume: v })),
+          asks: depth.asks.slice(0, levels).map(([p, v]) => ({ price: p, volume: v })),
+        });
+        applyOrderBookData(parsed, "ws");
+      });
+    }
+
+    // 2. Dreno com throttling de 150ms diretamente da SharedL2DepthMatrix (zero-copy)
+    l2ThrottleRef.current = setInterval(() => {
+      const wm = getGlobalWorkerManager();
+      const matrix = wm?.getL2DepthMatrix();
+      if (!matrix) return;
+      const seq = matrix.getSequence();
+      if (seq > 0 && seq !== lastL2SeqRef.current) {
+        lastL2SeqRef.current = seq;
+        const raw = matrix.readLevels(levels);
+        if (raw.bids.length > 0 || raw.asks.length > 0) {
+          lastL2TimestampRef.current = Date.now();
+          const parsed = parseOrderBookDepthResponse({
+            bids: raw.bids,
+            asks: raw.asks,
+          });
+          applyOrderBookData(parsed, "ws");
+        }
+      }
+    }, 150);
+
+    // 3. Fallback REST automático apenas se o stream WS L2 não entregar dados há > 4s
+    intervalRef.current = setInterval(() => {
+      const wsHealthy = lastL2TimestampRef.current > 0 && Date.now() - lastL2TimestampRef.current < 4000;
+      if (!wsHealthy) {
+        refreshOrderBook();
+      }
+    }, 3000);
 
     return () => {
+      const wm = getGlobalWorkerManager();
+      wm?.setDepthCallback(null);
       if (intervalRef.current) clearInterval(intervalRef.current);
+      if (l2ThrottleRef.current) clearInterval(l2ThrottleRef.current);
       if (spoofingTimeoutRef.current) clearTimeout(spoofingTimeoutRef.current);
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+      if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
     };
-  }, [refreshOrderBook]);
+  }, [refreshOrderBook, selectedSymbol, levels, applyOrderBookData]);
 
   if (error && !orderBook) {
     return (
@@ -298,9 +367,29 @@ export function OrderBook({
             <span className="text-[10px] text-slate-400 font-mono font-normal">
               {selectedSymbol.replace("USDT", "/USDT")}
             </span>
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[8px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
-              TEMPO REAL
+            <span
+              className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[8px] font-semibold border ${
+                l2Status === "ws"
+                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                  : l2Status === "rest-fallback"
+                  ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                  : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+              }`}
+            >
+              <span
+                className={`w-1 h-1 rounded-full ${
+                  l2Status === "ws"
+                    ? "bg-emerald-400 animate-pulse"
+                    : l2Status === "rest-fallback"
+                    ? "bg-amber-400"
+                    : "bg-rose-400"
+                }`}
+              />
+              {l2Status === "ws"
+                ? "TEMPO REAL (WS)"
+                : l2Status === "rest-fallback"
+                ? "FALLBACK REST"
+                : "DESCONECTADO"}
             </span>
           </div>
           <div className="flex items-center gap-1">
