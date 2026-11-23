@@ -734,6 +734,7 @@ export function runMLPipeline(
   const scalerStats = fitFeatureScaler(rawTrainData);
   const trainData = applyFeatureScaler(rawTrainData, scalerStats);
   const testData = applyFeatureScaler(rawTestData, scalerStats);
+  const normalizedFeatures = applyFeatureScaler(features, scalerStats);
 
   const featureNames = config.features;
 

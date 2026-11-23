@@ -1792,8 +1792,10 @@ export class DirectOperationManager {
   public static getTradeJournal(): TradeJournalEntry[] {
     if (tradeJournalMemory.length === 0) {
       try {
+        /* eslint-disable @typescript-eslint/no-require-imports */
         const fs = require("fs");
         const path = require("path");
+        /* eslint-enable @typescript-eslint/no-require-imports */
         const filePath = path.join(process.cwd(), "db", "trade_journal.json");
         if (fs.existsSync(filePath)) {
           const content = fs.readFileSync(filePath, "utf-8");

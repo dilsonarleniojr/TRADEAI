@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { RiskManager } from "../risk-manager";
+import { PilotRiskCircuitBreaker } from "./pilot-circuit-breaker";
 
 export interface CleanupReport {
   timestampSynced: boolean;
@@ -171,7 +172,6 @@ export class EnvironmentCleanupService {
       rm.resetCircuitBreakers();
 
       // Resetar o Circuit Breaker específico do piloto de $70 USD
-      const { PilotRiskCircuitBreaker } = require("./pilot-circuit-breaker");
       PilotRiskCircuitBreaker.getInstance().reset(baselineUsd);
 
       // Limpar chaves locais se estiver em ambiente de browser ou store

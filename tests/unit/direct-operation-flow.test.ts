@@ -1,8 +1,16 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { CurrencyPairNormalizer } from "@/lib/bot/pilot/currency-pair-normalizer";
-import { DirectOperationManager } from "@/lib/bot/pilot/direct-operation-manager";
+import {
+  DirectOperationManager,
+  ExecutionLatencyGuard,
+  RateLimitMonitor,
+} from "@/lib/bot/pilot/direct-operation-manager";
 import { ExchangeMetadataService } from "@/lib/bot/pilot/exchange-metadata-service";
 import { MarketOpportunitySelector } from "@/lib/bot/pilot/market-opportunity-selector";
+import {
+  ChaosInjector,
+  GraduatedCircuitBreaker,
+} from "@/lib/bot/pilot/chaos-test-harness";
 import { PreciseMath } from "@/lib/bot/pilot/precise-math";
 
 describe("Operação Direta com IA & Normalização de Cotação", () => {
@@ -476,7 +484,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
 
   describe("6. Pilares de Próxima Geração: Trading Strategist Pro, AI Engineer, Chaos & Infra", () => {
     it("deve classificar regimes de mercado (TRENDING_BULLISH, MEAN_REVERTING_RANGING, EXTREME_VOLATILITY)", () => {
-      const { MarketOpportunitySelector } = require("@/lib/bot/pilot/market-opportunity-selector");
+      // Direct imports used instead of inline require()
       const selector = MarketOpportunitySelector.getInstance();
 
       const dummyKlines = Array.from({ length: 30 }, (_, i) => ({
@@ -504,7 +512,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
     });
 
     it("deve calcular confluência multi-timeframe (15m, 5m, 1m) com pontuação percentual", () => {
-      const { MarketOpportunitySelector } = require("@/lib/bot/pilot/market-opportunity-selector");
+      // Direct imports used instead of inline require()
       const selector = MarketOpportunitySelector.getInstance();
 
       const klines = Array.from({ length: 30 }, (_, i) => ({
@@ -527,7 +535,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
     });
 
     it("deve calibrar dimensionamento por paridade de volatilidade (Kelly/ATR Parity <= $1.40 USD)", () => {
-      const { MarketOpportunitySelector } = require("@/lib/bot/pilot/market-opportunity-selector");
+      // Direct imports used instead of inline require()
       const selector = MarketOpportunitySelector.getInstance();
 
       // Ativo calmo (SL de 1.0%)
@@ -542,7 +550,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
     });
 
     it("deve estruturar a escada de 3 alvos (TP1 33%, TP2 33%, TP3 34%) respeitando tickSize", () => {
-      const { MarketOpportunitySelector } = require("@/lib/bot/pilot/market-opportunity-selector");
+      // Direct imports used instead of inline require()
       const selector = MarketOpportunitySelector.getInstance();
 
       const filters = {
@@ -600,7 +608,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
     });
 
     it("deve auditar latência de execução e slippage drift via ExecutionLatencyGuard", () => {
-      const { ExecutionLatencyGuard } = require("@/lib/bot/pilot/direct-operation-manager");
+      // ExecutionLatencyGuard imported at top-level
 
       // Execução saudável (< 1200ms e < 0.15% slippage)
       const healthy = ExecutionLatencyGuard.auditExecution(1000, 1400, 100.0, 100.05);
@@ -616,7 +624,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
     });
 
     it("deve monitorar o peso de rate limits da exchange via RateLimitMonitor", () => {
-      const { RateLimitMonitor } = require("@/lib/bot/pilot/direct-operation-manager");
+      // RateLimitMonitor imported at top-level
 
       RateLimitMonitor.recordRequest(5);
       const status = RateLimitMonitor.getRateLimitStatus();
@@ -672,7 +680,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
     });
 
     it("deve simular injeção de grey failure, perda de pacotes e cotações obsoletas no ChaosInjector", async () => {
-      const { ChaosInjector } = require("@/lib/bot/pilot/chaos-test-harness");
+      // ChaosInjector imported at top-level
 
       // 1. Injeção de perda de pacotes
       const dropInjector = new ChaosInjector({
@@ -713,7 +721,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
     });
 
     it("deve escalonar os 3 níveis proporcionais de contenção do GraduatedCircuitBreaker", () => {
-      const { GraduatedCircuitBreaker } = require("@/lib/bot/pilot/chaos-test-harness");
+      // GraduatedCircuitBreaker imported at top-level
       const cb = GraduatedCircuitBreaker.getInstance();
       cb.reset();
 
@@ -788,7 +796,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
     }, 15000);
 
     it("deve recalibrar heuristicamente o TP2 de 2.0x para 1.7x quando a eficiência média < 50% e MFE recorrente > 2.0%", () => {
-      const { MarketOpportunitySelector } = require("@/lib/bot/pilot/market-opportunity-selector");
+      // Direct imports used instead of inline require()
       const selector = MarketOpportunitySelector.getInstance();
 
       // Simula 10 operações históricas com MFE > 2.0% mas saída ineficiente (< 50%)
@@ -817,7 +825,7 @@ describe("Operação Direta com IA & Normalização de Cotação", () => {
     });
 
     it("deve manter o multiplicador padrão de 2.0x quando a eficiência média de saída for saudável (>= 50%)", () => {
-      const { MarketOpportunitySelector } = require("@/lib/bot/pilot/market-opportunity-selector");
+      // Direct imports used instead of inline require()
       const selector = MarketOpportunitySelector.getInstance();
 
       const healthyJournals = Array.from({ length: 10 }, (_, i) => ({

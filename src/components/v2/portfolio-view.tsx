@@ -9,15 +9,11 @@ import { useShallow } from "zustand/react/shallow";
 export function PortfolioView() {
   const {
     portfolio,
-    positions,
     trades,
-    closePosition,
   } = useCryptoStore(
     useShallow((s) => ({
       portfolio: s.portfolio,
-      positions: s.positions,
       trades: s.trades,
-      closePosition: s.closePosition,
     }))
   );
 

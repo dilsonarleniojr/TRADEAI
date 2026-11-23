@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 // Lightweight Node.js reverse proxy replacing Caddy (which was being OOM-killed).
 // Replicates Caddyfile rules:
 //   - ?XTransformPort=N → proxy to localhost:N

@@ -48,7 +48,8 @@ export function useWorker<TInput = any, TOutput = any>(workerCreator: () => Work
         worker.terminate();
       };
     } catch (err: any) {
-      setError(err?.message || "Falha ao inicializar o Web Worker");
+      const msg = err?.message || "Falha ao inicializar o Web Worker";
+      queueMicrotask(() => setError(msg));
     }
   }, [workerCreator]);
 

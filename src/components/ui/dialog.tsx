@@ -306,8 +306,8 @@ function DialogContent({
             {/* Corner Grip Icon */}
             <div
               onMouseDown={handleResizeCornerStart}
-              onTouchStart={handleTouchResizeStart} className="hidden sm:block absolute bottom-1 right-1 p-1 cursor-nwse-resize select-none touch-none text-muted-foreground/40 hover:text-cyan-400 transition-colors z-30 group"
-              className="absolute bottom-1 right-1 p-1 cursor-nwse-resize select-none touch-none text-muted-foreground/40 hover:text-cyan-400 transition-colors z-30 group"
+              onTouchStart={handleTouchResizeStart}
+              className="hidden sm:block absolute bottom-1 right-1 p-1 cursor-nwse-resize select-none touch-none text-muted-foreground/40 hover:text-cyan-400 transition-colors z-30 group"
               title="Arraste para redimensionar"
             >
               <svg

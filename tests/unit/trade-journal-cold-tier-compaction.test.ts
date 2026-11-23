@@ -13,7 +13,7 @@ import {
   persistDailyRollupsToSqlite,
   loadDailyRollupsFromSqlite,
   clearDailyRollupsSqlite,
-} from "@/app/api/journal/rollup/route";
+} from "@/lib/journal/rollup-sqlite";
 
 function generateSyntheticTrade(index: number, timestampMs: number): TradeJournalRecord {
   const isWin = index % 3 !== 0;

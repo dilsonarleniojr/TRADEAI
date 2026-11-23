@@ -376,10 +376,15 @@ export async function checkRestingMakerOrdersTimeout() {
                   store.updateBot(order.botId, {
                     position: {
                       symbol: order.symbol,
+                      side: "BUY",
                       entryPrice: order.price,
+                      currentPrice: order.price,
                       quantity: executedQty,
+                      totalCost: Number((order.price * executedQty).toFixed(4)),
+                      highestPrice: order.price,
+                      unrealizedPnl: 0,
+                      unrealizedPnlPercent: 0,
                       entryTime: new Date(order.createdAt).toISOString(),
-                      type: "LONG",
                     },
                   });
                   store.addBotLog({
@@ -399,10 +404,15 @@ export async function checkRestingMakerOrdersTimeout() {
                   store.updateBot(order.botId, {
                     position: {
                       symbol: order.symbol,
+                      side: "BUY",
                       entryPrice: order.price,
+                      currentPrice: order.price,
                       quantity: executedQty,
+                      totalCost: Number((order.price * executedQty).toFixed(4)),
+                      highestPrice: order.price,
+                      unrealizedPnl: 0,
+                      unrealizedPnlPercent: 0,
                       entryTime: new Date(order.createdAt).toISOString(),
-                      type: "LONG",
                     },
                   });
                   store.addBotLog({

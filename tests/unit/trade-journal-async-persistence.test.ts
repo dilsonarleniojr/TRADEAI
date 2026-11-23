@@ -16,7 +16,7 @@ import {
   persistJournalBatchToSqlite,
   loadJournalRecordsFromSqlite,
   clearJournalSqlite,
-} from "@/app/api/journal/sync/route";
+} from "@/lib/journal/sync-sqlite";
 
 describe("Persistência Assíncrona em Lote (500ms Debounced Batch Write - IndexedDB + SQLite WAL)", () => {
   beforeEach(async () => {

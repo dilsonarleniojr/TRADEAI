@@ -14,7 +14,7 @@ import {
   subExactUsd,
   mulExactUsd,
 } from "@/lib/journal/trade-journal-engine";
-import { sanitizeSafeString } from "@/app/api/journal/sync/route";
+import { sanitizeSafeString } from "@/lib/journal/sync-sqlite";
 import { selectCascadedModel } from "@/lib/ai-client";
 import {
   LongTermMemoryStore,

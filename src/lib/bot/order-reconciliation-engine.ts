@@ -44,11 +44,10 @@ export function sanitizeOrderToExchangeFilters(
 
   if (filter.tickSize <= 0 || filter.stepSize <= 0 || !Number.isFinite(quantity) || !Number.isFinite(price)) {
     return {
-      symbol: symbol.toUpperCase(),
-      sanitizedQuantity: 0,
+      valid: false,
       sanitizedPrice: 0,
+      sanitizedQuantity: 0,
       notionalUsdt: 0,
-      isValid: false,
       rejectionReason: "Filtros da exchange inválidos (tickSize/stepSize <= 0).",
     };
   }
