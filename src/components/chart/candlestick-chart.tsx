@@ -541,19 +541,28 @@ export function CandlestickChart({
     if (!controller || renderEngine === 'CANVAS_2D_FALLBACK') return;
     controller.resize(dimensions.width, dimensions.height);
     if (candles.length > 0) {
-      controller.setCandleData(candles);
+      const glCandles = candles.map((c, i) => ({
+        index: i,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume,
+        timestamp: c.time,
+      }));
+      controller.setCandleData(glCandles);
       const startIdx = Math.max(0, candles.length - visibleCandles.length);
       const endIdx = candles.length - 1;
       controller.render({
         minPrice,
         maxPrice,
-        startIdx,
-        endIdx,
-        width: dimensions.width,
-        height: dimensions.height,
+        maxVolume,
+        startIndex: startIdx,
+        endIndex: endIdx,
+        visibleCount: visibleCandles.length,
       });
     }
-  }, [candles, visibleCandles.length, minPrice, maxPrice, dimensions.width, dimensions.height, renderEngine]);
+  }, [candles, visibleCandles.length, minPrice, maxPrice, maxVolume, dimensions.width, dimensions.height, renderEngine]);
 
   // Layout calculations
   const chartWidth = dimensions.width - CHART_PADDING.left - CHART_PADDING.right;

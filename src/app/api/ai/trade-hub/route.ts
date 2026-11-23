@@ -405,8 +405,7 @@ Selecione oportunidades distintas entre os dados ao vivo fornecidos, cobrindo di
 ${ horizonInstruction }
 
 REGRAS ESTRITAS:
-        1. Retorne EXATAMENTE 5 oportunidades de trading com setups acionáveis e de alta probabilidade.
-1. Retorne até 5 oportunidades de trading que atendam 100 % ao Filtro de Entrada(se nenhuma atender, retorne[]).
+        1. Retorne até 5 oportunidades de trading que atendam 100 % ao Filtro de Entrada(se nenhuma atender, retorne[]).
 2. Cada setup DEVE ter:
         - symbol(ex: "SOLUSDT")
           - name(ex: "Solana")
@@ -417,13 +416,9 @@ REGRAS ESTRITAS:
           - strategyType("Rompimento de Volatilidade" | "Scalp em Pivot" | "Tendência Estrutural" | "Pullback em Suporte" | "Reversão à Média")
           - allocatedCapitalPct(número <= 30, recomendado <= 5.0)
           - entryPrice(número exato, próximo do preço atual)
-        - tp1(alvo de lucro parcial)
-          - tp2(alvo de lucro final)
           - tp1(alvo 1 de lucro parcial)
           - tp2(alvo 2 de lucro final com R: R >= 4.0)
           - stopLoss(nível de stop protegido além de suporte / resistência)
-          - riskReward(número exato >= 2.0, ex: 2.4)
-          - winProbability(probabilidade estimada, ex: 72)
           - riskReward(número exato >= 4.0, ex: 4.2)
           - winProbability(probabilidade estimada > 70, ex: 74)
           - technicalReason(explicação técnica estrutural clara: suportes, resistências, médias, volume)
@@ -431,7 +426,6 @@ REGRAS ESTRITAS:
           - invalidationScenario(critério objetivo de encerramento automático caso a tese seja invalidada)
           - timeframe("15m" | "1H" | "4H" | "1D")
         3. Responda APENAS com um JSON array de 5 objetos seguindo essas chaves, sem delimitadores ou texto introdutório.`;
-3. Responda APENAS com um JSON array seguindo essas chaves, sem delimitadores ou texto introdutório.`;
 
         const userPrompt = `DADOS DE MERCADO AO VIVO:\n${marketContext || 'Utilize dados médios da Binance para os pares fornecidos'}\n\nFiltro/Categoria: ${category}\nHorizonte Solicitado: ${horizon}${excludeSymbols.length > 0 ? `\nPARES EXCLUÍDOS (JÁ OPERANDO): ${excludeSymbols.join(', ')}` : ''}${decorrelateRisk ? '\nTRAVA CROSS-ASSET ATIVA: Excluir r > 0.85, priorizar DePIN/RWA e desacoplados' : ''}\nIdentifique as 5 melhores oportunidades agora com alta diversificação (100% oportunidades inexploradas):`;
 
@@ -488,10 +482,6 @@ REGRAS ESTRITAS:
           const strat = STRATEGY_PRESETS[idx % STRATEGY_PRESETS.length];
           const isFast = horizon === 'fast' ? true : horizon === 'long' ? false : idx % 2 === 0;
 
-          // Guardrail institucional Binance Spot: setups de investimento Spot sempre LONG com Stop Loss <= 2.0%
-          const slDist = isFast ? p * 0.014 : p * 0.018;
-          const tp1Dist = slDist * (isFast ? 2.1 : 2.4);
-          const tp2Dist = slDist * (isFast ? 3.1 : 3.6);
           // Guardrail institucional Binance Spot: Stop Loss <= 2.0% e R:R mínimo 1:4 (>= 4.0)
           const slDist = isFast ? p * 0.012 : p * 0.016;
           const tp1Dist = slDist * (isFast ? 2.4 : 2.6);
@@ -517,12 +507,6 @@ REGRAS ESTRITAS:
             horizonLabel: isFast ? 'Aplicação Rápida (Day / Scalp)' : idx === 1 ? 'Médio Prazo (Swing Trade)' : 'Longo Prazo (Position / Estrutural)',
             holdingPeriod: isFast ? 'Intraday (30 min a 4 horas)' : idx === 1 ? 'Swing Trade (2 a 7 dias)' : 'Longo Prazo (2 a 6 semanas)',
             strategyType: strat.name,
-            entryPrice: quantizeToBinanceTick(p, tickSize),
-            tp1: quantizeToBinanceTick(p + tp1Dist, tickSize),
-            tp2: quantizeToBinanceTick(p + tp2Dist, tickSize),
-            stopLoss: quantizeToBinanceTick(p - slDist, tickSize, 'floor'),
-            riskReward: isFast ? 2.3 : 2.6,
-            winProbability: isFast ? 75 - (idx * 2) : 73 - (idx * 2),
             allocatedCapitalPct: isFast ? 3.5 : 5.0,
             entryPrice: entryQ,
             tp1: tp1Q,
@@ -580,10 +564,8 @@ REGRAS ESTRITAS:
             const riskDist = Math.max(livePrice * 0.012, entryVal - slVal);
 
             const rawTp1 = Number(item.tp1);
-            const safeTp1 = rawTp1 > entryVal + riskDist * 1.6 ? rawTp1 : entryVal + riskDist * 2.1;
             const safeTp1 = rawTp1 > entryVal + riskDist * 2.0 ? rawTp1 : entryVal + riskDist * 2.4;
             const rawTp2 = Number(item.tp2);
-            const safeTp2 = rawTp2 > safeTp1 ? rawTp2 : entryVal + riskDist * 3.1;
             const minTp2 = entryVal + riskDist * INSTITUTIONAL_RULES.MIN_RISK_REWARD;
             const safeTp2 = rawTp2 >= minTp2 && rawTp2 > safeTp1 ? rawTp2 : Math.max(minTp2, safeTp1 * 1.01);
             const tp1Q = quantizeToBinanceTick(safeTp1, tickSize);

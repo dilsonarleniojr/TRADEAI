@@ -381,7 +381,7 @@ if (typeof self !== "undefined" && typeof (self as any).postMessage === "functio
             } catch {}
           }
           // Fallback estruturado para OrderBook quando SharedArrayBuffer não estiver disponível
-          if (!sharedDepthBuffer) {
+          if (!l2DepthBuffer) {
             (self as any).postMessage({
               type: "L2_DEPTH_UPDATE",
               symbol: sym,

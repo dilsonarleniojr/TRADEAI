@@ -86,6 +86,7 @@ export type WorkerOutboundMessage =
   | { type: "ERROR"; error: SerializedWorkerError }
   | { type: "TRANSFER_BATCH"; count: number; stride: number; buffer: ArrayBuffer; symbolMap: Record<string, number> }
   | { type: "BATCH"; tickers: NormalizedTicker[] }
+  | { type: "L2_DEPTH_UPDATE"; symbol: string; bids: [number, number][]; asks: [number, number][]; timestamp: number }
   | { type: "PEER_PORT_CONNECTED" }
   | { type: "L2_DEPTH_BUFFER_CONNECTED" }
   | { type: "PONG"; timestamp: number };

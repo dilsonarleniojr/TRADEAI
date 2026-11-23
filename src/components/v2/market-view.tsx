@@ -169,7 +169,8 @@ export function MarketView() {
   const feedAgeMs = lastMarketUpdate > 0 ? Math.max(0, feedNowMs - lastMarketUpdate) : 0;
   const isFeedStale = lastMarketUpdate > 0 && feedAgeMs > 10_000;
   const isFeedUnhealthy = isFeedDisconnected || isFeedStale;
-  const isOrderBlockedByFeed = tradingMode === "live" && isFeedUnhealthy;
+  const isOrderBlockedByFeed = isFeedUnhealthy;
+  const submittingOrderRef = useRef<boolean>(false);
 
   // Ideias da IA - filtros e estado real
   const [prazoFilter, setPrazoFilter] = useState<"all" | "fast" | "long">("all");
@@ -449,6 +450,8 @@ export function MarketView() {
     total: number;
     sellAll: boolean;
   }) => {
+    if (submittingOrderRef.current) return;
+    submittingOrderRef.current = true;
     setIsSubmittingTrade(true);
     setTradeError(null);
     try {
@@ -510,12 +513,13 @@ export function MarketView() {
         variant: "destructive",
       });
     } finally {
+      submittingOrderRef.current = false;
       setIsSubmittingTrade(false);
     }
   };
 
   const handleSubmitOrder = () => {
-    if (isSubmittingTrade) return;
+    if (isSubmittingTrade || submittingOrderRef.current || isOrderBlockedByFeed) return;
     setTradeError(null);
 
     const currentPrice = price || 0;
@@ -911,8 +915,8 @@ export function MarketView() {
             {isFeedUnhealthy && (
               <div className="p-3 rounded-[12px] bg-[#FFF4DC] dark:bg-amber-950/40 border border-[#FFE7A8] dark:border-amber-500/40 text-[#6B4300] dark:text-amber-300 text-[12px] font-medium">
                 {isFeedDisconnected
-                  ? "Feed desconectado da Binance. Envio de ordens reais bloqueado até restabelecer o stream."
-                  : `Dados de mercado obsoletos há ${Math.floor(feedAgeMs / 1000)} s (>10 s). ${tradingMode === "live" ? "Envio bloqueado em modo Real." : "Atenção ao operar em modo Simulado."}`}
+                  ? "Feed desconectado da Binance. Envio de ordens bloqueado até restabelecer o stream."
+                  : `Dados de mercado obsoletos há ${Math.floor(feedAgeMs / 1000)} s (>10 s). Envio de ordens bloqueado até normalizar.`}
               </div>
             )}
 
@@ -1410,20 +1414,51 @@ export function MarketView() {
             <AlertDialogTitle className="font-instrument-serif text-2xl text-[#0E1B2C] dark:text-white">
               Confirmar ordem na Binance (Real)
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-sm text-[#4A586A] pt-2">
-              {pendingLiveConfirm && (
-                <>
-                  Você está prestes a enviar uma ordem{" "}
-                  <strong>{pendingLiveConfirm.side === "BUY" ? "COMPRA" : "VENDA"}</strong> Spot de{" "}
-                  <strong>
-                    {pendingLiveConfirm.quantity.toFixed(6).replace(/\.?0+$/, "")}{" "}
-                    {stripQuoteAsset(pendingLiveConfirm.symbol)}
-                  </strong>{" "}
-                  ({pendingLiveConfirm.symbol}) no valor estimado de{" "}
-                  <strong>{formatCurrency(pendingLiveConfirm.total)}</strong> a mercado (≈ US${" "}
-                  {formatPrice(pendingLiveConfirm.price)}).
-                </>
-              )}
+            <AlertDialogDescription className="text-sm text-[#4A586A] pt-2 space-y-3" asChild>
+              <div>
+                {pendingLiveConfirm && (() => {
+                  const spreadPct =
+                    typeof (ticker as any)?.spreadBps === "number"
+                      ? (ticker as any).spreadBps / 100
+                      : 0;
+                  const estimatedFeeUsd = pendingLiveConfirm.total * 0.001;
+                  const highSpread = spreadPct > 0.35;
+                  return (
+                    <>
+                      <p>
+                        Você está prestes a enviar uma ordem{" "}
+                        <strong>{pendingLiveConfirm.side === "BUY" ? "COMPRA" : "VENDA"}</strong> Spot de{" "}
+                        <strong>
+                          {pendingLiveConfirm.quantity.toFixed(6).replace(/\.?0+$/, "")}{" "}
+                          {stripQuoteAsset(pendingLiveConfirm.symbol)}
+                        </strong>{" "}
+                        ({pendingLiveConfirm.symbol}) no valor estimado de{" "}
+                        <strong>{formatCurrency(pendingLiveConfirm.total)}</strong> a mercado (≈ US${" "}
+                        {formatPrice(pendingLiveConfirm.price)}).
+                      </p>
+                      <div className="p-3 rounded-xl bg-[#EEF1F5] dark:bg-white/5 text-xs space-y-1 tabular-nums">
+                        <div className="flex justify-between">
+                          <span>Spread estimado</span>
+                          <span className={highSpread ? "font-bold text-[#B42318]" : "font-semibold text-[#0E1B2C] dark:text-white"}>
+                            {spreadPct > 0 ? `${spreadPct.toFixed(3)}%` : "Normal (<0,10%)"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Taxa Taker estimada (0,10%)</span>
+                          <span className="font-semibold text-[#0E1B2C] dark:text-white">
+                            {formatCurrency(estimatedFeeUsd)}
+                          </span>
+                        </div>
+                      </div>
+                      {highSpread && (
+                        <div className="p-2.5 rounded-xl bg-[#FDF4F3] border border-[#F1C9C5] text-[#B42318] text-xs font-semibold">
+                          Alerta: Spread acima de 0,35% ({spreadPct.toFixed(2)}%). Risco elevado de slippage na execução a mercado.
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="pt-4">

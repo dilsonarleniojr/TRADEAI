@@ -17,7 +17,7 @@ import { OffscreenChartController } from "@/lib/performance/offscreen-chart-cont
 
 let globalSocket: Socket | null = null;
 let globalWorkerManager: BinanceWorkerManager | null = null;
-let activeMarketSource: "worker" | "socket" = "worker";
+let activeMarketSource: "worker" | "socket" | "none" = "none";
 let activeHookCount = 0;
 let atomicDrainRafId: number | null = null;
 
@@ -473,6 +473,7 @@ export function useBinanceStream() {
           globalSocket = null;
         }
         stopWorkerStream();
+        activeMarketSource = "none";
         feedWatchdog.stop();
         if (backgroundFlushTimer) {
           clearTimeout(backgroundFlushTimer);

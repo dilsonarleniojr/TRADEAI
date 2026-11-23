@@ -389,7 +389,7 @@ export function OrderBook({
                 ? "TEMPO REAL (WS)"
                 : l2Status === "rest-fallback"
                 ? "FALLBACK REST"
-                : "DESCONECTADO"}
+                : "STALE / OFFLINE"}
             </span>
           </div>
           <div className="flex items-center gap-1">
