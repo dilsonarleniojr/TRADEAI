@@ -190,45 +190,85 @@ function calculateMidpointHL(highs: number[], lows: number[], period: number): (
   return result;
 }
 
-const calculateVWAPWithWorker = (klines: any[]): Promise<number[]> => {
-  return new Promise((resolve) => {
-    try {
-      const worker = new Worker(new URL("../../workers/indicators.worker.ts", import.meta.url));
-      worker.onmessage = (e) => {
-        if (e.data.success) resolve(e.data.result);
-        else resolve([]);
-        worker.terminate();
-      };
-      worker.onerror = () => {
-        resolve([]);
-        worker.terminate();
-      };
-      worker.postMessage({ id: "vwap", type: "vwap", payload: { klines } });
-    } catch {
-      resolve([]);
-    }
-  });
-};
+// Singleton persistente do Web Worker de indicadores técnicos (evita recriar/destruir threads por troca de par)
+let sharedIndicatorsWorker: Worker | null = null;
+let indicatorReqCounter = 0;
+const pendingIndicatorTasks = new Map<
+  number,
+  { resolve: (val: any) => void; generation: number }
+>();
+let activeIndicatorGeneration = 0;
 
-const calculateEMARibbonWithWorker = (prices: number[]): Promise<Record<number, number[]>> => {
-  return new Promise((resolve) => {
+function getOrCreateIndicatorsWorker(): Worker | null {
+  if (typeof window === 'undefined' || typeof Worker === 'undefined') return null;
+  if (!sharedIndicatorsWorker) {
     try {
-      const worker = new Worker(new URL("../../workers/indicators.worker.ts", import.meta.url));
-      worker.onmessage = (e) => {
-        if (e.data.success) resolve(e.data.result);
-        else resolve({});
-        worker.terminate();
+      sharedIndicatorsWorker = new Worker(
+        new URL('../../workers/indicators.worker.ts', import.meta.url)
+      );
+      sharedIndicatorsWorker.onmessage = (e: MessageEvent) => {
+        const { id, success, result } = e.data || {};
+        const pending = pendingIndicatorTasks.get(id);
+        if (!pending) return;
+        pendingIndicatorTasks.delete(id);
+        if (pending.generation !== activeIndicatorGeneration) {
+          pending.resolve(null);
+          return;
+        }
+        pending.resolve(success ? result : null);
       };
-      worker.onerror = () => {
-        resolve({});
-        worker.terminate();
+      sharedIndicatorsWorker.onerror = () => {
+        for (const [id, pending] of pendingIndicatorTasks.entries()) {
+          pending.resolve(null);
+          pendingIndicatorTasks.delete(id);
+        }
       };
-      worker.postMessage({ id: "ribbon", type: "ema_ribbon", payload: { prices } });
     } catch {
-      resolve({});
+      sharedIndicatorsWorker = null;
+    }
+  }
+  return sharedIndicatorsWorker;
+}
+
+export function terminateIndicatorsWorkerSingleton(): void {
+  activeIndicatorGeneration++;
+  for (const [id, pending] of pendingIndicatorTasks.entries()) {
+    pending.resolve(null);
+    pendingIndicatorTasks.delete(id);
+  }
+  if (sharedIndicatorsWorker) {
+    sharedIndicatorsWorker.terminate();
+    sharedIndicatorsWorker = null;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', terminateIndicatorsWorkerSingleton);
+}
+
+function cancelPendingIndicatorTasks(): number {
+  activeIndicatorGeneration++;
+  for (const [id, pending] of pendingIndicatorTasks.entries()) {
+    pending.resolve(null);
+    pendingIndicatorTasks.delete(id);
+  }
+  return activeIndicatorGeneration;
+}
+
+function runIndicatorTask<T>(type: string, payload: any, generation: number): Promise<T | null> {
+  const worker = getOrCreateIndicatorsWorker();
+  if (!worker) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const id = ++indicatorReqCounter;
+    pendingIndicatorTasks.set(id, { resolve, generation });
+    try {
+      worker.postMessage({ id, type, payload });
+    } catch {
+      pendingIndicatorTasks.delete(id);
+      resolve(null);
     }
   });
-};
+}
 
 export function CandlestickChart({
   symbol,
@@ -391,43 +431,72 @@ export function CandlestickChart({
       const ema12 = calculateEMA(closes, 12);
       const ema26 = calculateEMA(closes, 26);
 
-      // Calculate Bollinger Bands (20-period SMA + 2 standard deviations)
-      const bbPeriod = 20;
-      const bbMultiplier = 2;
-      for (let i = 0; i < processed.length; i++) {
-        if (i >= bbPeriod - 1) {
-          const slice = closes.slice(i - bbPeriod + 1, i + 1);
-          const mean = slice.reduce((a, b) => a + b, 0) / bbPeriod;
-          const variance = slice.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / bbPeriod;
-          const stdDev = Math.sqrt(variance);
-          processed[i].bbUpper = mean + bbMultiplier * stdDev;
-          processed[i].bbMiddle = mean;
-          processed[i].bbLower = mean - bbMultiplier * stdDev;
-        }
-      }
-
-      // Calculate Ichimoku Cloud
-      const tenkanSen = calculateMidpointHL(highs, lows, 9);   // Conversion Line
-      const kijunSen = calculateMidpointHL(highs, lows, 26);   // Base Line
-      const senkouSpanB = calculateMidpointHL(highs, lows, 52); // Leading Span B
-
-      for (let i = 0; i < processed.length; i++) {
-        processed[i].tenkanSen = tenkanSen[i];
-        processed[i].kijunSen = kijunSen[i];
-
-        // Senkou Span A = (Tenkan + Kijun) / 2, plotted 26 periods ahead
-        if (tenkanSen[i] !== undefined && kijunSen[i] !== undefined) {
-          processed[i].senkouSpanA = (tenkanSen[i]! + kijunSen[i]!) / 2;
-        }
-
-        // Senkou Span B = (52-period high + 52-period low) / 2, plotted 26 periods ahead
-        processed[i].senkouSpanB = senkouSpanB[i];
-      }
-
-      const [vwapData, ribbonData] = await Promise.all([
-        calculateVWAPWithWorker(processed),
-        calculateEMARibbonWithWorker(closes),
+      // Offload de indicadores pesados (Bollinger, Ichimoku, VWAP, EMA Ribbon) para Web Worker persistente
+      const generation = cancelPendingIndicatorTasks();
+      const [bbWorkerData, ichimokuWorkerData, vwapData, ribbonData] = await Promise.all([
+        runIndicatorTask<{ middle: number[]; upper: number[]; lower: number[] }>(
+          'bollinger',
+          { prices: closes, period: 20, multiplier: 2 },
+          generation
+        ),
+        runIndicatorTask<{
+          tenkanSen: (number | undefined)[];
+          kijunSen: (number | undefined)[];
+          senkouSpanA: (number | undefined)[];
+          senkouSpanB: (number | undefined)[];
+        }>('ichimoku', { highs, lows }, generation),
+        runIndicatorTask<number[]>('vwap', { klines: processed }, generation),
+        runIndicatorTask<Record<number, number[]>>('ema_ribbon', { prices: closes }, generation),
       ]);
+
+      // Se uma nova requisição foi iniciada durante o cálculo, descarta resultado obsoleto
+      if (generation !== activeIndicatorGeneration) return;
+
+      // Fallback síncrono seguro apenas se o ambiente não suportar Worker (ou retorno nulo)
+      if (bbWorkerData) {
+        for (let i = 0; i < processed.length; i++) {
+          if (i >= 19) {
+            processed[i].bbUpper = bbWorkerData.upper[i];
+            processed[i].bbMiddle = bbWorkerData.middle[i];
+            processed[i].bbLower = bbWorkerData.lower[i];
+          }
+        }
+      } else {
+        const bbPeriod = 20;
+        const bbMultiplier = 2;
+        for (let i = 0; i < processed.length; i++) {
+          if (i >= bbPeriod - 1) {
+            const slice = closes.slice(i - bbPeriod + 1, i + 1);
+            const mean = slice.reduce((a, b) => a + b, 0) / bbPeriod;
+            const variance = slice.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / bbPeriod;
+            const stdDev = Math.sqrt(variance);
+            processed[i].bbUpper = mean + bbMultiplier * stdDev;
+            processed[i].bbMiddle = mean;
+            processed[i].bbLower = mean - bbMultiplier * stdDev;
+          }
+        }
+      }
+
+      if (ichimokuWorkerData) {
+        for (let i = 0; i < processed.length; i++) {
+          processed[i].tenkanSen = ichimokuWorkerData.tenkanSen[i];
+          processed[i].kijunSen = ichimokuWorkerData.kijunSen[i];
+          processed[i].senkouSpanA = ichimokuWorkerData.senkouSpanA[i];
+          processed[i].senkouSpanB = ichimokuWorkerData.senkouSpanB[i];
+        }
+      } else {
+        const tenkanSen = calculateMidpointHL(highs, lows, 9);
+        const kijunSen = calculateMidpointHL(highs, lows, 26);
+        const senkouSpanB = calculateMidpointHL(highs, lows, 52);
+        for (let i = 0; i < processed.length; i++) {
+          processed[i].tenkanSen = tenkanSen[i];
+          processed[i].kijunSen = kijunSen[i];
+          if (tenkanSen[i] !== undefined && kijunSen[i] !== undefined) {
+            processed[i].senkouSpanA = (tenkanSen[i]! + kijunSen[i]!) / 2;
+          }
+          processed[i].senkouSpanB = senkouSpanB[i];
+        }
+      }
 
       processed.forEach((c, i) => {
         c.sma20 = sma20[i];

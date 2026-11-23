@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { useDataProvider } from "@/lib/data-provider";
 import { AppSwitch } from "./atoms";
@@ -11,6 +11,9 @@ import { OrderBook } from "@/components/chart/order-book";
 import { ChatSection } from "@/components/ai/chat-section";
 import { TradeHubSection } from "@/components/trade-hub";
 import { useToast } from "@/hooks/use-toast";
+import { useTradeAINativeSync } from "@/hooks/use-tradeai-native-sync";
+import { useTradeRecoveryOnRestore } from "@/hooks/use-trade-recovery-on-restore";
+import { getGlobalWorkerManager } from "@/hooks/use-binance-stream";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -171,6 +174,47 @@ export function MarketView() {
   const isFeedUnhealthy = isFeedDisconnected || isFeedStale;
   const isOrderBlockedByFeed = isFeedUnhealthy;
   const submittingOrderRef = useRef<boolean>(false);
+
+  const hasBlockingModal = Boolean(pendingLiveConfirm);
+
+  useTradeAINativeSync({
+    tradingMode,
+    selectedSymbol: (selectedSymbol || "BTCUSDT").toUpperCase(),
+    hasBlockingModal,
+    isFeedStale: isFeedUnhealthy,
+    lastMarketUpdateAt: lastMarketUpdate > 0 ? lastMarketUpdate : null,
+    staleThresholdMs: 10_000,
+  });
+
+  const handleReconnectStream = useCallback(
+    (sym: string) => {
+      getGlobalWorkerManager()?.subscribe([sym]);
+      void syncBinanceCoins();
+    },
+    [syncBinanceCoins]
+  );
+
+  const handleRefreshOrdersAndBalances = useCallback(
+    async (signal: AbortSignal) => {
+      const res = await fetch(`/api/account?mode=${tradingMode}`, {
+        cache: "no-store",
+        signal,
+      });
+      if (!res.ok) return;
+      const json = await res.json().catch(() => null);
+      if (json?.success && json?.data) {
+        setAccount(json.data);
+      }
+    },
+    [tradingMode, setAccount]
+  );
+
+  useTradeRecoveryOnRestore({
+    selectedSymbol: (selectedSymbol || "BTCUSDT").toUpperCase(),
+    isStreamConnected: !isFeedUnhealthy,
+    reconnectStream: handleReconnectStream,
+    refreshOpenOrdersAndBalances: handleRefreshOrdersAndBalances,
+  });
 
   // Ideias da IA - filtros e estado real
   const [prazoFilter, setPrazoFilter] = useState<"all" | "fast" | "long">("all");
@@ -1417,10 +1461,17 @@ export function MarketView() {
             <AlertDialogDescription className="text-sm text-[#4A586A] pt-2 space-y-3" asChild>
               <div>
                 {pendingLiveConfirm && (() => {
+                  const bidPrice = (ticker as any)?.bidPrice as number | undefined;
+                  const askPrice = (ticker as any)?.askPrice as number | undefined;
+                  const hasQuoteSpread = typeof bidPrice === "number" && typeof askPrice === "number" && bidPrice > 0 && askPrice > 0;
+                  const spreadAbs = hasQuoteSpread ? Math.max(0, askPrice - bidPrice) : 0;
                   const spreadPct =
-                    typeof (ticker as any)?.spreadBps === "number"
+                    typeof (ticker as any)?.spreadBps === "number" && (ticker as any).spreadBps > 0
                       ? (ticker as any).spreadBps / 100
+                      : hasQuoteSpread
+                      ? (spreadAbs / ((bidPrice + askPrice) / 2)) * 100
                       : 0;
+                  const estimatedSlippagePct = spreadPct > 0 ? Math.max(0.02, spreadPct * 0.5) : 0.05;
                   const estimatedFeeUsd = pendingLiveConfirm.total * 0.001;
                   const highSpread = spreadPct > 0.35;
                   return (
@@ -1436,15 +1487,23 @@ export function MarketView() {
                         <strong>{formatCurrency(pendingLiveConfirm.total)}</strong> a mercado (≈ US${" "}
                         {formatPrice(pendingLiveConfirm.price)}).
                       </p>
-                      <div className="p-3 rounded-xl bg-[#EEF1F5] dark:bg-white/5 text-xs space-y-1 tabular-nums">
+                      <div className="p-3 rounded-xl bg-[#EEF1F5] dark:bg-white/5 text-xs space-y-1.5 tabular-nums">
                         <div className="flex justify-between">
-                          <span>Spread estimado</span>
+                          <span>Spread atual</span>
                           <span className={highSpread ? "font-bold text-[#B42318]" : "font-semibold text-[#0E1B2C] dark:text-white"}>
-                            {spreadPct > 0 ? `${spreadPct.toFixed(3)}%` : "Normal (<0,10%)"}
+                            {spreadPct > 0
+                              ? `${hasQuoteSpread ? `$${formatPrice(spreadAbs)} · ` : ""}${spreadPct.toFixed(3)}%`
+                              : "Indisponível (aguardando bookTicker)"}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span>Taxa Taker estimada (0,10%)</span>
+                          <span>Slippage estimado (MARKET)</span>
+                          <span className="font-semibold text-[#0E1B2C] dark:text-white">
+                            ~{estimatedSlippagePct.toFixed(3)}% ({formatCurrency((pendingLiveConfirm.total * estimatedSlippagePct) / 100)})
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Taxa estimada (Taker 0,10% padrão)</span>
                           <span className="font-semibold text-[#0E1B2C] dark:text-white">
                             {formatCurrency(estimatedFeeUsd)}
                           </span>

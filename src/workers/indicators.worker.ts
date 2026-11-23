@@ -233,6 +233,35 @@ function calculateEMARibbon(prices: number[]): Record<number, number[]> {
   return ribbon;
 }
 
+function calculateMidpointHL(highs: number[], lows: number[], period: number): (number | undefined)[] {
+  const result: (number | undefined)[] = [];
+  for (let i = 0; i < highs.length; i++) {
+    if (i < period - 1) {
+      result.push(undefined);
+    } else {
+      let periodHigh = -Infinity;
+      let periodLow = Infinity;
+      for (let j = i - period + 1; j <= i; j++) {
+        if (highs[j] > periodHigh) periodHigh = highs[j];
+        if (lows[j] < periodLow) periodLow = lows[j];
+      }
+      result.push((periodHigh + periodLow) / 2);
+    }
+  }
+  return result;
+}
+
+function calculateIchimoku(highs: number[], lows: number[]) {
+  const tenkanSen = calculateMidpointHL(highs, lows, 9);
+  const kijunSen = calculateMidpointHL(highs, lows, 26);
+  const senkouSpanB = calculateMidpointHL(highs, lows, 52);
+  const senkouSpanA = tenkanSen.map((t, i) => {
+    const k = kijunSen[i];
+    return t !== undefined && k !== undefined ? (t + k) / 2 : undefined;
+  });
+  return { tenkanSen, kijunSen, senkouSpanA, senkouSpanB };
+}
+
 // Handle message inputs
 self.onmessage = (e: MessageEvent) => {
   const { id, type, payload } = e.data;
@@ -284,6 +313,12 @@ self.onmessage = (e: MessageEvent) => {
       case "ema_ribbon": {
         const { prices } = payload;
         const result = calculateEMARibbon(prices);
+        self.postMessage({ id, success: true, result });
+        break;
+      }
+      case "ichimoku": {
+        const { highs, lows } = payload;
+        const result = calculateIchimoku(highs, lows);
         self.postMessage({ id, success: true, result });
         break;
       }

@@ -33,11 +33,7 @@ const vSyncCoalescer = new TickCoalescer((batchMap) => {
   for (const [sym, ticker] of batchMap.entries()) {
     batch[sym] = ticker as TickerData;
   }
-  const store = useCryptoStore.getState();
-  store.updateTickersBatch(batch);
-  const updatedStore = useCryptoStore.getState();
-  updatedStore.updateBotPnls(updatedStore.tickers);
-  updatedStore.updateBotPositionsRealtime(updatedStore.tickers);
+  useCryptoStore.getState().applyRealtimeFrameBatch(batch);
 });
 
 function flushBackgroundTickers() {
@@ -53,11 +49,7 @@ function flushBackgroundTickers() {
   }
   backgroundTickerBuffer.clear();
 
-  const store = useCryptoStore.getState();
-  store.updateTickersBatch(batch);
-  const updatedStore = useCryptoStore.getState();
-  updatedStore.updateBotPnls(updatedStore.tickers);
-  updatedStore.updateBotPositionsRealtime(updatedStore.tickers);
+  useCryptoStore.getState().applyRealtimeFrameBatch(batch);
 }
 
 function handleIncomingTicker(sym: string, ticker: TickerData) {
@@ -384,12 +376,16 @@ export function useBinanceStream() {
       );
 
       socket.on("balance-update", (data: any) => {
-        console.log("[BinanceStream] Balance updated via Socket.IO:", data);
+        if (process.env.NODE_ENV === "development") {
+          console.log("[BinanceStream] Balance updated via Socket.IO:", data);
+        }
         useCryptoStore.getState().setAccount(data);
       });
 
       socket.on("trade-executed", (data: any) => {
-        console.log("[BinanceStream] Trade received via Socket.IO:", data);
+        if (process.env.NODE_ENV === "development") {
+          console.log("[BinanceStream] Trade received via Socket.IO:", data);
+        }
         const store = useCryptoStore.getState();
         const exists = store.trades.some((t) => t.id === data.id);
         if (!exists) {
@@ -409,7 +405,9 @@ export function useBinanceStream() {
       });
 
       socket.on("portfolio-update", (data: any) => {
-        console.log("[BinanceStream] Portfolio updated via Socket.IO:", data);
+        if (process.env.NODE_ENV === "development") {
+          console.log("[BinanceStream] Portfolio updated via Socket.IO:", data);
+        }
         useCryptoStore.getState().setAccount(data);
       });
 
