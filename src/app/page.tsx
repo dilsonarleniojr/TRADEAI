@@ -6,13 +6,26 @@ import { DataProvider, useDataProvider } from "@/lib/data-provider";
 import { useBinanceData } from "@/hooks/use-binance-data";
 import { useBinanceStream } from "@/hooks/use-binance-stream";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import dynamic from "next/dynamic";
 import { AppShell } from "@/components/v2/app-shell";
 import { HomeView } from "@/components/v2/home-view";
-import { MarketView } from "@/components/v2/market-view";
-import { BotView } from "@/components/v2/bot-view";
-import { PortfolioView } from "@/components/v2/portfolio-view";
-import { LearnView } from "@/components/v2/learn-view";
-import { CockpitView } from "@/components/v2/cockpit-view";
+import { ViewSkeleton } from "@/components/v2/view-skeleton";
+
+const MarketView = dynamic(() => import("@/components/v2/market-view").then((m) => m.MarketView), {
+  loading: () => <ViewSkeleton label="Gráfico e Mercado" />,
+});
+const BotView = dynamic(() => import("@/components/v2/bot-view").then((m) => m.BotView), {
+  loading: () => <ViewSkeleton label="Frota de Robôs" />,
+});
+const PortfolioView = dynamic(() => import("@/components/v2/portfolio-view").then((m) => m.PortfolioView), {
+  loading: () => <ViewSkeleton label="Carteira e Diário" />,
+});
+const LearnView = dynamic(() => import("@/components/v2/learn-view").then((m) => m.LearnView), {
+  loading: () => <ViewSkeleton label="Academia e Backtesting" />,
+});
+const CockpitView = dynamic(() => import("@/components/v2/cockpit-view").then((m) => m.CockpitView), {
+  loading: () => <ViewSkeleton label="Cockpit Institucional" />,
+});
 import { ShortcutsHint } from "@/components/dashboard/shortcuts-hint";
 import { MobileLayout } from "@/components/mobile/mobile-layout";
 import { AlertNotification } from "@/components/dashboard/alert-notification";
