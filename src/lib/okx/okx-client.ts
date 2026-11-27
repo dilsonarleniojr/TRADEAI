@@ -1,6 +1,6 @@
 import crypto from "crypto";
-import Decimal from "decimal.js";
 import type { OkxCredentials } from "./okx-session";
+import { formatStepExact, formatTickExact } from "@/lib/format-step";
 
 export const OKX_BASE_URL = "https://www.okx.com";
 const OKX_HOST = "www.okx.com";
@@ -93,20 +93,10 @@ export function formatOkxStep(
   stepStr: string,
   rounding: "floor" | "round" = "floor"
 ): string {
-  try {
-    const dVal = new Decimal(value);
-    const dStep = new Decimal(stepStr);
-    if (!dVal.isFinite() || dVal.lte(0)) return "0";
-    if (!dStep.isFinite() || dStep.lte(0)) return dVal.toString();
-
-    const precision = Math.max(0, dStep.decimalPlaces());
-    const divided = dVal.div(dStep);
-    const steps = rounding === "floor" ? divided.floor() : divided.round();
-    const result = steps.mul(dStep);
-    return result.toFixed(precision);
-  } catch {
-    return String(value);
+  if (rounding === "round") {
+    return formatTickExact(value, stepStr);
   }
+  return formatStepExact(value, stepStr);
 }
 
 interface OkxHttpResponse {

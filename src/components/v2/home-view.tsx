@@ -6,6 +6,7 @@ import { useDataProvider } from "@/lib/data-provider";
 import { AppSwitch } from "./atoms";
 import { ExchangeBadge } from "@/components/bot/exchange-badge";
 import { formatCurrency, formatPercent } from "@/lib/format";
+import { useUnifiedPortfolioMetrics } from "@/hooks/use-unified-portfolio-metrics";
 import { ResponsiveContainer, AreaChart, Area, XAxis } from "recharts";
 import { useShallow } from "zustand/react/shallow";
 
@@ -59,14 +60,15 @@ export function HomeView() {
     };
   }, []);
 
-  // Métricas reais de patrimônio do store
-  const totalBalance = portfolio?.totalValue ?? 0;
-  const inCash = portfolio?.cashBalance ?? 0;
-  const invested = portfolio?.assetBalance ?? 0;
-  const executedTrades = trades.length;
+  // Métricas canônicas unificadas
+  const metrics = useUnifiedPortfolioMetrics();
+  const totalBalance = metrics.totalBalance;
+  const inCash = metrics.cashBalance;
+  const invested = metrics.allocatedBalance;
+  const executedTrades = metrics.totalOrders;
 
-  const dailyGainPct = portfolio?.pnlPercent ?? 0;
-  const dailyGainUsd = portfolio?.pnl ?? 0;
+  const dailyGainPct = metrics.netPnlPercent;
+  const dailyGainUsd = metrics.netPnl;
   const isGain = dailyGainUsd >= 0;
   const cashPct = totalBalance > 0 ? Math.min(100, Math.max(0, (inCash / totalBalance) * 100)) : 100;
 

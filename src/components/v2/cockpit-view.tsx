@@ -13,6 +13,7 @@ import { BotRiskCockpit } from "@/components/bot/bot-risk-cockpit";
 import { OrphanOrdersDialog } from "@/components/bot/orphan-orders-dialog";
 import { getCircuitBreakerStatus } from "@/lib/bot/multi-bot-engine";
 import { calculateRiskMetrics } from "@/lib/bot/risk-metrics";
+import { useUnifiedPortfolioMetrics } from "@/hooks/use-unified-portfolio-metrics";
 import type { SystemLatencySnapshot } from "@/lib/bot/latency-telemetry";
 import { ArrowLeft, Gauge, RefreshCw, ShieldCheck } from "lucide-react";
 
@@ -73,17 +74,13 @@ export function CockpitView() {
     [trades, portfolio?.totalValue]
   );
 
+  const unifiedMetrics = useUnifiedPortfolioMetrics();
   const cbStatus = getCircuitBreakerStatus();
 
-  const totalRealizedPnl = useMemo(
-    () => bots.reduce((sum, b) => sum + (b.stats?.realizedPnl ?? 0), 0),
-    [bots]
-  );
-  const totalUnrealizedPnl = useMemo(
-    () => bots.reduce((sum, b) => sum + (b.position?.unrealizedPnl ?? 0), 0),
-    [bots]
-  );
-  const netPnl = totalRealizedPnl + totalUnrealizedPnl;
+  // Métricas canônicas alinhadas com Painel, Diário e Barra Inferior
+  const totalRealizedPnl = unifiedMetrics.realizedPnl;
+  const totalUnrealizedPnl = unifiedMetrics.unrealizedPnl;
+  const netPnl = unifiedMetrics.netPnl;
 
   const estimatedFees = useMemo(
     () =>

@@ -2,7 +2,7 @@
 
 import { useCryptoStore } from "@/lib/store";
 import { formatCurrency, formatPercent } from "@/lib/format";
-import { selectPortfolioMetrics } from "@/lib/selectors/portfolioMetrics";
+import { useUnifiedPortfolioMetrics } from "@/hooks/use-unified-portfolio-metrics";
 import { Wallet, TrendingUp, TrendingDown, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -10,27 +10,7 @@ import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 export function Footer() {
-  const { portfolio, trades, tradingMode } = useCryptoStore(
-    useShallow((s) => ({
-      portfolio: s.portfolio,
-      trades: s.trades,
-      tradingMode: s.tradingMode,
-    }))
-  );
-
-  const metrics = useMemo(() => {
-    return selectPortfolioMetrics(
-      {
-        totalBalance: portfolio.totalValue,
-        cashBalance: portfolio.cashBalance,
-        positions: portfolio.positions,
-        initialBalance: 10000,
-      },
-      trades,
-      { mode: tradingMode }
-    );
-  }, [portfolio, trades, tradingMode]);
-
+  const metrics = useUnifiedPortfolioMetrics();
   const isPositive = metrics.netPnl >= 0;
 
   return (

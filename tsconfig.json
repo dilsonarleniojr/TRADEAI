@@ -41,6 +41,7 @@
     "node_modules",
     "examples",
     "mini-services",
+    "scratch",
     ".next/dev/types",
     "tests"
   ]

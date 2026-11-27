@@ -5,8 +5,8 @@ import { getOkxCredentials } from '@/lib/okx/okx-session';
 import { executeOkxOrder, getOkxOrderStatus, cancelOkxOrder } from '@/lib/okx/okx-client';
 import { guardApiRequest } from '@/lib/auth/request-guard';
 import crypto from 'crypto';
-import Decimal from 'decimal.js';
 import { memoryCache } from '@/lib/cache/memory-cache';
+import { formatStepExact, formatTickExact } from '@/lib/format-step';
 
 // Limites de segurança para ordens em dinheiro real (em USDT). Configuráveis por variável de ambiente.
 const MAX_ORDER_USD = Number(process.env.MAX_LIVE_ORDER_USD) || 500;
@@ -20,29 +20,11 @@ let lastTimeSync = 0;
  * Utilitários decimais de precisão exata para evitar discrepâncias de arredondamento IEEE 754
  */
 function formatStepDecimal(value: number | string, stepSize: number | string): string {
-  try {
-    const dVal = new Decimal(value);
-    const dStep = new Decimal(stepSize);
-    if (dStep.isZero()) return dVal.toString();
-    const precision = Math.max(0, -Math.floor(Math.log10(dStep.toNumber())));
-    const rounded = dVal.div(dStep).floor().mul(dStep);
-    return rounded.toFixed(precision);
-  } catch {
-    return String(value);
-  }
+  return formatStepExact(value, stepSize);
 }
 
 function formatTickDecimal(price: number | string, tickSize: number | string): string {
-  try {
-    const dPrice = new Decimal(price);
-    const dTick = new Decimal(tickSize);
-    if (dTick.isZero()) return dPrice.toString();
-    const precision = Math.max(0, -Math.floor(Math.log10(dTick.toNumber())));
-    const rounded = dPrice.div(dTick).round().mul(dTick);
-    return rounded.toFixed(precision);
-  } catch {
-    return String(price);
-  }
+  return formatTickExact(price, tickSize);
 }
 
 async function getSynchronizedTimestamp(baseUrl: string, force = false): Promise<number> {
