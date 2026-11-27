@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "634248740576",
+    "project_id": "tradeai-a890b",
+    "storage_bucket": "tradeai-a890b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:634248740576:android:24eed02cc3fe7444449a85",
+        "android_client_info": {
+          "package_name": "com.vcs.tradeai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDfK3TmlBM6qK1-ttYFClPk8J_sirkLnxY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

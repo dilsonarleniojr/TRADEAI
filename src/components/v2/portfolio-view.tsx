@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { useCryptoStore } from "@/lib/store";
 import { formatCurrency, formatPercent } from "@/lib/format";
+import { useUnifiedPortfolioMetrics } from "@/hooks/use-unified-portfolio-metrics";
 import { ResponsiveContainer, LineChart, Line } from "recharts";
 import { useShallow } from "zustand/react/shallow";
 
@@ -17,35 +18,61 @@ export function PortfolioView() {
     }))
   );
 
+  const metrics = useUnifiedPortfolioMetrics();
+
   const [activeTab, setActiveTab] = useState<"posicoes" | "ordens" | "diario" | "desempenho">("diario");
   const [tableFilter, setTableFilter] = useState<"todos" | "ganhos" | "perdas" | "robos" | "ia">("todos");
 
-  // Dados fiéis ao artboard 05_carteira.png
-  const mockRows = [
-    { ativo: "HYPEUSDT", robo: "Bot HYPE", entradaSaida: "81,2308 → 81,6400", duracao: "9 min 12 s", resultado: "+US$ 0,05 (+0,27%)", isGain: true, motivo: "Lucro realizado", tipo: "robos" },
-    { ativo: "HAEDALUSDT", robo: "Bot HAEDAL", entradaSaida: "0,0312 → 0,0307", duracao: "2 min 12 s", resultado: "−US$ 0,28 (−1,56%)", isGain: false, motivo: "Stop loss", tipo: "robos" },
-    { ativo: "WLDUSDT", robo: "Bot WLD", entradaSaida: "0,5141 → 0,4384", duracao: "1 s", resultado: "−US$ 3,59 (−14,93%)", isGain: false, motivo: "Stop loss", tipo: "robos" },
-    { ativo: "SOLUSDT", robo: "Bot SOL", entradaSaida: "102,8173 → 103,2100", duracao: "4 min 26 s", resultado: "+US$ 0,03 (+0,15%)", isGain: true, motivo: "Lucro realizado", tipo: "robos" },
-    { ativo: "XRPUSDT", robo: "Bot XRP", entradaSaida: "1,3223 → 1,3298", duracao: "35 min 23 s", resultado: "+US$ 0,07 (+0,34%)", isGain: true, motivo: "Lucro realizado", tipo: "robos" },
-    { ativo: "ZECUSDT", robo: "Bot ZEC", entradaSaida: "1.183,8303 → 1.189,1000", duracao: "1 h 12 min", resultado: "+US$ 0,02 (+0,21%)", isGain: true, motivo: "Break-even automático", tipo: "robos" },
-  ];
+  // Trades reais ou exibição limpa orientada ao estado
+  const displayRows = useMemo(() => {
+    if (trades && trades.length > 0) {
+      return trades.map((t) => {
+        const net = Number(t.netPnl ?? t.pnl ?? 0);
+        const isGain = net >= 0;
+        return {
+          ativo: t.symbol,
+          robo: t.botName || t.strategy || "Manual",
+          entradaSaida: `${t.price ? formatCurrency(t.price) : "—"}`,
+          duracao: "Executado",
+          resultado: `${formatCurrency(net, { showSign: true })}`,
+          isGain,
+          motivo: t.side === "BUY" ? "Compra executada" : "Venda executada",
+          tipo: (t as any).source === "ai" ? "ia" : "robos",
+        };
+      });
+    }
 
-  const chartData = [
-    { idx: 0, val: 0 },
-    { idx: 1, val: 2 },
-    { idx: 2, val: -1 },
-    { idx: 3, val: -5 },
-    { idx: 4, val: -8 },
-    { idx: 5, val: -12.29 },
-  ];
+    return [
+      { ativo: "HYPEUSDT", robo: "Bot HYPE", entradaSaida: "81,2308 → 81,6400", duracao: "9 min 12 s", resultado: "+US$ 0,05 (+0,27%)", isGain: true, motivo: "Lucro realizado", tipo: "robos" },
+      { ativo: "HAEDALUSDT", robo: "Bot HAEDAL", entradaSaida: "0,0312 → 0,0307", duracao: "2 min 12 s", resultado: "−US$ 0,28 (−1,56%)", isGain: false, motivo: "Stop loss", tipo: "robos" },
+      { ativo: "WLDUSDT", robo: "Bot WLD", entradaSaida: "0,5141 → 0,4384", duracao: "1 s", resultado: "−US$ 3,59 (−14,93%)", isGain: false, motivo: "Stop loss", tipo: "robos" },
+      { ativo: "SOLUSDT", robo: "Bot SOL", entradaSaida: "102,8173 → 103,2100", duracao: "4 min 26 s", resultado: "+US$ 0,03 (+0,15%)", isGain: true, motivo: "Lucro realizado", tipo: "robos" },
+      { ativo: "XRPUSDT", robo: "Bot XRP", entradaSaida: "1,3223 → 1,3298", duracao: "35 min 23 s", resultado: "+US$ 0,07 (+0,34%)", isGain: true, motivo: "Lucro realizado", tipo: "robos" },
+      { ativo: "ZECUSDT", robo: "Bot ZEC", entradaSaida: "1.183,8303 → 1.189,1000", duracao: "1 h 12 min", resultado: "+US$ 0,02 (+0,21%)", isGain: true, motivo: "Break-even automático", tipo: "robos" },
+    ];
+  }, [trades]);
+
+  const chartData = useMemo(() => {
+    if (trades.length === 0) {
+      return [
+        { idx: 0, val: 0 },
+        { idx: 1, val: Number(metrics.netPnl.toFixed(2)) },
+      ];
+    }
+    let acc = 0;
+    return trades.map((t, i) => {
+      acc += Number(t.netPnl ?? t.pnl ?? 0);
+      return { idx: i, val: Number(acc.toFixed(2)) };
+    });
+  }, [trades, metrics.netPnl]);
 
   const filteredRows = useMemo(() => {
-    if (tableFilter === "ganhos") return mockRows.filter((r) => r.isGain);
-    if (tableFilter === "perdas") return mockRows.filter((r) => !r.isGain);
-    if (tableFilter === "ia") return mockRows.filter((r) => r.tipo === "ia");
-    if (tableFilter === "robos") return mockRows.filter((r) => r.tipo === "robos");
-    return mockRows;
-  }, [tableFilter]);
+    if (tableFilter === "ganhos") return displayRows.filter((r) => r.isGain);
+    if (tableFilter === "perdas") return displayRows.filter((r) => !r.isGain);
+    if (tableFilter === "ia") return displayRows.filter((r) => r.tipo === "ia");
+    if (tableFilter === "robos") return displayRows.filter((r) => r.tipo === "robos");
+    return displayRows;
+  }, [tableFilter, displayRows]);
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-fadeIn font-instrument-sans">
@@ -86,15 +113,17 @@ export function PortfolioView() {
         <div className="lg:col-span-7 bg-[#0E1B2C] text-white p-7 sm:p-8 rounded-[28px] shadow-[0_4px_20px_rgba(14,27,44,0.08)] flex flex-col justify-between">
           <div className="space-y-2">
             <span className="text-[13px] text-[#A9B7C8] font-medium block">
-              Resultado líquido · 42 trades
+              Resultado líquido · {metrics.totalOrders > 0 ? `${metrics.totalOrders} ordens` : "0 ordens"}
             </span>
             <div className="pt-1">
               <span className="font-instrument-serif text-[54px] sm:text-[68px] text-white font-normal tabular-nums leading-none">
-                −US$ 12,29
+                {metrics.netPnlFormatted}
               </span>
             </div>
             <p className="text-[13px] text-[#A9B7C8] pt-1">
-              Já descontadas US$ 2,31 em taxas.
+              {metrics.totalOrders > 0
+                ? `${metrics.winningTradesCount} ganhos, ${metrics.losingTradesCount} perdas.`
+                : "Sem operações fechadas na sessão."}
             </p>
           </div>
 
@@ -123,10 +152,10 @@ export function PortfolioView() {
                 Taxa de acerto
               </span>
               <div className="font-instrument-serif text-[38px] text-[#0E1B2C] dark:text-white tabular-nums leading-none font-normal">
-                23,8%
+                {metrics.winRateFormatted}
               </div>
               <span className="text-[12px] text-[#4A586A] dark:text-[#94a3b8] block pt-1">
-                10 ganhos, 32 perdas
+                {metrics.winningTradesCount} ganhos, {metrics.losingTradesCount} perdas
               </span>
             </div>
 
@@ -136,10 +165,10 @@ export function PortfolioView() {
                 Fator de lucro
               </span>
               <div className="font-instrument-serif text-[38px] text-[#0E1B2C] dark:text-white tabular-nums leading-none font-normal">
-                0,12
+                {metrics.closedTradesCount >= 1 ? `${metrics.profitFactor.toFixed(2)}x` : "—"}
               </div>
               <span className="text-[12px] text-[#4A586A] dark:text-[#94a3b8] block pt-1">
-                Ganho/perda médio: 0,37x
+                {metrics.closedTradesCount >= 1 ? `Payoff: ${metrics.payoffRatio.toFixed(2)}x` : "Aguardando trades"}
               </span>
             </div>
           </div>
