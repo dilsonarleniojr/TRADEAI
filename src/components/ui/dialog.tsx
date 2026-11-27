@@ -66,6 +66,26 @@ function DialogContent({
 
   const hasCustomMaxWidth = className && /(^|\s)(sm:)?max-w-/.test(className)
 
+  // Listener nativo do TradeAI para fechamento de modais com o botão voltar do Android
+  React.useEffect(() => {
+    const handleDismiss = () => {
+      if (!internalRef.current) return
+      // Emite tecla Escape no elemento do diálogo para fechamento gracioso pelo Radix
+      const escapeEvent = new KeyboardEvent("keydown", {
+        key: "Escape",
+        code: "Escape",
+        bubbles: true,
+        cancelable: true,
+      })
+      internalRef.current.dispatchEvent(escapeEvent)
+    }
+
+    window.addEventListener("tradeai:dismiss-modal", handleDismiss)
+    return () => {
+      window.removeEventListener("tradeai:dismiss-modal", handleDismiss)
+    }
+  }, [])
+
   const toggleMaximize = (e?: React.MouseEvent) => {
     if (e) {
       e.preventDefault()
@@ -307,7 +327,7 @@ function DialogContent({
             <div
               onMouseDown={handleResizeCornerStart}
               onTouchStart={handleTouchResizeStart}
-              className="hidden sm:block absolute bottom-1 right-1 p-1 cursor-nwse-resize select-none touch-none text-muted-foreground/40 hover:text-cyan-400 transition-colors z-30 group"
+              className="absolute bottom-1 right-1 p-1 cursor-nwse-resize select-none touch-none text-muted-foreground/40 hover:text-cyan-400 transition-colors z-30 group"
               title="Arraste para redimensionar"
             >
               <svg
