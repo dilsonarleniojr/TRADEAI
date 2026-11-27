@@ -37,6 +37,7 @@ import {
   MAX_BACKGROUND_MINUTES,
 } from "@/lib/bot/background-settings";
 import { formatCurrency, formatPercent } from "@/lib/format";
+import { useUnifiedPortfolioMetrics } from "@/hooks/use-unified-portfolio-metrics";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -186,10 +187,8 @@ export function BotView() {
   const okxCount = bots.filter((b) => b.exchange === "okx").length;
   const openPositionsCount = bots.filter((b) => b.position && b.position.quantity > 0).length;
 
-  const totalRealizedPnl = useMemo(
-    () => bots.reduce((sum, b) => sum + (b.stats?.realizedPnl ?? 0), 0),
-    [bots]
-  );
+  const unifiedMetrics = useUnifiedPortfolioMetrics();
+  const totalRealizedPnl = unifiedMetrics.realizedPnl;
 
   const dailyLossLimit = useMemo(() => {
     const equity = portfolio?.totalValue || portfolio?.cashBalance || 0;

@@ -13,6 +13,7 @@ import { TradeHubSection } from "@/components/trade-hub";
 import { useToast } from "@/hooks/use-toast";
 import { useTradeAINativeBridge } from "@/hooks/use-tradeai-native-bridge";
 import { useTradeRecoveryOnRestore } from "@/hooks/use-trade-recovery-on-restore";
+import { useUnifiedPortfolioMetrics } from "@/hooks/use-unified-portfolio-metrics";
 import { getGlobalWorkerManager } from "@/hooks/use-binance-stream";
 import {
   AlertDialog,
@@ -250,7 +251,8 @@ export function MarketView() {
   const targetSymbol = (selectedSymbol || "BTCUSDT").toUpperCase();
   const baseAsset = stripQuoteAsset(targetSymbol);
   const price = ticker?.price;
-  const availableBalance = portfolio?.cashBalance ?? 0;
+  const unifiedMetrics = useUnifiedPortfolioMetrics();
+  const availableBalance = unifiedMetrics.cashBalance;
   const heldPosition = useMemo(
     () =>
       (portfolio?.positions || []).find(
