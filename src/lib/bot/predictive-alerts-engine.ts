@@ -402,7 +402,7 @@ export function evaluatePredictiveAlerts(input: PredictiveEngineInput): Predicti
       title: "⚠️ Risco Preditivo IA: Projeção de Queda Futura no PnL Líquido",
       prediction:
         "O Modelo de Tendência Temporal e Payoff antecipa retração no retorno líquido nos próximos ciclos. A degradação da relação lucro/perda sinaliza risco de stop cluster.",
-      triggerReason: `Slope de PnL negativo (${temporalTrend.pnlSlope.toFixed(4)}), payoff projetado em ${temporalTrend.projectedPayoff.toFixed(2)}x e ATR em ${volatility.atrMultiplier.toFixed(2)}x a média.`,
+      triggerReason: `${temporalTrend.pnlSlope < 0 ? `Slope de PnL negativo (${temporalTrend.pnlSlope.toFixed(4)})` : `Tendência de retração (${temporalTrend.pnlSlope.toFixed(4)})`}, payoff projetado em ${temporalTrend.projectedPayoff.toFixed(2)}x e ATR em ${volatility.atrMultiplier.toFixed(2)}x a média.`,
       recommendedAction:
         "Elevar o threshold de confluência para 65% e ativar regime defensivo nos robôs de Momentum e Breakout.",
       confidencePercent: 82,
@@ -467,13 +467,20 @@ export function evaluatePredictiveAlerts(input: PredictiveEngineInput): Predicti
     const sellerDominance = (data.orderFlowImbalance || 0) < -0.25;
 
     if (hasSufficientL2 && (wideSpread || (lowDepth && sellerDominance) || (volatility.isExplosive && lowDepth))) {
+      const askVolK = (data.askVolume || 0) >= 1_000_000
+        ? `${((data.askVolume || 0) / 1_000_000).toFixed(2)}M`
+        : `${((data.askVolume || 0) / 1000).toFixed(1)}k`;
+      const triggerDetail = lowDepth
+        ? `Spread de ${data.spreadPercent?.toFixed(3)}%, profundidade ask restrita ($${askVolK}) e OFI de ${data.orderFlowImbalance?.toFixed(3)}.`
+        : `Spread amplo (${data.spreadPercent?.toFixed(3)}%) e OFI vendedor (${data.orderFlowImbalance?.toFixed(3)}) com liquidez ask de $${askVolK}.`;
+
       alerts.push({
         id: `pred-high-slip-${sym}`,
         category: "slippage",
         type: "risco",
         title: `⚠️ Alerta Preditivo IA: Risco Iminente de Slippage em ${sym}`,
         prediction: `O Modelo de Execução projeta slippage > 0.30% para compras a mercado em ${sym}. Risco de penalização imediata no spread.`,
-        triggerReason: `Spread de ${data.spreadPercent?.toFixed(3)}%, profundidade ask restrita ($${((data.askVolume || 0) / 1000).toFixed(1)}k) e OFI de ${data.orderFlowImbalance?.toFixed(3)}.`,
+        triggerReason: triggerDetail,
         recommendedAction: `Forçar ordens LIMIT / IOC exclusivas ou suspender temporariamente novas compras a mercado em ${sym}.`,
         confidencePercent: 84,
         timeHorizon: "Próximos 1-5 minutos",
