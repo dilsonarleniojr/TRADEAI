@@ -582,7 +582,7 @@ export function GlobalCommandSearch({
               <div className="flex items-center gap-2">
                 <FlaskConical className="w-3.5 h-3.5 text-indigo-400" />
                 <span className="text-xs font-medium text-foreground">Teste de Estratégia</span>
-                <span className="text-[10px] text-muted-foreground">· Simulação rápida de Win Rate e Profit Factor</span>
+                <span className="text-[10px] text-muted-foreground">· Simulação rápida de Taxa de Acerto e Fator de Lucro</span>
               </div>
               <ArrowRight className="w-3 h-3 text-muted-foreground opacity-50" />
             </CommandItem>
