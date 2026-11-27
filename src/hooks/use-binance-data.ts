@@ -5,6 +5,7 @@ import { useCryptoStore, type TickerData } from "@/lib/store";
 import { getOrFetch, CACHE_TTL } from "@/lib/cache";
 import { syncManager } from "@/lib/realtime-sync";
 import { useShallow } from "zustand/react/shallow";
+import { throttledError } from "@/lib/telemetry/throttled-console";
 
 const BINANCE_API = "/api/market";
 
@@ -56,7 +57,7 @@ export function useBinanceData() {
       setTickers(tickersMap);
       syncManager.onPollingSuccess();
     } catch (err) {
-      console.error("[BinanceData] Ticker fetch error:", err);
+      throttledError("binance-ticker-fetch", "[BinanceData] Falha ao atualizar tickers:", err);
       syncManager.onPollingFailure();
     }
   }, [setTickers]);
@@ -102,7 +103,7 @@ export function useBinanceData() {
 
         setKlines(klines);
       } catch (err) {
-        console.error("[BinanceData] Klines fetch error:", err);
+        throttledError("binance-klines-fetch", `[BinanceData] Falha ao carregar klines para ${sym}:`, err);
       } finally {
         setIsLoading(false);
       }
