@@ -23,5 +23,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "TradeAI"
-include(":app")
+include(":android-app")
+project(":android-app").projectDir = file("android-app")
  

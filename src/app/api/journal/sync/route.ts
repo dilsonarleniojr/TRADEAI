@@ -60,14 +60,14 @@ function ensureJournalTable(): Promise<void> {
   return journalTableReady;
 }
 
-export const MAX_SYNC_BATCH_RECORDS = 2000;
-export const MAX_SYNC_PAYLOAD_BYTES = 2 * 1024 * 1024; // 2 MB
+const MAX_SYNC_BATCH_RECORDS = 2000;
+const MAX_SYNC_PAYLOAD_BYTES = 2 * 1024 * 1024; // 2 MB
 
 /**
  * Sanitiza strings removendo caracteres de controle ASCII (prevenção de Log Injection CWE-117 e XSS/Null-byte)
  * e truncando no tamanho máximo permitido.
  */
-export function sanitizeSafeString(val: unknown, fallback: string, maxLength = 128): string {
+function sanitizeSafeString(val: unknown, fallback: string, maxLength = 128): string {
   if (typeof val !== "string" && typeof val !== "number") return fallback;
   const cleaned = String(val)
     .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
@@ -142,7 +142,7 @@ function normalizeRecord(raw: Partial<TradeJournalRecord>): TradeJournalRecord |
 /**
  * Persiste um lote de registros no SQLite usando transação atômica com INSERT OR REPLACE.
  */
-export async function persistJournalBatchToSqlite(
+async function persistJournalBatchToSqlite(
   records: TradeJournalRecord[]
 ): Promise<{ persistedCount: number; durationMs: number }> {
   const start = performance.now();
@@ -223,7 +223,7 @@ export async function persistJournalBatchToSqlite(
   return { persistedCount: validRecords.length, durationMs };
 }
 
-export async function loadJournalRecordsFromSqlite(
+async function loadJournalRecordsFromSqlite(
   limit = 5000,
   symbol?: string,
   mode?: string
@@ -299,7 +299,7 @@ export async function loadJournalRecordsFromSqlite(
     : [];
 }
 
-export async function clearJournalSqlite(): Promise<void> {
+async function clearJournalSqlite(): Promise<void> {
   await ensureJournalTable();
   await db.$executeRawUnsafe(`DELETE FROM "TradeJournalRecord"`);
 }

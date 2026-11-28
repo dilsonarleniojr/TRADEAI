@@ -6,7 +6,7 @@ import {
   type ColdTierCompactionReport,
   type LongHorizonWindow,
 } from "@/lib/journal/cold-tier-compaction-engine";
-import { loadJournalRecordsFromSqlite } from "@/app/api/journal/sync/route";
+import { loadJournalRecordsFromSqlite } from "@/lib/journal/sync-sqlite";
 
 let rollupTableReady: Promise<void> | null = null;
 
@@ -59,7 +59,7 @@ function ensureRollupTable(): Promise<void> {
  * Persiste snapshots de agregação diária (Daily Rollup) no SQLite WAL em transação atômica.
  * Respeita a imutabilidade de sessões UTC já fechadas a menos que forceRebuild seja true.
  */
-export async function persistDailyRollupsToSqlite(
+async function persistDailyRollupsToSqlite(
   rollups: DailyRollupSnapshot[],
   options?: { forceRebuild?: boolean }
 ): Promise<{ upsertedCount: number }> {
@@ -164,7 +164,7 @@ export async function persistDailyRollupsToSqlite(
 /**
  * Carrega os snapshots diários (Daily Rollups) do SQLite em O(1) em relação ao número de trades.
  */
-export async function loadDailyRollupsFromSqlite(options?: {
+async function loadDailyRollupsFromSqlite(options?: {
   mode?: "all" | "live" | "paper";
   includePayload?: boolean;
 }): Promise<DailyRollupSnapshot[]> {
@@ -222,7 +222,7 @@ export async function loadDailyRollupsFromSqlite(options?: {
 /**
  * Executa a rotina de Compactação Colunar e Agregação Diária sobre os registros em SQLite
  */
-export async function runSqliteColdTierCompaction(
+async function runSqliteColdTierCompaction(
   initialCapital = 10000
 ): Promise<ColdTierCompactionReport> {
   const records = await loadJournalRecordsFromSqlite(20000);
@@ -235,7 +235,7 @@ export async function runSqliteColdTierCompaction(
   return report;
 }
 
-export async function clearDailyRollupsSqlite(): Promise<void> {
+async function clearDailyRollupsSqlite(): Promise<void> {
   await ensureRollupTable();
   await db.$executeRawUnsafe(`DELETE FROM "TradeJournalDailyRollup"`);
 }
