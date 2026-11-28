@@ -23,8 +23,8 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("String", "TRADEAI_PRIMARY_URL", "\"http://10.0.2.2:3000\"")
-            buildConfigField("String", "TRADEAI_FALLBACK_URL", "\"http://192.168.1.72:3000\"")
+            buildConfigField("String", "TRADEAI_PRIMARY_URL", "\"http://localhost:3000\"")
+            buildConfigField("String", "TRADEAI_FALLBACK_URL", "\"http://192.168.1.10:3000\"")
             buildConfigField("Boolean", "ALLOW_DEBUG_ENDPOINTS", "true")
         }
         release {

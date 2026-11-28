@@ -61,6 +61,7 @@ import com.vcs.tradeai.ui.theme.TradeBearRed
 import com.vcs.tradeai.ui.theme.TradeBullGreen
 import com.vcs.tradeai.ui.theme.TradePrimary
 import com.vcs.tradeai.ui.theme.TradeSurface
+import com.vcs.tradeai.ui.theme.TradeBorder
 import com.vcs.tradeai.ui.theme.TradeTextMuted
 import com.vcs.tradeai.ui.theme.TradeTextPrimary
 import com.vcs.tradeai.ui.theme.TradeTextSecondary
@@ -378,26 +379,55 @@ fun TradeAIApp(
                         textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(24.dp))
-                    Button(
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            viewModel.reconnect(primaryUrl)
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TradePrimary)
-                    ) {
-                        Text("Reconectar ao TradeAI", color = TradeBackground, fontWeight = FontWeight.Bold)
-                    }
-                    if (BuildConfig.ALLOW_DEBUG_ENDPOINTS && fallbackUrl != primaryUrl) {
+                    var customUrlInput by remember { mutableStateOf("") }
+                    var showCustomUrlField by remember { mutableStateOf(false) }
+
+                    if (showCustomUrlField) {
+                        androidx.compose.material3.OutlinedTextField(
+                            value = customUrlInput,
+                            onValueChange = { customUrlInput = it },
+                            placeholder = { Text("Ex: 192.168.1.10:3000 ou vps.site.com:3000", fontSize = 12.sp, color = TradeTextMuted) },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            singleLine = true,
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = TradeTextPrimary,
+                                unfocusedTextColor = TradeTextPrimary,
+                                focusedBorderColor = TradePrimary,
+                                unfocusedBorderColor = TradeBorder
+                            )
+                        )
                         Spacer(modifier = Modifier.height(10.dp))
                         Button(
                             onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.reconnect(fallbackUrl)
+                                if (customUrlInput.isNotBlank()) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    viewModel.setCustomServerUrl(customUrlInput)
+                                }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = TradeSurface)
+                            colors = ButtonDefaults.buttonColors(containerColor = TradePrimary)
                         ) {
-                            Text("Debug LAN ($fallbackUrl)", color = TradePrimary)
+                            Text("Conectar neste Servidor", color = TradeBackground, fontWeight = FontWeight.Bold)
                         }
+                    } else {
+                        Button(
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.reconnect(primaryUrl)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = TradePrimary)
+                        ) {
+                            Text("Reconectar (Localhost / Termux)", color = TradeBackground, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = {
+                            showCustomUrlField = !showCustomUrlField
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = TradeSurface)
+                    ) {
+                        Text(if (showCustomUrlField) "Voltar para Padrão" else "Definir IP da VPS / Wi-Fi", color = TradePrimary)
                     }
                 }
             }

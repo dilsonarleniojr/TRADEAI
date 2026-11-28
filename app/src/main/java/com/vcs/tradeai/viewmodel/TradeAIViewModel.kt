@@ -169,6 +169,16 @@ class TradeAIViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun setCustomServerUrl(url: String) {
+        val trimmed = url.trim()
+        val sanitized = if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+            "http://$trimmed"
+        } else {
+            trimmed
+        }
+        reconnect(sanitized)
+    }
+
     fun reconnect(targetUrl: String = _uiState.value.activeUrl) {
         _uiState.update {
             it.copy(
