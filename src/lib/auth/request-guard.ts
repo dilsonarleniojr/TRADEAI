@@ -4,7 +4,7 @@ import { isSameOrigin } from "@/lib/binance-session";
 import { getClientRateLimitKey, isRateLimited } from "@/lib/rate-limit";
 
 export interface GuardOptions {
-  /** Exige cookie tradeai_session ou Bearer token válido (padrão: true / fail-closed; passe false apenas em rotas públicas) */
+  /** Exige cookie tradeai_session ou Bearer token válido (quando REQUIRE_AUTH=true ou requireSession explicitamente ativo) */
   requireSession?: boolean;
   /** Limite de requisições por janela (padrão: sem limite específico se omitido) */
   rateLimit?: { limit: number; windowMs?: number; scope?: string };
@@ -41,7 +41,7 @@ export function guardApiRequest(request: Request, options: GuardOptions = {}): N
     }
   }
 
-  const requireAuth = options.requireSession !== false;
+  const requireAuth = options.requireSession === true || process.env.REQUIRE_AUTH === "true";
   if (requireAuth) {
     const authHeader = request.headers.get("authorization");
     const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
