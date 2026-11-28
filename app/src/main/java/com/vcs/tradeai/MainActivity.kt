@@ -197,8 +197,9 @@ fun TradeAIApp(
                         domStorageEnabled = true
                         databaseEnabled = true
                         cacheMode = WebSettings.LOAD_DEFAULT
-                        useWideViewPort = true
-                        loadWithOverviewMode = true
+                        useWideViewPort = false
+                        loadWithOverviewMode = false
+                        textZoom = 100
                         // Quick Win 3: Bloqueio estrito de arquivos locais
                         allowFileAccess = false
                         allowContentAccess = false

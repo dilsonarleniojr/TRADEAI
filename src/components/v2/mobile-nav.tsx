@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   CandlestickChart,
   Bot,
+  Activity,
   Wallet,
   GraduationCap,
 } from "lucide-react";
@@ -30,8 +31,9 @@ export function MobileNavBar() {
       case "ai":
         return "mercado";
       case "bot":
-      case "institutional":
         return "robos";
+      case "institutional":
+        return "cockpit";
       case "history":
       case "journal":
         return "carteira";
@@ -65,6 +67,12 @@ export function MobileNavBar() {
       icon: Bot,
     },
     {
+      id: "cockpit" as V2NavigationArea,
+      label: "Cockpit",
+      section: "institutional" as const,
+      icon: Activity,
+    },
+    {
       id: "carteira" as V2NavigationArea,
       label: "Carteira",
       section: "history" as const,
@@ -80,7 +88,7 @@ export function MobileNavBar() {
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#0f1622]/95 backdrop-blur-md border-t border-[#E7EBF0] dark:border-white/10 safe-bottom">
-      <div className="flex items-center justify-around h-16 max-w-[480px] mx-auto px-1">
+      <div className="flex items-center justify-between h-16 w-full max-w-[540px] mx-auto px-1 overflow-x-auto no-scrollbar">
         {navItems.map((item) => {
           const isActive = currentArea === item.id;
           const Icon = item.icon;
